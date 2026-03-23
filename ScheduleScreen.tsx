@@ -27,7 +27,6 @@ export default function ScheduleScreen() {
   // Add game form
   const [oppId, setOppId] = useState("");
   const [gameDate, setGameDate] = useState("");
-  const [gameTime, setGameTime] = useState("19:00");
   const [gameLocation, setGameLocation] = useState("");
   const [isHome, setIsHome] = useState(true);
   const [savingGame, setSavingGame] = useState(false);
@@ -71,13 +70,12 @@ export default function ScheduleScreen() {
   const handleAddGame = async () => {
     if (!season || !oppId || !gameDate) return;
     setSavingGame(true);
-    const dateStr = gameTime ? `${gameDate}T${gameTime}:00` : `${gameDate}T19:00:00`;
     await supabase.from("games").insert({
       season_id: season.id, opponent_id: oppId,
-      game_date: new Date(dateStr).toISOString(),
+      game_date: new Date(gameDate).toISOString(),
       location: gameLocation || null, is_home: isHome,
     });
-    setOppId(""); setGameDate(""); setGameTime("19:00"); setGameLocation(""); setIsHome(true);
+    setOppId(""); setGameDate(""); setGameLocation(""); setIsHome(true);
     setSavingGame(false); setShowAddGame(false);
     loadData();
   };
@@ -207,15 +205,9 @@ export default function ScheduleScreen() {
                     <button onClick={() => { setShowAddGame(false); setShowAddOpp(true); }}
                       className="text-xs text-dragon-primary font-bold mt-1.5 ml-1">+ New Opponent</button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label block mb-1.5">Date *</label>
-                      <input type="date" value={gameDate} onChange={e => setGameDate(e.target.value)} className="input" />
-                    </div>
-                    <div>
-                      <label className="label block mb-1.5">Kickoff</label>
-                      <input type="time" value={gameTime} onChange={e => setGameTime(e.target.value)} className="input" />
-                    </div>
+                  <div>
+                    <label className="label block mb-1.5">Date & Time *</label>
+                    <input type="datetime-local" value={gameDate} onChange={e => setGameDate(e.target.value)} className="input" />
                   </div>
                   <div>
                     <label className="label block mb-1.5">Home or Away</label>
