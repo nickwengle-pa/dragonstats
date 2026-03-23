@@ -215,33 +215,42 @@ export default function GameScreen() {
     setRoster(rosterRes.data ?? []);
 
     // Convert DB plays to local PlayRecord format
-    const localPlays: PlayRecord[] = existingPlays.map(p => ({
-      id: p.id,
-      quarter: p.quarter,
-      clock: p.clock_seconds,
-      type: p.play_type,
-      tab: p.play_category,
-      yards: p.yards,
-      result: p.result ?? "",
-      penalty: p.penalty_type,
-      flagYards: p.penalty_yards,
-      isTouchdown: p.is_touchdown,
-      firstDown: p.is_first_down,
-      turnover: p.is_turnover,
-      tagged: p.play_players.map(pp => ({
-        id: pp.season_roster_id,
-        player_id: pp.player_id,
-        jersey_number: pp.roster_entry?.jersey_number ?? null,
-        name: pp.roster_entry
-          ? `${pp.roster_entry.player.first_name} ${pp.roster_entry.player.last_name}`
-          : "?",
-        role: pp.role,
-      })),
-      ballOn: p.ball_on,
-      down: p.down,
-      distance: p.distance,
-      description: p.description,
-    }));
+    const localPlays: PlayRecord[] = existingPlays.map(p => {
+      const pd = (p.play_data ?? {}) as Record<string, any>;
+      // Convert clock text "M:SS" back to seconds
+      let clockSecs = 0;
+      if (p.clock) {
+        const [m, s] = p.clock.split(":").map(Number);
+        clockSecs = (m || 0) * 60 + (s || 0);
+      }
+      return {
+        id: p.id,
+        quarter: p.quarter,
+        clock: clockSecs,
+        type: p.play_type,
+        tab: pd.play_category ?? "offense",
+        yards: p.yards_gained,
+        result: pd.result ?? "",
+        penalty: pd.penalty_type ?? null,
+        flagYards: pd.penalty_yards ?? 0,
+        isTouchdown: p.is_touchdown,
+        firstDown: pd.is_first_down ?? false,
+        turnover: p.is_turnover,
+        tagged: p.play_players.map(pp => ({
+          id: pp.player_id,
+          player_id: pp.player_id,
+          jersey_number: null,
+          name: pp.player
+            ? `${pp.player.first_name} ${pp.player.last_name}`
+            : "?",
+          role: pp.role,
+        })),
+        ballOn: p.yard_line,
+        down: p.down,
+        distance: p.distance,
+        description: p.description,
+      };
+    });
 
     setPlays(localPlays);
 
@@ -374,32 +383,36 @@ export default function GameScreen() {
     const scored = isTD || newBallOn >= 100;
 
     // ── Build Supabase insert ──
+    const result = playType.id === "pass_comp" ? "Complete"
+                 : playType.id === "pass_inc" ? "Incomplete"
+                 : null;
     const playInsert: PlayInsert = {
       game_id: gameId,
-      season_id: season.id,
       quarter,
-      clock_seconds: clock,
+      clock: fmtClock(clock),
       possession,
       down,
       distance,
-      ball_on: ballOn,
+      yard_line: ballOn,
       play_type: playType.id,
-      play_category: activeTab,
-      yards: playYards,
-      result: playType.id === "pass_comp" ? "Complete"
-            : playType.id === "pass_inc" ? "Incomplete"
-            : null,
+      play_data: {
+        season_id: season.id,
+        play_category: activeTab,
+        result,
+        is_first_down: earnedFirst,
+        penalty_type: penalty || null,
+        penalty_yards: penalty ? flagYards : 0,
+      },
+      yards_gained: playYards,
       is_touchdown: scored,
-      is_first_down: earnedFirst,
       is_turnover: ["int", "fum_rec"].includes(playType.id),
-      penalty_type: penalty || null,
-      penalty_yards: penalty ? flagYards : 0,
+      is_penalty: !!penalty,
+      primary_player_id: tagged[0]?.player_id ?? null,
       description: buildDesc(playType, tagged, playYards, scored, penalty || null),
     };
 
     const playerInserts = tagged.map(t => ({
       player_id: t.player_id,
-      season_roster_id: t.id,
       role: t.role,
     }));
 
@@ -419,7 +432,7 @@ export default function GameScreen() {
       type: playType.id,
       tab: activeTab,
       yards: playYards,
-      result: playInsert.result ?? "",
+      result: result ?? "",
       penalty: penalty || null,
       flagYards: penalty ? flagYards : 0,
       isTouchdown: scored,

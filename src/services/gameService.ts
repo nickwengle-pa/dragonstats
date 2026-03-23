@@ -6,29 +6,25 @@ import { supabase } from "@/lib/supabase";
 
 export interface PlayInsert {
   game_id: string;
-  season_id: string;
   quarter: number;
-  clock_seconds: number;
+  clock: string | null;           // "11:42" text format
   possession: "us" | "them";
   down: number;
   distance: number;
-  ball_on: number;
-  play_type: string;        // "rush" | "pass_comp" | "pass_inc" | "sack" | etc.
-  play_category: string;    // "offense" | "defense" | "special"
-  yards: number;
-  result: string | null;    // "Complete" | "Incomplete" | null
+  yard_line: number;
+  play_type: string;              // "rush" | "pass_comp" | "pass_inc" | "sack" | etc.
+  play_data: Record<string, any>; // extra structured data
+  yards_gained: number;
   is_touchdown: boolean;
-  is_first_down: boolean;
   is_turnover: boolean;
-  penalty_type: string | null;
-  penalty_yards: number;
+  is_penalty: boolean;
+  primary_player_id?: string | null;
   description: string;
 }
 
 export interface PlayPlayerInsert {
   play_id: string;
   player_id: string;
-  season_roster_id: string;
   role: string;             // "carrier" | "passer" | "receiver" | "tackler" | etc.
 }
 
@@ -75,7 +71,6 @@ export async function insertPlay(
     const rows: PlayPlayerInsert[] = players.map(p => ({
       play_id: playRow.id,
       player_id: p.player_id,
-      season_roster_id: p.season_roster_id,
       role: p.role,
     }));
 
@@ -125,11 +120,7 @@ export async function deletePlay(playId: string): Promise<boolean> {
 
 export interface PlayWithPlayers extends PlayRow {
   play_players: (PlayPlayerRow & {
-    roster_entry?: {
-      jersey_number: number | null;
-      position: string | null;
-      player: { first_name: string; last_name: string };
-    };
+    player?: { first_name: string; last_name: string };
   })[];
 }
 
@@ -140,11 +131,7 @@ export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> 
       *,
       play_players (
         *,
-        roster_entry:season_rosters (
-          jersey_number,
-          position,
-          player:players ( first_name, last_name )
-        )
+        player:players ( first_name, last_name )
       )
     `)
     .eq("game_id", gameId)
@@ -172,8 +159,8 @@ export async function updateGameScore(
   const { error } = await supabase
     .from("games")
     .update({
-      home_score: ourScore,   // Adjust if away — see note below
-      away_score: theirScore,
+      our_score: ourScore,
+      opponent_score: theirScore,
       status,
     })
     .eq("id", gameId);
@@ -226,11 +213,12 @@ export function deriveGameState(plays: PlayWithPlayers[]): ResumedGameState {
       else state.theirScore += 6;
     }
     // Penalty-only scoring (PAT, FG, safety) tracked via play_type
-    if (play.play_type === "pat" && play.result === "Good") {
+    const pd = play.play_data ?? {};
+    if (play.play_type === "pat" && pd.result === "Good") {
       if (play.possession === "us") state.ourScore += 1;
       else state.theirScore += 1;
     }
-    if (play.play_type === "fg" && play.result === "Good") {
+    if (play.play_type === "fg" && pd.result === "Good") {
       if (play.possession === "us") state.ourScore += 3;
       else state.theirScore += 3;
     }
@@ -241,17 +229,24 @@ export function deriveGameState(plays: PlayWithPlayers[]): ResumedGameState {
   // Use the last play to set current situational state
   const last = plays[plays.length - 1];
   state.quarter = last.quarter;
-  state.clock = last.clock_seconds;
+  // Convert clock text "M:SS" back to seconds
+  if (last.clock) {
+    const [m, s] = last.clock.split(":").map(Number);
+    state.clock = (m || 0) * 60 + (s || 0);
+  }
   state.possession = poss;
 
+  const playData = last.play_data ?? {};
+  const isFirstDown = playData.is_first_down ?? false;
+
   // Replay the last play's outcome to get the next down/distance/ball
-  const newBall = Math.min(100, Math.max(0, last.ball_on + last.yards));
+  const newBall = Math.min(100, Math.max(0, last.yard_line + last.yards_gained));
 
   if (last.is_touchdown) {
     state.ballOn = 97; // PAT spot
     state.down = 1;
     state.distance = 3;
-  } else if (last.is_first_down) {
+  } else if (isFirstDown) {
     state.ballOn = newBall;
     state.down = 1;
     state.distance = Math.min(10, 100 - newBall);
@@ -263,7 +258,7 @@ export function deriveGameState(plays: PlayWithPlayers[]): ResumedGameState {
   } else {
     state.ballOn = newBall;
     state.down = last.down + 1;
-    state.distance = last.distance - last.yards;
+    state.distance = last.distance - last.yards_gained;
   }
 
   return state;
