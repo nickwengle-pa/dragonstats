@@ -43,6 +43,21 @@
     @apply text-xs font-semibold text-neutral-500 uppercase tracking-wider;
   }
   .screen {
-    @apply flex flex-col min-h-dvh w-full max-w-app mx-auto bg-surface-bg;
+    @apply flex flex-col min-h-dvh w-full max-w-app mx-auto bg-surface-bg
+           lg:max-w-none lg:mx-0;
+  }
+
+  /* Bottom-sheet → centered dialog at lg+ */
+  .sheet {
+    @apply fixed inset-0 flex items-end justify-center z-50
+           lg:items-center lg:px-6;
+  }
+  .sheet-panel {
+    @apply w-full max-w-app bg-surface-card rounded-t-2xl border border-surface-border
+           lg:rounded-2xl lg:max-w-lg;
+  }
+  .sheet-panel-sm {
+    @apply w-full max-w-app bg-surface-card rounded-t-2xl border border-surface-border
+           lg:rounded-2xl lg:max-w-md;
   }
 }

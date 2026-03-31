@@ -94,8 +94,8 @@ export default function ScheduleScreen() {
   };
 
   return (
-    <div className="screen safe-top safe-bottom">
-      <div className="flex items-center gap-3 px-5 pt-5 pb-4">
+    <div className="screen safe-top safe-bottom lg:max-w-tablet lg:mx-auto">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-4 lg:px-8">
         <button onClick={() => navigate("/")} className="btn-ghost p-2">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -114,7 +114,7 @@ export default function ScheduleScreen() {
       )}
 
       {/* Games list */}
-      <div className="flex-1 px-5 overflow-y-auto pb-4">
+      <div className="flex-1 px-5 lg:px-8 overflow-y-auto pb-4">
         {loading ? (
           <div className="text-neutral-500 text-sm text-center py-12 animate-pulse">Loading schedule...</div>
         ) : games.length === 0 ? (
@@ -182,8 +182,8 @@ export default function ScheduleScreen() {
 
       {/* Add Game Modal */}
       {showAddGame && (
-        <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50">
-          <div className="w-full max-w-app bg-surface-card rounded-t-2xl border border-surface-border max-h-[85vh] flex flex-col">
+        <div className="sheet bg-black/70">
+          <div className="sheet-panel max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between p-5 pb-3 shrink-0">
               <h2 className="text-lg font-black">Add Game</h2>
               <button onClick={() => setShowAddGame(false)} className="btn-ghost p-1.5"><X className="w-5 h-5" /></button>
@@ -246,8 +246,8 @@ export default function ScheduleScreen() {
 
       {/* Add Opponent Modal */}
       {showAddOpp && (
-        <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50">
-          <div className="w-full max-w-app bg-surface-card rounded-t-2xl border border-surface-border max-h-[85vh] flex flex-col">
+        <div className="sheet bg-black/70">
+          <div className="sheet-panel max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between p-5 pb-3 shrink-0">
               <h2 className="text-lg font-black">Add Opponent</h2>
               <button onClick={() => setShowAddOpp(false)} className="btn-ghost p-1.5"><X className="w-5 h-5" /></button>

@@ -23,7 +23,8 @@ export default {
         mono: ['"JetBrains Mono"', "monospace"],
       },
       maxWidth: {
-        app: "28rem", // 448px — mobile constraint
+        app: "28rem",    // 448px — mobile
+        tablet: "48rem", // 768px — tablet content areas
       },
     },
   },

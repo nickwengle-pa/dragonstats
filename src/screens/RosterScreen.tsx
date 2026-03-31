@@ -92,7 +92,7 @@ export default function RosterScreen() {
   };
 
   return (
-    <div className="screen safe-top safe-bottom">
+    <div className="screen safe-top safe-bottom lg:max-w-tablet lg:mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-5 pb-4">
         <button onClick={() => navigate("/")} className="btn-ghost p-2">
@@ -155,8 +155,8 @@ export default function RosterScreen() {
 
       {/* Add Player Modal */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50">
-          <div className="w-full max-w-app bg-surface-card rounded-t-2xl border border-surface-border max-h-[85vh] flex flex-col">
+        <div className="sheet bg-black/70">
+          <div className="sheet-panel max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between p-5 pb-3 shrink-0">
               <h2 className="text-lg font-black">Add Player</h2>
               <button onClick={() => setShowAdd(false)} className="btn-ghost p-1.5">

@@ -50,8 +50,8 @@ export default function DashboardScreen() {
   const mascot = program?.mascot ?? "";
 
   return (
-    <div className="screen safe-top safe-bottom">
-      <div className="px-5 pt-6 pb-4">
+    <div className="screen safe-top safe-bottom lg:max-w-tablet lg:mx-auto">
+      <div className="px-5 pt-6 pb-4 lg:px-8 lg:pt-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-black tracking-tight">{program?.abbreviation ?? "DRAGON"} STATS</h1>
@@ -115,8 +115,8 @@ export default function DashboardScreen() {
       </div>
 
       {/* Nav Grid */}
-      <div className="px-5 flex-1">
-        <div className="grid grid-cols-2 gap-3">
+      <div className="px-5 lg:px-8 flex-1">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
             { label: "Schedule", icon: Calendar, path: "/schedule", desc: `${stats.totalGames} games` },
             { label: "Roster", icon: Users, path: "/roster", desc: `${stats.rosterCount} players` },
