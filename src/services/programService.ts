@@ -7,7 +7,9 @@ export interface Program {
   mascot: string | null;
   primary_color: string;
   secondary_color: string;
+  accent_color: string | null;
   logo_url: string | null;
+  wordmark_url: string | null;
   city: string | null;
   state: string | null;
   owner_id: string | null;

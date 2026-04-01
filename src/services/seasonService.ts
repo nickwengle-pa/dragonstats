@@ -50,6 +50,7 @@ export interface Player {
   program_id: string;
   first_name: string;
   last_name: string;
+  preferred_name: string | null;
   graduation_year: number | null;
 }
 
@@ -92,6 +93,7 @@ export interface RosterEntry {
   player_id: string;
   jersey_number: number | null;
   position: string | null;
+  positions: string[] | null;
   classification: string | null;
   is_active: boolean;
   // Joined fields
@@ -121,5 +123,47 @@ export const rosterService = {
       .from("season_rosters").update(updates).eq("id", id).select().single();
     if (error) { console.error("Error updating roster entry:", error); return null; }
     return data;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// COACHES (per-season coaching staff)
+// ---------------------------------------------------------------------------
+
+export interface Coach {
+  id: string;
+  season_id: string;
+  name: string;
+  role: "head" | "assistant" | "coordinator" | "other";
+  email: string | null;
+  phone: string | null;
+}
+
+export const coachService = {
+  async getBySeason(seasonId: string): Promise<Coach[]> {
+    const { data } = await supabase
+      .from("coaches").select("*")
+      .eq("season_id", seasonId)
+      .order("role", { ascending: true });
+    return data ?? [];
+  },
+
+  async create(coach: Omit<Coach, "id">): Promise<Coach | null> {
+    const { data, error } = await supabase
+      .from("coaches").insert(coach).select().single();
+    if (error) { console.error("Error creating coach:", error); return null; }
+    return data;
+  },
+
+  async update(id: string, updates: Partial<Coach>): Promise<Coach | null> {
+    const { data, error } = await supabase
+      .from("coaches").update(updates).eq("id", id).select().single();
+    if (error) { console.error("Error updating coach:", error); return null; }
+    return data;
+  },
+
+  async remove(id: string): Promise<boolean> {
+    const { error } = await supabase.from("coaches").delete().eq("id", id);
+    return !error;
   },
 };

@@ -15,7 +15,9 @@ CREATE TABLE programs (
   mascot        TEXT,                             -- "Dragons"
   primary_color TEXT DEFAULT '#dc2626',
   secondary_color TEXT DEFAULT '#f59e0b',
+  accent_color  TEXT,                             -- tertiary accent color
   logo_url      TEXT,
+  wordmark_url  TEXT,                             -- team wordmark/logotype image
   city          TEXT,
   state         TEXT DEFAULT 'PA',
   created_at    TIMESTAMPTZ DEFAULT now(),
@@ -47,6 +49,7 @@ CREATE TABLE players (
   program_id      UUID NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
   first_name      TEXT NOT NULL,
   last_name       TEXT NOT NULL,
+  preferred_name  TEXT,                            -- nickname / goes-by name
   graduation_year INT,                            -- 2026, 2027, etc.
   created_at      TIMESTAMPTZ DEFAULT now()
 );
@@ -64,6 +67,7 @@ CREATE TABLE season_rosters (
   is_active     BOOLEAN DEFAULT true,
   height_inches INT,
   weight_lbs    INT,
+  positions     TEXT[],                           -- multi-position array ["QB","WR"]
   UNIQUE(season_id, player_id)
 );
 
@@ -81,6 +85,7 @@ CREATE TABLE opponents (
   logo_url        TEXT,
   city            TEXT,
   state           TEXT,
+  notes           TEXT,
   created_at      TIMESTAMPTZ DEFAULT now()
 );
 
@@ -108,10 +113,23 @@ CREATE TABLE games (
   current_possession TEXT DEFAULT 'us',            -- 'us' or 'them'
   -- Config
   rules_config    JSONB DEFAULT '{"quarterLengthMinutes": 12, "level": "high_school"}'::jsonb,
+  -- Extended fields (FSA merge)
+  kickoff_time    TEXT,                            -- separate from game_date
+  site            TEXT DEFAULT 'home'
+                    CHECK (site IN ('home', 'away', 'neutral')),
+  direction       TEXT,                            -- left-to-right / right-to-left
+  home_timeouts   INT DEFAULT 3,
+  away_timeouts   INT DEFAULT 3,
+  opening_kickoff_receiver TEXT,
+  home_top_seconds INT DEFAULT 0,
+  away_top_seconds INT DEFAULT 0,
+  home_first_downs INT DEFAULT 0,
+  away_first_downs INT DEFAULT 0,
   -- Metadata
   notes           TEXT,
   is_playoff      BOOLEAN DEFAULT false,
   playoff_round   TEXT,
+  tags            TEXT[],
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now()
 );
@@ -142,6 +160,14 @@ CREATE TABLE plays (
   is_penalty      BOOLEAN DEFAULT false,
   -- Primary player (for quick lookups — full attribution is in play_data)
   primary_player_id UUID REFERENCES players(id),
+  -- Extended fields (FSA merge)
+  end_yard_line   INT,                            -- where the play ended
+  hash_mark       TEXT,                           -- left/middle/right
+  offensive_formation TEXT,                        -- I-Form, Shotgun, Pistol, etc.
+  defensive_formation TEXT,                        -- 4-3, 3-4, Nickel, etc.
+  play_start_time INT,                            -- clock seconds at snap
+  play_end_time   INT,                            -- clock seconds at whistle
+  tags            TEXT[],
   -- Description (human-readable)
   description     TEXT,
   created_at      TIMESTAMPTZ DEFAULT now()
@@ -155,6 +181,7 @@ CREATE TABLE play_players (
   play_id     UUID NOT NULL REFERENCES plays(id) ON DELETE CASCADE,
   player_id   UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   role        TEXT NOT NULL,                       -- 'passer', 'rusher', 'receiver', 'tackler', 'target', 'kicker', 'punter', 'returner', 'forced_fumble', 'fumble_recovery', 'interceptor', 'sacker', 'penalty'
+  credit      NUMERIC(3,2),                       -- tackle weighting: 1.0 solo, 0.5 shared
   UNIQUE(play_id, player_id, role)
 );
 
@@ -170,6 +197,32 @@ CREATE TABLE game_stats_cache (
   is_team     BOOLEAN DEFAULT false,               -- true = team-level stats (player_id is null)
   updated_at  TIMESTAMPTZ DEFAULT now(),
   UNIQUE(game_id, player_id, stat_type)
+);
+
+-- ---------------------------------------------------------------------------
+-- 10. COACHES (per-season coaching staff)
+-- ---------------------------------------------------------------------------
+CREATE TABLE coaches (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  season_id   UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  role        TEXT DEFAULT 'assistant'
+                CHECK (role IN ('head', 'assistant', 'coordinator', 'other')),
+  email       TEXT,
+  phone       TEXT,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------------
+-- 11. OPPONENT PLAYERS (rosters for opponent teams)
+-- ---------------------------------------------------------------------------
+CREATE TABLE opponent_players (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  opponent_id UUID NOT NULL REFERENCES opponents(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  jersey_number INT,
+  position    TEXT,
+  created_at  TIMESTAMPTZ DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------------
@@ -192,6 +245,8 @@ CREATE INDEX idx_play_players_player ON play_players(player_id);
 CREATE INDEX idx_play_players_role ON play_players(role);
 CREATE INDEX idx_game_stats_cache_game ON game_stats_cache(game_id);
 CREATE INDEX idx_game_stats_cache_player ON game_stats_cache(player_id);
+CREATE INDEX idx_coaches_season ON coaches(season_id);
+CREATE INDEX idx_opponent_players_opponent ON opponent_players(opponent_id);
 
 -- JSONB index on play_data for querying into the engine payload
 CREATE INDEX idx_plays_play_data ON plays USING gin(play_data);
@@ -208,6 +263,8 @@ ALTER TABLE games ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plays ENABLE ROW LEVEL SECURITY;
 ALTER TABLE play_players ENABLE ROW LEVEL SECURITY;
 ALTER TABLE game_stats_cache ENABLE ROW LEVEL SECURITY;
+ALTER TABLE coaches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE opponent_players ENABLE ROW LEVEL SECURITY;
 
 -- For now: authenticated users can do everything (tighten later)
 CREATE POLICY "Authenticated users full access" ON programs
@@ -227,6 +284,10 @@ CREATE POLICY "Authenticated users full access" ON plays
 CREATE POLICY "Authenticated users full access" ON play_players
   FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Authenticated users full access" ON game_stats_cache
+  FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users full access" ON coaches
+  FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users full access" ON opponent_players
   FOR ALL USING (auth.role() = 'authenticated');
 
 -- ---------------------------------------------------------------------------

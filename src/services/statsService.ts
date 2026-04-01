@@ -8,6 +8,7 @@
 import { supabase } from "@/lib/supabase";
 import { loadGamePlays, calcDefenseStats } from "./gameService";
 import { transformPlays, collectOpponentPlayerIds, type TransformContext } from "./playTransformer";
+import { opponentPlayerService } from "./opponentService";
 import {
   FootballStatsEngine,
   type GameSummary,
@@ -116,7 +117,11 @@ export async function computeGameStats(
 
   if (!game) return null;
 
-  const roster = await loadRoster(game.season_id);
+  // Load roster + opponent players in parallel
+  const [roster, realOppPlayers] = await Promise.all([
+    loadRoster(game.season_id),
+    opponentPlayerService.getByOpponent(game.opponent_id),
+  ]);
 
   if (plays.length === 0) return null;
 
@@ -163,12 +168,12 @@ export async function computeGameStats(
 
   engine.setTeams(homeTeam, awayTeam);
 
-  // 5. Register players
+  // 5. Register players (our roster + opponent players)
   const rosterPlayers = roster.map((r) => ({
     id: r.player_id,
     name: `${r.first_name} ${r.last_name}`.trim(),
   }));
-  const oppPlayers = collectOpponentPlayerIds(plays);
+  const oppPlayers = collectOpponentPlayerIds(plays, realOppPlayers);
   engine.registerPlayers([...rosterPlayers, ...oppPlayers]);
 
   // 6. Process plays

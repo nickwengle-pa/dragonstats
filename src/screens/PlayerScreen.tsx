@@ -241,9 +241,11 @@ function GameLog<T>({
 interface PlayerInfo {
   first_name: string;
   last_name: string;
+  preferred_name: string | null;
   graduation_year: number | null;
   jersey_number: number | null;
   position: string | null;
+  positions: string[] | null;
 }
 
 export default function PlayerScreen() {
@@ -266,7 +268,7 @@ export default function PlayerScreen() {
       // Load player info
       const { data: pData } = await supabase
         .from("season_rosters")
-        .select("jersey_number, position, player:players(first_name, last_name, graduation_year)")
+        .select("jersey_number, position, positions, player:players(first_name, last_name, preferred_name, graduation_year)")
         .eq("season_id", season.id)
         .eq("player_id", playerId)
         .single();
@@ -278,9 +280,11 @@ export default function PlayerScreen() {
         setPlayer({
           first_name: p?.first_name ?? "",
           last_name: p?.last_name ?? "",
+          preferred_name: p?.preferred_name ?? null,
           graduation_year: p?.graduation_year ?? null,
           jersey_number: pData.jersey_number,
           position: pData.position,
+          positions: (pData as any).positions ?? null,
         });
       }
 
@@ -317,10 +321,19 @@ export default function PlayerScreen() {
             </span>
           </div>
           <div className="text-lg font-bold">
-            {player ? `${player.first_name} ${player.last_name}` : "Loading..."}
+            {player
+              ? `${player.preferred_name || player.first_name} ${player.last_name}`
+              : "Loading..."}
           </div>
-          <div className="text-sm text-neutral-500">
-            {player?.position ?? ""}
+          {player?.preferred_name && (
+            <div className="text-xs text-neutral-600">
+              {player.first_name} {player.last_name}
+            </div>
+          )}
+          <div className="text-sm text-neutral-500 mt-0.5">
+            {player?.positions && player.positions.length > 0
+              ? player.positions.join(" / ")
+              : player?.position ?? ""}
             {player?.graduation_year ? ` \u00B7 Class of ${player.graduation_year}` : ""}
           </div>
         </div>

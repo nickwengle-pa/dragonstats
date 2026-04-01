@@ -86,11 +86,24 @@ export function transformPlays(
 }
 
 /**
- * Collect all synthetic opponent player IDs used in the transformed plays
- * so the engine can register them.
+ * Collect opponent player IDs referenced in plays.
+ * Uses real opponent_players when available (from play_players with isOpponent flag
+ * or matching opp_player entries), falls back to synthetic IDs for legacy data.
  */
-export function collectOpponentPlayerIds(plays: PlayWithPlayers[]): Array<{ id: string; name: string }> {
+export function collectOpponentPlayerIds(
+  plays: PlayWithPlayers[],
+  realOpponentPlayers?: Array<{ id: string; name: string; jersey_number: number | null; position: string | null }>,
+): Array<{ id: string; name: string }> {
   const seen = new Map<string, string>();
+
+  // Register all real opponent players if provided
+  if (realOpponentPlayers) {
+    for (const op of realOpponentPlayers) {
+      seen.set(op.id, `#${op.jersey_number ?? "?"} ${op.name}`);
+    }
+  }
+
+  // Also scan plays for legacy synthetic opponent refs
   for (const play of plays) {
     const opp = (play.play_data as Record<string, any>)?.opp_player;
     if (opp) {
@@ -100,6 +113,7 @@ export function collectOpponentPlayerIds(plays: PlayWithPlayers[]): Array<{ id: 
       }
     }
   }
+
   // Always include a generic unknown opponent
   if (!seen.has("opp_unknown")) {
     seen.set("opp_unknown", "Opponent");

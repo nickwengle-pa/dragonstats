@@ -20,12 +20,21 @@ export interface PlayInsert {
   is_penalty: boolean;
   primary_player_id?: string | null;
   description: string;
+  // Extended fields (FSA merge)
+  end_yard_line?: number | null;
+  hash_mark?: string | null;            // "left" | "middle" | "right"
+  offensive_formation?: string | null;
+  defensive_formation?: string | null;
+  play_start_time?: number | null;      // clock seconds at snap
+  play_end_time?: number | null;        // clock seconds at whistle
+  tags?: string[] | null;
 }
 
 export interface PlayPlayerInsert {
   play_id: string;
   player_id: string;
   role: string;             // "rusher" | "passer" | "receiver" | "tackler" | "sacker" | "interceptor" | "fumble_recovery" | "pass_rusher" | "kicker" | "punter" | "returner" | etc.
+  credit?: number | null;  // tackle weighting: 1.0 solo, 0.5 shared
 }
 
 export interface PlayRow extends PlayInsert {
@@ -72,6 +81,7 @@ export async function insertPlay(
       play_id: playRow.id,
       player_id: p.player_id,
       role: p.role,
+      credit: p.credit ?? null,
     }));
 
     const { error: ppErr } = await supabase
