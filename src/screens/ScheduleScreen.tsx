@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Plus, X, MapPin, Play, Calendar as CalIcon,
-  Users, ChevronDown, ChevronUp, Trash2, Shield,
+  Users, ChevronDown, ChevronUp, Trash2, Shield, Upload, Image,
 } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
@@ -11,6 +11,7 @@ import {
   type Opponent,
   type OpponentPlayer,
 } from "@/services/opponentService";
+import { parseMaxPrepsRoster, parseCSVRoster, type ParsedPlayer } from "@/utils/rosterImport";
 
 /* ─── Types ─── */
 
@@ -36,12 +37,18 @@ type Site = "home" | "away" | "neutral";
 
 /* ─── Opponent Player Row (inline add/list) ─── */
 
-function OpponentRosterSection({ opponentId }: { opponentId: string }) {
+function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: string; startExpanded?: boolean }) {
   const [players, setPlayers] = useState<OpponentPlayer[]>([]);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(startExpanded ?? false);
   const [name, setName] = useState("");
   const [jersey, setJersey] = useState("");
   const [pos, setPos] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [importMode, setImportMode] = useState<"csv" | "maxpreps">("maxpreps");
+  const [importText, setImportText] = useState("");
+  const [importPreview, setImportPreview] = useState<ParsedPlayer[]>([]);
+  const [importParsed, setImportParsed] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     opponentPlayerService.getByOpponent(opponentId).then(setPlayers);
@@ -65,6 +72,32 @@ function OpponentRosterSection({ opponentId }: { opponentId: string }) {
     }
   };
 
+  const handleParse = () => {
+    const result = importMode === "maxpreps"
+      ? parseMaxPrepsRoster(importText)
+      : parseCSVRoster(importText);
+    setImportPreview(result.players);
+    setImportParsed(true);
+  };
+
+  const handleBulkImport = async () => {
+    if (importPreview.length === 0) return;
+    setImporting(true);
+    const rows = importPreview.map(p => ({
+      opponent_id: opponentId,
+      name: `${p.firstName} ${p.lastName}`,
+      jersey_number: p.jerseyNumber ?? null,
+      position: p.position ?? null,
+    }));
+    const created = await opponentPlayerService.bulkCreate(rows);
+    if (created) setPlayers(prev => [...prev, ...created]);
+    setShowImport(false);
+    setImportText("");
+    setImportPreview([]);
+    setImportParsed(false);
+    setImporting(false);
+  };
+
   return (
     <div className="mt-3 border border-surface-border rounded-lg overflow-hidden">
       <button
@@ -78,6 +111,61 @@ function OpponentRosterSection({ opponentId }: { opponentId: string }) {
 
       {expanded && (
         <div className="border-t border-surface-border">
+          {/* Import button */}
+          <div className="px-3 py-2 flex gap-2">
+            <button onClick={() => setShowImport(s => !s)}
+              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors ${
+                showImport ? "border-dragon-primary text-dragon-primary" : "border-surface-border text-neutral-500"
+              }`}>
+              {showImport ? "Hide Import" : "Import from MaxPreps / CSV"}
+            </button>
+          </div>
+
+          {/* Import panel */}
+          {showImport && (
+            <div className="px-3 pb-3 space-y-2 border-b border-surface-border">
+              <div className="flex gap-2">
+                <button onClick={() => { setImportMode("maxpreps"); setImportParsed(false); }}
+                  className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg border ${
+                    importMode === "maxpreps" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-neutral-400"
+                  }`}>MaxPreps</button>
+                <button onClick={() => { setImportMode("csv"); setImportParsed(false); }}
+                  className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg border ${
+                    importMode === "csv" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-neutral-400"
+                  }`}>CSV / Tab</button>
+              </div>
+              <p className="text-[10px] text-neutral-500">
+                {importMode === "maxpreps"
+                  ? 'Copy the roster from MaxPreps.com (# Player Grade Pos Height Weight) and paste below.'
+                  : "Paste comma or tab-separated: Jersey#, Name, Position"}
+              </p>
+              <textarea value={importText} onChange={e => { setImportText(e.target.value); setImportParsed(false); }}
+                rows={4} placeholder="Paste roster here..." className="input text-xs resize-none" />
+              {!importParsed ? (
+                <button onClick={handleParse} disabled={!importText.trim()}
+                  className="btn-primary text-xs w-full py-1.5">Parse</button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-[10px] font-bold text-emerald-400">{importPreview.length} players parsed</div>
+                  <div className="max-h-32 overflow-y-auto divide-y divide-surface-border rounded-lg bg-surface-bg">
+                    {importPreview.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 px-2 py-1 text-[10px]">
+                        <span className="font-mono w-5 text-center text-neutral-500">{p.jerseyNumber ?? "—"}</span>
+                        <span className="flex-1 truncate">{p.firstName} {p.lastName}</span>
+                        <span className="text-neutral-500">{p.position ?? ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={handleBulkImport} disabled={importing || importPreview.length === 0}
+                    className="btn-primary text-xs w-full py-1.5">
+                    {importing ? "Importing..." : `Import ${importPreview.length} Players`}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Player list */}
           {players.length > 0 && (
             <div className="max-h-40 overflow-y-auto divide-y divide-surface-border">
               {players.map(p => (
@@ -92,6 +180,8 @@ function OpponentRosterSection({ opponentId }: { opponentId: string }) {
               ))}
             </div>
           )}
+
+          {/* Manual add */}
           <div className="flex items-center gap-2 px-3 py-2 bg-surface-bg">
             <input value={jersey} onChange={e => setJersey(e.target.value)}
               placeholder="#" className="input text-xs w-10 text-center py-1" />
@@ -110,6 +200,56 @@ function OpponentRosterSection({ opponentId }: { opponentId: string }) {
 
 /* ─── Add / Edit Opponent Modal ─── */
 
+function OpponentLogoUpload({
+  currentUrl, onUploaded, opponentId,
+}: {
+  currentUrl: string | null;
+  onUploaded: (url: string | null) => void;
+  opponentId: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) { alert("Image must be under 2 MB"); return; }
+    setUploading(true);
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
+    const path = `opponents/${opponentId}_${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
+    if (error) { console.error("Upload error:", error); setUploading(false); return; }
+    const { data: pub } = supabase.storage.from("logos").getPublicUrl(path);
+    onUploaded(pub.publicUrl);
+    setUploading(false);
+  };
+
+  return (
+    <div>
+      <label className="label block mb-1.5">Team Logo</label>
+      <div className="flex items-center gap-3">
+        {currentUrl ? (
+          <div className="relative">
+            <img src={currentUrl} alt="Logo" className="w-14 h-14 rounded-lg object-contain bg-surface-card border border-surface-border" />
+            <button onClick={() => onUploaded(null)}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ) : (
+          <div className="w-14 h-14 rounded-lg bg-surface-card border border-dashed border-surface-border flex items-center justify-center text-neutral-500">
+            <Image className="w-6 h-6" />
+          </div>
+        )}
+        <button onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="btn-ghost text-sm px-3 py-1.5">
+          {uploading ? "Uploading..." : <span className="flex items-center gap-1.5"><Upload className="w-4 h-4" /> Choose File</span>}
+        </button>
+        <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+      </div>
+    </div>
+  );
+}
+
 function OpponentModal({
   existing, programId, onClose, onSaved,
 }: {
@@ -126,7 +266,10 @@ function OpponentModal({
   const [city, setCity] = useState(existing?.city ?? "");
   const [state, setState] = useState(existing?.state ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [logoUrl, setLogoUrl] = useState(existing?.logo_url ?? null);
   const [saving, setSaving] = useState(false);
+  // For new opponents: save first to get an ID, then allow roster/logo
+  const [savedId, setSavedId] = useState<string | null>(existing?.id ?? null);
 
   const handleSave = async () => {
     if (!name) return;
@@ -138,27 +281,37 @@ function OpponentModal({
       mascot: mascot || null,
       primary_color: primary,
       secondary_color: secondary || null,
+      logo_url: logoUrl,
       city: city || null,
       state: state.toUpperCase() || null,
       notes: notes || null,
     };
 
-    if (existing) {
-      await supabase.from("opponents").update(payload).eq("id", existing.id);
+    if (savedId) {
+      await supabase.from("opponents").update(payload).eq("id", savedId);
     } else {
-      await supabase.from("opponents").insert(payload);
+      const { data } = await supabase.from("opponents").insert(payload).select("id").single();
+      if (data) setSavedId(data.id);
     }
 
     setSaving(false);
     onSaved();
-    onClose();
+    // If creating new, don't close — let user add roster
+    if (existing || savedId) onClose();
+  };
+
+  const handleLogoChange = async (url: string | null) => {
+    setLogoUrl(url);
+    if (savedId) {
+      await supabase.from("opponents").update({ logo_url: url }).eq("id", savedId);
+    }
   };
 
   return (
     <div className="sheet bg-black/70">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 pb-3 shrink-0">
-          <h2 className="text-lg font-black">{existing ? "Edit Opponent" : "Add Opponent"}</h2>
+          <h2 className="text-lg font-black">{existing ? "Edit Opponent" : savedId ? "New Opponent" : "Add Opponent"}</h2>
           <button onClick={onClose} className="btn-ghost p-1.5"><X className="w-5 h-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-3">
@@ -204,17 +357,31 @@ function OpponentModal({
               </div>
             </div>
           </div>
+
+          {/* Logo upload (needs savedId for storage path) */}
+          {savedId ? (
+            <OpponentLogoUpload currentUrl={logoUrl} onUploaded={handleLogoChange} opponentId={savedId} />
+          ) : (
+            <div className="text-[10px] text-neutral-500 italic">Save the opponent first to upload a logo and add roster.</div>
+          )}
+
           <div>
             <label className="label block mb-1.5">Notes</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Conference rival, etc." className="input resize-none" />
           </div>
 
-          {/* Opponent roster (only if editing existing) */}
-          {existing && <OpponentRosterSection opponentId={existing.id} />}
+          {/* Opponent roster */}
+          {savedId && <OpponentRosterSection opponentId={savedId} startExpanded={!existing} />}
 
-          <button onClick={handleSave} disabled={!name || saving} className="btn-primary w-full mt-2">
-            {saving ? "Saving..." : existing ? "Save Changes" : "Add Opponent"}
-          </button>
+          {!savedId ? (
+            <button onClick={handleSave} disabled={!name || saving} className="btn-primary w-full mt-2">
+              {saving ? "Saving..." : "Save & Add Roster"}
+            </button>
+          ) : (
+            <button onClick={handleSave} disabled={!name || saving} className="btn-primary w-full mt-2">
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          )}
         </div>
       </div>
     </div>
