@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import {
   insertPlay,
   deletePlay,
-  updatePlay,
+  updatePlayFull,
   loadGamePlays,
   updateGameScore,
   deriveGameState,
@@ -19,7 +19,7 @@ import Scoreboard from "@/components/game/Scoreboard";
 import FieldVisualizer from "@/components/game/FieldVisualizer";
 import QuickActions from "@/components/game/QuickActions";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
-import PlayEditModal from "@/components/game/PlayEditModal";
+import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditModal";
 import PlayLog from "@/components/game/PlayLog";
 import {
   type RosterPlayer,
@@ -324,21 +324,191 @@ export default function GameScreen() {
     }
   };
 
-  /* ── Edit play ── */
-  const handleSaveEdit = async (playId: string, updates: { yards: number; isTouchdown: boolean; penalty: string | null; flagYards: number }) => {
-    const ok = await updatePlay(playId, {
-      yards_gained: updates.yards,
-      is_touchdown: updates.isTouchdown,
-      is_penalty: !!updates.penalty,
-    }, {
-      penalty_type: updates.penalty,
-      penalty_yards: updates.flagYards,
-    });
+  /* ── Edit play (full) ── */
+  const handleSaveEdit = async (playId: string, result: PlayEditResult) => {
+    const idx = plays.findIndex(p => p.id === playId);
+    if (idx === -1) return;
+    const original = plays[idx];
+
+    // Persist to DB
+    const ok = await updatePlayFull(playId, {
+      play_type: result.playType.id,
+      yards_gained: result.yards,
+      is_touchdown: result.isTouchdown,
+      is_turnover: ["int", "fumble"].includes(result.playType.id),
+      is_penalty: !!result.penalty,
+      primary_player_id: result.tagged[0]?.player_id ?? null,
+      description: result.description,
+      offensive_formation: result.offensiveFormation,
+      defensive_formation: result.defensiveFormation,
+      hash_mark: result.hashMark,
+      play_data: {
+        result: result.result || null,
+        is_first_down: result.isFirstDown,
+        penalty_type: result.penalty,
+        penalty_yards: result.flagYards,
+      },
+    }, result.tagged.map(t => ({
+      player_id: t.player_id,
+      role: t.role,
+      credit: t.credit ?? null,
+    })));
     if (!ok) return;
-    setPlays(prev => prev.map(p => p.id === playId
-      ? { ...p, yards: updates.yards, isTouchdown: updates.isTouchdown, penalty: updates.penalty, flagYards: updates.flagYards }
-      : p
-    ));
+
+    // Update local play record
+    const updatedPlay: PlayRecord = {
+      ...original,
+      type: result.playType.id,
+      yards: result.yards,
+      isTouchdown: result.isTouchdown,
+      firstDown: result.isFirstDown,
+      turnover: ["int", "fumble"].includes(result.playType.id),
+      result: result.result,
+      penalty: result.penalty,
+      flagYards: result.flagYards,
+      tagged: result.tagged,
+      description: result.description,
+      offensiveFormation: result.offensiveFormation,
+      defensiveFormation: result.defensiveFormation,
+      hashMark: result.hashMark,
+    };
+
+    // Cascade: recalculate down/distance/ballOn for this play and all subsequent plays
+    const newPlays = [...plays];
+    newPlays[idx] = updatedPlay;
+    cascadeGameState(newPlays, idx);
+
+    setPlays(newPlays);
+    setEditPlay(null);
+
+    // Recalculate score from scratch
+    recalcScoreAndState(newPlays);
+  };
+
+  /* ── Delete play from edit modal ── */
+  const handleDeletePlay = async (playId: string) => {
+    const idx = plays.findIndex(p => p.id === playId);
+    if (idx === -1) return;
+    const deleted = await deletePlay(playId);
+    if (!deleted) return;
+
+    const newPlays = plays.filter(p => p.id !== playId);
+    // Re-cascade from the deleted play's position onward
+    if (idx < newPlays.length) {
+      cascadeGameState(newPlays, idx);
+    }
+    setPlays(newPlays);
+    setEditPlay(null);
+    recalcScoreAndState(newPlays);
+  };
+
+  /* ── Cascade helper: recalculate down/distance/ballOn from startIdx onward ── */
+  const cascadeGameState = (allPlays: PlayRecord[], startIdx: number) => {
+    for (let i = startIdx; i < allPlays.length; i++) {
+      const prev = i > 0 ? allPlays[i - 1] : null;
+      const play = allPlays[i];
+
+      // Determine ball position before this play
+      let prevBallOn = 25, prevDown = 1, prevDist = 10, prevPoss: "us" | "them" = "us";
+      if (prev) {
+        // Compute where the previous play left things
+        const after = advanceState(prev, {
+          ballOn: prev.ballOn, down: prev.down, distance: prev.distance, possession: prev.possession,
+        });
+        prevBallOn = after.ballOn;
+        prevDown = after.down;
+        prevDist = after.distance;
+        prevPoss = after.possession;
+      }
+
+      play.ballOn = prevBallOn;
+      play.down = prevDown;
+      play.distance = prevDist;
+      play.possession = prevPoss;
+
+      // Persist updated situation to DB (fire-and-forget)
+      updatePlayFull(play.id, {
+        yard_line: prevBallOn,
+        down: prevDown,
+        distance: prevDist,
+        possession: prevPoss,
+      }, play.tagged.map(t => ({ player_id: t.player_id, role: t.role, credit: t.credit ?? null })));
+    }
+  };
+
+  /* ── Compute resulting state after a play ── */
+  const advanceState = (play: PlayRecord, before: { ballOn: number; down: number; distance: number; possession: "us" | "them" }) => {
+    const { ballOn, down, distance, possession } = before;
+    const newBallOn = Math.min(100, Math.max(0, ballOn + play.yards));
+
+    // Turnovers
+    if (["int", "fumble"].includes(play.type)) {
+      return { ballOn: Math.max(1, 100 - Math.max(1, newBallOn)), down: 1, distance: 10, possession: possession === "us" ? "them" as const : "us" as const };
+    }
+    // Kickoff / punt
+    if (["kickoff", "punt"].includes(play.type)) {
+      const kb = play.yards === 0 ? 20 : Math.max(1, newBallOn); // touchback if 0 yards
+      return { ballOn: kb, down: 1, distance: 10, possession: possession === "us" ? "them" as const : "us" as const };
+    }
+    // TD — next play starts at PAT spot
+    if (play.isTouchdown) {
+      return { ballOn: 97, down: 1, distance: 3, possession };
+    }
+    // PAT/2PT/FG good — kickoff
+    if (["pat", "two_pt"].includes(play.type)) {
+      return { ballOn: 35, down: 1, distance: 10, possession };
+    }
+    if (play.type === "fg") {
+      if (play.result === "Good") return { ballOn: 35, down: 1, distance: 10, possession };
+      return { ballOn: Math.max(20, 100 - ballOn), down: 1, distance: 10, possession: possession === "us" ? "them" as const : "us" as const };
+    }
+    // Penalty
+    if (play.penalty && OFFENSE_PENALTIES.has(play.penalty)) {
+      return { ballOn: Math.max(1, ballOn - play.flagYards), down, distance: Math.min(99, distance + play.flagYards), possession };
+    }
+    if (play.penalty) {
+      const sugBall = Math.min(98, ballOn + play.flagYards);
+      return { ballOn: sugBall, down: 1, distance: Math.min(10, 100 - sugBall), possession };
+    }
+    // First down
+    if (play.firstDown) {
+      return { ballOn: newBallOn, down: 1, distance: Math.min(10, 100 - newBallOn), possession };
+    }
+    // Turnover on downs
+    if (down >= 4) {
+      return { ballOn: 100 - newBallOn, down: 1, distance: 10, possession: possession === "us" ? "them" as const : "us" as const };
+    }
+    // Normal advance
+    return { ballOn: newBallOn, down: down + 1, distance: distance - play.yards, possession };
+  };
+
+  /* ── Recalculate score and current state from all plays ── */
+  const recalcScoreAndState = async (allPlays: PlayRecord[]) => {
+    let us = 0, them = 0;
+    allPlays.forEach(p => {
+      const poss = p.possession;
+      if (p.isTouchdown) { if (poss === "us") us += 6; else them += 6; }
+      if (p.type === "pat" && p.result === "Good") { if (poss === "us") us += 1; else them += 1; }
+      if (p.type === "fg" && p.result === "Good") { if (poss === "us") us += 3; else them += 3; }
+      if (p.type === "two_pt" && p.result === "Good") { if (poss === "us") us += 2; else them += 2; }
+      if (p.type === "safety") { if (poss === "us") them += 2; else us += 2; }
+    });
+    setOurScore(us);
+    setTheirScore(them);
+
+    // Set current game state from last play
+    if (allPlays.length > 0) {
+      const last = allPlays[allPlays.length - 1];
+      const after = advanceState(last, { ballOn: last.ballOn, down: last.down, distance: last.distance, possession: last.possession });
+      setBallOn(after.ballOn);
+      setDown(after.down);
+      setDistance(after.distance);
+      setPossession(after.possession);
+    } else {
+      setBallOn(25); setDown(1); setDistance(10); setPossession("us");
+    }
+
+    if (gameId) await updateGameScore(gameId, us, them);
   };
 
   /* ── PAT gate ── */
@@ -581,14 +751,21 @@ export default function GameScreen() {
       )}
 
       {/* Play Edit */}
-      {editPlay && (
-        <PlayEditModal
-          play={editPlay}
-          roster={roster}
-          onSave={handleSaveEdit}
-          onClose={() => setEditPlay(null)}
-        />
-      )}
+      {editPlay && (() => {
+        return (
+          <PlayEditModal
+            play={editPlay}
+            roster={roster}
+            opponentPlayers={oppPlayers}
+            ballOnBefore={editPlay.ballOn}
+            downBefore={editPlay.down}
+            distanceBefore={editPlay.distance}
+            onSave={handleSaveEdit}
+            onDelete={handleDeletePlay}
+            onClose={() => setEditPlay(null)}
+          />
+        );
+      })()}
 
       {/* PAT Gate */}
       {showPatGate && (

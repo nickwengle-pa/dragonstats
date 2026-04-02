@@ -195,6 +195,78 @@ export async function updatePlay(
   return !error;
 }
 
+/* ─────────────────────────────────────────────
+   Full play edit — update ALL play fields and
+   replace play_players in one operation.
+   ───────────────────────────────────────────── */
+
+export async function updatePlayFull(
+  playId: string,
+  fields: {
+    play_type?: string;
+    quarter?: number;
+    clock?: string | null;
+    possession?: "us" | "them";
+    down?: number;
+    distance?: number;
+    yard_line?: number;
+    yards_gained?: number;
+    is_touchdown?: boolean;
+    is_turnover?: boolean;
+    is_penalty?: boolean;
+    primary_player_id?: string | null;
+    description?: string;
+    offensive_formation?: string | null;
+    defensive_formation?: string | null;
+    hash_mark?: string | null;
+    play_data?: Record<string, unknown>;
+  },
+  players: { player_id: string; role: string; credit?: number | null }[]
+): Promise<boolean> {
+  // 1) Update the play row with all provided fields
+  const { error: updateErr } = await supabase
+    .from("plays")
+    .update(fields)
+    .eq("id", playId);
+
+  if (updateErr) {
+    console.error("Failed to update play:", updateErr);
+    return false;
+  }
+
+  // 2) Delete all existing play_players for this play
+  const { error: deleteErr } = await supabase
+    .from("play_players")
+    .delete()
+    .eq("play_id", playId);
+
+  if (deleteErr) {
+    console.error("Failed to delete play_players:", deleteErr);
+    return false;
+  }
+
+  // 3) Insert new play_players rows
+  if (players.length > 0) {
+    const rows: PlayPlayerInsert[] = players.map((p) => ({
+      play_id: playId,
+      player_id: p.player_id,
+      role: p.role,
+      credit: p.credit ?? null,
+    }));
+
+    const { error: insertErr } = await supabase
+      .from("play_players")
+      .insert(rows);
+
+    if (insertErr) {
+      console.error("Failed to insert play_players:", insertErr);
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export async function updateGameScore(
   gameId: string,
   ourScore: number,
