@@ -31,21 +31,26 @@ export default function QuickActions({ onSelect, possession }: Props) {
     return acc;
   }, {});
 
-  const categories = Object.keys(grouped).sort((a, b) => (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99));
-
-  // If opponent has ball, show kicking/turnover/other more prominently
-  const showCategories = possession === "them"
-    ? categories.filter(c => ["kicking", "turnover", "other"].includes(c))
-    : categories;
+  // When opponent has ball, show defensive-relevant categories first, but still show everything
+  const categories = Object.keys(grouped).sort((a, b) => {
+    if (possession === "them") {
+      // Prioritize kicking/turnover/other when opponent has ball
+      const defPriority: Record<string, number> = {
+        kicking: 0, turnover: 1, other: 2, run: 3, pass: 4, scoring: 5,
+      };
+      return (defPriority[a] ?? 99) - (defPriority[b] ?? 99);
+    }
+    return (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99);
+  });
 
   return (
     <div className="space-y-3">
       {possession === "them" && (
         <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider">
-          Opponent has ball — record kicking / turnovers / penalties
+          Opponent has ball
         </div>
       )}
-      {showCategories.map(cat => (
+      {categories.map(cat => (
         <div key={cat}>
           <div className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
             {CATEGORY_LABELS[cat] ?? cat}
@@ -63,15 +68,6 @@ export default function QuickActions({ onSelect, possession }: Props) {
           </div>
         </div>
       ))}
-
-      {possession === "them" && (
-        <button
-          onClick={() => {/* show all */}}
-          className="text-[10px] font-bold text-neutral-500 underline"
-        >
-          Show all play types
-        </button>
-      )}
     </div>
   );
 }
