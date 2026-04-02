@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "football-stats-engine": "file:../football-stats-engine",
+    "football-stats-engine": "file:./packages/football-stats-engine",
     "@supabase/supabase-js": "^2.49.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

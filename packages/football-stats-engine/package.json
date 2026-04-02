@@ -1,0 +1,29 @@
+{
+  "name": "football-stats-engine",
+  "version": "1.0.0",
+  "description": "Production-grade American football statistics engine. Ingests play-by-play data and computes comprehensive player, team, and game-level stats.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "tsx src/__tests__/engine.test.ts",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "football",
+    "nfl",
+    "stats",
+    "statistics",
+    "play-by-play",
+    "sports-analytics",
+    "passer-rating",
+    "american-football"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0"
+  }
+}
