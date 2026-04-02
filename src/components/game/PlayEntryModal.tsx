@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { X, ChevronLeft, ChevronRight, Flag } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
 import {
   type PlayTypeDef,
   type RosterPlayer,
@@ -21,6 +21,7 @@ interface Props {
   opponentPlayers: OpponentPlayerRef[];
   onSubmit: (data: PlaySubmitData) => void;
   onClose: () => void;
+  onAddOpponentPlayer?: (player: OpponentPlayerRef) => void;
 }
 
 export interface PlaySubmitData {
@@ -41,7 +42,7 @@ export interface PlaySubmitData {
 
 type Step = "players" | "yards" | "formations" | "defense" | "review";
 
-/* ── Player selector grid ── */
+/* ── Player selector grid (our roster) ── */
 function PlayerGrid({
   roster, label, onSelect, selectedId, search, onSearch,
 }: {
@@ -97,9 +98,9 @@ function PlayerGrid({
   );
 }
 
-/* ── Opponent player selector ── */
+/* ── Opponent player selector with quick-add ── */
 function OpponentPlayerGrid({
-  players, label, onSelect, selectedId, search, onSearch,
+  players, label, onSelect, selectedId, search, onSearch, onQuickAdd,
 }: {
   players: OpponentPlayerRef[];
   label: string;
@@ -107,6 +108,7 @@ function OpponentPlayerGrid({
   selectedId: string | null;
   search: string;
   onSearch: (v: string) => void;
+  onQuickAdd?: (jersey: number) => void;
 }) {
   const filtered = useMemo(() => {
     if (!search) return players;
@@ -117,6 +119,11 @@ function OpponentPlayerGrid({
       (p.position ?? "").toLowerCase().includes(q)
     );
   }, [players, search]);
+
+  // Check if search is a number that doesn't match any existing player
+  const searchNum = parseInt(search, 10);
+  const canQuickAdd = onQuickAdd && !isNaN(searchNum) && searchNum > 0
+    && !players.some(p => p.jersey_number === searchNum);
 
   return (
     <div>
@@ -143,12 +150,20 @@ function OpponentPlayerGrid({
             <span className="text-[8px] font-bold text-neutral-500 truncate w-full text-center">{p.name}</span>
           </button>
         ))}
-        {filtered.length === 0 && (
+        {filtered.length === 0 && !canQuickAdd && (
           <div className="col-span-5 text-xs text-neutral-600 text-center py-4">
-            No opponent players found. You can skip this step.
+            No opponent players found. Type a jersey # to quick-add.
           </div>
         )}
       </div>
+      {canQuickAdd && (
+        <button
+          onClick={() => onQuickAdd(searchNum)}
+          className="mt-2 w-full py-2 rounded-xl text-xs font-bold border border-dashed border-amber-500/40 text-amber-400 bg-amber-500/5 flex items-center justify-center gap-1"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add #{searchNum} to opponent roster & select
+        </button>
+      )}
     </div>
   );
 }
@@ -157,7 +172,12 @@ function OpponentPlayerGrid({
    PLAY ENTRY MODAL (Progressive, FSA-style)
    ═══════════════════════════════════════════════ */
 
-export default function PlayEntryModal({ playType, gameState, roster, opponentPlayers, onSubmit, onClose }: Props) {
+export default function PlayEntryModal({
+  playType, gameState, roster, opponentPlayers, onSubmit, onClose, onAddOpponentPlayer,
+}: Props) {
+  // Local copy of opponent players (can grow via quick-add)
+  const [localOppPlayers, setLocalOppPlayers] = useState<OpponentPlayerRef[]>(opponentPlayers);
+
   // Tagged players for this play
   const [tagged, setTagged] = useState<TaggedPlayer[]>([]);
   const [currentRoleIdx, setCurrentRoleIdx] = useState(0);
@@ -190,6 +210,7 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
 
   // Step management
   const roles = playType.roles;
+  const isTheirBall = gameState.possession === "them";
   const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
   const needsTouchback = ["kickoff", "punt"].includes(playType.id);
@@ -198,7 +219,8 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
   if (roles.length > 0) steps.push("players");
   if (needsYards || needsResult) steps.push("yards");
   steps.push("formations");
-  if (gameState.possession === "us") steps.push("defense"); // Capture tacklers on our offensive plays
+  // Defense step: show OUR tacklers when THEY have the ball (we're on defense)
+  if (isTheirBall) steps.push("defense");
   steps.push("review");
 
   const [stepIdx, setStepIdx] = useState(0);
@@ -206,7 +228,6 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
 
   const canGoNext = (): boolean => {
     if (currentStep === "players") {
-      // At minimum first role should be filled (unless no roles)
       return roles.length === 0 || tagged.length > 0;
     }
     return true;
@@ -215,6 +236,7 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
   const goNext = () => { if (stepIdx < steps.length - 1 && canGoNext()) setStepIdx(s => s + 1); };
   const goBack = () => { if (stepIdx > 0) setStepIdx(s => s - 1); };
 
+  /* ── Player selection — when opponent has ball, offensive roles use opponent roster ── */
   const handlePlayerSelect = (p: RosterPlayer) => {
     const role = roles[currentRoleIdx];
     if (!role) return;
@@ -226,7 +248,6 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
       role,
     };
     setTagged(prev => [...prev.filter(t => t.role !== role), tp]);
-    // Advance to next role or next step
     if (currentRoleIdx < roles.length - 1) {
       setCurrentRoleIdx(i => i + 1);
     } else {
@@ -253,6 +274,21 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
     }
   };
 
+  /* ── Quick-add opponent player by jersey number ── */
+  const handleQuickAddOpponent = (jersey: number) => {
+    const newPlayer: OpponentPlayerRef = {
+      id: `quick_${jersey}_${Date.now()}`,
+      name: `#${jersey}`,
+      jersey_number: jersey,
+      position: null,
+    };
+    setLocalOppPlayers(prev => [...prev, newPlayer]);
+    // Notify parent to persist this player to the DB
+    onAddOpponentPlayer?.(newPlayer);
+    // Auto-select the new player
+    handleOpponentSelect(newPlayer);
+  };
+
   const handleAddTackler = (p: RosterPlayer) => {
     if (tacklers.length >= 3) return;
     if (tacklers.some(t => t.player_id === p.player_id)) {
@@ -270,7 +306,6 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
     };
     setTacklers(prev => {
       const updated = [...prev, tp];
-      // Recalculate credits: 1 player = 1.0, 2+ = 0.5 each
       if (updated.length > 1) {
         return updated.map(t => ({ ...t, credit: 0.5 }));
       }
@@ -309,11 +344,14 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
     });
   };
 
-  /* ── Determine which players to show for current role ── */
+  /* ── Determine which roster to show for current role ── */
   const currentRole = roles[currentRoleIdx];
-  const isOpponentRole = ["interceptor", "returner"].includes(currentRole) && gameState.possession === "us"
-    ? false // For our plays, interceptor/returner are opponent — but we only have them for turnovers
-    : ["interceptor"].includes(currentRole); // Interceptor is opponent player
+  // When opponent has ball: offensive roles (rusher, passer, receiver, target, kicker, punter) use opponent roster
+  // When we have ball: only interceptor uses opponent roster
+  const OFFENSIVE_ROLES = new Set(["rusher", "passer", "receiver", "target", "kicker", "punter"]);
+  const showOpponentRoster = isTheirBall
+    ? OFFENSIVE_ROLES.has(currentRole) // Their offense = their players
+    : ["interceptor"].includes(currentRole); // Our offense, opponent interceptor
 
   return (
     <div className="sheet bg-black/80">
@@ -329,6 +367,9 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
             <div className="text-sm font-black">{playType.label}</div>
             <div className="text-[10px] text-neutral-500">
               Step {stepIdx + 1} of {steps.length}: {currentStep.charAt(0).toUpperCase() + currentStep.slice(1)}
+              {isTheirBall && currentStep === "players" && (
+                <span className="text-red-400 ml-1">(Opponent ball)</span>
+              )}
             </div>
           </div>
           {/* Step dots */}
@@ -362,15 +403,16 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
                 })}
               </div>
 
-              {/* Show our roster or opponent roster depending on role */}
-              {isOpponentRole ? (
+              {/* Show opponent or our roster */}
+              {showOpponentRoster ? (
                 <OpponentPlayerGrid
-                  players={opponentPlayers}
+                  players={localOppPlayers}
                   label={`Select ${currentRole} (opponent)`}
                   onSelect={handleOpponentSelect}
                   selectedId={tagged.find(t => t.role === currentRole)?.id ?? null}
                   search={searches[currentRole] ?? ""}
                   onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
+                  onQuickAdd={handleQuickAddOpponent}
                 />
               ) : (
                 <PlayerGrid
@@ -548,11 +590,11 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
             </>
           )}
 
-          {/* ── STEP: Defense (tacklers) ── */}
+          {/* ── STEP: Defense (tacklers from OUR roster) ── */}
           {currentStep === "defense" && (
             <>
               <div className="text-xs text-neutral-400 mb-1">
-                Select up to 3 tacklers. 1 player = 1.0 credit, 2+ = 0.5 each.
+                Select up to 3 tacklers from your roster. 1 player = 1.0 credit, 2+ = 0.5 each.
               </div>
               {tacklers.length > 0 && (
                 <div className="flex gap-2 flex-wrap mb-2">
@@ -571,7 +613,7 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
               )}
               <PlayerGrid
                 roster={roster}
-                label="Select tackler(s)"
+                label="Select tackler(s) from your roster"
                 onSelect={p => handleAddTackler(p)}
                 selectedId={null}
                 search={tacklerSearch}
@@ -595,7 +637,10 @@ export default function PlayEntryModal({ playType, gameState, roster, opponentPl
                 {tagged.map(t => (
                   <div key={t.role} className="flex justify-between">
                     <span className="text-neutral-500 capitalize">{t.role}</span>
-                    <span className="font-bold">#{t.jersey_number} {t.name}</span>
+                    <span className="font-bold">
+                      {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">OPP</span>}
+                      #{t.jersey_number} {t.name}
+                    </span>
                   </div>
                 ))}
                 {needsYards && (

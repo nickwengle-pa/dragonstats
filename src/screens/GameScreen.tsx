@@ -737,6 +737,20 @@ export default function GameScreen() {
           opponentPlayers={oppPlayers}
           onSubmit={handlePlaySubmit}
           onClose={() => setSelectedPlayType(null)}
+          onAddOpponentPlayer={async (player) => {
+            // Persist quick-added opponent player to DB and update local state
+            if (game?.opponent_id) {
+              const saved = await opponentPlayerService.create({
+                opponent_id: game.opponent_id,
+                name: player.name,
+                jersey_number: player.jersey_number,
+                position: null,
+              });
+              if (saved) {
+                setOppPlayers(prev => [...prev, saved]);
+              }
+            }
+          }}
         />
       )}
 
