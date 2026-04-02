@@ -6,6 +6,9 @@ interface Props {
   progName: string;
   oppName: string;
   primaryColor: string;
+  progLogoUrl?: string | null;
+  oppLogoUrl?: string | null;
+  oppColor?: string;
   onCycleQuarter: () => void;
   onEditClock: () => void;
   onTogglePossession: () => void;
@@ -14,17 +17,25 @@ interface Props {
 
 export default function Scoreboard({
   state, progName, oppName, primaryColor,
+  progLogoUrl, oppLogoUrl, oppColor,
   onCycleQuarter, onEditClock, onTogglePossession, onEndGame,
 }: Props) {
   return (
     <div className="card p-3">
       <div className="flex items-center gap-3">
-        <div className="flex-1 text-center">
-          <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider truncate">{progName}</div>
+        <div className="flex-1 flex flex-col items-center gap-1">
+          {progLogoUrl ? (
+            <img src={progLogoUrl} alt={progName} className="w-8 h-8 object-contain rounded" />
+          ) : (
+            <div className="w-8 h-8 rounded flex items-center justify-center text-[10px] font-black text-white" style={{ backgroundColor: primaryColor }}>
+              {progName.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider truncate max-w-full">{progName}</div>
           <div className="text-3xl font-black tabular-nums" style={{ color: primaryColor }}>
             {state.ourScore}
           </div>
-          {state.possession === "us" && <div className="w-2 h-2 rounded-full bg-amber-400 mx-auto mt-1" />}
+          {state.possession === "us" && <div className="w-2 h-2 rounded-full bg-amber-400 mx-auto" />}
         </div>
 
         <div className="flex flex-col items-center gap-0.5">
@@ -38,16 +49,23 @@ export default function Scoreboard({
           </button>
           <button onClick={onTogglePossession}
             className="text-[10px] font-bold text-neutral-600 active:text-neutral-400">
-            POSS
+            ⇄ POSS
           </button>
         </div>
 
-        <div className="flex-1 text-center">
-          <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider truncate">{oppName}</div>
-          <div className="text-3xl font-black tabular-nums text-neutral-300">
+        <div className="flex-1 flex flex-col items-center gap-1">
+          {oppLogoUrl ? (
+            <img src={oppLogoUrl} alt={oppName} className="w-8 h-8 object-contain rounded" />
+          ) : (
+            <div className="w-8 h-8 rounded flex items-center justify-center text-[10px] font-black text-white" style={{ backgroundColor: oppColor ?? "#6b7280" }}>
+              {oppName.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider truncate max-w-full">{oppName}</div>
+          <div className="text-3xl font-black tabular-nums" style={{ color: oppColor ?? "#9ca3af" }}>
             {state.theirScore}
           </div>
-          {state.possession === "them" && <div className="w-2 h-2 rounded-full bg-amber-400 mx-auto mt-1" />}
+          {state.possession === "them" && <div className="w-2 h-2 rounded-full bg-amber-400 mx-auto" />}
         </div>
 
         <button onClick={onEndGame} className="btn-ghost p-1.5 text-amber-500 shrink-0" title="End Game">

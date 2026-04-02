@@ -413,6 +413,11 @@ export default function GameScreen() {
   const oppName = game?.opponent?.name ?? "Opponent";
   const progName = program?.name ?? "Team";
   const primaryColor = program?.primary_color ?? "#ef4444";
+  const progAbbr = program?.abbreviation ?? progName.slice(0, 3).toUpperCase();
+  const oppAbbr = game?.opponent?.abbreviation ?? oppName.slice(0, 3).toUpperCase();
+  const oppColor = game?.opponent?.primary_color ?? "#6b7280";
+  const progLogoUrl = program?.logo_url ?? null;
+  const oppLogoUrl = game?.opponent?.logo_url ?? null;
 
   return (
     <div className="screen safe-top safe-bottom">
@@ -432,6 +437,9 @@ export default function GameScreen() {
           progName={progName}
           oppName={oppName}
           primaryColor={primaryColor}
+          progLogoUrl={progLogoUrl}
+          oppLogoUrl={oppLogoUrl}
+          oppColor={oppColor}
           onCycleQuarter={cycleQuarter}
           onEditClock={() => { setClockMins(Math.floor(clock / 60)); setClockSecs(clock % 60); setShowClockEditor(true); }}
           onTogglePossession={() => setPossession(p => p === "us" ? "them" : "us")}
@@ -444,6 +452,9 @@ export default function GameScreen() {
           firstDownMarker={firstDownMarker}
           possession={possession}
           primaryColor={primaryColor}
+          progAbbr={progAbbr}
+          oppAbbr={oppAbbr}
+          oppColor={oppColor}
         />
 
         {/* Down & Distance */}
