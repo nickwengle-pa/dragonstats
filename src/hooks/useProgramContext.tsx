@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import type { Program } from "@/services/programService";
-import type { Season } from "@/services/seasonService";
+import { seasonService, type Season } from "@/services/seasonService";
 
 export interface Branding {
   primaryColor: string;
@@ -15,12 +15,13 @@ export interface Branding {
 interface ProgramContextValue {
   program: Program | null;
   season: Season | null;
+  seasons: Season[];
   branding: Branding;
   loading: boolean;
   /** Reload program + season from DB */
   refresh: () => Promise<void>;
-  /** Set active season manually */
-  setSeason: (s: Season) => void;
+  /** Set the active season manually */
+  setSeason: (s: Season) => Promise<boolean>;
 }
 
 const DEFAULT_BRANDING: Branding = {
@@ -34,10 +35,11 @@ const DEFAULT_BRANDING: Branding = {
 const ProgramContext = createContext<ProgramContextValue>({
   program: null,
   season: null,
+  seasons: [],
   branding: DEFAULT_BRANDING,
   loading: true,
   refresh: async () => {},
-  setSeason: () => {},
+  setSeason: async () => false,
 });
 
 export function useProgramContext() {
@@ -58,13 +60,25 @@ function deriveBranding(program: Program | null): Branding {
 export function ProgramProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [program, setProgram] = useState<Program | null>(null);
-  const [season, setSeason] = useState<Season | null>(null);
+  const [season, setSeasonState] = useState<Season | null>(null);
+  const [seasons, setSeasons] = useState<Season[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const applyActiveSeason = useCallback((programSeasons: Season[], activeSeasonId: string | null) => {
+    const nextSeasons = programSeasons.map((entry) => ({
+      ...entry,
+      is_active: entry.id === activeSeasonId,
+    }));
+
+    setSeasons(nextSeasons);
+    setSeasonState(nextSeasons.find((entry) => entry.id === activeSeasonId) ?? null);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!user) {
       setProgram(null);
-      setSeason(null);
+      setSeasonState(null);
+      setSeasons([]);
       setLoading(false);
       return;
     }
@@ -80,31 +94,63 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
 
     setProgram(prog);
 
-    // Get active season
     if (prog) {
-      const { data: activeSeason } = await supabase
-        .from("seasons")
-        .select("*")
-        .eq("program_id", prog.id)
-        .eq("is_active", true)
-        .maybeSingle();
+      const programSeasons = await seasonService.getByProgram(prog.id);
+      const activeSeasons = programSeasons.filter((entry) => entry.is_active);
 
-      setSeason(activeSeason);
+      if (activeSeasons.length > 1) {
+        const canonicalSeason = activeSeasons[0];
+        const updated = await seasonService.activate(prog.id, canonicalSeason.id);
+        if (updated) {
+          applyActiveSeason(programSeasons, canonicalSeason.id);
+        } else {
+          setSeasons(programSeasons);
+          setSeasonState(canonicalSeason);
+        }
+      } else if (activeSeasons.length === 1) {
+        setSeasons(programSeasons);
+        setSeasonState(activeSeasons[0]);
+      } else if (programSeasons.length > 0) {
+        const fallbackSeason = programSeasons[0];
+        const updated = await seasonService.activate(prog.id, fallbackSeason.id);
+        if (updated) {
+          applyActiveSeason(programSeasons, fallbackSeason.id);
+        } else {
+          setSeasons(programSeasons);
+          setSeasonState(null);
+        }
+      } else {
+        setSeasons([]);
+        setSeasonState(null);
+      }
     } else {
-      setSeason(null);
+      setSeasons([]);
+      setSeasonState(null);
     }
 
     setLoading(false);
-  }, [user]);
+  }, [applyActiveSeason, user]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   const branding = deriveBranding(program);
+  const setSeason = useCallback(async (nextSeason: Season) => {
+    if (!program) return false;
+
+    const updated = await seasonService.activate(program.id, nextSeason.id);
+    if (!updated) return false;
+
+    const nextSeasons = seasons.some((entry) => entry.id === nextSeason.id)
+      ? seasons
+      : [nextSeason, ...seasons];
+    applyActiveSeason(nextSeasons, nextSeason.id);
+    return true;
+  }, [applyActiveSeason, program, seasons]);
 
   return (
-    <ProgramContext.Provider value={{ program, season, branding, loading, refresh, setSeason }}>
+    <ProgramContext.Provider value={{ program, season, seasons, branding, loading, refresh, setSeason }}>
       {children}
     </ProgramContext.Provider>
   );

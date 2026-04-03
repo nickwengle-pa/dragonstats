@@ -637,12 +637,16 @@ export default function ScheduleScreen() {
                   {getStatusBadge(game)}
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
-                    style={{ backgroundColor: game.opponent.primary_color + "30", color: game.opponent.primary_color }}>
-                    {(game.opponent.abbreviation ?? game.opponent.name.substring(0, 3)).toUpperCase()}
-                  </div>
+                  {game.opponent.logo_url ? (
+                    <img src={game.opponent.logo_url} alt={game.opponent.name} className="w-8 h-8 object-contain rounded-lg shrink-0" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
+                      style={{ backgroundColor: game.opponent.primary_color + "30", color: game.opponent.primary_color }}>
+                      {(game.opponent.abbreviation ?? game.opponent.name.substring(0, 3)).toUpperCase()}
+                    </div>
+                  )}
                   <div className="flex-1">
-                    <div className="font-bold text-sm">
+                    <div className="font-bold text-sm" style={{ color: game.opponent.primary_color }}>
                       {getSiteLabel(game)} {game.opponent.name}
                     </div>
                     {game.location && (
@@ -689,13 +693,17 @@ export default function ScheduleScreen() {
                   onClick={() => setOppModal({ open: true, editing: opp })}
                   className="card w-full flex items-center gap-3 p-3 text-left active:bg-surface-hover transition-colors"
                 >
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0"
-                    style={{ backgroundColor: opp.primary_color + "30", color: opp.primary_color }}>
-                    {(opp.abbreviation ?? opp.name.substring(0, 3)).toUpperCase()}
-                  </div>
+                  {opp.logo_url ? (
+                    <img src={opp.logo_url} alt={opp.name} className="w-7 h-7 object-contain rounded-lg shrink-0" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0"
+                      style={{ backgroundColor: opp.primary_color + "30", color: opp.primary_color }}>
+                      {(opp.abbreviation ?? opp.name.substring(0, 3)).toUpperCase()}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm font-bold truncate block">{opp.name}</span>
-                    {opp.mascot && <span className="text-xs text-neutral-500">{opp.mascot}</span>}
+                    <span className="text-sm font-bold truncate block" style={{ color: opp.primary_color }}>{opp.name}</span>
+                    {opp.mascot && <span className="text-xs" style={{ color: opp.secondary_color ?? opp.primary_color, opacity: 0.7 }}>{opp.mascot}</span>}
                   </div>
                 </button>
               ))}

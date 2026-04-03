@@ -32,7 +32,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const { program, loading } = useProgramContext();
+  const { program, season, loading } = useProgramContext();
 
   // If logged in but no program yet, force Settings
   if (!loading && !program) {
@@ -41,6 +41,17 @@ function AppRoutes() {
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
           <Route path="*" element={<ProtectedRoute><SettingsScreen firstTime /></ProtectedRoute>} />
+        </Routes>
+      </Suspense>
+    );
+  }
+
+  if (!loading && program && !season) {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <Routes>
+          <Route path="/login" element={<LoginScreen />} />
+          <Route path="*" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
         </Routes>
       </Suspense>
     );

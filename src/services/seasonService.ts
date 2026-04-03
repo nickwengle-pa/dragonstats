@@ -15,12 +15,28 @@ export interface Season {
   end_date: string | null;
 }
 
+export interface CreateSeasonInput {
+  program_id: string;
+  year: number;
+  name?: string | null;
+  level: string;
+  is_active?: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
+function isMissingRpc(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return error.code === "PGRST202" || /set_active_season/i.test(error.message ?? "");
+}
+
 export const seasonService = {
   async getByProgram(programId: string): Promise<Season[]> {
     const { data } = await supabase
       .from("seasons").select("*")
       .eq("program_id", programId)
-      .order("year", { ascending: false });
+      .order("year", { ascending: false })
+      .order("created_at", { ascending: false });
     return data ?? [];
   },
 
@@ -33,11 +49,48 @@ export const seasonService = {
     return data;
   },
 
-  async create(season: Omit<Season, "id">): Promise<Season | null> {
+  async create(season: CreateSeasonInput): Promise<Season | null> {
     const { data, error } = await supabase
       .from("seasons").insert(season).select().single();
     if (error) { console.error("Error creating season:", error); return null; }
     return data;
+  },
+
+  async activate(programId: string, seasonId: string): Promise<boolean> {
+    const rpcResult = await supabase.rpc("set_active_season", {
+      target_program_id: programId,
+      target_season_id: seasonId,
+    });
+
+    if (!rpcResult.error) return true;
+
+    if (!isMissingRpc(rpcResult.error)) {
+      console.error("Error activating season via RPC:", rpcResult.error);
+    }
+
+    const { error: clearError } = await supabase
+      .from("seasons")
+      .update({ is_active: false })
+      .eq("program_id", programId)
+      .neq("id", seasonId);
+
+    if (clearError) {
+      console.error("Error clearing active seasons:", clearError);
+      return false;
+    }
+
+    const { error: activateError } = await supabase
+      .from("seasons")
+      .update({ is_active: true })
+      .eq("program_id", programId)
+      .eq("id", seasonId);
+
+    if (activateError) {
+      console.error("Error activating season:", activateError);
+      return false;
+    }
+
+    return true;
   },
 };
 

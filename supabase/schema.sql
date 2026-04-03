@@ -229,6 +229,8 @@ CREATE TABLE opponent_players (
 -- INDEXES
 -- ---------------------------------------------------------------------------
 CREATE INDEX idx_seasons_program ON seasons(program_id);
+CREATE UNIQUE INDEX idx_seasons_one_active_per_program ON seasons(program_id)
+  WHERE is_active = true;
 CREATE INDEX idx_players_program ON players(program_id);
 CREATE INDEX idx_season_rosters_season ON season_rosters(season_id);
 CREATE INDEX idx_season_rosters_player ON season_rosters(player_id);
@@ -305,6 +307,34 @@ CREATE TRIGGER programs_updated_at BEFORE UPDATE ON programs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER games_updated_at BEFORE UPDATE ON games
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE OR REPLACE FUNCTION public.set_active_season(target_program_id UUID, target_season_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM seasons
+    WHERE id = target_season_id
+      AND program_id = target_program_id
+  ) THEN
+    RAISE EXCEPTION 'Season % does not belong to program %', target_season_id, target_program_id;
+  END IF;
+
+  UPDATE seasons
+  SET is_active = CASE WHEN id = target_season_id THEN true ELSE false END
+  WHERE program_id = target_program_id
+    AND (is_active = true OR id = target_season_id);
+
+  RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_active_season(UUID, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.set_active_season(UUID, UUID) TO authenticated;
 
 -- ---------------------------------------------------------------------------
 -- USEFUL VIEWS
