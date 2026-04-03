@@ -629,7 +629,7 @@ export default function ScheduleScreen() {
           <div className="space-y-2">
             {games.map(game => (
               <button key={game.id}
-                onClick={() => navigate(`/game/${game.id}`)}
+                onClick={() => navigate(game.status === "completed" ? `/game/${game.id}/summary` : `/game/${game.id}`)}
                 className="card w-full p-4 text-left active:scale-[0.98] transition-transform"
               >
                 <div className="flex items-center justify-between mb-2">

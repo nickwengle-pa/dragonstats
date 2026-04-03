@@ -214,10 +214,10 @@ export default function GameScreen() {
       is_penalty: !!data.penalty,
       primary_player_id: data.tagged[0]?.player_id ?? null,
       description: data.description,
-      // Extended fields
-      offensive_formation: data.offensiveFormation,
-      defensive_formation: data.defensiveFormation,
-      hash_mark: data.hashMark,
+      // Extended fields — only include if non-null to avoid missing-column errors
+      ...(data.offensiveFormation ? { offensive_formation: data.offensiveFormation } : {}),
+      ...(data.defensiveFormation ? { defensive_formation: data.defensiveFormation } : {}),
+      ...(data.hashMark ? { hash_mark: data.hashMark } : {}),
     };
 
     const playerInserts = data.tagged.map(t => ({
