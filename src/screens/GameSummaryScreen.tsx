@@ -244,6 +244,18 @@ export default function GameSummaryScreen() {
       </div>
 
       <div className="flex-1 px-5 space-y-4 overflow-y-auto pb-8">
+        {/* Return to live game banner */}
+        {gameInfo?.status === "live" && (
+          <button
+            onClick={() => navigate(`/game/${gameId}`)}
+            className="w-full card p-3 flex items-center justify-center gap-2 border border-red-500/30 active:scale-[0.98] transition-transform"
+            style={{ background: "linear-gradient(135deg, rgba(220,38,38,0.08), rgba(220,38,38,0.02))" }}
+          >
+            <span className="text-red-400 text-[10px] font-black uppercase animate-pulse">LIVE</span>
+            <span className="text-sm font-bold text-red-400">Return to Game</span>
+          </button>
+        )}
+
         {/* Loading / error */}
         {loading && (
           <div className="card p-8 text-center">

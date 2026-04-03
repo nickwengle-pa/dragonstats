@@ -7,19 +7,27 @@ import {
   Calendar, Users, BarChart3, Settings, ChevronRight, Zap, Trophy,
 } from "lucide-react";
 
+interface LiveGame {
+  id: string;
+  opponent_name: string;
+  our_score: number;
+  opponent_score: number;
+}
+
 interface QuickStats {
   totalGames: number;
   wins: number;
   losses: number;
   rosterCount: number;
   nextGame: { opponent_name: string; game_date: string; is_home: boolean } | null;
+  liveGame: LiveGame | null;
 }
 
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
   const { program, season } = useProgramContext();
   const navigate = useNavigate();
-  const [stats, setStats] = useState<QuickStats>({ totalGames: 0, wins: 0, losses: 0, rosterCount: 0, nextGame: null });
+  const [stats, setStats] = useState<QuickStats>({ totalGames: 0, wins: 0, losses: 0, rosterCount: 0, nextGame: null, liveGame: null });
 
   useEffect(() => {
     if (!season) return;
@@ -33,6 +41,7 @@ export default function DashboardScreen() {
       const wins = completed.filter((g: any) => g.our_score > g.opponent_score).length;
       const losses = completed.filter((g: any) => g.our_score < g.opponent_score).length;
       const nextGame = games.find((g: any) => g.status === "scheduled");
+      const live = games.find((g: any) => g.status === "live");
       setStats({
         totalGames: games.length,
         wins, losses,
@@ -41,6 +50,12 @@ export default function DashboardScreen() {
           opponent_name: (nextGame as any).opponent?.name ?? "TBD",
           game_date: nextGame.game_date,
           is_home: nextGame.is_home,
+        } : null,
+        liveGame: live ? {
+          id: live.id,
+          opponent_name: (live as any).opponent?.name ?? "Opponent",
+          our_score: live.our_score,
+          opponent_score: live.opponent_score,
         } : null,
       });
     })();
@@ -63,6 +78,27 @@ export default function DashboardScreen() {
             Sign out
           </button>
         </div>
+
+        {/* Live game banner */}
+        {stats.liveGame && (
+          <button
+            onClick={() => navigate(`/game/${stats.liveGame!.id}`)}
+            className="w-full card p-4 flex items-center gap-4 active:scale-[0.98] transition-transform mb-4 border border-red-500/30"
+            style={{ background: "linear-gradient(135deg, rgba(220,38,38,0.08), rgba(220,38,38,0.02))" }}
+          >
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-red-900/40">
+              <span className="text-red-400 text-[10px] font-black uppercase animate-pulse">LIVE</span>
+            </div>
+            <div className="flex-1 text-left">
+              <div className="font-bold">vs {stats.liveGame.opponent_name}</div>
+              <div className="text-sm font-mono font-bold">
+                {stats.liveGame.our_score} – {stats.liveGame.opponent_score}
+              </div>
+            </div>
+            <div className="text-xs font-bold text-red-400">Return to Game</div>
+            <ChevronRight className="w-5 h-5 text-red-400" />
+          </button>
+        )}
 
         {/* Record card */}
         {stats.totalGames > 0 && (

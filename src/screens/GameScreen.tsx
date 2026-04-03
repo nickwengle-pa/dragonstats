@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, RotateCcw } from "lucide-react";
+import { ArrowLeft, RotateCcw, Home, BarChart3 } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import {
@@ -572,7 +572,7 @@ export default function GameScreen() {
     return (
       <div className="screen safe-top safe-bottom">
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-          <button onClick={() => navigate(-1)} className="btn-ghost p-2"><ArrowLeft className="w-5 h-5" /></button>
+          <button onClick={() => navigate("/")} className="btn-ghost p-2"><Home className="w-5 h-5" /></button>
           <h1 className="text-xl font-black flex-1">Game</h1>
         </div>
         <div className="text-neutral-500 text-sm text-center py-12 animate-pulse">Loading game...</div>
@@ -593,8 +593,11 @@ export default function GameScreen() {
     <div className="screen safe-top safe-bottom">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-        <button onClick={() => navigate(-1)} className="btn-ghost p-2"><ArrowLeft className="w-5 h-5" /></button>
+        <button onClick={() => navigate("/")} className="btn-ghost p-2"><Home className="w-5 h-5" /></button>
         <h1 className="text-lg font-black flex-1 truncate">vs {oppName}</h1>
+        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-1.5" title="Game Stats">
+          <BarChart3 className="w-4 h-4 text-neutral-400" />
+        </button>
         <button onClick={() => setShowLog(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-neutral-400">
           {plays.length} plays
         </button>
