@@ -63,15 +63,20 @@ export async function insertPlay(
 
   const sequence = (count ?? 0) + 1;
 
-  // 2) Insert the play
+  // 2) Insert the play — strip undefined optional fields to avoid DB column errors
+  const insertData: Record<string, unknown> = { ...play, sequence };
+  for (const key of Object.keys(insertData)) {
+    if (insertData[key] === undefined) delete insertData[key];
+  }
+
   const { data: playRow, error: playErr } = await supabase
     .from("plays")
-    .insert({ ...play, sequence })
+    .insert(insertData)
     .select()
     .single();
 
   if (playErr || !playRow) {
-    console.error("Failed to insert play:", playErr);
+    console.error("Failed to insert play:", playErr, "Data:", insertData);
     return null;
   }
 

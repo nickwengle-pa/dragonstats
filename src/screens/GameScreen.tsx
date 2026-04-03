@@ -191,6 +191,7 @@ export default function GameScreen() {
     if (!gameId || !season || isSubmitting.current) return;
     isSubmitting.current = true;
 
+    try {
     const playInsert: PlayInsert = {
       game_id: gameId,
       quarter,
@@ -226,7 +227,7 @@ export default function GameScreen() {
     }));
 
     const savedPlay = await insertPlay(playInsert, playerInserts);
-    if (!savedPlay) { isSubmitting.current = false; return; }
+    if (!savedPlay) { console.error("insertPlay returned null — check Supabase logs"); isSubmitting.current = false; setSelectedPlayType(null); return; }
 
     // Add to local play log
     const localPlay: PlayRecord = {
@@ -299,8 +300,12 @@ export default function GameScreen() {
       setBallOn(newBallOn); setDown(d => d + 1); setDistance(d => d - data.yards);
     }
 
-    setSelectedPlayType(null);
-    isSubmitting.current = false;
+    } catch (err) {
+      console.error("Error in handlePlaySubmit:", err);
+    } finally {
+      setSelectedPlayType(null);
+      isSubmitting.current = false;
+    }
   };
 
   /* ── Undo ── */
