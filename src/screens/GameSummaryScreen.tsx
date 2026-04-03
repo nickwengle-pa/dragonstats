@@ -4,6 +4,7 @@ import { ArrowLeft, Download, Share2 } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
+import { loadGamePlays } from "@/services/gameService";
 import { DriveResult, type GameSummary, type TeamStats, type PassingStats, type RushingStats, type ReceivingStats, type DefensiveStats } from "football-stats-engine";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,64 @@ function LeaderCard({ title, line1, line2 }: { title: string; line1: string; lin
   );
 }
 
+interface FormationBreakdown {
+  formation: string;
+  plays: number;
+  yards: number;
+  avg: number;
+  tds: number;
+}
+
+function computeFormationStats(plays: any[], possession: "us" | "them", field: "offensive_formation" | "defensive_formation"): FormationBreakdown[] {
+  const map = new Map<string, { plays: number; yards: number; tds: number }>();
+  for (const p of plays) {
+    if (p.possession !== possession) continue;
+    const f = p[field];
+    if (!f) continue;
+    const entry = map.get(f) ?? { plays: 0, yards: 0, tds: 0 };
+    entry.plays++;
+    entry.yards += p.yards_gained ?? 0;
+    if (p.is_touchdown) entry.tds++;
+    map.set(f, entry);
+  }
+  return Array.from(map.entries())
+    .map(([formation, s]) => ({ formation, ...s, avg: s.plays > 0 ? +(s.yards / s.plays).toFixed(1) : 0 }))
+    .sort((a, b) => b.plays - a.plays);
+}
+
+function FormationTable({ title, data, color }: { title: string; data: FormationBreakdown[]; color: string }) {
+  if (data.length === 0) return null;
+  return (
+    <div>
+      <div className="text-[10px] font-bold text-neutral-500 uppercase mb-2">{title}</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-neutral-500 border-b border-surface-border">
+              <th className="text-left py-1.5 font-bold">Formation</th>
+              <th className="text-right py-1.5 font-bold w-10">Plays</th>
+              <th className="text-right py-1.5 font-bold w-12">Yards</th>
+              <th className="text-right py-1.5 font-bold w-10">Avg</th>
+              <th className="text-right py-1.5 font-bold w-8">TD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map(row => (
+              <tr key={row.formation} className="border-b border-surface-border/50">
+                <td className="py-1.5 font-bold" style={{ color }}>{row.formation}</td>
+                <td className="py-1.5 text-right font-mono">{row.plays}</td>
+                <td className="py-1.5 text-right font-mono">{row.yards}</td>
+                <td className="py-1.5 text-right font-mono">{row.avg}</td>
+                <td className="py-1.5 text-right font-mono">{row.tds}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
@@ -80,6 +139,8 @@ export default function GameSummaryScreen() {
   const [summary, setSummary] = useState<GameSummary | null>(null);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const [roster, setRoster] = useState<Set<string>>(new Set());
+  const [offFormations, setOffFormations] = useState<FormationBreakdown[]>([]);
+  const [defFormations, setDefFormations] = useState<FormationBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,6 +195,13 @@ export default function GameSummaryScreen() {
 
         if (cancelled) return;
         setSummary(result);
+
+        // Load raw plays for formation breakdowns
+        const rawPlays = await loadGamePlays(gameId);
+        if (!cancelled) {
+          setOffFormations(computeFormationStats(rawPlays, "us", "offensive_formation"));
+          setDefFormations(computeFormationStats(rawPlays, "us", "defensive_formation"));
+        }
       } catch (e) {
         if (!cancelled) setError("Failed to compute stats");
         console.error(e);
@@ -280,6 +348,15 @@ export default function GameSummaryScreen() {
                 />
               )}
             </div>
+          </div>
+        )}
+
+        {/* Formation Breakdowns */}
+        {(offFormations.length > 0 || defFormations.length > 0) && (
+          <div className="card p-5 space-y-4">
+            <div className="text-xs font-bold text-neutral-500 uppercase">Formation Breakdown</div>
+            <FormationTable title="Offensive Formations" data={offFormations} color={program?.primary_color ?? "#3b82f6"} />
+            <FormationTable title="Defensive Formations" data={defFormations} color="#ef4444" />
           </div>
         )}
 

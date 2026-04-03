@@ -120,7 +120,7 @@ export default function DashboardScreen() {
           {[
             { label: "Schedule", icon: Calendar, path: "/schedule", desc: `${stats.totalGames} games` },
             { label: "Roster", icon: Users, path: "/roster", desc: `${stats.rosterCount} players` },
-            { label: "Stats", icon: BarChart3, path: "/schedule", desc: "Season stats" },
+            { label: "Stats", icon: BarChart3, path: "/season-stats", desc: "Season stats" },
             { label: "Settings", icon: Settings, path: "/settings", desc: "Program setup" },
           ].map(item => (
             <button key={item.label} onClick={() => navigate(item.path)}
