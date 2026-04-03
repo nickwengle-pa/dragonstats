@@ -211,7 +211,9 @@ export default function PlayEditModal({
   if (roles.length > 0) steps.push("players");
   if (needsYards || needsResult) steps.push("yards");
   steps.push("formations");
-  if (play.possession === "us") steps.push("defense");
+  // Show tackler step when opponent has the ball (our defense is on the field)
+  // OR when we have the ball (record opponent tacklers — but those would be opponent players)
+  steps.push("defense");
   steps.push("review");
 
   const [stepIdx, setStepIdx] = useState(0);
@@ -302,17 +304,19 @@ export default function PlayEditModal({
   };
 
   const currentRole = roles[currentRoleIdx];
-  const isOpponentRole = ["interceptor"].includes(currentRole);
+  const OFFENSIVE_ROLES = new Set(["rusher", "passer", "receiver", "target", "kicker", "punter", "returner"]);
+  // When opponent has ball, offensive roles use their roster; when we have ball, offensive roles use ours
+  const isOpponentRole = play.possession === "them"
+    ? OFFENSIVE_ROLES.has(currentRole)  // opponent on offense → their roster for offensive roles
+    : ["interceptor"].includes(currentRole); // we're on offense → only interceptor is opponent
 
   return (
     <div className="sheet bg-black/80">
       <div className="sheet-panel max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center gap-3 p-4 pb-2 shrink-0 border-b border-surface-border">
-          {stepIdx > 0 ? (
+          {stepIdx > 0 && (
             <button onClick={goBack} className="btn-ghost p-1.5"><ChevronLeft className="w-5 h-5" /></button>
-          ) : (
-            <button onClick={onClose} className="btn-ghost p-1.5"><X className="w-5 h-5" /></button>
           )}
           <div className="flex-1">
             <div className="text-sm font-black">Edit Play</div>
@@ -320,6 +324,7 @@ export default function PlayEditModal({
               Step {stepIdx + 1} of {steps.length}: {currentStep.charAt(0).toUpperCase() + currentStep.slice(1)}
             </div>
           </div>
+          <button onClick={onClose} className="btn-ghost p-1.5"><X className="w-5 h-5" /></button>
           <div className="flex gap-1">
             {steps.map((_, i) => (
               <button key={i} onClick={() => setStepIdx(i)}
@@ -540,13 +545,13 @@ export default function PlayEditModal({
           {currentStep === "defense" && (
             <>
               <div className="text-xs text-neutral-400 mb-1">
-                Select up to 3 tacklers. 1 player = 1.0 credit, 2+ = 0.5 each.
+                Select up to 3 tacklers. {play.possession === "them" ? "(Our defense)" : "(Opponent defense)"} · 1 = 1.0, 2+ = 0.5 each.
               </div>
               {tacklers.length > 0 && (
                 <div className="flex gap-2 flex-wrap mb-2">
                   {tacklers.map(t => (
                     <span key={t.player_id} className="flex items-center gap-1 text-xs bg-red-900/30 text-red-400 px-2 py-1 rounded-lg">
-                      #{t.jersey_number} {t.name.split(" ")[1]}
+                      #{t.jersey_number} {t.name.split(" ")[1] ?? t.name}
                       <span className="text-[10px] text-red-500">({t.credit})</span>
                       <button onClick={() => setTacklers(prev => {
                         const next = prev.filter(x => x.player_id !== t.player_id);
@@ -557,11 +562,19 @@ export default function PlayEditModal({
                   ))}
                 </div>
               )}
-              <PlayerGrid
-                roster={roster} label="Select tackler(s)"
-                onSelect={p => handleAddTackler(p)} selectedId={null}
-                search={tacklerSearch} onSearch={setTacklerSearch}
-              />
+              {play.possession === "them" ? (
+                /* They have ball — our guys make the tackles */
+                <PlayerGrid
+                  roster={roster} label="Select tackler(s) — Our defense"
+                  onSelect={p => handleAddTackler(p)} selectedId={null}
+                  search={tacklerSearch} onSearch={setTacklerSearch}
+                />
+              ) : (
+                /* We have ball — skip or show note */
+                <div className="text-xs text-neutral-600 text-center py-4">
+                  Tackler info is typically recorded when the opponent has the ball. Skip this step or add tacklers if needed.
+                </div>
+              )}
             </>
           )}
 
@@ -662,9 +675,14 @@ export default function PlayEditModal({
               </button>
             </>
           ) : (
-            <button onClick={handleSubmit} className="btn-primary w-full py-3 text-sm font-black">
-              Save Changes
-            </button>
+            <>
+              <button onClick={onClose} className="btn-ghost flex-1 py-2.5 text-sm font-bold">
+                Cancel
+              </button>
+              <button onClick={handleSubmit} className="btn-primary flex-1 py-3 text-sm font-black">
+                Save Changes
+              </button>
+            </>
           )}
         </div>
       </div>

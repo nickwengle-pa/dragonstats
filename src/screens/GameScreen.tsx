@@ -347,9 +347,9 @@ export default function GameScreen() {
       is_penalty: !!result.penalty,
       primary_player_id: result.tagged[0]?.player_id ?? null,
       description: result.description,
-      offensive_formation: result.offensiveFormation,
-      defensive_formation: result.defensiveFormation,
-      hash_mark: result.hashMark,
+      ...(result.offensiveFormation != null ? { offensive_formation: result.offensiveFormation } : {}),
+      ...(result.defensiveFormation != null ? { defensive_formation: result.defensiveFormation } : {}),
+      ...(result.hashMark != null ? { hash_mark: result.hashMark } : {}),
       play_data: {
         result: result.result || null,
         is_first_down: result.isFirstDown,

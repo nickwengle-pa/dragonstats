@@ -228,10 +228,14 @@ export async function updatePlayFull(
   },
   players: { player_id: string; role: string; credit?: number | null }[]
 ): Promise<boolean> {
-  // 1) Update the play row with all provided fields
+  // 1) Update the play row — strip undefined/null optional fields to avoid missing-column errors
+  const cleanFields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== undefined) cleanFields[k] = v;
+  }
   const { error: updateErr } = await supabase
     .from("plays")
-    .update(fields)
+    .update(cleanFields)
     .eq("id", playId);
 
   if (updateErr) {
@@ -308,87 +312,83 @@ export interface ResumedGameState {
 }
 
 export function deriveGameState(plays: PlayWithPlayers[]): ResumedGameState {
-  // Default starting state
   const state: ResumedGameState = {
-    quarter: 0,
-    clock: 720,
-    possession: "us",
-    ourScore: 0,
-    theirScore: 0,
-    down: 1,
-    distance: 10,
-    ballOn: 25,
+    quarter: 0, clock: 720, possession: "us",
+    ourScore: 0, theirScore: 0, down: 1, distance: 10, ballOn: 25,
   };
 
   if (plays.length === 0) return state;
 
-  // Walk forward through plays to rebuild current state
-  let currentDown = 1;
-  let currentDist = 10;
-  let currentBall = 25;
-  let poss: "us" | "them" = "us";
-
+  // Accumulate score
   for (const play of plays) {
-    // Score
-    if (play.is_touchdown) {
-      if (play.possession === "us") state.ourScore += 6;
-      else state.theirScore += 6;
-    }
     const pd = play.play_data ?? {};
-    if (play.play_type === "pat" && pd.result === "Good") {
-      if (play.possession === "us") state.ourScore += 1;
-      else state.theirScore += 1;
-    }
-    if (play.play_type === "fg" && pd.result === "Good") {
-      if (play.possession === "us") state.ourScore += 3;
-      else state.theirScore += 3;
-    }
-    if (play.play_type === "two_pt" && pd.result === "Good") {
-      if (play.possession === "us") state.ourScore += 2;
-      else state.theirScore += 2;
-    }
-    if (play.play_type === "safety") {
-      // Safety: opposite team of possession scores 2
-      if (play.possession === "us") state.theirScore += 2;
-      else state.ourScore += 2;
-    }
-
-    poss = play.possession;
+    if (play.is_touchdown) { if (play.possession === "us") state.ourScore += 6; else state.theirScore += 6; }
+    if (play.play_type === "pat" && pd.result === "Good") { if (play.possession === "us") state.ourScore += 1; else state.theirScore += 1; }
+    if (play.play_type === "fg" && pd.result === "Good") { if (play.possession === "us") state.ourScore += 3; else state.theirScore += 3; }
+    if (play.play_type === "two_pt" && pd.result === "Good") { if (play.possession === "us") state.ourScore += 2; else state.theirScore += 2; }
+    if (play.play_type === "safety") { if (play.possession === "us") state.theirScore += 2; else state.ourScore += 2; }
   }
 
-  // Use the last play to set current situational state
+  // Use last play to derive next situational state
   const last = plays[plays.length - 1];
   state.quarter = last.quarter;
-  // Convert clock text "M:SS" back to seconds
-  if (last.clock) {
-    const [m, s] = last.clock.split(":").map(Number);
-    state.clock = (m || 0) * 60 + (s || 0);
-  }
-  state.possession = poss;
+  if (last.clock) { const [m, s] = last.clock.split(":").map(Number); state.clock = (m || 0) * 60 + (s || 0); }
 
-  const playData = last.play_data ?? {};
-  const isFirstDown = playData.is_first_down ?? false;
-
-  // Replay the last play's outcome to get the next down/distance/ball
+  const poss = last.possession;
+  const pd = last.play_data ?? {};
+  const isFirstDown = pd.is_first_down ?? false;
   const newBall = Math.min(100, Math.max(0, last.yard_line + last.yards_gained));
+  const flipPoss = (): "us" | "them" => poss === "us" ? "them" : "us";
 
-  if (last.is_touchdown) {
-    state.ballOn = 97; // PAT spot
-    state.down = 1;
-    state.distance = 3;
-  } else if (isFirstDown) {
-    state.ballOn = newBall;
-    state.down = 1;
+  // Turnovers
+  if (["int", "fumble"].includes(last.play_type)) {
+    state.ballOn = Math.max(1, 100 - Math.max(1, newBall));
+    state.down = 1; state.distance = 10;
+    state.possession = flipPoss();
+  }
+  // Kickoff / punt
+  else if (["kickoff", "punt"].includes(last.play_type)) {
+    state.ballOn = last.yards_gained === 0 ? 20 : Math.max(1, newBall);
+    state.down = 1; state.distance = 10;
+    state.possession = flipPoss();
+  }
+  // Touchdown
+  else if (last.is_touchdown) {
+    state.ballOn = 97; state.down = 1; state.distance = 3;
+    state.possession = poss;
+  }
+  // PAT / 2PT → kickoff
+  else if (["pat", "two_pt"].includes(last.play_type)) {
+    state.ballOn = 40; state.down = 1; state.distance = 10;
+    state.possession = poss;
+  }
+  // FG
+  else if (last.play_type === "fg") {
+    if (pd.result === "Good") {
+      state.ballOn = 40; state.down = 1; state.distance = 10;
+      state.possession = poss;
+    } else {
+      state.ballOn = Math.max(20, 100 - last.yard_line);
+      state.down = 1; state.distance = 10;
+      state.possession = flipPoss();
+    }
+  }
+  // First down
+  else if (isFirstDown) {
+    state.ballOn = newBall; state.down = 1;
     state.distance = Math.min(10, 100 - newBall);
-  } else if (last.down >= 4) {
-    state.ballOn = 100 - newBall;
-    state.down = 1;
-    state.distance = 10;
-    state.possession = poss === "us" ? "them" : "us";
-  } else {
-    state.ballOn = newBall;
-    state.down = last.down + 1;
+    state.possession = poss;
+  }
+  // Turnover on downs
+  else if (last.down >= 4) {
+    state.ballOn = 100 - newBall; state.down = 1; state.distance = 10;
+    state.possession = flipPoss();
+  }
+  // Normal
+  else {
+    state.ballOn = newBall; state.down = last.down + 1;
     state.distance = last.distance - last.yards_gained;
+    state.possession = poss;
   }
 
   return state;
