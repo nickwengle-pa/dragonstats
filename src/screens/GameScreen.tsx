@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, RotateCcw, Home, BarChart3 } from "lucide-react";
+import { RotateCcw, Home, BarChart3 } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import {
@@ -13,6 +13,7 @@ import {
   type PlayInsert,
 } from "@/services/gameService";
 import { opponentPlayerService, type OpponentPlayer } from "@/services/opponentService";
+import { getGameConfig } from "@/services/programService";
 
 // Game components
 import Scoreboard from "@/components/game/Scoreboard";
@@ -28,7 +29,6 @@ import {
   type PlayTypeDef,
   type GameState,
   findPlayTypeDef,
-  NFHS_QUARTER_SECS,
   QUARTER_LABELS,
   OFFENSE_PENALTIES,
   fmtClock,
@@ -43,6 +43,9 @@ export default function GameScreen() {
   const navigate = useNavigate();
   const { gameId } = useParams<{ gameId: string }>();
   const { program, season } = useProgramContext();
+
+  /* ── Game config (from program settings) ── */
+  const gc = useMemo(() => getGameConfig(program), [program]);
 
   /* ── Data loading ── */
   const [game, setGame] = useState<any>(null);
@@ -130,7 +133,7 @@ export default function GameScreen() {
 
   /* ── Game state ── */
   const [quarter, setQuarter] = useState(0);
-  const [clock, setClock] = useState(NFHS_QUARTER_SECS);
+  const [clock, setClock] = useState(gc.quarter_length_secs);
   const [possession, setPossession] = useState<"us" | "them">("us");
   const [ourScore, setOurScore] = useState(0);
   const [theirScore, setTheirScore] = useState(0);
@@ -272,25 +275,25 @@ export default function GameScreen() {
       setPatGatePossession(possession);
       setShowPatGate(true);
     } else if (["pat", "two_pt"].includes(data.playType.id)) {
-      setBallOn(35); setDown(1); setDistance(10);
+      setBallOn(gc.kickoff_yard_line); setDown(1); setDistance(gc.first_down_distance);
     } else if (data.playType.id === "fg") {
-      if (data.result === "Good") { setBallOn(35); setDown(1); setDistance(10); }
-      else { setBallOn(Math.max(20, 100 - ballOn)); setDown(1); setDistance(10); setPossession(p => p === "us" ? "them" : "us"); }
+      if (data.result === "Good") { setBallOn(gc.kickoff_yard_line); setDown(1); setDistance(gc.first_down_distance); }
+      else { setBallOn(Math.max(gc.touchback_yard_line, 100 - ballOn)); setDown(1); setDistance(gc.first_down_distance); setPossession(p => p === "us" ? "them" : "us"); }
     } else if (data.playType.id === "safety") {
-      // Free kick
+      // Free kick from safety_kick_yard_line
     } else if (["kickoff", "punt"].includes(data.playType.id)) {
-      if (data.isTouchback) { setBallOn(20); } else { setBallOn(Math.max(1, newBallOn)); }
-      setDown(1); setDistance(10); setPossession(p => p === "us" ? "them" : "us");
+      if (data.isTouchback) { setBallOn(gc.touchback_yard_line); } else { setBallOn(Math.max(1, newBallOn)); }
+      setDown(1); setDistance(gc.first_down_distance); setPossession(p => p === "us" ? "them" : "us");
     } else if (data.playType.id === "int") {
-      setBallOn(Math.max(1, 100 - Math.max(1, newBallOn))); setDown(1); setDistance(10);
+      setBallOn(Math.max(1, 100 - Math.max(1, newBallOn))); setDown(1); setDistance(gc.first_down_distance);
       setPossession(p => p === "us" ? "them" : "us");
     } else if (data.playType.id === "fumble") {
-      setBallOn(Math.max(1, 100 - Math.max(1, newBallOn))); setDown(1); setDistance(10);
+      setBallOn(Math.max(1, 100 - Math.max(1, newBallOn))); setDown(1); setDistance(gc.first_down_distance);
       setPossession(p => p === "us" ? "them" : "us");
     } else if (earnedFirst) {
-      setBallOn(newBallOn); setDown(1); setDistance(Math.min(10, 100 - newBallOn));
+      setBallOn(newBallOn); setDown(1); setDistance(Math.min(gc.first_down_distance, 100 - newBallOn));
     } else if (down >= 4) {
-      setBallOn(100 - newBallOn); setDown(1); setDistance(10);
+      setBallOn(100 - newBallOn); setDown(1); setDistance(gc.first_down_distance);
       setPossession(p => p === "us" ? "them" : "us");
     } else {
       setBallOn(newBallOn); setDown(d => d + 1); setDistance(d => d - data.yards);
@@ -447,20 +450,20 @@ export default function GameScreen() {
     }
     // Kickoff / punt
     if (["kickoff", "punt"].includes(play.type)) {
-      const kb = play.yards === 0 ? 20 : Math.max(1, newBallOn); // touchback if 0 yards
-      return { ballOn: kb, down: 1, distance: 10, possession: possession === "us" ? "them" as const : "us" as const };
+      const kb = play.yards === 0 ? gc.touchback_yard_line : Math.max(1, newBallOn); // touchback if 0 yards
+      return { ballOn: kb, down: 1, distance: gc.first_down_distance, possession: possession === "us" ? "them" as const : "us" as const };
     }
     // TD — next play starts at PAT spot
     if (play.isTouchdown) {
-      return { ballOn: 97, down: 1, distance: 3, possession };
+      return { ballOn: 100 - gc.pat_distance, down: 1, distance: gc.pat_distance, possession };
     }
-    // PAT/2PT/FG good — kickoff
+    // PAT/2PT/FG good — kickoff from own yard line
     if (["pat", "two_pt"].includes(play.type)) {
-      return { ballOn: 35, down: 1, distance: 10, possession };
+      return { ballOn: gc.kickoff_yard_line, down: 1, distance: gc.first_down_distance, possession };
     }
     if (play.type === "fg") {
-      if (play.result === "Good") return { ballOn: 35, down: 1, distance: 10, possession };
-      return { ballOn: Math.max(20, 100 - ballOn), down: 1, distance: 10, possession: possession === "us" ? "them" as const : "us" as const };
+      if (play.result === "Good") return { ballOn: gc.kickoff_yard_line, down: 1, distance: gc.first_down_distance, possession };
+      return { ballOn: Math.max(gc.touchback_yard_line, 100 - ballOn), down: 1, distance: gc.first_down_distance, possession: possession === "us" ? "them" as const : "us" as const };
     }
     // Penalty
     if (play.penalty && OFFENSE_PENALTIES.has(play.penalty)) {
@@ -472,11 +475,11 @@ export default function GameScreen() {
     }
     // First down
     if (play.firstDown) {
-      return { ballOn: newBallOn, down: 1, distance: Math.min(10, 100 - newBallOn), possession };
+      return { ballOn: newBallOn, down: 1, distance: Math.min(gc.first_down_distance, 100 - newBallOn), possession };
     }
     // Turnover on downs
     if (down >= 4) {
-      return { ballOn: 100 - newBallOn, down: 1, distance: 10, possession: possession === "us" ? "them" as const : "us" as const };
+      return { ballOn: 100 - newBallOn, down: 1, distance: gc.first_down_distance, possession: possession === "us" ? "them" as const : "us" as const };
     }
     // Normal advance
     return { ballOn: newBallOn, down: down + 1, distance: distance - play.yards, possession };
@@ -505,7 +508,7 @@ export default function GameScreen() {
       setDistance(after.distance);
       setPossession(after.possession);
     } else {
-      setBallOn(25); setDown(1); setDistance(10); setPossession("us");
+      setBallOn(gc.touchback_yard_line); setDown(1); setDistance(gc.first_down_distance); setPossession("us");
     }
 
     if (gameId) await updateGameScore(gameId, us, them);
@@ -556,7 +559,7 @@ export default function GameScreen() {
 
   /* ── Cycle quarter ── */
   const cycleQuarter = () => {
-    setQuarter(q => { const next = (q + 1) % 5; if (next < 4) setClock(NFHS_QUARTER_SECS); return next; });
+    setQuarter(q => { const next = (q + 1) % 5; if (next < 4) setClock(gc.quarter_length_secs); return next; });
   };
 
   /* ── End game ── */

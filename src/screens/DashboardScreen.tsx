@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import {
-  Calendar, Users, BarChart3, Settings, ChevronRight, Zap, Trophy,
+  Calendar, Users, BarChart3, Settings, ChevronRight, Zap, Trophy, School, SlidersHorizontal,
 } from "lucide-react";
 
 interface LiveGame {
@@ -157,7 +157,8 @@ export default function DashboardScreen() {
             { label: "Schedule", icon: Calendar, path: "/schedule", desc: `${stats.totalGames} games` },
             { label: "Roster", icon: Users, path: "/roster", desc: `${stats.rosterCount} players` },
             { label: "Stats", icon: BarChart3, path: "/season-stats", desc: "Season stats" },
-            { label: "Settings", icon: Settings, path: "/settings", desc: "Program setup" },
+            { label: "Program", icon: School, path: "/settings", desc: "Team setup" },
+            { label: "Game Setup", icon: SlidersHorizontal, path: "/game-settings", desc: "Rules & config" },
           ].map(item => (
             <button key={item.label} onClick={() => navigate(item.path)}
               className="card p-4 text-left active:scale-[0.97] transition-transform">

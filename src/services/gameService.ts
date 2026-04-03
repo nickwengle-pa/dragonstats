@@ -475,7 +475,11 @@ export function calcTimeOfPossession(plays: PlayWithPlayers[]): TimeOfPossession
   return { us, them, usFormatted: fmtSecs(us), themFormatted: fmtSecs(them) };
 }
 
-export function calcDefenseStats(plays: PlayWithPlayers[]): Map<string, PlayerDefenseStats> {
+export function calcDefenseStats(
+  plays: PlayWithPlayers[],
+  opts?: { tackleCredit?: "split" | "full" },
+): Map<string, PlayerDefenseStats> {
+  const tackleCredit = opts?.tackleCredit ?? "split";
   const map = new Map<string, PlayerDefenseStats>();
 
   const get = (id: string): PlayerDefenseStats => {
@@ -495,13 +499,14 @@ export function calcDefenseStats(plays: PlayWithPlayers[]): Map<string, PlayerDe
     const assists  = play.play_players.filter(p => p.role === "assist");
     const isAssisted = tacklers.length > 0 && assists.length > 0;
     const isTfl = ["tfl", "sack"].includes(play.play_type);
+    const assistCredit = tackleCredit === "full" ? 1 : 0.5;
 
     // Tacklers
     for (const t of tacklers) {
       const s = get(t.player_id);
       if (isAssisted) {
         s.assistTackles += 1;
-        s.totalTackles  += 0.5;
+        s.totalTackles  += assistCredit;
       } else {
         s.soloTackles  += 1;
         s.totalTackles += 1;
@@ -510,11 +515,11 @@ export function calcDefenseStats(plays: PlayWithPlayers[]): Map<string, PlayerDe
       if (play.play_type === "safety") s.safeties += 1;
     }
 
-    // Assists — always 0.5
+    // Assists
     for (const a of assists) {
       const s = get(a.player_id);
       s.assistTackles += 1;
-      s.totalTackles  += 0.5;
+      s.totalTackles  += assistCredit;
       if (isTfl) s.tfl += 1;
     }
 

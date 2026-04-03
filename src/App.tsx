@@ -15,6 +15,7 @@ const GameSummaryScreen = lazy(() => import("@/screens/GameSummaryScreen"));
 const PlayerScreen = lazy(() => import("@/screens/PlayerScreen"));
 const SettingsScreen = lazy(() => import("@/screens/SettingsScreen"));
 const SeasonStatsScreen = lazy(() => import("@/screens/SeasonStatsScreen"));
+const GameSettingsScreen = lazy(() => import("@/screens/GameSettingsScreen"));
 
 function LoadingFallback() {
   return (
@@ -60,6 +61,7 @@ function AppRoutes() {
         <Route path="/player/:playerId" element={<ProtectedRoute><PlayerScreen /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
         <Route path="/season-stats" element={<ProtectedRoute><SeasonStatsScreen /></ProtectedRoute>} />
+        <Route path="/game-settings" element={<ProtectedRoute><GameSettingsScreen /></ProtectedRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
