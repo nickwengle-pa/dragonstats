@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Shield, Zap } from "lucide-react";
+import { ArrowLeft, Shield, Zap, Target } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
@@ -30,8 +30,27 @@ interface AggDefense {
   forcedFumbles: number; fumbleRecoveries: number;
   games: number;
 }
+interface AggKicking {
+  playerId: string; name: string;
+  fgAtt: number; fgMade: number; fgLong: number;
+  xpAtt: number; xpMade: number;
+  totalPoints: number;
+  games: number;
+}
+interface AggPunting {
+  playerId: string; name: string;
+  punts: number; puntYards: number; puntLong: number;
+  touchbacks: number; puntsInside20: number;
+  games: number;
+}
+interface AggReturns {
+  playerId: string; name: string;
+  kickReturns: number; kickReturnYards: number; kickReturnLong: number; kickReturnTDs: number;
+  puntReturns: number; puntReturnYards: number; puntReturnLong: number; puntReturnTDs: number;
+  games: number;
+}
 
-type Tab = "offense" | "defense";
+type Tab = "offense" | "defense" | "specialteams";
 
 /* ─── Helpers ─── */
 
@@ -103,11 +122,14 @@ export default function SeasonStatsScreen() {
   }, [program, season]);
 
   /* ── Aggregate stats across all games ── */
-  const { passing, rushing, receiving, defense } = useMemo(() => {
+  const { passing, rushing, receiving, defense, kicking, punting, returns } = useMemo(() => {
     const pMap = new Map<string, AggPassing>();
     const rMap = new Map<string, AggRushing>();
     const rcMap = new Map<string, AggReceiving>();
     const dMap = new Map<string, AggDefense>();
+    const kMap = new Map<string, AggKicking>();
+    const puMap = new Map<string, AggPunting>();
+    const retMap = new Map<string, AggReturns>();
 
     for (const s of summaries) {
       // Passing
@@ -145,6 +167,37 @@ export default function SeasonStatsScreen() {
         e.games++;
         dMap.set(pid, e);
       }
+      // Kicking
+      for (const [pid, ks] of Object.entries(s.kicking)) {
+        if (!rosterIds.has(pid) || (ks.fieldGoalAttempts === 0 && ks.extraPointAttempts === 0)) continue;
+        const e = kMap.get(pid) ?? { playerId: pid, name: ks.playerName, fgAtt: 0, fgMade: 0, fgLong: 0, xpAtt: 0, xpMade: 0, totalPoints: 0, games: 0 };
+        e.fgAtt += ks.fieldGoalAttempts; e.fgMade += ks.fieldGoalMade;
+        e.fgLong = Math.max(e.fgLong, ks.fieldGoalLong);
+        e.xpAtt += ks.extraPointAttempts; e.xpMade += ks.extraPointMade;
+        e.totalPoints += ks.totalPoints; e.games++;
+        kMap.set(pid, e);
+      }
+      // Punting
+      for (const [pid, ps] of Object.entries(s.punting)) {
+        if (!rosterIds.has(pid) || ps.punts === 0) continue;
+        const e = puMap.get(pid) ?? { playerId: pid, name: ps.playerName, punts: 0, puntYards: 0, puntLong: 0, touchbacks: 0, puntsInside20: 0, games: 0 };
+        e.punts += ps.punts; e.puntYards += ps.puntYards;
+        e.puntLong = Math.max(e.puntLong, ps.puntLong);
+        e.touchbacks += ps.touchbacks; e.puntsInside20 += ps.puntsInside20; e.games++;
+        puMap.set(pid, e);
+      }
+      // Returns
+      for (const [pid, rs] of Object.entries(s.returns)) {
+        if (!rosterIds.has(pid) || (rs.kickReturns === 0 && rs.puntReturns === 0)) continue;
+        const e = retMap.get(pid) ?? { playerId: pid, name: rs.playerName, kickReturns: 0, kickReturnYards: 0, kickReturnLong: 0, kickReturnTDs: 0, puntReturns: 0, puntReturnYards: 0, puntReturnLong: 0, puntReturnTDs: 0, games: 0 };
+        e.kickReturns += rs.kickReturns; e.kickReturnYards += rs.kickReturnYards;
+        e.kickReturnLong = Math.max(e.kickReturnLong, rs.kickReturnLong);
+        e.kickReturnTDs += rs.kickReturnTouchdowns;
+        e.puntReturns += rs.puntReturns; e.puntReturnYards += rs.puntReturnYards;
+        e.puntReturnLong = Math.max(e.puntReturnLong, rs.puntReturnLong);
+        e.puntReturnTDs += rs.puntReturnTouchdowns; e.games++;
+        retMap.set(pid, e);
+      }
     }
 
     return {
@@ -152,6 +205,9 @@ export default function SeasonStatsScreen() {
       rushing: Array.from(rMap.values()).sort((a, b) => b.yards - a.yards),
       receiving: Array.from(rcMap.values()).sort((a, b) => b.yards - a.yards),
       defense: Array.from(dMap.values()).sort((a, b) => b.totalTackles - a.totalTackles),
+      kicking: Array.from(kMap.values()).sort((a, b) => b.totalPoints - a.totalPoints),
+      punting: Array.from(puMap.values()).sort((a, b) => b.punts - a.punts),
+      returns: Array.from(retMap.values()).sort((a, b) => (b.kickReturnYards + b.puntReturnYards) - (a.kickReturnYards + a.puntReturnYards)),
     };
   }, [summaries, rosterIds]);
 
@@ -237,6 +293,12 @@ export default function SeasonStatsScreen() {
                   tab === "defense" ? "border-red-500 bg-red-500/10 text-red-400" : "border-surface-border text-neutral-500"
                 }`}>
                 <Shield className="w-3.5 h-3.5" /> Defense
+              </button>
+              <button onClick={() => setTab("specialteams")}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black border-2 transition-colors flex items-center justify-center gap-1 ${
+                  tab === "specialteams" ? "border-purple-500 bg-purple-500/10 text-purple-400" : "border-surface-border text-neutral-500"
+                }`}>
+                <Target className="w-3.5 h-3.5" /> Special Teams
               </button>
             </div>
 
@@ -426,6 +488,167 @@ export default function SeasonStatsScreen() {
                 {defense.length === 0 && (
                   <div className="card p-6 text-center text-neutral-500 text-sm">
                     No defensive stats recorded yet. Add tackler info during PBP to populate this.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ═══ SPECIAL TEAMS TAB ═══ */}
+            {tab === "specialteams" && (
+              <div className="space-y-4">
+                {/* Kicking */}
+                {kicking.length > 0 && (
+                  <div className="card p-4">
+                    <SectionTitle>Kicking</SectionTitle>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-neutral-500 border-b border-surface-border">
+                            <th className="text-left py-1.5 font-bold">Player</th>
+                            <th className="text-right py-1.5 font-bold">GP</th>
+                            <th className="text-right py-1.5 font-bold">FG</th>
+                            <th className="text-right py-1.5 font-bold">FG%</th>
+                            <th className="text-right py-1.5 font-bold">Lng</th>
+                            <th className="text-right py-1.5 font-bold">XP</th>
+                            <th className="text-right py-1.5 font-bold">Pts</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {kicking.map(p => (
+                            <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
+                              onClick={() => navigate(`/player/${p.playerId}`)}>
+                              <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
+                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
+                              <td className="py-1.5 text-right font-mono">{p.fgMade}/{p.fgAtt}</td>
+                              <td className="py-1.5 text-right font-mono">{p.fgAtt > 0 ? (p.fgMade / p.fgAtt * 100).toFixed(0) : "0"}%</td>
+                              <td className="py-1.5 text-right font-mono">{p.fgLong || "-"}</td>
+                              <td className="py-1.5 text-right font-mono">{p.xpMade}/{p.xpAtt}</td>
+                              <td className="py-1.5 text-right font-mono font-bold text-emerald-400">{p.totalPoints}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Punting */}
+                {punting.length > 0 && (
+                  <div className="card p-4">
+                    <SectionTitle>Punting</SectionTitle>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-neutral-500 border-b border-surface-border">
+                            <th className="text-left py-1.5 font-bold">Player</th>
+                            <th className="text-right py-1.5 font-bold">GP</th>
+                            <th className="text-right py-1.5 font-bold">Punts</th>
+                            <th className="text-right py-1.5 font-bold">Yds</th>
+                            <th className="text-right py-1.5 font-bold">Avg</th>
+                            <th className="text-right py-1.5 font-bold">Lng</th>
+                            <th className="text-right py-1.5 font-bold">I20</th>
+                            <th className="text-right py-1.5 font-bold">TB</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {punting.map(p => (
+                            <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
+                              onClick={() => navigate(`/player/${p.playerId}`)}>
+                              <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
+                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
+                              <td className="py-1.5 text-right font-mono">{p.punts}</td>
+                              <td className="py-1.5 text-right font-mono font-bold">{p.puntYards}</td>
+                              <td className="py-1.5 text-right font-mono">{p.punts > 0 ? (p.puntYards / p.punts).toFixed(1) : "0.0"}</td>
+                              <td className="py-1.5 text-right font-mono">{p.puntLong}</td>
+                              <td className="py-1.5 text-right font-mono">{p.puntsInside20}</td>
+                              <td className="py-1.5 text-right font-mono">{p.touchbacks}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Kick Returns */}
+                {returns.filter(r => r.kickReturns > 0).length > 0 && (
+                  <div className="card p-4">
+                    <SectionTitle>Kick Returns</SectionTitle>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-neutral-500 border-b border-surface-border">
+                            <th className="text-left py-1.5 font-bold">Player</th>
+                            <th className="text-right py-1.5 font-bold">GP</th>
+                            <th className="text-right py-1.5 font-bold">Ret</th>
+                            <th className="text-right py-1.5 font-bold">Yds</th>
+                            <th className="text-right py-1.5 font-bold">Avg</th>
+                            <th className="text-right py-1.5 font-bold">Lng</th>
+                            <th className="text-right py-1.5 font-bold">TD</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {returns.filter(r => r.kickReturns > 0)
+                            .sort((a, b) => b.kickReturnYards - a.kickReturnYards)
+                            .map(p => (
+                              <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
+                                onClick={() => navigate(`/player/${p.playerId}`)}>
+                                <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
+                                <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
+                                <td className="py-1.5 text-right font-mono">{p.kickReturns}</td>
+                                <td className="py-1.5 text-right font-mono font-bold">{p.kickReturnYards}</td>
+                                <td className="py-1.5 text-right font-mono">{p.kickReturns > 0 ? (p.kickReturnYards / p.kickReturns).toFixed(1) : "0.0"}</td>
+                                <td className="py-1.5 text-right font-mono">{p.kickReturnLong}</td>
+                                <td className="py-1.5 text-right font-mono text-emerald-400">{p.kickReturnTDs}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Punt Returns */}
+                {returns.filter(r => r.puntReturns > 0).length > 0 && (
+                  <div className="card p-4">
+                    <SectionTitle>Punt Returns</SectionTitle>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-neutral-500 border-b border-surface-border">
+                            <th className="text-left py-1.5 font-bold">Player</th>
+                            <th className="text-right py-1.5 font-bold">GP</th>
+                            <th className="text-right py-1.5 font-bold">Ret</th>
+                            <th className="text-right py-1.5 font-bold">Yds</th>
+                            <th className="text-right py-1.5 font-bold">Avg</th>
+                            <th className="text-right py-1.5 font-bold">Lng</th>
+                            <th className="text-right py-1.5 font-bold">TD</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {returns.filter(r => r.puntReturns > 0)
+                            .sort((a, b) => b.puntReturnYards - a.puntReturnYards)
+                            .map(p => (
+                              <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
+                                onClick={() => navigate(`/player/${p.playerId}`)}>
+                                <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
+                                <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
+                                <td className="py-1.5 text-right font-mono">{p.puntReturns}</td>
+                                <td className="py-1.5 text-right font-mono font-bold">{p.puntReturnYards}</td>
+                                <td className="py-1.5 text-right font-mono">{p.puntReturns > 0 ? (p.puntReturnYards / p.puntReturns).toFixed(1) : "0.0"}</td>
+                                <td className="py-1.5 text-right font-mono">{p.puntReturnLong}</td>
+                                <td className="py-1.5 text-right font-mono text-emerald-400">{p.puntReturnTDs}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {kicking.length === 0 && punting.length === 0 && returns.length === 0 && (
+                  <div className="card p-6 text-center text-neutral-500 text-sm">
+                    No special teams stats recorded yet.
                   </div>
                 )}
               </div>
