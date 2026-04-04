@@ -9,8 +9,10 @@ import { supabase } from "@/lib/supabase";
 import { loadGamePlays, calcDefenseStats } from "./gameService";
 import { transformPlays, collectOpponentPlayerIds, type TransformContext } from "./playTransformer";
 import { opponentPlayerService } from "./opponentService";
+import { getPregameConfig } from "./gameFlow";
 import {
   FootballStatsEngine,
+  CoinTossChoice,
   type GameSummary,
   type TeamId,
   type DefensiveStats,
@@ -28,6 +30,8 @@ export interface GameRecord {
   our_score: number;
   opponent_score: number;
   status: string;
+  rules_config: Record<string, unknown> | null;
+  opening_kickoff_receiver: "us" | "them" | null;
   opponent: {
     id: string;
     name: string;
@@ -47,6 +51,7 @@ export interface ProgramInfo {
   id: string;
   name: string;
   abbreviation: string;
+  game_config?: Record<string, unknown> | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +62,7 @@ async function loadGame(gameId: string): Promise<GameRecord | null> {
   const { data, error } = await supabase
     .from("games")
     .select(`
-      id, season_id, opponent_id, is_home, our_score, opponent_score, status,
+      id, season_id, opponent_id, is_home, our_score, opponent_score, status, rules_config, opening_kickoff_receiver,
       opponent:opponents ( id, name, abbreviation )
     `)
     .eq("id", gameId)
@@ -138,6 +143,7 @@ export async function computeGameStats(
     homeTeamName,
     awayTeamName,
     programTeamId: program.id,
+    fgSnapAdd: Number(program.game_config?.fg_snap_add) > 0 ? Number(program.game_config?.fg_snap_add) : undefined,
   };
 
   // 3. Transform plays
@@ -145,10 +151,25 @@ export async function computeGameStats(
 
   if (enginePlays.length === 0) return null;
 
+  const rulesConfig = (game.rules_config ?? {}) as Record<string, unknown>;
+  const level = rulesConfig.level === "nfl" || rulesConfig.level === "college" || rulesConfig.level === "high_school"
+    ? rulesConfig.level
+    : "high_school";
+  const quarterLengthMinutes = Number(rulesConfig.quarterLengthMinutes);
+  const customRules = Number.isFinite(quarterLengthMinutes) && quarterLengthMinutes > 0
+    ? { quarterLengthSeconds: Math.round(quarterLengthMinutes * 60) }
+    : undefined;
+  const pregame = getPregameConfig({
+    rules_config: game.rules_config,
+    opening_kickoff_receiver: game.opening_kickoff_receiver,
+    direction: null,
+  });
+
   // 4. Set up engine
   const engine = new FootballStatsEngine({
-    enableGameState: false,
-    rules: "high_school",
+    enableGameState: true,
+    rules: level,
+    ...(customRules ? { customRules } : {}),
     trackSituationalSplits: true,
     trackDrives: true,
     computePasserRating: true,
@@ -167,6 +188,25 @@ export async function computeGameStats(
   };
 
   engine.setTeams(homeTeam, awayTeam);
+
+  if (pregame) {
+    const openingKickoffReceiver = pregame.openingKickoffReceiver === "us" ? program.id : game.opponent.id;
+    const secondHalfKickoffReceiver = openingKickoffReceiver === program.id ? game.opponent.id : program.id;
+    const coinTossWinner = pregame.tossWinner === "us" ? program.id : game.opponent.id;
+    const coinTossChoiceMap: Record<string, CoinTossChoice> = {
+      receive: CoinTossChoice.Receive,
+      kick: CoinTossChoice.Kick,
+      defer: CoinTossChoice.Defer,
+      defend_goal: CoinTossChoice.DefendGoal,
+    };
+
+    engine.configureKickoffReceivers(
+      openingKickoffReceiver,
+      secondHalfKickoffReceiver,
+      coinTossWinner,
+      coinTossChoiceMap[pregame.tossChoice],
+    );
+  }
 
   // 5. Register players (our roster + opponent players)
   const rosterPlayers = roster.map((r) => ({

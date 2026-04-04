@@ -1,15 +1,19 @@
 import { useState, useMemo } from "react";
 import { X, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
 import {
+  type BlockedKickType,
   type PlayTypeDef,
+  type PenaltySide,
   type RosterPlayer,
   type OpponentPlayerRef,
   type TaggedPlayer,
   type GameState,
+  BLOCKED_KICK_TYPES,
   PENALTIES,
   PENALTY_DEFAULT_YARDS,
   OFFENSIVE_FORMATIONS,
   DEFENSIVE_FORMATIONS,
+  getPenaltyDefaultSide,
   yardLabel,
   buildDescription,
 } from "./types";
@@ -33,7 +37,9 @@ export interface PlaySubmitData {
   isTouchback: boolean;
   result: string; // "Good" | "No Good" | "Complete" | "Incomplete" | ""
   penalty: string | null;
+  penaltyCategory: PenaltySide | null;
   flagYards: number;
+  blockedKickType: BlockedKickType | null;
   offensiveFormation: string | null;
   defensiveFormation: string | null;
   hashMark: string | null;
@@ -41,6 +47,13 @@ export interface PlaySubmitData {
 }
 
 type Step = "players" | "yards" | "formations" | "defense" | "review";
+
+function defaultBlockedKickType(gameState: GameState): BlockedKickType {
+  if (gameState.ballOn >= 95) return "extra_point";
+  if (gameState.down === 4 && gameState.ballOn >= 60) return "field_goal";
+  if (gameState.down === 4) return "punt";
+  return "field_goal";
+}
 
 /* ── Player selector grid (our roster) ── */
 function PlayerGrid({
@@ -196,8 +209,10 @@ export default function PlayEntryModal({
 
   // Penalty
   const [penalty, setPenalty] = useState<string | null>(null);
+  const [penaltyCategory, setPenaltyCategory] = useState<PenaltySide | null>(null);
   const [flagYards, setFlagYards] = useState(5);
   const [showPenalties, setShowPenalties] = useState(false);
+  const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(() => defaultBlockedKickType(gameState));
 
   // Formations
   const [offFormation, setOffFormation] = useState<string | null>(null);
@@ -209,7 +224,11 @@ export default function PlayEntryModal({
   const [tacklerSearch, setTacklerSearch] = useState("");
 
   // Step management
-  const roles = playType.roles;
+  const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">("pass");
+  const roles = useMemo(() => {
+    if (playType.id !== "two_pt") return playType.roles;
+    return twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
+  }, [playType, twoPointStyle]);
   const isTheirBall = gameState.possession === "them";
   const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
@@ -228,7 +247,10 @@ export default function PlayEntryModal({
 
   const canGoNext = (): boolean => {
     if (currentStep === "players") {
-      return roles.length === 0 || tagged.length > 0;
+      return roles.length === 0 || roles.every((role) => tagged.some((player) => player.role === role));
+    }
+    if (currentStep === "review" && penalty) {
+      return !!penaltyCategory;
     }
     return true;
   };
@@ -336,7 +358,9 @@ export default function PlayEntryModal({
       isTouchback,
       result: finalResult,
       penalty,
+      penaltyCategory,
       flagYards: penalty ? flagYards : 0,
+      blockedKickType: playType.id === "blocked_kick" ? blockedKickType : null,
       offensiveFormation: offFormation,
       defensiveFormation: defFormation,
       hashMark,
@@ -386,6 +410,31 @@ export default function PlayEntryModal({
           {/* ── STEP: Players ── */}
           {currentStep === "players" && (
             <>
+              {playType.id === "two_pt" && (
+                <div>
+                  <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Conversion Type</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["pass", "run"] as const).map((style) => (
+                      <button
+                        key={style}
+                        onClick={() => {
+                          setTwoPointStyle(style);
+                          setTagged([]);
+                          setCurrentRoleIdx(0);
+                        }}
+                        className={`py-2.5 rounded-xl text-sm font-black border-2 capitalize transition-colors ${
+                          twoPointStyle === style
+                            ? "border-dragon-primary bg-dragon-primary/15 text-dragon-primary"
+                            : "border-surface-border bg-surface-bg text-neutral-500"
+                        }`}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Role tabs */}
               <div className="flex gap-1.5 flex-wrap">
                 {roles.map((role, i) => {
@@ -430,6 +479,27 @@ export default function PlayEntryModal({
           {/* ── STEP: Yards / Result ── */}
           {currentStep === "yards" && (
             <>
+              {playType.id === "blocked_kick" && (
+                <div>
+                  <label className="label block mb-1.5">Blocked Kick Type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {BLOCKED_KICK_TYPES.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setBlockedKickType(option.value)}
+                        className={`py-2 rounded-xl text-xs font-bold border-2 transition-colors ${
+                          blockedKickType === option.value
+                            ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
+                            : "border-surface-border bg-surface-bg text-neutral-500"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {needsYards && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -529,18 +599,43 @@ export default function PlayEntryModal({
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
                     {PENALTIES.map(p => (
-                      <button key={p} onClick={() => { setPenalty(p); setFlagYards(PENALTY_DEFAULT_YARDS[p] ?? 5); setShowPenalties(false); }}
+                      <button key={p} onClick={() => {
+                        setPenalty(p);
+                        setPenaltyCategory(getPenaltyDefaultSide(p));
+                        setFlagYards(PENALTY_DEFAULT_YARDS[p] ?? 5);
+                        setShowPenalties(false);
+                      }}
                         className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-colors ${
                           penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-neutral-400"
                         }`}>{p}</button>
                     ))}
                   </div>
                   {penalty && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-neutral-500">Penalty yards:</span>
-                      <input type="number" value={flagYards} onChange={e => setFlagYards(Number(e.target.value))}
-                        className="input w-16 text-center text-sm" />
-                      <button onClick={() => { setPenalty(null); setFlagYards(5); }} className="text-xs text-red-400 ml-auto">Clear</button>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-xs text-neutral-500 block mb-1">Flag On</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(["offense", "defense"] as const).map((side) => (
+                            <button
+                              key={side}
+                              onClick={() => setPenaltyCategory(side)}
+                              className={`py-2 rounded-xl text-xs font-bold border-2 capitalize transition-colors ${
+                                penaltyCategory === side
+                                  ? "border-orange-500 bg-orange-500/15 text-orange-400"
+                                  : "border-surface-border bg-surface-bg text-neutral-500"
+                              }`}
+                            >
+                              {side}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-500">Penalty yards:</span>
+                        <input type="number" value={flagYards} onChange={e => setFlagYards(Number(e.target.value))}
+                          className="input w-16 text-center text-sm" />
+                        <button onClick={() => { setPenalty(null); setPenaltyCategory(null); setFlagYards(5); }} className="text-xs text-red-400 ml-auto">Clear</button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -706,7 +801,7 @@ export default function PlayEntryModal({
               </button>
             </>
           ) : (
-            <button onClick={handleSubmit} className="btn-primary w-full py-3 text-sm font-black">
+            <button onClick={handleSubmit} disabled={!canGoNext()} className="btn-primary w-full py-3 text-sm font-black disabled:opacity-50">
               Record Play
             </button>
           )}

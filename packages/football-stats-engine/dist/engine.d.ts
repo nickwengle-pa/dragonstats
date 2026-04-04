@@ -37,6 +37,8 @@ export declare class FootballStatsEngine {
     }>): void;
     /** Record the opening coin toss */
     recordCoinToss(winner: string, choice: CoinTossChoice): void;
+    /** Configure opening and second-half kickoff receivers directly */
+    configureKickoffReceivers(openingKickoffReceiver: string, secondHalfKickoffReceiver?: string, coinTossWinner?: string, coinTossChoice?: CoinTossChoice): void;
     /** Record the overtime coin toss */
     recordOvertimeCoinToss(winner: string, choice: CoinTossChoice): void;
     /** Call a timeout for a team. Returns false if no timeouts remaining. */

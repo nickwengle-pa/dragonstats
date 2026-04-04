@@ -108,7 +108,7 @@ export default function SeasonStatsScreen() {
       const results: GameSummary[] = [];
       for (const g of games) {
         const s = await computeGameStats(g.id, {
-          id: program.id, name: program.name, abbreviation: program.abbreviation,
+          id: program.id, name: program.name, abbreviation: program.abbreviation, game_config: program.game_config,
         });
         if (cancelled) return;
         if (s) results.push(s);

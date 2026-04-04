@@ -182,6 +182,7 @@ export var CoinTossChoice;
     CoinTossChoice["Receive"] = "receive";
     CoinTossChoice["Kick"] = "kick";
     CoinTossChoice["Defer"] = "defer";
+    CoinTossChoice["DefendGoal"] = "defend_goal";
 })(CoinTossChoice || (CoinTossChoice = {}));
 export var PossessionReason;
 (function (PossessionReason) {
@@ -255,6 +256,8 @@ export class GameStateManager {
         this.coinTossWinner = "";
         this.coinTossChoice = CoinTossChoice.Defer;
         this.deferredTeam = "";
+        this.openingKickoffReceiver = "";
+        this.secondHalfKickoffReceiver = "";
         this.rules = { ...getRuleSet(level), ...customRules };
         this.gameClockSeconds = this.rules.quarterLengthSeconds;
         this.playClock = this.rules.playClockAfterStoppage;
@@ -275,6 +278,21 @@ export class GameStateManager {
         this.homeTeam = home;
         this.awayTeam = away;
     }
+    configureKickoffReceivers(openingKickoffReceiver, secondHalfKickoffReceiver, coinTossWinner, coinTossChoice) {
+        this.openingKickoffReceiver = openingKickoffReceiver;
+        this.secondHalfKickoffReceiver = secondHalfKickoffReceiver ?? (openingKickoffReceiver === this.homeTeam.id ? this.awayTeam.id : this.homeTeam.id);
+        if (coinTossWinner) {
+            this.coinTossWinner = coinTossWinner;
+        }
+        if (coinTossChoice) {
+            this.coinTossChoice = coinTossChoice;
+        }
+        this.phase = GamePhase.Kickoff;
+        this.possession = openingKickoffReceiver;
+        this.addEvent(GameEventType.CoinToss, coinTossWinner, coinTossWinner && coinTossChoice
+            ? `${coinTossWinner} wins coin toss and elects to ${coinTossChoice}`
+            : `${openingKickoffReceiver} receives opening kickoff`);
+    }
     recordCoinToss(winner, choice) {
         if (choice === CoinTossChoice.Defer && !this.rules.allowDeferOnCoinToss) {
             choice = CoinTossChoice.Receive;
@@ -283,18 +301,18 @@ export class GameStateManager {
         this.coinTossChoice = choice;
         this.phase = GamePhase.CoinToss;
         const loser = winner === this.homeTeam.id ? this.awayTeam.id : this.homeTeam.id;
+        let openingKickoffReceiver = loser;
         if (choice === CoinTossChoice.Receive) {
-            this.possession = winner;
+            openingKickoffReceiver = winner;
         }
         else if (choice === CoinTossChoice.Kick) {
-            this.possession = loser;
+            openingKickoffReceiver = loser;
         }
-        else if (choice === CoinTossChoice.Defer) {
+        else if (choice === CoinTossChoice.Defer || choice === CoinTossChoice.DefendGoal) {
             this.deferredTeam = winner;
-            this.possession = loser;
+            openingKickoffReceiver = loser;
         }
-        this.addEvent(GameEventType.CoinToss, undefined, `${winner} wins coin toss and elects to ${choice}`);
-        this.phase = GamePhase.Kickoff;
+        this.configureKickoffReceivers(openingKickoffReceiver, winner === openingKickoffReceiver ? loser : winner, winner, choice);
     }
     // ---------------------------------------------------------------------------
     // MAIN PLAY PROCESSING
@@ -577,7 +595,11 @@ export class GameStateManager {
                     this.awayChallenges = this.createChallengeState();
                 }
                 this.gameClockSeconds = this.rules.quarterLengthSeconds;
-                if (this.deferredTeam) {
+                if (this.secondHalfKickoffReceiver) {
+                    this.possession = this.secondHalfKickoffReceiver;
+                    this.addEvent(GameEventType.StartOfHalf, this.secondHalfKickoffReceiver, `${this.secondHalfKickoffReceiver} receives 2nd half kickoff`);
+                }
+                else if (this.deferredTeam) {
                     this.possession = this.deferredTeam;
                     this.addEvent(GameEventType.StartOfHalf, this.deferredTeam, `${this.deferredTeam} receives 2nd half kickoff`);
                 }
@@ -736,6 +758,14 @@ export class GameStateManager {
         }
         if (p.fumble && p.fumble.recoveryTeam && p.fumble.recoveryTeam !== play.context.possessionTeam) {
             this.possession = p.fumble.recoveryTeam;
+            return true;
+        }
+        if ((play.type === PlayType.Kickoff || play.type === PlayType.FreeKick) && p.result !== SpecialTeamsResult.Block) {
+            if (p.fumble && p.fumble.recoveryTeam) {
+                this.possession = p.fumble.recoveryTeam;
+                return p.fumble.recoveryTeam !== play.context.possessionTeam;
+            }
+            this.possession = this.possession === this.homeTeam.id ? this.awayTeam.id : this.homeTeam.id;
             return true;
         }
         if (play.type === PlayType.Punt && p.result !== SpecialTeamsResult.Block) {

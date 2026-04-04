@@ -6,7 +6,9 @@ import { supabase } from "@/lib/supabase";
 import {
   insertPlay,
   deletePlay,
+  updatePlay,
   updatePlayFull,
+  updatePlaySituation,
   loadGamePlays,
   updateGameScore,
   deriveGameState,
@@ -14,10 +16,25 @@ import {
 } from "@/services/gameService";
 import { opponentPlayerService, type OpponentPlayer } from "@/services/opponentService";
 import { getGameConfig } from "@/services/programService";
+import {
+  advanceSituationAfterPlay,
+  buildPregameGameUpdate,
+  createKickoffSituation,
+  createDefaultPregameConfig,
+  createInitialSituation,
+  getOurEndZoneSideForQuarter,
+  getPregameConfig,
+  moveToQuarter,
+  rebuildPlaySituations,
+  resolveGameConfig,
+  toDisplayFieldPosition,
+  type PregameConfig,
+} from "@/services/gameFlow";
 
 // Game components
 import Scoreboard from "@/components/game/Scoreboard";
 import FieldVisualizer from "@/components/game/FieldVisualizer";
+import PregameSetupSheet from "@/components/game/PregameSetupSheet";
 import QuickActions from "@/components/game/QuickActions";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditModal";
@@ -28,10 +45,11 @@ import {
   type PlayRecord,
   type PlayTypeDef,
   type GameState,
+  type BlockedKickType,
   findPlayTypeDef,
   QUARTER_LABELS,
-  OFFENSE_PENALTIES,
   fmtClock,
+  quarterLabel,
   yardLabel,
 } from "@/components/game/types";
 
@@ -45,13 +63,15 @@ export default function GameScreen() {
   const { program, season } = useProgramContext();
 
   /* ── Game config (from program settings) ── */
-  const gc = useMemo(() => getGameConfig(program), [program]);
+  const baseGc = useMemo(() => getGameConfig(program), [program]);
 
   /* ── Data loading ── */
   const [game, setGame] = useState<any>(null);
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const [oppPlayers, setOppPlayers] = useState<OpponentPlayerRef[]>([]);
   const [loading, setLoading] = useState(true);
+  const gc = useMemo(() => resolveGameConfig(baseGc, game?.rules_config as Record<string, unknown> | null), [baseGc, game]);
+  const pregame = useMemo(() => getPregameConfig(game), [game]);
 
   const loadData = useCallback(async () => {
     if (!season || !gameId) return;
@@ -63,12 +83,16 @@ export default function GameScreen() {
       loadGamePlays(gameId),
     ]);
 
-    setGame(gameRes.data);
+    const gameData = gameRes.data;
+    const gameConfig = resolveGameConfig(baseGc, gameData?.rules_config as Record<string, unknown> | null);
+    const pregameConfig = getPregameConfig(gameData);
+
+    setGame(gameData);
     setRoster(rosterRes.data ?? []);
 
     // Load opponent players
-    if (gameRes.data?.opponent_id) {
-      const opp = await opponentPlayerService.getByOpponent(gameRes.data.opponent_id);
+    if (gameData?.opponent_id) {
+      const opp = await opponentPlayerService.getByOpponent(gameData.opponent_id);
       setOppPlayers(opp);
     }
 
@@ -92,6 +116,14 @@ export default function GameScreen() {
         isTouchdown: p.is_touchdown,
         firstDown: pd.is_first_down ?? false,
         turnover: p.is_turnover,
+        isTouchback: !!pd.is_touchback,
+        penaltyCategory: pd.play_category === "offense" || pd.play_category === "defense" ? pd.play_category : null,
+        blockedKickType: (
+          pd.blocked_kick_type === "field_goal"
+          || pd.blocked_kick_type === "extra_point"
+          || pd.blocked_kick_type === "punt"
+          || pd.blocked_kick_type === "kickoff"
+        ) ? pd.blocked_kick_type as BlockedKickType : null,
         tagged: p.play_players.map((pp: any) => ({
           id: pp.player_id,
           player_id: pp.player_id,
@@ -105,41 +137,55 @@ export default function GameScreen() {
         distance: p.distance,
         description: p.description,
         possession: p.possession,
+        nextPossession: pd.next_possession === "us" || pd.next_possession === "them" ? pd.next_possession : undefined,
+        nextDown: typeof pd.next_down === "number" ? pd.next_down : undefined,
+        nextDistance: typeof pd.next_distance === "number" ? pd.next_distance : undefined,
+        nextBallOn: typeof pd.next_yard_line === "number" ? pd.next_yard_line : undefined,
         offensiveFormation: (p as any).offensive_formation ?? null,
         defensiveFormation: (p as any).defensive_formation ?? null,
         hashMark: (p as any).hash_mark ?? null,
       };
     });
 
-    setPlays(localPlays);
+    const rebuilt = rebuildPlaySituations(localPlays, pregameConfig, gameConfig);
+    setPlays(rebuilt.plays);
 
     // Resume game state from existing plays
     if (existingPlays.length > 0) {
-      const state = deriveGameState(existingPlays);
-      setQuarter(state.quarter);
+      const state = deriveGameState(existingPlays, { config: gameConfig, pregame: pregameConfig });
+      setQuarter(rebuilt.currentQuarter);
       setClock(state.clock);
-      setPossession(state.possession);
+      setPossession(rebuilt.currentSituation.possession);
       setOurScore(state.ourScore);
       setTheirScore(state.theirScore);
-      setDown(state.down);
-      setDistance(state.distance);
-      setBallOn(state.ballOn);
+      setDown(rebuilt.currentSituation.down);
+      setDistance(rebuilt.currentSituation.distance);
+      setBallOn(rebuilt.currentSituation.ballOn);
+    } else {
+      const initialSituation = createInitialSituation(pregameConfig, gameConfig);
+      setQuarter(1);
+      setClock(gameConfig.quarter_length_secs);
+      setPossession(initialSituation.possession);
+      setDown(initialSituation.down);
+      setDistance(initialSituation.distance);
+      setBallOn(initialSituation.ballOn);
     }
 
     setLoading(false);
-  }, [season, gameId]);
+  }, [season, gameId, baseGc]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   /* ── Game state ── */
-  const [quarter, setQuarter] = useState(0);
+  const initialSituation = useMemo(() => createInitialSituation(pregame, gc), [pregame, gc]);
+  const [quarter, setQuarter] = useState(1);
   const [clock, setClock] = useState(gc.quarter_length_secs);
-  const [possession, setPossession] = useState<"us" | "them">("us");
+  const [possession, setPossession] = useState<"us" | "them">(initialSituation.possession);
   const [ourScore, setOurScore] = useState(0);
   const [theirScore, setTheirScore] = useState(0);
-  const [down, setDown] = useState(1);
-  const [distance, setDistance] = useState(10);
-  const [ballOn, setBallOn] = useState(25);
+  const [down, setDown] = useState(initialSituation.down);
+  const [distance, setDistance] = useState(initialSituation.distance);
+  const [ballOn, setBallOn] = useState(initialSituation.ballOn);
 
   /* ── Plays ── */
   const [plays, setPlays] = useState<PlayRecord[]>([]);
@@ -151,19 +197,40 @@ export default function GameScreen() {
   const [editPlay, setEditPlay] = useState<PlayRecord | null>(null);
   const [showPatGate, setShowPatGate] = useState(false);
   const [patGatePossession, setPatGatePossession] = useState<"us" | "them">("us");
-  const [savingPat, setSavingPat] = useState(false);
   const [showClockEditor, setShowClockEditor] = useState(false);
   const [clockMins, setClockMins] = useState(12);
   const [clockSecs, setClockSecs] = useState(0);
   const [showEndGame, setShowEndGame] = useState(false);
   const [showSituationAdj, setShowSituationAdj] = useState(false);
+  const [pendingSituationPlayId, setPendingSituationPlayId] = useState<string | null>(null);
+  const [showPregame, setShowPregame] = useState(false);
+  const [savingPregame, setSavingPregame] = useState(false);
   const [adjBallOn, setAdjBallOn] = useState(25);
   const [adjDown, setAdjDown] = useState(1);
   const [adjDistance, setAdjDistance] = useState(10);
+  const [adjPossession, setAdjPossession] = useState<"us" | "them">("us");
 
   /* ── Derived state ── */
   const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
   const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
+  const ballDisplayPosition = useMemo(
+    () => toDisplayFieldPosition(ballOn, possession, quarter, pregame),
+    [ballOn, possession, quarter, pregame],
+  );
+  const firstDownDisplayPosition = useMemo(
+    () => toDisplayFieldPosition(firstDownMarker, possession, quarter, pregame),
+    [firstDownMarker, possession, quarter, pregame],
+  );
+  const ourEndZoneSide = useMemo(
+    () => getOurEndZoneSideForQuarter(quarter, pregame),
+    [quarter, pregame],
+  );
+
+  useEffect(() => {
+    if (!loading && game && !pregame) {
+      setShowPregame(true);
+    }
+  }, [loading, game, pregame]);
 
   /* ── Quick stats ── */
   const stats = useMemo(() => {
@@ -181,8 +248,161 @@ export default function GameScreen() {
     return { rushAtt, rushYds, passAtt, passComp, passYds, firstDowns, tos, pens };
   }, [plays]);
 
+  const applySituation = useCallback((next: { possession: "us" | "them"; down: number; distance: number; ballOn: number }) => {
+    setPossession(next.possession);
+    setDown(next.down);
+    setDistance(next.distance);
+    setBallOn(next.ballOn);
+  }, []);
+
+  const persistPlaySituations = useCallback((nextPlays: PlayRecord[]) => {
+    void Promise.all(nextPlays.map((play) => updatePlaySituation(play.id, {
+      possession: play.possession,
+      down: play.down,
+      distance: play.distance,
+      yard_line: play.ballOn,
+    })));
+  }, []);
+
+  const queueSituationAdjustment = useCallback((
+    playId: string,
+    play: PlayRecord,
+    before: { possession: "us" | "them"; down: number; distance: number; ballOn: number },
+  ) => {
+    const suggested = advanceSituationAfterPlay(play, before, gc);
+    setPendingSituationPlayId(playId);
+    setAdjPossession(suggested.possession);
+    setAdjBallOn(suggested.ballOn);
+    setAdjDown(suggested.down);
+    setAdjDistance(suggested.distance);
+    setShowSituationAdj(true);
+  }, [gc]);
+
+  const recalcScoreAndState = useCallback(async (allPlays: PlayRecord[]) => {
+    const rebuilt = rebuildPlaySituations(allPlays, pregame, gc);
+    setPlays(rebuilt.plays);
+    persistPlaySituations(rebuilt.plays);
+
+    let us = 0;
+    let them = 0;
+    rebuilt.plays.forEach((play) => {
+      if (play.isTouchdown) {
+        if (play.possession === "us") us += 6;
+        else them += 6;
+      }
+      if (play.type === "pat" && play.result === "Good") {
+        if (play.possession === "us") us += 1;
+        else them += 1;
+      }
+      if (play.type === "fg" && play.result === "Good") {
+        if (play.possession === "us") us += 3;
+        else them += 3;
+      }
+      if (play.type === "two_pt" && play.result === "Good") {
+        if (play.possession === "us") us += 2;
+        else them += 2;
+      }
+      if (play.type === "safety") {
+        if (play.possession === "us") them += 2;
+        else us += 2;
+      }
+    });
+
+    setOurScore(us);
+    setTheirScore(them);
+
+    if (rebuilt.plays.length > 0) {
+      const last = rebuilt.plays[rebuilt.plays.length - 1];
+      setQuarter(last.quarter);
+      setClock(last.clock);
+      applySituation(rebuilt.currentSituation);
+    } else {
+      const reset = createInitialSituation(pregame, gc);
+      setQuarter(1);
+      setClock(gc.quarter_length_secs);
+      applySituation(reset);
+    }
+
+    if (gameId) {
+      await updateGameScore(gameId, us, them, rebuilt.plays.length > 0 ? "live" : "scheduled");
+    }
+  }, [applySituation, gameId, gc, persistPlaySituations, pregame]);
+
+  const applySituationAdjustment = useCallback(async () => {
+    if (!pendingSituationPlayId) return;
+
+    const updatedPlays = plays.map((play) => (
+      play.id === pendingSituationPlayId
+        ? {
+            ...play,
+            nextPossession: adjPossession,
+            nextDown: adjDown,
+            nextDistance: adjDistance,
+            nextBallOn: adjBallOn,
+          }
+        : play
+    ));
+
+    const ok = await updatePlay(pendingSituationPlayId, {}, {
+      next_possession: adjPossession,
+      next_down: adjDown,
+      next_distance: adjDistance,
+      next_yard_line: adjBallOn,
+    });
+    if (!ok) return;
+
+    setShowSituationAdj(false);
+    setPendingSituationPlayId(null);
+    await recalcScoreAndState(updatedPlays);
+  }, [adjBallOn, adjDistance, adjDown, adjPossession, pendingSituationPlayId, plays, recalcScoreAndState]);
+
+  const handleSavePregame = useCallback(async (nextPregame: PregameConfig) => {
+    if (!gameId || !game) return;
+
+    setSavingPregame(true);
+    const updates = buildPregameGameUpdate(
+      (game.rules_config as Record<string, unknown> | null) ?? {},
+      nextPregame,
+    );
+
+    const { data, error } = await supabase
+      .from("games")
+      .update(updates)
+      .eq("id", gameId)
+      .select("*, opponent:opponents(*)")
+      .single();
+
+    if (!error && data) {
+      setGame(data);
+      const nextConfig = resolveGameConfig(baseGc, data.rules_config as Record<string, unknown> | null);
+      if (plays.length === 0) {
+        const reset = createInitialSituation(nextPregame, nextConfig);
+        setQuarter(1);
+        setClock(nextConfig.quarter_length_secs);
+        applySituation(reset);
+      } else {
+        const rebuilt = rebuildPlaySituations(plays, nextPregame, nextConfig);
+        setPlays(rebuilt.plays);
+        persistPlaySituations(rebuilt.plays);
+        if (rebuilt.plays.length > 0) {
+          const last = rebuilt.plays[rebuilt.plays.length - 1];
+          setQuarter(last.quarter);
+          setClock(last.clock);
+          applySituation(rebuilt.currentSituation);
+        }
+      }
+      setShowPregame(false);
+    }
+
+    setSavingPregame(false);
+  }, [applySituation, baseGc, game, gameId, persistPlaySituations, plays]);
+
   /* ── Handle play type selection from quick actions ── */
   const handlePlayTypeSelect = (pt: PlayTypeDef) => {
+    if (!pregame) {
+      setShowPregame(true);
+      return;
+    }
     setSelectedPlayType(pt);
   };
 
@@ -192,6 +412,7 @@ export default function GameScreen() {
     isSubmitting.current = true;
 
     try {
+    const before = { possession, down, distance, ballOn };
     const playInsert: PlayInsert = {
       game_id: gameId,
       quarter,
@@ -205,8 +426,15 @@ export default function GameScreen() {
         season_id: season.id,
         result: data.result || null,
         is_first_down: data.isFirstDown,
+        is_touchback: data.isTouchback,
         penalty_type: data.penalty,
+        play_category: data.penaltyCategory,
         penalty_yards: data.flagYards,
+        blocked_kick_type: data.blockedKickType,
+        next_possession: null,
+        next_down: null,
+        next_distance: null,
+        next_yard_line: null,
       },
       yards_gained: data.yards,
       is_touchdown: data.isTouchdown,
@@ -234,8 +462,11 @@ export default function GameScreen() {
       id: savedPlay.id,
       quarter, clock, type: data.playType.id, yards: data.yards,
       result: data.result, penalty: data.penalty,
+      penaltyCategory: data.penaltyCategory,
       flagYards: data.flagYards, isTouchdown: data.isTouchdown,
       firstDown: data.isFirstDown, turnover: playInsert.is_turnover,
+      isTouchback: data.isTouchback,
+      blockedKickType: data.blockedKickType,
       tagged: data.tagged, ballOn, down, distance,
       description: data.description, possession,
       offensiveFormation: data.offensiveFormation,
@@ -261,43 +492,15 @@ export default function GameScreen() {
     }
 
     // ── Game state advance ──
-    const newBallOn = Math.min(100, Math.max(0, ballOn + data.yards));
-    const earnedFirst = data.isFirstDown;
-
-    if (data.penalty && OFFENSE_PENALTIES.has(data.penalty)) {
-      const sugBall = Math.max(1, ballOn - data.flagYards);
-      setAdjBallOn(sugBall); setAdjDown(down); setAdjDistance(Math.min(99, distance + data.flagYards));
-      setShowSituationAdj(true);
-    } else if (data.penalty) {
-      const sugBall = Math.min(98, ballOn + data.flagYards);
-      setAdjBallOn(sugBall); setAdjDown(1); setAdjDistance(Math.min(10, 100 - sugBall));
-      setShowSituationAdj(true);
+    if (data.penalty || data.playType.id === "blocked_kick") {
+      queueSituationAdjustment(savedPlay.id, localPlay, before);
     } else if (data.isTouchdown) {
-      setPatGatePossession(possession);
+      const afterTouchdown = advanceSituationAfterPlay(localPlay, before, gc);
+      applySituation(afterTouchdown);
+      setPatGatePossession(afterTouchdown.possession);
       setShowPatGate(true);
-    } else if (["pat", "two_pt"].includes(data.playType.id)) {
-      setBallOn(gc.kickoff_yard_line); setDown(1); setDistance(gc.first_down_distance);
-    } else if (data.playType.id === "fg") {
-      if (data.result === "Good") { setBallOn(gc.kickoff_yard_line); setDown(1); setDistance(gc.first_down_distance); }
-      else { setBallOn(Math.max(gc.touchback_yard_line, 100 - ballOn)); setDown(1); setDistance(gc.first_down_distance); setPossession(p => p === "us" ? "them" : "us"); }
-    } else if (data.playType.id === "safety") {
-      // Free kick from safety_kick_yard_line
-    } else if (["kickoff", "punt"].includes(data.playType.id)) {
-      if (data.isTouchback) { setBallOn(gc.touchback_yard_line); } else { setBallOn(Math.max(1, newBallOn)); }
-      setDown(1); setDistance(gc.first_down_distance); setPossession(p => p === "us" ? "them" : "us");
-    } else if (data.playType.id === "int") {
-      setBallOn(Math.max(1, 100 - Math.max(1, newBallOn))); setDown(1); setDistance(gc.first_down_distance);
-      setPossession(p => p === "us" ? "them" : "us");
-    } else if (data.playType.id === "fumble") {
-      setBallOn(Math.max(1, 100 - Math.max(1, newBallOn))); setDown(1); setDistance(gc.first_down_distance);
-      setPossession(p => p === "us" ? "them" : "us");
-    } else if (earnedFirst) {
-      setBallOn(newBallOn); setDown(1); setDistance(Math.min(gc.first_down_distance, 100 - newBallOn));
-    } else if (down >= 4) {
-      setBallOn(100 - newBallOn); setDown(1); setDistance(gc.first_down_distance);
-      setPossession(p => p === "us" ? "them" : "us");
     } else {
-      setBallOn(newBallOn); setDown(d => d + 1); setDistance(d => d - data.yards);
+      applySituation(advanceSituationAfterPlay(localPlay, before, gc));
     }
 
     } catch (err) {
@@ -315,21 +518,7 @@ export default function GameScreen() {
     const deleted = await deletePlay(last.id);
     if (!deleted) return;
 
-    setPlays(prev => prev.slice(0, -1));
-    setBallOn(last.ballOn); setDown(last.down); setDistance(last.distance);
-
-    let nextOur = ourScore, nextTheir = theirScore;
-    if (last.isTouchdown) { if (last.possession === "us") nextOur -= 6; else nextTheir -= 6; }
-    if (last.type === "pat" && last.result === "Good") { if (last.possession === "us") nextOur -= 1; else nextTheir -= 1; }
-    if (last.type === "fg" && last.result === "Good") { if (last.possession === "us") nextOur -= 3; else nextTheir -= 3; }
-    if (last.type === "two_pt" && last.result === "Good") { if (last.possession === "us") nextOur -= 2; else nextTheir -= 2; }
-    if (last.type === "safety") { if (last.possession === "us") nextTheir -= 2; else nextOur -= 2; }
-
-    nextOur = Math.max(0, nextOur); nextTheir = Math.max(0, nextTheir);
-    if (nextOur !== ourScore || nextTheir !== theirScore) {
-      setOurScore(nextOur); setTheirScore(nextTheir);
-      await updateGameScore(gameId, nextOur, nextTheir);
-    }
+    await recalcScoreAndState(plays.slice(0, -1));
   };
 
   /* ── Edit play (full) ── */
@@ -353,8 +542,15 @@ export default function GameScreen() {
       play_data: {
         result: result.result || null,
         is_first_down: result.isFirstDown,
+        is_touchback: result.isTouchback,
         penalty_type: result.penalty,
+        play_category: result.penaltyCategory,
         penalty_yards: result.flagYards,
+        blocked_kick_type: result.blockedKickType,
+        next_possession: null,
+        next_down: null,
+        next_distance: null,
+        next_yard_line: null,
       },
     }, result.tagged.map(t => ({
       player_id: t.player_id,
@@ -373,198 +569,74 @@ export default function GameScreen() {
       turnover: ["int", "fumble"].includes(result.playType.id),
       result: result.result,
       penalty: result.penalty,
+      penaltyCategory: result.penaltyCategory,
       flagYards: result.flagYards,
+      isTouchback: result.isTouchback,
+      blockedKickType: result.blockedKickType,
       tagged: result.tagged,
+      nextPossession: undefined,
+      nextDown: undefined,
+      nextDistance: undefined,
+      nextBallOn: undefined,
       description: result.description,
       offensiveFormation: result.offensiveFormation,
       defensiveFormation: result.defensiveFormation,
       hashMark: result.hashMark,
     };
 
-    // Cascade: recalculate down/distance/ballOn for this play and all subsequent plays
     const newPlays = [...plays];
     newPlays[idx] = updatedPlay;
-    cascadeGameState(newPlays, idx);
-
-    setPlays(newPlays);
     setEditPlay(null);
+    await recalcScoreAndState(newPlays);
 
-    // Recalculate score from scratch
-    recalcScoreAndState(newPlays);
+    if (updatedPlay.penalty || updatedPlay.type === "blocked_kick") {
+      const rebuilt = rebuildPlaySituations(newPlays, pregame, gc);
+      const rebuiltPlay = rebuilt.plays[idx];
+      if (rebuiltPlay) {
+        queueSituationAdjustment(rebuiltPlay.id, rebuiltPlay, {
+          possession: rebuiltPlay.possession,
+          down: rebuiltPlay.down,
+          distance: rebuiltPlay.distance,
+          ballOn: rebuiltPlay.ballOn,
+        });
+      }
+    }
   };
 
   /* ── Delete play from edit modal ── */
   const handleDeletePlay = async (playId: string) => {
-    const idx = plays.findIndex(p => p.id === playId);
-    if (idx === -1) return;
     const deleted = await deletePlay(playId);
     if (!deleted) return;
 
     const newPlays = plays.filter(p => p.id !== playId);
-    // Re-cascade from the deleted play's position onward
-    if (idx < newPlays.length) {
-      cascadeGameState(newPlays, idx);
-    }
-    setPlays(newPlays);
     setEditPlay(null);
-    recalcScoreAndState(newPlays);
+    await recalcScoreAndState(newPlays);
   };
 
-  /* ── Cascade helper: recalculate down/distance/ballOn from startIdx onward ── */
-  const cascadeGameState = (allPlays: PlayRecord[], startIdx: number) => {
-    for (let i = startIdx; i < allPlays.length; i++) {
-      const prev = i > 0 ? allPlays[i - 1] : null;
-      const play = allPlays[i];
-
-      // Determine ball position before this play
-      let prevBallOn = 25, prevDown = 1, prevDist = 10, prevPoss: "us" | "them" = "us";
-      if (prev) {
-        // Compute where the previous play left things
-        const after = advanceState(prev, {
-          ballOn: prev.ballOn, down: prev.down, distance: prev.distance, possession: prev.possession,
-        });
-        prevBallOn = after.ballOn;
-        prevDown = after.down;
-        prevDist = after.distance;
-        prevPoss = after.possession;
-      }
-
-      play.ballOn = prevBallOn;
-      play.down = prevDown;
-      play.distance = prevDist;
-      play.possession = prevPoss;
-
-      // Persist updated situation to DB (fire-and-forget)
-      updatePlayFull(play.id, {
-        yard_line: prevBallOn,
-        down: prevDown,
-        distance: prevDist,
-        possession: prevPoss,
-      }, play.tagged.map(t => ({ player_id: t.player_id, role: t.role, credit: t.credit ?? null })));
-    }
-  };
-
-  /* ── Compute resulting state after a play ── */
-  const advanceState = (play: PlayRecord, before: { ballOn: number; down: number; distance: number; possession: "us" | "them" }) => {
-    const { ballOn, down, distance, possession } = before;
-    const newBallOn = Math.min(100, Math.max(0, ballOn + play.yards));
-
-    // Turnovers
-    if (["int", "fumble"].includes(play.type)) {
-      return { ballOn: Math.max(1, 100 - Math.max(1, newBallOn)), down: 1, distance: 10, possession: possession === "us" ? "them" as const : "us" as const };
-    }
-    // Kickoff / punt
-    if (["kickoff", "punt"].includes(play.type)) {
-      const kb = play.yards === 0 ? gc.touchback_yard_line : Math.max(1, newBallOn); // touchback if 0 yards
-      return { ballOn: kb, down: 1, distance: gc.first_down_distance, possession: possession === "us" ? "them" as const : "us" as const };
-    }
-    // TD — next play starts at PAT spot
-    if (play.isTouchdown) {
-      return { ballOn: 100 - gc.pat_distance, down: 1, distance: gc.pat_distance, possession };
-    }
-    // PAT/2PT/FG good — kickoff from own yard line
-    if (["pat", "two_pt"].includes(play.type)) {
-      return { ballOn: gc.kickoff_yard_line, down: 1, distance: gc.first_down_distance, possession };
-    }
-    if (play.type === "fg") {
-      if (play.result === "Good") return { ballOn: gc.kickoff_yard_line, down: 1, distance: gc.first_down_distance, possession };
-      return { ballOn: Math.max(gc.touchback_yard_line, 100 - ballOn), down: 1, distance: gc.first_down_distance, possession: possession === "us" ? "them" as const : "us" as const };
-    }
-    // Penalty
-    if (play.penalty && OFFENSE_PENALTIES.has(play.penalty)) {
-      return { ballOn: Math.max(1, ballOn - play.flagYards), down, distance: Math.min(99, distance + play.flagYards), possession };
-    }
-    if (play.penalty) {
-      const sugBall = Math.min(98, ballOn + play.flagYards);
-      return { ballOn: sugBall, down: 1, distance: Math.min(10, 100 - sugBall), possession };
-    }
-    // First down
-    if (play.firstDown) {
-      return { ballOn: newBallOn, down: 1, distance: Math.min(gc.first_down_distance, 100 - newBallOn), possession };
-    }
-    // Turnover on downs
-    if (down >= 4) {
-      return { ballOn: 100 - newBallOn, down: 1, distance: gc.first_down_distance, possession: possession === "us" ? "them" as const : "us" as const };
-    }
-    // Normal advance
-    return { ballOn: newBallOn, down: down + 1, distance: distance - play.yards, possession };
-  };
-
-  /* ── Recalculate score and current state from all plays ── */
-  const recalcScoreAndState = async (allPlays: PlayRecord[]) => {
-    let us = 0, them = 0;
-    allPlays.forEach(p => {
-      const poss = p.possession;
-      if (p.isTouchdown) { if (poss === "us") us += 6; else them += 6; }
-      if (p.type === "pat" && p.result === "Good") { if (poss === "us") us += 1; else them += 1; }
-      if (p.type === "fg" && p.result === "Good") { if (poss === "us") us += 3; else them += 3; }
-      if (p.type === "two_pt" && p.result === "Good") { if (poss === "us") us += 2; else them += 2; }
-      if (p.type === "safety") { if (poss === "us") them += 2; else us += 2; }
-    });
-    setOurScore(us);
-    setTheirScore(them);
-
-    // Set current game state from last play
-    if (allPlays.length > 0) {
-      const last = allPlays[allPlays.length - 1];
-      const after = advanceState(last, { ballOn: last.ballOn, down: last.down, distance: last.distance, possession: last.possession });
-      setBallOn(after.ballOn);
-      setDown(after.down);
-      setDistance(after.distance);
-      setPossession(after.possession);
-    } else {
-      setBallOn(gc.touchback_yard_line); setDown(1); setDistance(gc.first_down_distance); setPossession("us");
-    }
-
-    if (gameId) await updateGameScore(gameId, us, them);
-  };
 
   /* ── PAT gate ── */
-  const handlePatGate = async (result: "good_kick" | "no_good_kick" | "good_two" | "no_good_two" | "skip") => {
-    setSavingPat(true);
-    const isTwoPoint = result.startsWith("good_two") || result.startsWith("no_good_two");
-    const isGood = result.startsWith("good");
-
-    if (result !== "skip" && gameId && season) {
-      const patType = isTwoPoint ? "two_pt" : "pat";
-      const pts = isTwoPoint && isGood ? 2 : (!isTwoPoint && isGood ? 1 : 0);
-
-      const patInsert: PlayInsert = {
-        game_id: gameId, quarter, clock: fmtClock(clock), possession: patGatePossession,
-        down: 1, distance: 3, yard_line: 97, play_type: patType,
-        play_data: { season_id: season.id, result: isGood ? "Good" : "No Good", is_first_down: false, penalty_type: null, penalty_yards: 0 },
-        yards_gained: 0, is_touchdown: false, is_turnover: false, is_penalty: false,
-        primary_player_id: null, description: `${isTwoPoint ? "2PT" : "PAT"} — ${isGood ? "Good" : "No Good"}`,
-      };
-
-      const saved = await insertPlay(patInsert, []);
-      if (saved) {
-        setPlays(prev => [...prev, {
-          id: saved.id, quarter, clock, type: patType, yards: 0,
-          result: isGood ? "Good" : "No Good", penalty: null, flagYards: 0,
-          isTouchdown: false, firstDown: false, turnover: false, tagged: [],
-          ballOn: 97, down: 1, distance: 3, description: patInsert.description,
-          possession: patGatePossession,
-        }]);
-
-        if (pts > 0) {
-          const nextOur = patGatePossession === "us" ? ourScore + pts : ourScore;
-          const nextTheir = patGatePossession === "them" ? theirScore + pts : theirScore;
-          setOurScore(nextOur); setTheirScore(nextTheir);
-          await updateGameScore(gameId, nextOur, nextTheir);
-        }
-      }
+  const handlePatGate = (choice: "pat" | "two_pt" | "skip") => {
+    if (choice === "skip") {
+      applySituation(createKickoffSituation(patGatePossession, gc));
+      setShowPatGate(false);
+      return;
     }
 
-    setBallOn(35); setDown(1); setDistance(10);
-    setPossession(patGatePossession);
+    const nextPlayType = findPlayTypeDef(choice);
+    if (nextPlayType) {
+      setSelectedPlayType(nextPlayType);
+    }
     setShowPatGate(false);
-    setSavingPat(false);
   };
 
   /* ── Cycle quarter ── */
   const cycleQuarter = () => {
-    setQuarter(q => { const next = (q + 1) % 5; if (next < 4) setClock(gc.quarter_length_secs); return next; });
+    const nextQuarter = Math.min(5, quarter + 1);
+    if (nextQuarter === quarter) return;
+    const transition = moveToQuarter(quarter, nextQuarter, { possession, down, distance, ballOn }, pregame, gc);
+    setQuarter(transition.quarter);
+    setClock(transition.clock);
+    applySituation(transition.situation);
   };
 
   /* ── End game ── */
@@ -609,6 +681,9 @@ export default function GameScreen() {
         <button onClick={() => setShowLog(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-neutral-400">
           {plays.length} plays
         </button>
+        <button onClick={() => setShowPregame(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-neutral-400">
+          Pregame
+        </button>
       </div>
 
       <div className="flex-1 px-5 overflow-y-auto pb-4 space-y-3">
@@ -623,15 +698,16 @@ export default function GameScreen() {
           oppColor={oppColor}
           onCycleQuarter={cycleQuarter}
           onEditClock={() => { setClockMins(Math.floor(clock / 60)); setClockSecs(clock % 60); setShowClockEditor(true); }}
-          onTogglePossession={() => setPossession(p => p === "us" ? "them" : "us")}
           onEndGame={() => setShowEndGame(true)}
         />
 
         {/* Field */}
         <FieldVisualizer
           ballOn={ballOn}
-          firstDownMarker={firstDownMarker}
+          ballPosition={ballDisplayPosition}
+          firstDownPosition={firstDownDisplayPosition}
           possession={possession}
+          ourEndZoneSide={ourEndZoneSide}
           primaryColor={primaryColor}
           progAbbr={progAbbr}
           oppAbbr={oppAbbr}
@@ -739,6 +815,17 @@ export default function GameScreen() {
 
       {/* ── MODALS ── */}
 
+      {showPregame && (
+        <PregameSetupSheet
+          initialValue={pregame ?? createDefaultPregameConfig()}
+          progName={progName}
+          oppName={oppName}
+          onClose={() => setShowPregame(false)}
+          onSave={handleSavePregame}
+          saving={savingPregame}
+        />
+      )}
+
       {/* Play Entry Modal */}
       {selectedPlayType && (
         <PlayEntryModal
@@ -797,18 +884,14 @@ export default function GameScreen() {
         <div className="sheet bg-black/80">
           <div className="sheet-panel p-6 space-y-3 max-w-sm mx-auto">
             <h2 className="text-lg font-black text-center">Extra Point</h2>
-            <p className="text-sm text-neutral-400 text-center">Touchdown scored. Choose PAT attempt:</p>
+            <p className="text-sm text-neutral-400 text-center">Touchdown scored. Record the conversion attempt next:</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => handlePatGate("good_kick")} disabled={savingPat}
-                className="py-3 rounded-xl text-sm font-black bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/30">PAT Good</button>
-              <button onClick={() => handlePatGate("no_good_kick")} disabled={savingPat}
-                className="py-3 rounded-xl text-sm font-black bg-red-500/20 text-red-400 border-2 border-red-500/30">PAT No Good</button>
-              <button onClick={() => handlePatGate("good_two")} disabled={savingPat}
-                className="py-3 rounded-xl text-sm font-black bg-blue-500/20 text-blue-400 border-2 border-blue-500/30">2PT Good</button>
-              <button onClick={() => handlePatGate("no_good_two")} disabled={savingPat}
-                className="py-3 rounded-xl text-sm font-black bg-neutral-800 text-neutral-400 border-2 border-neutral-700">2PT Failed</button>
+              <button onClick={() => handlePatGate("pat")}
+                className="py-3 rounded-xl text-sm font-black bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/30">PAT Kick</button>
+              <button onClick={() => handlePatGate("two_pt")}
+                className="py-3 rounded-xl text-sm font-black bg-blue-500/20 text-blue-400 border-2 border-blue-500/30">2PT Try</button>
             </div>
-            <button onClick={() => handlePatGate("skip")} disabled={savingPat}
+            <button onClick={() => handlePatGate("skip")}
               className="w-full text-xs text-neutral-500 font-bold py-2">Skip</button>
           </div>
         </div>
@@ -851,7 +934,25 @@ export default function GameScreen() {
       {showSituationAdj && (
         <div className="sheet bg-black/80">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-sm font-black text-center">Adjust Situation (Penalty)</h2>
+            <h2 className="text-sm font-black text-center">Adjust Next Situation</h2>
+            <div>
+              <label className="text-[10px] font-bold text-neutral-500 block mb-1">Possession</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["us", "them"] as const).map((team) => (
+                  <button
+                    key={team}
+                    onClick={() => setAdjPossession(team)}
+                    className={`py-2 rounded-xl text-xs font-bold border-2 uppercase transition-colors ${
+                      adjPossession === team
+                        ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
+                        : "border-surface-border bg-surface-bg text-neutral-500"
+                    }`}
+                  >
+                    {team}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="text-[10px] font-bold text-neutral-500 block mb-1">Ball On</label>
@@ -869,10 +970,7 @@ export default function GameScreen() {
                   className="input text-center text-sm font-black" min={1} max={99} />
               </div>
             </div>
-            <button onClick={() => {
-              setBallOn(adjBallOn); setDown(adjDown); setDistance(adjDistance);
-              setShowSituationAdj(false);
-            }} className="btn-primary w-full text-sm">Apply</button>
+            <button onClick={applySituationAdjustment} className="btn-primary w-full text-sm">Apply</button>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { X, Pencil, RotateCcw } from "lucide-react";
-import { fmtClock, yardLabel, QUARTER_LABELS, type PlayRecord } from "./types";
+import { fmtClock, quarterLabel, yardLabel, type PlayRecord } from "./types";
 
 interface Props {
   plays: PlayRecord[];
@@ -39,7 +39,9 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose }: Props) {
                 <RotateCcw className="w-3 h-3" /> Undo
               </button>
             )}
-            <button onClick={onClose} className="btn-ghost p-1.5"><X className="w-5 h-5" /></button>
+            <button onClick={onClose} className="btn-ghost p-1.5">
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -50,7 +52,8 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose }: Props) {
             [...plays].reverse().map((play, i) => {
               const isLast = i === 0;
               return (
-                <div key={play.id}
+                <div
+                  key={play.id}
                   className={`flex items-start gap-2 rounded-xl px-3 py-2 border transition-colors ${
                     isLast ? "border-dragon-primary/30 bg-dragon-primary/5" : "border-surface-border bg-surface-card"
                   }`}
@@ -59,7 +62,7 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold truncate">{play.description}</div>
                     <div className="text-[10px] text-neutral-600 mt-0.5">
-                      {QUARTER_LABELS[play.quarter]} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance} · {yardLabel(play.ballOn)}
+                      {quarterLabel(play.quarter)} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance} · {yardLabel(play.ballOn)}
                       {play.possession === "them" && " (DEF)"}
                     </div>
                     {play.offensiveFormation && (

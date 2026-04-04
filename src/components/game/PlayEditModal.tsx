@@ -1,11 +1,14 @@
 import { useState, useMemo } from "react";
 import { X, ChevronLeft, ChevronRight, Flag, Trash2 } from "lucide-react";
 import {
+  type BlockedKickType,
+  type PenaltySide,
   type PlayTypeDef,
   type RosterPlayer,
   type OpponentPlayerRef,
   type TaggedPlayer,
   type PlayRecord,
+  BLOCKED_KICK_TYPES,
   PLAY_TYPES,
   PENALTIES,
   PENALTY_DEFAULT_YARDS,
@@ -14,6 +17,7 @@ import {
   yardLabel,
   buildDescription,
   findPlayTypeDef,
+  getPenaltyDefaultSide,
 } from "./types";
 
 /* ── Edit result passed back to GameScreen ── */
@@ -23,9 +27,12 @@ export interface PlayEditResult {
   yards: number;
   isTouchdown: boolean;
   isFirstDown: boolean;
+  isTouchback: boolean;
   result: string;
   penalty: string | null;
+  penaltyCategory: PenaltySide | null;
   flagYards: number;
+  blockedKickType: BlockedKickType | null;
   offensiveFormation: string | null;
   defensiveFormation: string | null;
   hashMark: string | null;
@@ -45,6 +52,11 @@ interface Props {
 }
 
 type Step = "type" | "players" | "yards" | "formations" | "defense" | "review";
+
+function inferTwoPointStyle(play: PlayRecord): "pass" | "run" {
+  if (play.type !== "two_pt") return "pass";
+  return play.tagged.some((tag) => tag.role === "rusher") ? "run" : "pass";
+}
 
 /* ── Player selector grid ── */
 function PlayerGrid({
@@ -180,6 +192,7 @@ export default function PlayEditModal({
   // Toggles
   const [isTD, setIsTD] = useState(play.isTouchdown);
   const [isFirstDown, setIsFirstDown] = useState(play.firstDown);
+  const [isTouchback, setIsTouchback] = useState(Boolean(play.isTouchback));
   const resultInit = play.result || "";
   const [result, setResult] = useState<"Good" | "No Good" | "">(
     resultInit === "Good" ? "Good" : resultInit === "No Good" ? "No Good" : ""
@@ -187,8 +200,10 @@ export default function PlayEditModal({
 
   // Penalty
   const [penalty, setPenalty] = useState<string | null>(play.penalty);
+  const [penaltyCategory, setPenaltyCategory] = useState<PenaltySide | null>(play.penaltyCategory ?? null);
   const [flagYards, setFlagYards] = useState(play.flagYards);
   const [showPenalties, setShowPenalties] = useState(false);
+  const [blockedKickType, setBlockedKickType] = useState<BlockedKickType | null>(play.blockedKickType ?? null);
 
   // Formations
   const [offFormation, setOffFormation] = useState<string | null>(play.offensiveFormation ?? null);
@@ -203,9 +218,14 @@ export default function PlayEditModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Step management
-  const roles = playType.roles;
+  const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">(() => inferTwoPointStyle(play));
+  const roles = useMemo(() => {
+    if (playType.id !== "two_pt") return playType.roles;
+    return twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
+  }, [playType, twoPointStyle]);
   const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
+  const needsTouchback = ["kickoff", "punt"].includes(playType.id);
 
   const steps: Step[] = ["type"];
   if (roles.length > 0) steps.push("players");
@@ -219,11 +239,23 @@ export default function PlayEditModal({
   const [stepIdx, setStepIdx] = useState(0);
   const currentStep = steps[stepIdx] ?? "review";
 
-  const goNext = () => { if (stepIdx < steps.length - 1) setStepIdx(s => s + 1); };
+  const canGoNext = () => {
+    if (currentStep === "players") {
+      return roles.length === 0 || roles.every((role) => tagged.some((player) => player.role === role));
+    }
+    if (currentStep === "review" && penalty) {
+      return !!penaltyCategory;
+    }
+    return true;
+  };
+
+  const goNext = () => { if (stepIdx < steps.length - 1 && canGoNext()) setStepIdx(s => s + 1); };
   const goBack = () => { if (stepIdx > 0) setStepIdx(s => s - 1); };
 
   const handleChangePlayType = (pt: PlayTypeDef) => {
     setPlayType(pt);
+    if (pt.id !== "two_pt") setTwoPointStyle("pass");
+    if (pt.id !== "blocked_kick") setBlockedKickType(null);
     if (pt.roles.join(",") !== playType.roles.join(",")) {
       setTagged([]);
       setCurrentRoleIdx(0);
@@ -293,9 +325,12 @@ export default function PlayEditModal({
       yards: playYards,
       isTouchdown: scored,
       isFirstDown: earnedFirst,
+      isTouchback,
       result: finalResult,
       penalty,
+      penaltyCategory,
       flagYards: penalty ? flagYards : 0,
+      blockedKickType: playType.id === "blocked_kick" ? blockedKickType : null,
       offensiveFormation: offFormation,
       defensiveFormation: defFormation,
       hashMark,
@@ -363,6 +398,31 @@ export default function PlayEditModal({
           {/* ── STEP: Players ── */}
           {currentStep === "players" && (
             <>
+              {playType.id === "two_pt" && (
+                <div>
+                  <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Conversion Type</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["pass", "run"] as const).map((style) => (
+                      <button
+                        key={style}
+                        onClick={() => {
+                          setTwoPointStyle(style);
+                          setTagged([]);
+                          setCurrentRoleIdx(0);
+                        }}
+                        className={`py-2.5 rounded-xl text-sm font-black border-2 capitalize transition-colors ${
+                          twoPointStyle === style
+                            ? "border-dragon-primary bg-dragon-primary/15 text-dragon-primary"
+                            : "border-surface-border bg-surface-bg text-neutral-500"
+                        }`}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-1.5 flex-wrap">
                 {roles.map((role, i) => {
                   const tp = tagged.find(t => t.role === role);
@@ -400,6 +460,27 @@ export default function PlayEditModal({
           {/* ── STEP: Yards / Result ── */}
           {currentStep === "yards" && (
             <>
+              {playType.id === "blocked_kick" && (
+                <div>
+                  <label className="label block mb-1.5">Blocked Kick Type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {BLOCKED_KICK_TYPES.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setBlockedKickType(option.value)}
+                        className={`py-2 rounded-xl text-xs font-bold border-2 transition-colors ${
+                          blockedKickType === option.value
+                            ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
+                            : "border-surface-border bg-surface-bg text-neutral-500"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {needsYards && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -471,6 +552,13 @@ export default function PlayEditModal({
                 </div>
               )}
 
+              {needsTouchback && (
+                <button onClick={() => setIsTouchback(t => !t)}
+                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
+                    isTouchback ? "border-sky-500 bg-sky-500/20 text-sky-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                  }`}>Touchback</button>
+              )}
+
               <button onClick={() => setShowPenalties(s => !s)}
                 className={`w-full py-2 rounded-xl text-xs font-bold border transition-colors ${
                   penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-neutral-500"
@@ -483,18 +571,43 @@ export default function PlayEditModal({
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
                     {PENALTIES.map(p => (
-                      <button key={p} onClick={() => { setPenalty(p); setFlagYards(PENALTY_DEFAULT_YARDS[p] ?? 5); setShowPenalties(false); }}
+                      <button key={p} onClick={() => {
+                        setPenalty(p);
+                        setPenaltyCategory(getPenaltyDefaultSide(p));
+                        setFlagYards(PENALTY_DEFAULT_YARDS[p] ?? 5);
+                        setShowPenalties(false);
+                      }}
                         className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-colors ${
                           penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-neutral-400"
                         }`}>{p}</button>
                     ))}
                   </div>
                   {penalty && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-neutral-500">Penalty yards:</span>
-                      <input type="number" value={flagYards} onChange={e => setFlagYards(Number(e.target.value))}
-                        className="input w-16 text-center text-sm" />
-                      <button onClick={() => { setPenalty(null); setFlagYards(5); }} className="text-xs text-red-400 ml-auto">Clear</button>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-xs text-neutral-500 block mb-1">Flag On</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(["offense", "defense"] as const).map((side) => (
+                            <button
+                              key={side}
+                              onClick={() => setPenaltyCategory(side)}
+                              className={`py-2 rounded-xl text-xs font-bold border-2 capitalize transition-colors ${
+                                penaltyCategory === side
+                                  ? "border-orange-500 bg-orange-500/15 text-orange-400"
+                                  : "border-surface-border bg-surface-bg text-neutral-500"
+                              }`}
+                            >
+                              {side}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-500">Penalty yards:</span>
+                        <input type="number" value={flagYards} onChange={e => setFlagYards(Number(e.target.value))}
+                          className="input w-16 text-center text-sm" />
+                        <button onClick={() => { setPenalty(null); setPenaltyCategory(null); setFlagYards(5); }} className="text-xs text-red-400 ml-auto">Clear</button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -669,8 +782,8 @@ export default function PlayEditModal({
                 className="btn-ghost flex-1 py-2.5 text-sm font-bold disabled:opacity-30">
                 <ChevronLeft className="w-4 h-4 inline mr-1" /> Back
               </button>
-              <button onClick={goNext}
-                className="btn-primary flex-1 py-2.5 text-sm font-bold">
+              <button onClick={goNext} disabled={!canGoNext()}
+                className="btn-primary flex-1 py-2.5 text-sm font-bold disabled:opacity-50">
                 Next <ChevronRight className="w-4 h-4 inline ml-1" />
               </button>
             </>
@@ -679,7 +792,7 @@ export default function PlayEditModal({
               <button onClick={onClose} className="btn-ghost flex-1 py-2.5 text-sm font-bold">
                 Cancel
               </button>
-              <button onClick={handleSubmit} className="btn-primary flex-1 py-3 text-sm font-black">
+              <button onClick={handleSubmit} disabled={!canGoNext()} className="btn-primary flex-1 py-3 text-sm font-black disabled:opacity-50">
                 Save Changes
               </button>
             </>

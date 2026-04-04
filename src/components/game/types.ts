@@ -33,6 +33,9 @@ export interface TaggedPlayer {
   isOpponent?: boolean;
 }
 
+export type PenaltySide = "offense" | "defense";
+export type BlockedKickType = "field_goal" | "extra_point" | "punt" | "kickoff";
+
 export interface PlayRecord {
   id: string;
   quarter: number;
@@ -51,6 +54,13 @@ export interface PlayRecord {
   distance: number;
   description: string;
   possession: "us" | "them";
+  isTouchback?: boolean;
+  penaltyCategory?: PenaltySide | null;
+  blockedKickType?: BlockedKickType | null;
+  nextPossession?: "us" | "them";
+  nextDown?: number;
+  nextDistance?: number;
+  nextBallOn?: number;
   offensiveFormation?: string | null;
   defensiveFormation?: string | null;
   hashMark?: string | null;
@@ -118,6 +128,31 @@ export const PENALTIES = [
   "Clipping", "Encroachment", "Illegal Shift", "Illegal Motion",
 ];
 
+export const BLOCKED_KICK_TYPES: Array<{ value: BlockedKickType; label: string }> = [
+  { value: "field_goal", label: "Field Goal" },
+  { value: "extra_point", label: "PAT / XP" },
+  { value: "punt", label: "Punt" },
+  { value: "kickoff", label: "Kickoff" },
+];
+
+const PENALTY_METADATA: Record<string, { engineCode: string; defaultSide?: PenaltySide }> = {
+  Offsides: { engineCode: "offsides", defaultSide: "defense" },
+  "False Start": { engineCode: "false_start", defaultSide: "offense" },
+  "Holding-OFF": { engineCode: "holding_offense", defaultSide: "offense" },
+  "Holding-DEF": { engineCode: "holding_defense", defaultSide: "defense" },
+  "PI-OFF": { engineCode: "offensive_pass_interference", defaultSide: "offense" },
+  "PI-DEF": { engineCode: "defensive_pass_interference", defaultSide: "defense" },
+  Facemask: { engineCode: "face_mask" },
+  Unsportsmanlike: { engineCode: "unsportsmanlike_conduct" },
+  "Delay of Game": { engineCode: "delay_of_game", defaultSide: "offense" },
+  "Illegal Formation": { engineCode: "illegal_formation", defaultSide: "offense" },
+  "Block in Back": { engineCode: "illegal_block_in_back" },
+  Clipping: { engineCode: "clipping" },
+  Encroachment: { engineCode: "encroachment", defaultSide: "defense" },
+  "Illegal Shift": { engineCode: "illegal_shift", defaultSide: "offense" },
+  "Illegal Motion": { engineCode: "illegal_motion", defaultSide: "offense" },
+};
+
 export const OFFENSE_PENALTIES = new Set([
   "False Start", "Holding-OFF", "PI-OFF", "Illegal Formation",
   "Delay of Game", "Illegal Shift", "Illegal Motion", "Clipping",
@@ -130,6 +165,22 @@ export const PENALTY_DEFAULT_YARDS: Record<string, number> = {
   "Clipping": 15, "Encroachment": 5, "Illegal Shift": 5, "Illegal Motion": 5,
 };
 
+export function getPenaltyEngineCode(label: string | null | undefined): string | undefined {
+  return label ? PENALTY_METADATA[label]?.engineCode : undefined;
+}
+
+export function getPenaltyDefaultSide(label: string | null | undefined): PenaltySide | null {
+  return label ? PENALTY_METADATA[label]?.defaultSide ?? null : null;
+}
+
+export function isPenaltyOnOffense(
+  label: string | null | undefined,
+  explicitSide?: PenaltySide | null,
+): boolean {
+  const resolvedSide = explicitSide ?? getPenaltyDefaultSide(label);
+  return resolvedSide === "offense";
+}
+
 export const OFFENSIVE_FORMATIONS = [
   "I-Form", "Pro-I", "Strong-I", "Shotgun", "Pistol", "Single Back",
   "Spread", "Trips", "Double Tight", "Wildcat", "Goal Line", "Ace",
@@ -141,8 +192,12 @@ export const DEFENSIVE_FORMATIONS = [
   "46", "3-3 Stack", "4-2-5", "Goal Line",
 ];
 
-export const QUARTER_LABELS = ["1st", "2nd", "3rd", "4th", "OT"];
+export const QUARTER_LABELS = ["", "1st", "2nd", "3rd", "4th", "OT"];
 export const NFHS_QUARTER_SECS = 720;
+
+export function quarterLabel(quarter: number) {
+  return QUARTER_LABELS[Math.max(1, Math.min(QUARTER_LABELS.length - 1, quarter))] ?? "1st";
+}
 
 /* ── Helpers ── */
 

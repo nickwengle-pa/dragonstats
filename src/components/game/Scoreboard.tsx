@@ -1,5 +1,5 @@
 import { Trophy } from "lucide-react";
-import { fmtClock, QUARTER_LABELS, type GameState } from "./types";
+import { fmtClock, quarterLabel, type GameState } from "./types";
 
 interface Props {
   state: GameState;
@@ -11,14 +11,20 @@ interface Props {
   oppColor?: string;
   onCycleQuarter: () => void;
   onEditClock: () => void;
-  onTogglePossession: () => void;
   onEndGame: () => void;
 }
 
 export default function Scoreboard({
-  state, progName, oppName, primaryColor,
-  progLogoUrl, oppLogoUrl, oppColor,
-  onCycleQuarter, onEditClock, onTogglePossession, onEndGame,
+  state,
+  progName,
+  oppName,
+  primaryColor,
+  progLogoUrl,
+  oppLogoUrl,
+  oppColor,
+  onCycleQuarter,
+  onEditClock,
+  onEndGame,
 }: Props) {
   return (
     <div className="card p-3">
@@ -27,7 +33,10 @@ export default function Scoreboard({
           {progLogoUrl ? (
             <img src={progLogoUrl} alt={progName} className="w-8 h-8 object-contain rounded" />
           ) : (
-            <div className="w-8 h-8 rounded flex items-center justify-center text-[10px] font-black text-white" style={{ backgroundColor: primaryColor }}>
+            <div
+              className="w-8 h-8 rounded flex items-center justify-center text-[10px] font-black text-white"
+              style={{ backgroundColor: primaryColor }}
+            >
               {progName.slice(0, 2).toUpperCase()}
             </div>
           )}
@@ -39,25 +48,31 @@ export default function Scoreboard({
         </div>
 
         <div className="flex flex-col items-center gap-0.5">
-          <button onClick={onCycleQuarter}
-            className="text-[10px] font-bold text-neutral-500 border border-surface-border rounded px-2 py-0.5 active:bg-surface-hover">
-            {QUARTER_LABELS[state.quarter]}
+          <button
+            onClick={onCycleQuarter}
+            className="text-[10px] font-bold text-neutral-500 border border-surface-border rounded px-2 py-0.5 active:bg-surface-hover"
+          >
+            {quarterLabel(state.quarter)}
           </button>
-          <button onClick={onEditClock}
-            className="text-xl font-black tabular-nums text-amber-400 active:opacity-60">
+          <button
+            onClick={onEditClock}
+            className="text-xl font-black tabular-nums text-amber-400 active:opacity-60"
+          >
             {fmtClock(state.clock)}
           </button>
-          <button onClick={onTogglePossession}
-            className="text-[10px] font-bold text-neutral-600 active:text-neutral-400">
-            ⇄ POSS
-          </button>
+          <div className="text-[10px] font-bold text-neutral-600">
+            {state.possession === "us" ? "OUR BALL" : "THEIR BALL"}
+          </div>
         </div>
 
         <div className="flex-1 flex flex-col items-center gap-1">
           {oppLogoUrl ? (
             <img src={oppLogoUrl} alt={oppName} className="w-8 h-8 object-contain rounded" />
           ) : (
-            <div className="w-8 h-8 rounded flex items-center justify-center text-[10px] font-black text-white" style={{ backgroundColor: oppColor ?? "#6b7280" }}>
+            <div
+              className="w-8 h-8 rounded flex items-center justify-center text-[10px] font-black text-white"
+              style={{ backgroundColor: oppColor ?? "#6b7280" }}
+            >
               {oppName.slice(0, 2).toUpperCase()}
             </div>
           )}

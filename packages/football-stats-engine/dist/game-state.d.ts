@@ -89,7 +89,8 @@ export declare enum StoppageReason {
 export declare enum CoinTossChoice {
     Receive = "receive",
     Kick = "kick",
-    Defer = "defer"
+    Defer = "defer",
+    DefendGoal = "defend_goal"
 }
 export declare enum PossessionReason {
     Kickoff = "kickoff",
@@ -246,8 +247,11 @@ export declare class GameStateManager {
     private coinTossWinner;
     private coinTossChoice;
     private deferredTeam;
+    private openingKickoffReceiver;
+    private secondHalfKickoffReceiver;
     constructor(level?: RuleLevel, customRules?: Partial<RuleSet>);
     setTeams(home: TeamId, away: TeamId): void;
+    configureKickoffReceivers(openingKickoffReceiver: string, secondHalfKickoffReceiver?: string, coinTossWinner?: string, coinTossChoice?: CoinTossChoice): void;
     recordCoinToss(winner: string, choice: CoinTossChoice): void;
     processPlay(play: Play): {
         events: GameEvent[];

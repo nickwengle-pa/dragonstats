@@ -191,6 +191,7 @@ export default function GameSummaryScreen() {
           id: program.id,
           name: program.name,
           abbreviation: program.abbreviation,
+          game_config: program.game_config,
         });
 
         if (cancelled) return;

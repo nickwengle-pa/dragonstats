@@ -6,6 +6,11 @@
  * with players as direct fields. This module bridges the two formats.
  */
 
+import {
+  getPenaltyDefaultSide,
+  getPenaltyEngineCode,
+  type PenaltySide,
+} from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import {
   type Play,
@@ -38,6 +43,7 @@ export interface TransformContext {
   awayTeamName: string;
   /** The program's team ID — maps to possession="us" */
   programTeamId: string;
+  fgSnapAdd?: number;
 }
 
 /**
@@ -190,14 +196,16 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
   if (!penaltyType) return undefined;
 
   const possTeamId = play.possession === "us" ? ctx.programTeamId : otherTeam(ctx.programTeamId, ctx);
-  // App penalty category determines which team gets the penalty
-  const penCategory = pd?.play_category; // "offense" or "defense"
+  const explicitSide = pd?.play_category === "offense" || pd?.play_category === "defense"
+    ? pd.play_category as PenaltySide
+    : null;
+  const penCategory = explicitSide ?? getPenaltyDefaultSide(penaltyType);
   const penTeam = penCategory === "defense"
     ? otherTeam(possTeamId, ctx)
     : possTeamId;
 
   return [{
-    penaltyType: penaltyType.toLowerCase().replace(/\s+/g, "_"),
+    penaltyType: getPenaltyEngineCode(penaltyType) ?? penaltyType.toLowerCase().replace(/\s+/g, "_"),
     team: penTeam,
     yards: pd?.penalty_yards ?? 5,
     enforcement: PenaltyEnforcement.Accepted,
@@ -293,7 +301,7 @@ function convertPlay(
     case "pass_inc": {
       const passer = firstPlayerByRole(play, "passer")
         ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
-      const target = firstPlayerByRole(play, "receiver");
+      const target = firstPlayerByRole(play, "target") ?? firstPlayerByRole(play, "receiver");
       return {
         type: PlayType.Pass,
         passer,
@@ -441,7 +449,7 @@ function convertPlay(
         kicker,
         result: kickResult,
         isTouchdown: false,
-        fieldGoalDistance: play.yard_line ? (100 - play.yard_line + 17) : undefined, // rough FG distance
+        fieldGoalDistance: play.yard_line ? (100 - play.yard_line + (ctx.fgSnapAdd ?? 17)) : undefined,
         penalties,
         description: play.description ?? undefined,
         context,
@@ -497,10 +505,39 @@ function convertPlay(
     }
 
     case "blocked_kick": {
+      const blockedKickType = pd?.blocked_kick_type;
       const blockedBy = firstPlayerByRole(play, "blocker")
         ?? firstPlayerByRole(play, "defender");
+      if (blockedKickType === "punt") {
+        return {
+          type: PlayType.Punt,
+          punter: firstPlayerByRole(play, "punter"),
+          returner: firstPlayerByRole(play, "returner"),
+          result: SpecialTeamsResult.Block,
+          isBlocked: true,
+          blockedBy,
+          isTouchdown: play.is_touchdown,
+          penalties,
+          description: play.description ?? undefined,
+          context,
+        } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
+      }
+      if (blockedKickType === "kickoff") {
+        return {
+          type: PlayType.Kickoff,
+          kicker: firstPlayerByRole(play, "kicker"),
+          returner: firstPlayerByRole(play, "returner"),
+          result: SpecialTeamsResult.Block,
+          isBlocked: true,
+          blockedBy,
+          isTouchdown: play.is_touchdown,
+          penalties,
+          description: play.description ?? undefined,
+          context,
+        } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
+      }
       return {
-        type: PlayType.FieldGoal, // treat as a blocked FG/PAT
+        type: blockedKickType === "extra_point" ? PlayType.ExtraPoint : PlayType.FieldGoal,
         result: KickResult.Blocked,
         isBlocked: true,
         blockedBy,
@@ -622,7 +659,8 @@ function convertPlay(
 
     // ── PENALTY-ONLY PLAY ────────────────────────────────────────────────
 
-    case "penalty": {
+    case "penalty":
+    case "penalty_only": {
       if (!penalties || penalties.length === 0) return null;
       return {
         type: PlayType.Penalty,
