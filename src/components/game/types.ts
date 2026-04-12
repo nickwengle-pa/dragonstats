@@ -212,6 +212,19 @@ export function yardLabel(yard: number) {
   return yard > 50 ? `OPP ${100 - yard}` : `OWN ${yard}`;
 }
 
+function playerLabel(t: TaggedPlayer | undefined): string {
+  if (!t) return "?";
+  const num = t.jersey_number != null ? `#${t.jersey_number}` : "";
+  if (t.name && t.name !== "?") {
+    const parts = t.name.trim().split(/\s+/);
+    const short = parts.length > 1
+      ? `${parts[0][0]}.${parts[parts.length - 1]}`
+      : parts[0];
+    return num ? `${num} ${short}` : short;
+  }
+  return num || "?";
+}
+
 export function buildDescription(
   pt: PlayTypeDef,
   tagged: TaggedPlayer[],
@@ -227,27 +240,27 @@ export function buildDescription(
   switch (pt.id) {
     case "rush": {
       const c = byRole("rusher");
-      parts.push(`#${c?.jersey_number ?? "?"} rush ${yards > 0 ? "+" : ""}${yards}`);
+      parts.push(`${playerLabel(c)} rush ${yards > 0 ? "+" : ""}${yards}`);
       break;
     }
     case "pass_comp": {
       const p = byRole("passer"), r = byRole("receiver");
-      parts.push(`#${p?.jersey_number ?? "?"} → #${r?.jersey_number ?? "?"} ${yards > 0 ? "+" : ""}${yards}`);
+      parts.push(`${playerLabel(p)} → ${playerLabel(r)} ${yards > 0 ? "+" : ""}${yards}`);
       break;
     }
     case "pass_inc": {
       const p = byRole("passer"), r = byRole("target");
-      parts.push(`#${p?.jersey_number ?? "?"} → #${r?.jersey_number ?? "?"} inc`);
+      parts.push(`${playerLabel(p)} → ${playerLabel(r)} inc`);
       break;
     }
     case "sack": {
       const p = byRole("passer"), s = byRole("sacker");
-      parts.push(`#${p?.jersey_number ?? "?"} sacked ${yards}${s ? ` by #${s.jersey_number}` : ""}`);
+      parts.push(`${playerLabel(p)} sacked ${yards}${s ? ` by ${playerLabel(s)}` : ""}`);
       break;
     }
     case "int": {
       const p = byRole("passer"), i = byRole("interceptor");
-      parts.push(`#${p?.jersey_number ?? "?"} INT by ${i?.name ?? "?"}`);
+      parts.push(`${playerLabel(p)} INT by ${playerLabel(i)}`);
       break;
     }
     case "fumble": parts.push("Fumble"); break;
@@ -259,10 +272,10 @@ export function buildDescription(
       const k = byRole("kicker"), ret = byRole("returner");
       if (kickInfo) {
         const kickLabel = kickInfo.isTouchback ? "Touchback" : `to OPP ${kickInfo.kickedToYard}`;
-        const retLabel = !kickInfo.isTouchback && ret ? `, ret #${ret.jersey_number} ${kickInfo.returnYards} yds` : "";
-        parts.push(`Kickoff${k ? ` #${k.jersey_number}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
+        const retLabel = !kickInfo.isTouchback && ret ? `, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : "";
+        parts.push(`Kickoff${k ? ` ${playerLabel(k)}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
       } else {
-        parts.push(`Kickoff${k ? ` #${k.jersey_number}` : ""}${ret ? ` ret #${ret.jersey_number} ${yards}` : ""}`);
+        parts.push(`Kickoff${k ? ` ${playerLabel(k)}` : ""}${ret ? ` ret ${playerLabel(ret)} ${yards}` : ""}`);
       }
       break;
     }
@@ -270,10 +283,10 @@ export function buildDescription(
       const p = byRole("punter"), ret = byRole("returner");
       if (kickInfo) {
         const kickLabel = kickInfo.isTouchback ? "Touchback" : `to OPP ${kickInfo.kickedToYard}`;
-        const retLabel = !kickInfo.isTouchback && ret ? `, ret #${ret.jersey_number} ${kickInfo.returnYards} yds` : "";
-        parts.push(`Punt${p ? ` #${p.jersey_number}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
+        const retLabel = !kickInfo.isTouchback && ret ? `, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : "";
+        parts.push(`Punt${p ? ` ${playerLabel(p)}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
       } else {
-        parts.push(`Punt${p ? ` #${p.jersey_number}` : ""}${ret ? ` ret #${ret.jersey_number} ${yards}` : ""}`);
+        parts.push(`Punt${p ? ` ${playerLabel(p)}` : ""}${ret ? ` ret ${playerLabel(ret)} ${yards}` : ""}`);
       }
       break;
     }

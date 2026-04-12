@@ -154,14 +154,39 @@ export default function GameScreen() {
     // Resume game state from existing plays
     if (existingPlays.length > 0) {
       const state = deriveGameState(existingPlays, { config: gameConfig, pregame: pregameConfig });
-      setQuarter(rebuilt.currentQuarter);
-      setClock(state.clock);
-      setPossession(rebuilt.currentSituation.possession);
       setOurScore(state.ourScore);
       setTheirScore(state.theirScore);
-      setDown(rebuilt.currentSituation.down);
-      setDistance(rebuilt.currentSituation.distance);
-      setBallOn(rebuilt.currentSituation.ballOn);
+
+      // Prefer the persisted game situation (captures manual adjustments, PAT skips, etc.)
+      const gd = gameData as Record<string, any> | null;
+      const hasPersistedSituation = gd
+        && typeof gd.current_yard_line === "number"
+        && (gd.current_possession === "us" || gd.current_possession === "them")
+        && typeof gd.current_down === "number"
+        && typeof gd.current_distance === "number";
+
+      if (hasPersistedSituation) {
+        setQuarter(gd.current_quarter ?? rebuilt.currentQuarter);
+        // Parse clock from "M:SS" string
+        if (typeof gd.current_clock === "string" && gd.current_clock.includes(":")) {
+          const [m, s] = gd.current_clock.split(":").map(Number);
+          setClock((m || 0) * 60 + (s || 0));
+        } else {
+          setClock(state.clock);
+        }
+        setPossession(gd.current_possession);
+        setDown(gd.current_down);
+        setDistance(gd.current_distance);
+        setBallOn(gd.current_yard_line);
+      } else {
+        // Fallback: reconstruct from play history
+        setQuarter(rebuilt.currentQuarter);
+        setClock(state.clock);
+        setPossession(rebuilt.currentSituation.possession);
+        setDown(rebuilt.currentSituation.down);
+        setDistance(rebuilt.currentSituation.distance);
+        setBallOn(rebuilt.currentSituation.ballOn);
+      }
     } else {
       const initialSituation = createInitialSituation(pregameConfig, gameConfig);
       setQuarter(1);
@@ -250,12 +275,34 @@ export default function GameScreen() {
     return { rushAtt, rushYds, passAtt, passComp, passYds, firstDowns, tos, pens };
   }, [plays]);
 
+  const persistGameSituation = useCallback((fields: {
+    quarter?: number; clock?: number;
+    possession?: "us" | "them"; down?: number; distance?: number; ballOn?: number;
+  }) => {
+    if (!gameId) return;
+    const update: Record<string, unknown> = {};
+    if (fields.quarter !== undefined) update.current_quarter = fields.quarter;
+    if (fields.clock !== undefined) {
+      const m = Math.floor(fields.clock / 60);
+      const s = fields.clock % 60;
+      update.current_clock = `${m}:${String(s).padStart(2, "0")}`;
+    }
+    if (fields.possession !== undefined) update.current_possession = fields.possession;
+    if (fields.down !== undefined) update.current_down = fields.down;
+    if (fields.distance !== undefined) update.current_distance = fields.distance;
+    if (fields.ballOn !== undefined) update.current_yard_line = fields.ballOn;
+    if (Object.keys(update).length > 0) {
+      void supabase.from("games").update(update).eq("id", gameId);
+    }
+  }, [gameId]);
+
   const applySituation = useCallback((next: { possession: "us" | "them"; down: number; distance: number; ballOn: number }) => {
     setPossession(next.possession);
     setDown(next.down);
     setDistance(next.distance);
     setBallOn(next.ballOn);
-  }, []);
+    persistGameSituation(next);
+  }, [persistGameSituation]);
 
   const persistPlaySituations = useCallback((nextPlays: PlayRecord[]) => {
     void Promise.all(nextPlays.map((play) => updatePlaySituation(play.id, {
@@ -318,11 +365,13 @@ export default function GameScreen() {
       setQuarter(last.quarter);
       setClock(last.clock);
       applySituation(rebuilt.currentSituation);
+      persistGameSituation({ quarter: last.quarter, clock: last.clock });
     } else {
       const reset = createInitialSituation(pregame, gc);
       setQuarter(1);
       setClock(gc.quarter_length_secs);
       applySituation(reset);
+      persistGameSituation({ quarter: 1, clock: gc.quarter_length_secs });
     }
 
     if (gameId) {
@@ -382,6 +431,7 @@ export default function GameScreen() {
         setQuarter(1);
         setClock(nextConfig.quarter_length_secs);
         applySituation(reset);
+        persistGameSituation({ quarter: 1, clock: nextConfig.quarter_length_secs });
       } else {
         const rebuilt = rebuildPlaySituations(plays, nextPregame, nextConfig);
         setPlays(rebuilt.plays);
@@ -391,6 +441,7 @@ export default function GameScreen() {
           setQuarter(last.quarter);
           setClock(last.clock);
           applySituation(rebuilt.currentSituation);
+          persistGameSituation({ quarter: last.quarter, clock: last.clock });
         }
       }
       setShowPregame(false);
@@ -641,6 +692,7 @@ export default function GameScreen() {
     setQuarter(transition.quarter);
     setClock(transition.clock);
     applySituation(transition.situation);
+    persistGameSituation({ quarter: transition.quarter, clock: transition.clock });
   };
 
   /* ── End game ── */
@@ -724,7 +776,7 @@ export default function GameScreen() {
           <div className="flex items-center gap-2">
             <div className="flex gap-1">
               {[1, 2, 3, 4].map(d => (
-                <button key={d} onClick={() => setDown(d)}
+                <button key={d} onClick={() => { setDown(d); persistGameSituation({ down: d }); }}
                   className={`w-9 h-9 rounded-lg text-xs font-black transition-colors ${
                     down === d ? "bg-amber-500 text-black" : "bg-surface-bg text-neutral-500 active:bg-surface-hover"
                   }`}>
@@ -734,18 +786,18 @@ export default function GameScreen() {
             </div>
             <span className="text-neutral-600 font-bold">&</span>
             <div className="flex items-center gap-1">
-              <button onClick={() => setDistance(d => Math.max(1, d - 1))} className="btn-ghost w-7 h-9 text-sm font-bold">-</button>
+              <button onClick={() => { const v = Math.max(1, distance - 1); setDistance(v); persistGameSituation({ distance: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold">-</button>
               <div className="w-8 h-9 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-black text-amber-400 tabular-nums">{distance}</div>
-              <button onClick={() => setDistance(d => Math.min(99, d + 1))} className="btn-ghost w-7 h-9 text-sm font-bold">+</button>
+              <button onClick={() => { const v = Math.min(99, distance + 1); setDistance(v); persistGameSituation({ distance: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold">+</button>
             </div>
             <div className="flex-1" />
             <div className="flex items-center gap-1">
               <span className="text-[10px] font-bold text-neutral-600 mr-1">BALL</span>
-              <button onClick={() => setBallOn(b => Math.max(1, b - 5))} className="btn-ghost px-1 h-9 text-[10px] font-bold text-neutral-500">-5</button>
-              <button onClick={() => setBallOn(b => Math.max(1, b - 1))} className="btn-ghost w-7 h-9 text-sm font-bold">-</button>
+              <button onClick={() => { const v = Math.max(1, ballOn - 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-neutral-500">-5</button>
+              <button onClick={() => { const v = Math.max(1, ballOn - 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold">-</button>
               <div className="min-w-[52px] h-9 rounded-lg bg-surface-bg flex items-center justify-center text-xs font-black text-emerald-400 tabular-nums px-1">{yardLabel(ballOn)}</div>
-              <button onClick={() => setBallOn(b => Math.min(99, b + 1))} className="btn-ghost w-7 h-9 text-sm font-bold">+</button>
-              <button onClick={() => setBallOn(b => Math.min(99, b + 5))} className="btn-ghost px-1 h-9 text-[10px] font-bold text-neutral-500">+5</button>
+              <button onClick={() => { const v = Math.min(99, ballOn + 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold">+</button>
+              <button onClick={() => { const v = Math.min(99, ballOn + 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-neutral-500">+5</button>
             </div>
           </div>
         </div>
@@ -918,7 +970,7 @@ export default function GameScreen() {
               <input type="number" min={0} max={59} value={clockSecs} onChange={e => setClockSecs(Number(e.target.value))}
                 className="input w-16 text-center text-xl font-black" />
             </div>
-            <button onClick={() => { setClock(clockMins * 60 + clockSecs); setShowClockEditor(false); }}
+            <button onClick={() => { const v = clockMins * 60 + clockSecs; setClock(v); persistGameSituation({ clock: v }); setShowClockEditor(false); }}
               className="btn-primary w-full text-sm">Set</button>
             <button onClick={() => setShowClockEditor(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
           </div>

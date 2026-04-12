@@ -198,10 +198,20 @@ export default function PlayEntryModal({
   const [searches, setSearches] = useState<Record<string, string>>({});
 
   // Yards — yard-line picker
-  const initSide = gameState.ballOn <= 50 ? "our" : "opp";
-  const initYL = gameState.ballOn <= 50 ? gameState.ballOn : 100 - gameState.ballOn;
-  const [resultYardLine, setResultYardLine] = useState(initYL || 1);
-  const [resultSide, setResultSide] = useState<"our" | "opp">(initSide);
+  // Convert ballOn (possessing team's perspective) to program-perspective side + yard line
+  const initResult = (() => {
+    let programBallOn: number;
+    if (gameState.possession === "us") {
+      programBallOn = gameState.ballOn; // 0=our goal, 100=opp goal
+    } else {
+      programBallOn = 100 - gameState.ballOn; // flip to our perspective
+    }
+    const side: "our" | "opp" = programBallOn <= 50 ? "our" : "opp";
+    const yl = programBallOn <= 50 ? programBallOn : 100 - programBallOn;
+    return { side, yl: yl || 1 };
+  })();
+  const [resultYardLine, setResultYardLine] = useState(initResult.yl);
+  const [resultSide, setResultSide] = useState<"our" | "opp">(initResult.side);
   const [resultYardRaw, setResultYardRaw] = useState("");
 
   // Helper: adjust yard line and flip side when crossing 50
@@ -295,8 +305,9 @@ export default function PlayEntryModal({
     if (roles.length > 0) steps.push("players");
     if (needsYards || needsResult) steps.push("yards");
     steps.push("formations");
-    // Defense step: show OUR tacklers when THEY have the ball (we're on defense)
-    if (isTheirBall) steps.push("defense");
+    // Defense/tackler step for all non-scoring plays that involve contact
+    const noTacklerPlays = ["pass_inc", "spike", "penalty_only", "pat", "two_pt", "fg"];
+    if (!noTacklerPlays.includes(playType.id)) steps.push("defense");
     steps.push("review");
   }
 
@@ -390,6 +401,32 @@ export default function PlayEntryModal({
       name: `${p.player.first_name} ${p.player.last_name}`,
       role: "tackler",
       credit,
+    };
+    setTacklers(prev => {
+      const updated = [...prev, tp];
+      if (updated.length > 1) {
+        return updated.map(t => ({ ...t, credit: 0.5 }));
+      }
+      return updated;
+    });
+    setTacklerSearch("");
+  };
+
+  const handleAddOpponentTackler = (p: OpponentPlayerRef) => {
+    if (tacklers.length >= 3) return;
+    if (tacklers.some(t => t.id === p.id)) {
+      setTacklers(prev => prev.filter(t => t.id !== p.id));
+      return;
+    }
+    const credit = tacklers.length === 0 ? 1 : 0.5;
+    const tp: TaggedPlayer = {
+      id: p.id,
+      player_id: p.id,
+      jersey_number: p.jersey_number,
+      name: p.name,
+      role: "tackler",
+      credit,
+      isOpponent: true,
     };
     setTacklers(prev => {
       const updated = [...prev, tp];
@@ -1048,37 +1085,55 @@ export default function PlayEntryModal({
             </>
           )}
 
-          {/* ── STEP: Defense (tacklers from OUR roster) ── */}
+          {/* ── STEP: Defense (tacklers) ── */}
           {currentStep === "defense" && (
             <>
               <div className="text-xs text-neutral-400 mb-1">
-                Select up to 3 tacklers from your roster. 1 player = 1.0 credit, 2+ = 0.5 each.
+                {isTheirBall
+                  ? "Select up to 3 tacklers from your roster. 1 player = 1.0 credit, 2+ = 0.5 each."
+                  : "Select up to 3 opponent tacklers. 1 player = 1.0 credit, 2+ = 0.5 each."
+                }
               </div>
               {tacklers.length > 0 && (
                 <div className="flex gap-2 flex-wrap mb-2">
                   {tacklers.map(t => (
-                    <span key={t.player_id} className="flex items-center gap-1 text-xs bg-red-900/30 text-red-400 px-2 py-1 rounded-lg">
+                    <span key={t.id} className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${
+                      t.isOpponent ? "bg-orange-900/30 text-orange-400" : "bg-red-900/30 text-red-400"
+                    }`}>
+                      {t.isOpponent && <span className="text-[9px]">OPP</span>}
                       #{t.jersey_number} {t.name.split(" ")[1]}
-                      <span className="text-[10px] text-red-500">({t.credit})</span>
+                      <span className="text-[10px] opacity-60">({t.credit})</span>
                       <button onClick={() => setTacklers(prev => {
-                        const next = prev.filter(x => x.player_id !== t.player_id);
+                        const next = prev.filter(x => x.id !== t.id);
                         if (next.length === 1) return next.map(x => ({ ...x, credit: 1 }));
                         return next;
-                      })} className="ml-0.5 text-red-500"><X className="w-3 h-3" /></button>
+                      })} className="ml-0.5 opacity-60"><X className="w-3 h-3" /></button>
                     </span>
                   ))}
                 </div>
               )}
-              <PlayerGrid
-                roster={roster}
-                label="Select tackler(s) from your roster"
-                onSelect={p => handleAddTackler(p)}
-                selectedId={null}
-                search={tacklerSearch}
-                onSearch={setTacklerSearch}
-              />
+              {isTheirBall ? (
+                <PlayerGrid
+                  roster={roster}
+                  label="Select tackler(s) from your roster"
+                  onSelect={p => handleAddTackler(p)}
+                  selectedId={null}
+                  search={tacklerSearch}
+                  onSearch={setTacklerSearch}
+                />
+              ) : (
+                <OpponentPlayerGrid
+                  players={opponentPlayers}
+                  label="Select opponent tackler(s)"
+                  onSelect={p => handleAddOpponentTackler(p)}
+                  selectedId={null}
+                  search={tacklerSearch}
+                  onSearch={setTacklerSearch}
+                  onQuickAdd={handleQuickAddOpponent}
+                />
+              )}
               <div className="text-[10px] text-neutral-600 text-center mt-2">
-                Optional — skip if not tracking defensive credit on this play.
+                Optional — skip if not tracking tacklers on this play.
               </div>
             </>
           )}
