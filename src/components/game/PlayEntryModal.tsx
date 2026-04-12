@@ -46,7 +46,8 @@ export interface PlaySubmitData {
   description: string;
 }
 
-type Step = "players" | "yards" | "formations" | "defense" | "review";
+type Step = "players" | "yards" | "formations" | "defense" | "review"
+  | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards" | "kick_tacklers";
 
 function defaultBlockedKickType(gameState: GameState): BlockedKickType {
   if (gameState.ballOn >= 95) return "extra_point";
@@ -223,6 +224,15 @@ export default function PlayEntryModal({
   const [tacklers, setTacklers] = useState<TaggedPlayer[]>([]);
   const [tacklerSearch, setTacklerSearch] = useState("");
 
+  // Kickoff / Punt specific state
+  const isKickPlay = playType.id === "kickoff" || playType.id === "punt";
+  const [kickedToYard, setKickedToYard] = useState(5); // receiving team's yard line where ball lands
+  const [kickedToRaw, setKickedToRaw] = useState("");
+  const [returnYards, setReturnYards] = useState(0);
+  const [returnYardsRaw, setReturnYardsRaw] = useState("");
+  const [kickerSearch, setKickerSearch] = useState("");
+  const [returnerSearch, setReturnerSearch] = useState("");
+
   // Step management
   const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">("pass");
   const roles = useMemo(() => {
@@ -230,17 +240,29 @@ export default function PlayEntryModal({
     return twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
   }, [playType, twoPointStyle]);
   const isTheirBall = gameState.possession === "them";
-  const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt"].includes(playType.id);
+  const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
-  const needsTouchback = ["kickoff", "punt"].includes(playType.id);
+  const needsTouchback = false; // handled in kick-specific flow now
 
   const steps: Step[] = [];
-  if (roles.length > 0) steps.push("players");
-  if (needsYards || needsResult) steps.push("yards");
-  steps.push("formations");
-  // Defense step: show OUR tacklers when THEY have the ball (we're on defense)
-  if (isTheirBall) steps.push("defense");
-  steps.push("review");
+  if (isKickPlay) {
+    // Kickoff/Punt specific flow
+    steps.push("kick_kicker");
+    steps.push("kick_location");
+    if (!isTouchback) {
+      steps.push("kick_returner");
+      steps.push("kick_return_yards");
+    }
+    steps.push("kick_tacklers");
+    steps.push("review");
+  } else {
+    if (roles.length > 0) steps.push("players");
+    if (needsYards || needsResult) steps.push("yards");
+    steps.push("formations");
+    // Defense step: show OUR tacklers when THEY have the ball (we're on defense)
+    if (isTheirBall) steps.push("defense");
+    steps.push("review");
+  }
 
   const [stepIdx, setStepIdx] = useState(0);
   const currentStep = steps[stepIdx] ?? "review";
@@ -248,6 +270,13 @@ export default function PlayEntryModal({
   const canGoNext = (): boolean => {
     if (currentStep === "players") {
       return roles.length === 0 || roles.every((role) => tagged.some((player) => player.role === role));
+    }
+    if (currentStep === "kick_kicker") {
+      const kickerRole = playType.id === "kickoff" ? "kicker" : "punter";
+      return tagged.some(t => t.role === kickerRole);
+    }
+    if (currentStep === "kick_returner") {
+      return tagged.some(t => t.role === "returner");
     }
     if (currentStep === "review" && penalty) {
       return !!penaltyCategory;
@@ -336,18 +365,71 @@ export default function PlayEntryModal({
     setTacklerSearch("");
   };
 
+  /* ── Kick-specific player selection helpers ── */
+  const handleKickerSelect = (p: RosterPlayer) => {
+    const role = playType.id === "kickoff" ? "kicker" : "punter";
+    const tp: TaggedPlayer = {
+      id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
+      name: `${p.player.first_name} ${p.player.last_name}`, role,
+    };
+    setTagged(prev => [...prev.filter(t => t.role !== role), tp]);
+    goNext();
+  };
+
+  const handleKickerSelectOpp = (p: OpponentPlayerRef) => {
+    const role = playType.id === "kickoff" ? "kicker" : "punter";
+    const tp: TaggedPlayer = {
+      id: p.id, player_id: p.id, jersey_number: p.jersey_number,
+      name: p.name, role, isOpponent: true,
+    };
+    setTagged(prev => [...prev.filter(t => t.role !== role), tp]);
+    goNext();
+  };
+
+  const handleReturnerSelect = (p: RosterPlayer) => {
+    const tp: TaggedPlayer = {
+      id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
+      name: `${p.player.first_name} ${p.player.last_name}`, role: "returner",
+    };
+    setTagged(prev => [...prev.filter(t => t.role !== "returner"), tp]);
+    goNext();
+  };
+
+  const handleReturnerSelectOpp = (p: OpponentPlayerRef) => {
+    const tp: TaggedPlayer = {
+      id: p.id, player_id: p.id, jersey_number: p.jersey_number,
+      name: p.name, role: "returner", isOpponent: true,
+    };
+    setTagged(prev => [...prev.filter(t => t.role !== "returner"), tp]);
+    goNext();
+  };
+
   const handleSubmit = () => {
     const allTagged = [...tagged, ...tacklers];
     const passResult = playType.id === "pass_comp" ? "Complete" : playType.id === "pass_inc" ? "Incomplete" : "";
     const finalResult = result || passResult;
 
     const isZeroYard = ["pass_inc", "spike", "penalty_only"].includes(playType.id) || needsResult;
-    const playYards = isZeroYard ? 0 : yards;
+    let playYards: number;
+    if (isKickPlay) {
+      // For kickoff/punt: yards = how far the ball ended up from kick spot in kicker's coordinate system
+      // kickedToYard is from receiving team's perspective; in kicker's coordinates that's (100 - kickedToYard)
+      // returnYards move the ball back toward the kicker (reduces net distance)
+      const kickDistance = (100 - kickedToYard) - gameState.ballOn;
+      playYards = isTouchback ? kickDistance : kickDistance - returnYards;
+    } else {
+      playYards = isZeroYard ? 0 : yards;
+    }
     const newBallOn = Math.min(100, Math.max(0, gameState.ballOn + playYards));
-    const earnedFirst = isFirstDown || (playYards >= gameState.distance && gameState.down <= 4);
-    const scored = isTD || newBallOn >= 100;
+    const earnedFirst = isFirstDown || (!isKickPlay && playYards >= gameState.distance && gameState.down <= 4);
+    const scored = isTD || (!isKickPlay && newBallOn >= 100);
 
-    const desc = buildDescription(playType, allTagged, playYards, scored, penalty, finalResult);
+    const desc = buildDescription(playType, allTagged, playYards, scored, penalty, finalResult, isKickPlay ? {
+      kickDistance: (100 - kickedToYard) - gameState.ballOn,
+      kickedToYard,
+      returnYards: isTouchback ? 0 : returnYards,
+      isTouchback,
+    } : undefined);
 
     onSubmit({
       playType,
@@ -390,7 +472,15 @@ export default function PlayEntryModal({
           <div className="flex-1">
             <div className="text-sm font-black">{playType.label}</div>
             <div className="text-[10px] text-neutral-500">
-              Step {stepIdx + 1} of {steps.length}: {currentStep.charAt(0).toUpperCase() + currentStep.slice(1)}
+              Step {stepIdx + 1} of {steps.length}: {
+                ({
+                  players: "Players", yards: "Yards", formations: "Formations",
+                  defense: "Defense", review: "Review",
+                  kick_kicker: playType.id === "kickoff" ? "Kicker" : "Punter",
+                  kick_location: "Kick Location", kick_returner: "Returner",
+                  kick_return_yards: "Return Yards", kick_tacklers: "Tacklers",
+                } as Record<string, string>)[currentStep] ?? currentStep
+              }
               {isTheirBall && currentStep === "players" && (
                 <span className="text-red-400 ml-1">(Opponent ball)</span>
               )}
@@ -473,6 +563,194 @@ export default function PlayEntryModal({
                   onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
                 />
               )}
+            </>
+          )}
+
+          {/* ── KICK STEP: Kicker / Punter ── */}
+          {currentStep === "kick_kicker" && (
+            <>
+              {isTheirBall ? (
+                <OpponentPlayerGrid
+                  players={localOppPlayers}
+                  label={`Select ${playType.id === "kickoff" ? "kicker" : "punter"} (opponent)`}
+                  onSelect={handleKickerSelectOpp}
+                  selectedId={tagged.find(t => t.role === (playType.id === "kickoff" ? "kicker" : "punter"))?.id ?? null}
+                  search={kickerSearch}
+                  onSearch={setKickerSearch}
+                  onQuickAdd={handleQuickAddOpponent}
+                />
+              ) : (
+                <PlayerGrid
+                  roster={roster}
+                  label={`Select ${playType.id === "kickoff" ? "kicker" : "punter"}`}
+                  onSelect={handleKickerSelect}
+                  selectedId={tagged.find(t => t.role === (playType.id === "kickoff" ? "kicker" : "punter"))?.player_id ?? null}
+                  search={kickerSearch}
+                  onSearch={setKickerSearch}
+                />
+              )}
+            </>
+          )}
+
+          {/* ── KICK STEP: Kick Location ── */}
+          {currentStep === "kick_location" && (
+            <>
+              <div>
+                <label className="label block mb-2">
+                  {playType.id === "kickoff" ? "Kicked" : "Punted"} To (Opponent Yard Line)
+                </label>
+                <div className="flex items-center gap-1.5">
+                  {[-10, -5, -1].map(n => (
+                    <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(50, y + n)))}
+                      className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
+                  ))}
+                  <div className="w-20 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-purple-400">
+                    {kickedToYard === 0 ? "EZ" : `OPP ${kickedToYard}`}
+                  </div>
+                  {[1, 5, 10].map(n => (
+                    <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(50, y + n)))}
+                      className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[10px] text-neutral-500">Or type:</span>
+                  <input
+                    type="number" inputMode="numeric" min={0} max={50}
+                    placeholder="e.g. 5"
+                    value={kickedToRaw}
+                    onChange={e => {
+                      setKickedToRaw(e.target.value);
+                      const n = parseInt(e.target.value, 10);
+                      if (!isNaN(n)) setKickedToYard(Math.max(0, Math.min(50, n)));
+                    }}
+                    className="input w-20 text-center text-sm font-black"
+                  />
+                </div>
+                <div className="text-xs text-neutral-500 mt-2">
+                  {playType.id === "kickoff" ? "Kick" : "Punt"} distance: <span className="font-bold text-neutral-300">{(100 - kickedToYard) - gameState.ballOn} yards</span>
+                  {" "}({yardLabel(gameState.ballOn)} → OPP {kickedToYard})
+                </div>
+              </div>
+
+              <button onClick={() => { setIsTouchback(t => !t); }}
+                className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
+                  isTouchback ? "border-sky-500 bg-sky-500/20 text-sky-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                }`}>Touchback</button>
+
+              {isTouchback && (
+                <div className="text-xs text-neutral-500 text-center">
+                  Receiving team will start at their own 25 yard line.
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── KICK STEP: Returner ── */}
+          {currentStep === "kick_returner" && (
+            <>
+              <div className="text-xs text-neutral-400 mb-1">
+                {playType.id === "kickoff" ? "Kicked" : "Punted"} to OPP {kickedToYard} ({(100 - kickedToYard) - gameState.ballOn} yds). Select the returner.
+              </div>
+              {isTheirBall ? (
+                <PlayerGrid
+                  roster={roster}
+                  label="Select returner (your team)"
+                  onSelect={handleReturnerSelect}
+                  selectedId={tagged.find(t => t.role === "returner")?.player_id ?? null}
+                  search={returnerSearch}
+                  onSearch={setReturnerSearch}
+                />
+              ) : (
+                <OpponentPlayerGrid
+                  players={localOppPlayers}
+                  label="Select returner (opponent)"
+                  onSelect={handleReturnerSelectOpp}
+                  selectedId={tagged.find(t => t.role === "returner")?.id ?? null}
+                  search={returnerSearch}
+                  onSearch={setReturnerSearch}
+                  onQuickAdd={handleQuickAddOpponent}
+                />
+              )}
+            </>
+          )}
+
+          {/* ── KICK STEP: Return Yards ── */}
+          {currentStep === "kick_return_yards" && (
+            <>
+              <div>
+                <label className="label block mb-2">Return Yards</label>
+                <div className="flex items-center gap-1.5">
+                  {[-10, -5, -1].map(n => (
+                    <button key={n} onClick={() => setReturnYards(y => Math.max(0, y + n))}
+                      className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
+                  ))}
+                  <div className={`w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums ${
+                    returnYards > 0 ? "text-emerald-400" : "text-neutral-300"
+                  }`}>{returnYards}</div>
+                  {[1, 5, 10].map(n => (
+                    <button key={n} onClick={() => setReturnYards(y => y + n)}
+                      className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[10px] text-neutral-500">Or type:</span>
+                  <input
+                    type="number" inputMode="numeric" min={0}
+                    placeholder="e.g. 20"
+                    value={returnYardsRaw}
+                    onChange={e => {
+                      setReturnYardsRaw(e.target.value);
+                      const n = parseInt(e.target.value, 10);
+                      if (!isNaN(n) && n >= 0) setReturnYards(n);
+                    }}
+                    className="input w-20 text-center text-sm font-black"
+                  />
+                </div>
+                <div className="text-xs text-neutral-500 mt-2">
+                  Caught at OPP {kickedToYard} → returned to <span className="font-bold text-neutral-300">OPP {kickedToYard + returnYards}</span>
+                </div>
+              </div>
+
+              {/* TD toggle for return TD */}
+              <button onClick={() => setIsTD(t => !t)}
+                className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
+                  isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                }`}>Return TD</button>
+            </>
+          )}
+
+          {/* ── KICK STEP: Tacklers (optional) ── */}
+          {currentStep === "kick_tacklers" && (
+            <>
+              <div className="text-xs text-neutral-400 mb-1">
+                Optional: Select tackler(s) from your roster. 1 player = 1.0 credit, 2+ = 0.5 each.
+              </div>
+              {tacklers.length > 0 && (
+                <div className="flex gap-2 flex-wrap mb-2">
+                  {tacklers.map(t => (
+                    <span key={t.player_id} className="flex items-center gap-1 text-xs bg-red-900/30 text-red-400 px-2 py-1 rounded-lg">
+                      #{t.jersey_number} {t.name.split(" ")[1]}
+                      <span className="text-[10px] text-red-500">({t.credit})</span>
+                      <button onClick={() => setTacklers(prev => {
+                        const next = prev.filter(x => x.player_id !== t.player_id);
+                        if (next.length === 1) return next.map(x => ({ ...x, credit: 1 }));
+                        return next;
+                      })} className="ml-0.5 text-red-500"><X className="w-3 h-3" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <PlayerGrid
+                roster={roster}
+                label="Select tackler(s)"
+                onSelect={p => handleAddTackler(p)}
+                selectedId={null}
+                search={tacklerSearch}
+                onSearch={setTacklerSearch}
+              />
+              <div className="text-[10px] text-neutral-600 text-center mt-2">
+                Skip this step if not tracking tacklers.
+              </div>
             </>
           )}
 
@@ -745,6 +1023,24 @@ export default function PlayEntryModal({
                       {yards > 0 ? `+${yards}` : yards}
                     </span>
                   </div>
+                )}
+                {isKickPlay && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Kick Distance</span>
+                      <span className="font-bold text-purple-400">{(100 - kickedToYard) - gameState.ballOn} yds</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Landed At</span>
+                      <span className="font-bold">{isTouchback ? "Touchback" : `OPP ${kickedToYard}`}</span>
+                    </div>
+                    {!isTouchback && (
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Return</span>
+                        <span className="font-bold text-emerald-400">{returnYards} yds → OPP {kickedToYard + returnYards}</span>
+                      </div>
+                    )}
+                  </>
                 )}
                 {needsResult && result && (
                   <div className="flex justify-between">

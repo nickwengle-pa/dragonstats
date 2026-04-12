@@ -367,7 +367,7 @@ export function advanceSituationAfterPlay(
       possession: oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
-      ballOn: play.isTouchback ? config.touchback_yard_line : Math.max(1, newBallOn),
+      ballOn: play.isTouchback ? config.touchback_yard_line : Math.max(1, 100 - newBallOn),
     };
   }
 

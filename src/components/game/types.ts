@@ -219,6 +219,7 @@ export function buildDescription(
   scored: boolean,
   penalty: string | null,
   result: string,
+  kickInfo?: { kickDistance: number; kickedToYard: number; returnYards: number; isTouchback: boolean },
 ): string {
   const parts: string[] = [];
   const byRole = (r: string) => tagged.find(t => t.role === r);
@@ -256,12 +257,24 @@ export function buildDescription(
     case "two_pt": parts.push(`2PT ${result}`.trim()); break;
     case "kickoff": {
       const k = byRole("kicker"), ret = byRole("returner");
-      parts.push(`Kickoff${k ? ` #${k.jersey_number}` : ""}${ret ? ` ret #${ret.jersey_number} ${yards}` : ""}`);
+      if (kickInfo) {
+        const kickLabel = kickInfo.isTouchback ? "Touchback" : `to OPP ${kickInfo.kickedToYard}`;
+        const retLabel = !kickInfo.isTouchback && ret ? `, ret #${ret.jersey_number} ${kickInfo.returnYards} yds` : "";
+        parts.push(`Kickoff${k ? ` #${k.jersey_number}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
+      } else {
+        parts.push(`Kickoff${k ? ` #${k.jersey_number}` : ""}${ret ? ` ret #${ret.jersey_number} ${yards}` : ""}`);
+      }
       break;
     }
     case "punt": {
       const p = byRole("punter"), ret = byRole("returner");
-      parts.push(`Punt${p ? ` #${p.jersey_number}` : ""}${ret ? ` ret #${ret.jersey_number} ${yards}` : ""}`);
+      if (kickInfo) {
+        const kickLabel = kickInfo.isTouchback ? "Touchback" : `to OPP ${kickInfo.kickedToYard}`;
+        const retLabel = !kickInfo.isTouchback && ret ? `, ret #${ret.jersey_number} ${kickInfo.returnYards} yds` : "";
+        parts.push(`Punt${p ? ` #${p.jersey_number}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
+      } else {
+        parts.push(`Punt${p ? ` #${p.jersey_number}` : ""}${ret ? ` ret #${ret.jersey_number} ${yards}` : ""}`);
+      }
       break;
     }
     default: parts.push(pt.label); break;

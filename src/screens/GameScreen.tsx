@@ -440,7 +440,7 @@ export default function GameScreen() {
       is_touchdown: data.isTouchdown,
       is_turnover: ["int", "fumble"].includes(data.playType.id),
       is_penalty: !!data.penalty,
-      primary_player_id: data.tagged[0]?.player_id ?? null,
+      primary_player_id: data.tagged.find(t => !t.isOpponent)?.player_id ?? null,
       description: data.description,
       // Extended fields — only include if non-null to avoid missing-column errors
       ...(data.offensiveFormation ? { offensive_formation: data.offensiveFormation } : {}),
@@ -448,11 +448,13 @@ export default function GameScreen() {
       ...(data.hashMark ? { hash_mark: data.hashMark } : {}),
     };
 
-    const playerInserts = data.tagged.map(t => ({
-      player_id: t.player_id,
-      role: t.role,
-      credit: t.credit ?? null,
-    }));
+    const playerInserts = data.tagged
+      .filter(t => !t.isOpponent)
+      .map(t => ({
+        player_id: t.player_id,
+        role: t.role,
+        credit: t.credit ?? null,
+      }));
 
     const savedPlay = await insertPlay(playInsert, playerInserts);
     if (!savedPlay) { console.error("insertPlay returned null — check Supabase logs"); isSubmitting.current = false; setSelectedPlayType(null); return; }
@@ -534,7 +536,7 @@ export default function GameScreen() {
       is_touchdown: result.isTouchdown,
       is_turnover: ["int", "fumble"].includes(result.playType.id),
       is_penalty: !!result.penalty,
-      primary_player_id: result.tagged[0]?.player_id ?? null,
+      primary_player_id: result.tagged.find(t => !t.isOpponent)?.player_id ?? null,
       description: result.description,
       ...(result.offensiveFormation != null ? { offensive_formation: result.offensiveFormation } : {}),
       ...(result.defensiveFormation != null ? { defensive_formation: result.defensiveFormation } : {}),
@@ -552,7 +554,7 @@ export default function GameScreen() {
         next_distance: null,
         next_yard_line: null,
       },
-    }, result.tagged.map(t => ({
+    }, result.tagged.filter(t => !t.isOpponent).map(t => ({
       player_id: t.player_id,
       role: t.role,
       credit: t.credit ?? null,
