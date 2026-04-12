@@ -127,7 +127,7 @@ function LogoUpload({
             </button>
           </div>
         ) : (
-          <div className="w-14 h-14 rounded-lg bg-surface-card border border-dashed border-surface-border flex items-center justify-center text-neutral-500">
+          <div className="w-14 h-14 rounded-lg bg-surface-card border border-dashed border-surface-border flex items-center justify-center text-slate-500">
             <Image className="w-6 h-6" />
           </div>
         )}
@@ -195,7 +195,7 @@ function CoachRow({
       <div className="flex items-center gap-3 py-2 border-b border-surface-border last:border-0">
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{coach.name}</div>
-          <div className="text-xs text-neutral-400 capitalize">
+          <div className="text-xs text-slate-400 capitalize">
             {coach.role}
             {coach.email ? ` · ${coach.email}` : ""}
           </div>
@@ -509,7 +509,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
 
       {firstTime && (
         <div className="px-5 pb-4">
-          <p className="text-sm text-neutral-400 leading-relaxed">
+          <p className="text-sm text-slate-400 leading-relaxed">
             Welcome to Dragon Stats. Set up your school and first season so the app has an active year to work from.
           </p>
         </div>
@@ -634,13 +634,13 @@ export default function SettingsScreen({ firstTime = false }: Props) {
               <Calendar className="w-5 h-5 text-dragon-primary" />
               <span className="font-bold">Seasons</span>
               {season && (
-                <span className="text-xs text-neutral-500 ml-auto">{formatSeasonName(season)}</span>
+                <span className="text-xs text-slate-500 ml-auto">{formatSeasonName(season)}</span>
               )}
             </div>
 
             <div className="space-y-3">
               {seasons.length === 0 ? (
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-slate-500">
                   Save the program first to create its first active season.
                 </p>
               ) : (
@@ -654,7 +654,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm truncate">{formatSeasonName(entry)}</div>
-                      <div className="text-xs text-neutral-500">{formatLevel(entry.level)} season</div>
+                      <div className="text-xs text-slate-500">{formatLevel(entry.level)} season</div>
                     </div>
 
                     {entry.is_active ? (
@@ -703,7 +703,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
                     </div>
                   </div>
 
-                  <label className="flex items-center gap-2 text-sm text-neutral-300">
+                  <label className="flex items-center gap-2 text-sm text-slate-300">
                     <input
                       type="checkbox"
                       checked={newSeasonActive}
@@ -751,11 +751,11 @@ export default function SettingsScreen({ firstTime = false }: Props) {
             <div className="flex items-center gap-2 mb-4">
               <UserCog className="w-5 h-5 text-dragon-primary" />
               <span className="font-bold">Coaching Staff</span>
-              <span className="text-xs text-neutral-500 ml-auto">{formatSeasonName(season)}</span>
+              <span className="text-xs text-slate-500 ml-auto">{formatSeasonName(season)}</span>
             </div>
 
             {coaches.length === 0 && !addingCoach && (
-              <p className="text-sm text-neutral-500 mb-3">No coaches added yet.</p>
+              <p className="text-sm text-slate-500 mb-3">No coaches added yet.</p>
             )}
 
             {coaches.map((coach) => (

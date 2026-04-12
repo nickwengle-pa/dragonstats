@@ -36,10 +36,11 @@ export default function LoginScreen() {
       <div className="w-full max-w-sm">
         {/* Logo / Title */}
         <div className="text-center mb-10">
-          <div className="text-5xl font-black tracking-tight text-dragon-primary mb-1">
+          <div className="text-5xl font-black tracking-tight text-dragon-primary mb-1"
+            style={{ textShadow: "0 0 40px rgba(220,38,38,0.3)" }}>
             DRAGON
           </div>
-          <div className="text-lg font-bold tracking-widest text-neutral-500 uppercase">
+          <div className="text-lg font-bold tracking-widest text-slate-500 uppercase font-mono">
             Stats
           </div>
         </div>
@@ -79,7 +80,7 @@ export default function LoginScreen() {
 
         <button
           onClick={() => { setIsSignUp(!isSignUp); setError(""); }}
-          className="btn-ghost w-full mt-4 text-sm"
+          className="btn-ghost w-full mt-4 text-sm cursor-pointer"
         >
           {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
         </button>

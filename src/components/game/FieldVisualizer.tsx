@@ -203,13 +203,13 @@ export default function FieldVisualizer({
 
         {/* Ball marker */}
         <div
-          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black text-white font-mono shadow-lg"
+          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black text-white font-mono"
           style={{
             left: `${ballPosition}%`,
             backgroundColor: possession === "us" ? primaryColor : oppColor,
-            boxShadow: `0 0 10px ${
-              possession === "us" ? `${primaryColor}66` : `${oppColor}66`
-            }`,
+            boxShadow: `0 0 16px ${
+              possession === "us" ? `${primaryColor}88` : `${oppColor}88`
+            }, 0 0 4px rgba(255,255,255,0.3)`,
           }}
         >
           {ballOn > 50 ? 100 - ballOn : ballOn}
@@ -219,7 +219,7 @@ export default function FieldVisualizer({
         {onFlipDirection && (
           <button
             onClick={onFlipDirection}
-            className="absolute bottom-1 right-[11%] z-30 p-1 rounded bg-black/40 text-white/50 active:text-white active:bg-black/60 transition-colors"
+            className="absolute bottom-1 right-[11%] z-30 p-1 rounded bg-black/40 text-white/50 active:text-white active:bg-black/60 transition-all duration-200 cursor-pointer hover:bg-black/50 hover:text-white/70"
             title="Flip field direction"
           >
             <ArrowLeftRight className="w-3.5 h-3.5" />

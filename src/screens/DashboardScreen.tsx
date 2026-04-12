@@ -69,12 +69,12 @@ export default function DashboardScreen() {
       <div className="px-5 pt-6 pb-4 lg:px-8 lg:pt-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-black tracking-tight">{program?.abbreviation ?? "DRAGON"} STATS</h1>
-            <p className="text-sm text-neutral-500 mt-0.5">
+            <h1 className="text-2xl font-black tracking-tight text-slate-50">{program?.abbreviation ?? "DRAGON"} <span className="text-dragon-primary">STATS</span></h1>
+            <p className="text-sm text-slate-500 mt-0.5">
               {programName}{mascot ? ` ${mascot}` : ""}
             </p>
           </div>
-          <button onClick={signOut} className="text-xs text-neutral-600 hover:text-neutral-400 transition-colors">
+          <button onClick={signOut} className="text-xs text-slate-600 hover:text-slate-400 transition-colors cursor-pointer">
             Sign out
           </button>
         </div>
@@ -83,15 +83,15 @@ export default function DashboardScreen() {
         {stats.liveGame && (
           <button
             onClick={() => navigate(`/game/${stats.liveGame!.id}`)}
-            className="w-full card p-4 flex items-center gap-4 active:scale-[0.98] transition-transform mb-4 border border-red-500/30"
-            style={{ background: "linear-gradient(135deg, rgba(220,38,38,0.08), rgba(220,38,38,0.02))" }}
+            className="w-full card p-4 flex items-center gap-4 active:scale-[0.98] transition-all duration-200 mb-4 border-red-500/30 shadow-glow cursor-pointer"
+            style={{ background: "linear-gradient(135deg, rgba(220,38,38,0.12), rgba(220,38,38,0.03))" }}
           >
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-red-900/40">
+            <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-red-900/40 shadow-glow-sm">
               <span className="text-red-400 text-[10px] font-black uppercase animate-pulse">LIVE</span>
             </div>
             <div className="flex-1 text-left">
-              <div className="font-bold">vs {stats.liveGame.opponent_name}</div>
-              <div className="text-sm font-mono font-bold">
+              <div className="font-bold text-slate-100">vs {stats.liveGame.opponent_name}</div>
+              <div className="text-sm font-mono font-bold text-slate-300">
                 {stats.liveGame.our_score} – {stats.liveGame.opponent_score}
               </div>
             </div>
@@ -103,10 +103,13 @@ export default function DashboardScreen() {
         {/* Record card */}
         {stats.totalGames > 0 && (
           <div className="card p-4 mb-4 flex items-center gap-4">
-            <Trophy className="w-8 h-8 shrink-0" style={{ color: program?.primary_color ?? "#dc2626" }} />
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: (program?.primary_color ?? "#dc2626") + "18" }}>
+              <Trophy className="w-6 h-6" style={{ color: program?.primary_color ?? "#dc2626" }} />
+            </div>
             <div>
-              <div className="text-2xl font-black">{stats.wins} – {stats.losses}</div>
-              <div className="text-xs text-neutral-500 font-semibold">{season?.name ?? "Season"} Record</div>
+              <div className="text-2xl font-black font-mono tabular-nums text-slate-50">{stats.wins} – {stats.losses}</div>
+              <div className="text-xs text-slate-500 font-semibold">{season?.name ?? "Season"} Record</div>
             </div>
           </div>
         )}
@@ -115,37 +118,37 @@ export default function DashboardScreen() {
         {stats.nextGame && (
           <button
             onClick={() => navigate("/schedule")}
-            className="w-full card p-4 flex items-center gap-4 active:scale-[0.98] transition-transform mb-4"
+            className="w-full card-hover p-4 flex items-center gap-4 active:scale-[0.98] transition-all duration-200 mb-4 cursor-pointer"
           >
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: (program?.primary_color ?? "#dc2626") + "20" }}>
+            <div className="w-12 h-12 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: (program?.primary_color ?? "#dc2626") + "18" }}>
               <Zap className="w-6 h-6" style={{ color: program?.primary_color ?? "#dc2626" }} />
             </div>
             <div className="flex-1 text-left">
-              <div className="font-bold">Next Game</div>
-              <div className="text-sm text-neutral-500">
+              <div className="font-bold text-slate-100">Next Game</div>
+              <div className="text-sm text-slate-500">
                 {stats.nextGame.is_home ? "vs" : "@"} {stats.nextGame.opponent_name} ·{" "}
                 {new Date(stats.nextGame.game_date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-neutral-600" />
+            <ChevronRight className="w-5 h-5 text-slate-600" />
           </button>
         )}
 
         {!stats.nextGame && stats.totalGames === 0 && (
           <button
             onClick={() => navigate("/schedule")}
-            className="w-full card p-4 flex items-center gap-4 active:scale-[0.98] transition-transform mb-4"
+            className="w-full card-hover p-4 flex items-center gap-4 active:scale-[0.98] transition-all duration-200 mb-4 cursor-pointer"
           >
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: (program?.primary_color ?? "#dc2626") + "20" }}>
+            <div className="w-12 h-12 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: (program?.primary_color ?? "#dc2626") + "18" }}>
               <Zap className="w-6 h-6" style={{ color: program?.primary_color ?? "#dc2626" }} />
             </div>
             <div className="flex-1 text-left">
-              <div className="font-bold">Get Started</div>
-              <div className="text-sm text-neutral-500">Add your roster and schedule</div>
+              <div className="font-bold text-slate-100">Get Started</div>
+              <div className="text-sm text-slate-500">Add your roster and schedule</div>
             </div>
-            <ChevronRight className="w-5 h-5 text-neutral-600" />
+            <ChevronRight className="w-5 h-5 text-slate-600" />
           </button>
         )}
       </div>
@@ -161,17 +164,20 @@ export default function DashboardScreen() {
             { label: "Game Setup", icon: SlidersHorizontal, path: "/game-settings", desc: "Rules & config" },
           ].map(item => (
             <button key={item.label} onClick={() => navigate(item.path)}
-              className="card p-4 text-left active:scale-[0.97] transition-transform">
-              <item.icon className="w-6 h-6 mb-3" style={{ color: program?.primary_color ?? "#dc2626" }} />
-              <div className="font-bold text-sm">{item.label}</div>
-              <div className="text-xs text-neutral-500 mt-0.5">{item.desc}</div>
+              className="card-hover p-4 text-left active:scale-[0.97] transition-all duration-200 cursor-pointer group">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3 transition-colors"
+                style={{ backgroundColor: (program?.primary_color ?? "#dc2626") + "15" }}>
+                <item.icon className="w-5 h-5 transition-colors" style={{ color: program?.primary_color ?? "#dc2626" }} />
+              </div>
+              <div className="font-bold text-sm text-slate-100">{item.label}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{item.desc}</div>
             </button>
           ))}
         </div>
       </div>
 
       <div className="px-5 py-4 text-center">
-        <p className="text-xs text-neutral-700">Dragon Stats v0.1.0</p>
+        <p className="text-xs text-slate-700 font-mono">Dragon Stats v0.1.0</p>
       </div>
     </div>
   );

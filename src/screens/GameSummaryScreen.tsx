@@ -43,7 +43,7 @@ function StatRow({ label, home, away }: { label: string; home: string; away: str
   return (
     <div className="flex items-center py-1.5 text-sm">
       <span className="w-16 text-right font-mono font-bold">{home}</span>
-      <span className="flex-1 text-center text-xs text-neutral-500 font-medium">{label}</span>
+      <span className="flex-1 text-center text-xs text-slate-500 font-medium">{label}</span>
       <span className="w-16 text-left font-mono font-bold">{away}</span>
     </div>
   );
@@ -52,9 +52,9 @@ function StatRow({ label, home, away }: { label: string; home: string; away: str
 function LeaderCard({ title, line1, line2 }: { title: string; line1: string; line2: string }) {
   return (
     <div className="bg-surface-card rounded-xl px-4 py-3">
-      <div className="text-[10px] font-bold text-neutral-500 uppercase mb-1">{title}</div>
+      <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">{title}</div>
       <div className="text-sm font-bold truncate">{line1}</div>
-      <div className="text-xs text-neutral-400 font-mono">{line2}</div>
+      <div className="text-xs text-slate-400 font-mono">{line2}</div>
     </div>
   );
 }
@@ -88,11 +88,11 @@ function FormationTable({ title, data, color }: { title: string; data: Formation
   if (data.length === 0) return null;
   return (
     <div>
-      <div className="text-[10px] font-bold text-neutral-500 uppercase mb-2">{title}</div>
+      <div className="text-[10px] font-bold text-slate-500 uppercase mb-2">{title}</div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-neutral-500 border-b border-surface-border">
+            <tr className="text-slate-500 border-b border-surface-border">
               <th className="text-left py-1.5 font-bold">Formation</th>
               <th className="text-right py-1.5 font-bold w-10">Plays</th>
               <th className="text-right py-1.5 font-bold w-12">Yards</th>
@@ -260,7 +260,7 @@ export default function GameSummaryScreen() {
         {/* Loading / error */}
         {loading && (
           <div className="card p-8 text-center">
-            <div className="text-neutral-500 animate-pulse">Computing stats...</div>
+            <div className="text-slate-500 animate-pulse">Computing stats...</div>
           </div>
         )}
 
@@ -272,14 +272,14 @@ export default function GameSummaryScreen() {
 
         {!loading && !summary && !error && (
           <div className="card p-8 text-center">
-            <div className="text-neutral-500 text-sm">No play data recorded yet.</div>
+            <div className="text-slate-500 text-sm">No play data recorded yet.</div>
           </div>
         )}
 
         {/* Score */}
         {gameInfo && (
           <div className="card p-6 text-center">
-            <div className="text-xs font-bold text-neutral-500 uppercase mb-3">
+            <div className="text-xs font-bold text-slate-500 uppercase mb-3">
               {gameInfo.status === "completed" ? "Final" : gameInfo.status === "live" ? "Live" : "Score"}
             </div>
             <div className="flex items-center justify-center gap-8">
@@ -287,16 +287,16 @@ export default function GameSummaryScreen() {
                 <div className="text-4xl font-black" style={{ color: program?.primary_color }}>
                   {gameInfo.our_score}
                 </div>
-                <div className="text-xs font-bold text-neutral-500 mt-1">
+                <div className="text-xs font-bold text-slate-500 mt-1">
                   {program?.abbreviation ?? "US"}
                 </div>
               </div>
-              <div className="text-neutral-600 text-sm font-bold">&mdash;</div>
+              <div className="text-slate-600 text-sm font-bold">&mdash;</div>
               <div>
                 <div className="text-4xl font-black" style={{ color: gameInfo.opponent_color }}>
                   {gameInfo.opponent_score}
                 </div>
-                <div className="text-xs font-bold text-neutral-500 mt-1">
+                <div className="text-xs font-bold text-slate-500 mt-1">
                   {gameInfo.opponent_name}
                 </div>
               </div>
@@ -307,7 +307,7 @@ export default function GameSummaryScreen() {
         {/* Team stats comparison */}
         {summary && ourTeamStats && theirTeamStats && (
           <div className="card p-5">
-            <div className="text-xs font-bold text-neutral-500 uppercase mb-3">Team Stats</div>
+            <div className="text-xs font-bold text-slate-500 uppercase mb-3">Team Stats</div>
             <StatRow label="Total Yards" home={fmt(ourTeamStats.totalYards)} away={fmt(theirTeamStats.totalYards)} />
             <StatRow label="Rush Yards" home={fmt(ourTeamStats.rushingYards)} away={fmt(theirTeamStats.rushingYards)} />
             <StatRow label="Pass Yards" home={fmt(ourTeamStats.passingYards)} away={fmt(theirTeamStats.passingYards)} />
@@ -330,7 +330,7 @@ export default function GameSummaryScreen() {
         {/* Player leaders */}
         {summary && (topPasser || topRusher || topReceiver || topDefender) && (
           <div className="card p-5">
-            <div className="text-xs font-bold text-neutral-500 uppercase mb-3">Player Leaders</div>
+            <div className="text-xs font-bold text-slate-500 uppercase mb-3">Player Leaders</div>
             <div className="grid grid-cols-2 gap-2">
               {topPasser && topPasser.attempts > 0 && (
                 <LeaderCard
@@ -367,7 +367,7 @@ export default function GameSummaryScreen() {
         {/* Formation Breakdowns */}
         {(offFormations.length > 0 || defFormations.length > 0) && (
           <div className="card p-5 space-y-4">
-            <div className="text-xs font-bold text-neutral-500 uppercase">Formation Breakdown</div>
+            <div className="text-xs font-bold text-slate-500 uppercase">Formation Breakdown</div>
             <FormationTable title="Offensive Formations" data={offFormations} color={program?.primary_color ?? "#3b82f6"} />
             <FormationTable title="Defensive Formations" data={defFormations} color="#ef4444" />
           </div>
@@ -376,14 +376,14 @@ export default function GameSummaryScreen() {
         {/* Scoring plays */}
         {summary && summary.scoringPlays.length > 0 && (
           <div className="card p-5">
-            <div className="text-xs font-bold text-neutral-500 uppercase mb-3">Scoring</div>
+            <div className="text-xs font-bold text-slate-500 uppercase mb-3">Scoring</div>
             <div className="space-y-2">
               {summary.scoringPlays.map((sp, i) => (
                 <div key={i} className="flex items-start gap-3 text-sm">
-                  <span className="text-xs text-neutral-500 font-mono w-12 shrink-0 pt-0.5">
+                  <span className="text-xs text-slate-500 font-mono w-12 shrink-0 pt-0.5">
                     Q{sp.quarter} {sp.gameClock}
                   </span>
-                  <span className="flex-1 text-neutral-300">{sp.description}</span>
+                  <span className="flex-1 text-slate-300">{sp.description}</span>
                   <span className="font-mono font-bold text-xs whitespace-nowrap">
                     {sp.homeScore}-{sp.awayScore}
                   </span>
@@ -396,23 +396,23 @@ export default function GameSummaryScreen() {
         {/* Drive summary */}
         {summary && summary.drives.length > 0 && (
           <div className="card p-5">
-            <div className="text-xs font-bold text-neutral-500 uppercase mb-3">Drives</div>
+            <div className="text-xs font-bold text-slate-500 uppercase mb-3">Drives</div>
             <div className="space-y-1">
               {summary.drives.map((d, i) => {
                 const isOurs = d.team === program?.id;
                 return (
                   <div key={i} className="flex items-center gap-2 text-xs py-1">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${isOurs ? "bg-dragon-primary" : "bg-neutral-500"}`} />
-                    <span className="text-neutral-500 font-mono w-8">Q{d.startQuarter}</span>
-                    <span className="flex-1 truncate text-neutral-300">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${isOurs ? "bg-dragon-primary" : "bg-slate-500"}`} />
+                    <span className="text-slate-500 font-mono w-8">Q{d.startQuarter}</span>
+                    <span className="flex-1 truncate text-slate-300">
                       {d.plays} plays, {d.yards} yds
                     </span>
-                    <span className="font-mono text-neutral-400">{d.timeOfPossession}</span>
+                    <span className="font-mono text-slate-400">{d.timeOfPossession}</span>
                     <span className={`font-bold uppercase text-[10px] px-1.5 py-0.5 rounded ${
                       d.result === DriveResult.Touchdown ? "bg-green-500/20 text-green-400"
                       : d.result === DriveResult.FieldGoal ? "bg-yellow-500/20 text-yellow-400"
                       : d.result === DriveResult.Turnover || d.result === DriveResult.TurnoverOnDowns ? "bg-red-500/20 text-red-400"
-                      : "bg-neutral-700 text-neutral-400"
+                      : "bg-slate-700 text-slate-400"
                     }`}>
                       {d.result}
                     </span>

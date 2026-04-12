@@ -710,10 +710,10 @@ export default function GameScreen() {
     return (
       <div className="screen safe-top safe-bottom">
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-          <button onClick={() => navigate("/")} className="btn-ghost p-2"><Home className="w-5 h-5" /></button>
-          <h1 className="text-xl font-black flex-1">Game</h1>
+          <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
+          <h1 className="text-xl font-black flex-1 text-slate-50">Game</h1>
         </div>
-        <div className="text-neutral-500 text-sm text-center py-12 animate-pulse">Loading game...</div>
+        <div className="text-slate-500 text-sm text-center py-12 animate-pulse font-mono">Loading game...</div>
       </div>
     );
   }
@@ -731,15 +731,15 @@ export default function GameScreen() {
     <div className="screen safe-top safe-bottom">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-        <button onClick={() => navigate("/")} className="btn-ghost p-2"><Home className="w-5 h-5" /></button>
-        <h1 className="text-lg font-black flex-1 truncate">vs {oppName}</h1>
-        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-1.5" title="Game Stats">
-          <BarChart3 className="w-4 h-4 text-neutral-400" />
+        <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
+        <h1 className="text-lg font-black flex-1 truncate text-slate-50">vs {oppName}</h1>
+        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-1.5 cursor-pointer" title="Game Stats">
+          <BarChart3 className="w-4 h-4 text-slate-400" />
         </button>
-        <button onClick={() => setShowLog(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-neutral-400">
+        <button onClick={() => setShowLog(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-slate-400 cursor-pointer">
           {plays.length} plays
         </button>
-        <button onClick={() => setShowPregame(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-neutral-400">
+        <button onClick={() => setShowPregame(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-slate-400 cursor-pointer">
           Pregame
         </button>
       </div>
@@ -790,27 +790,27 @@ export default function GameScreen() {
             <div className="flex gap-1">
               {[1, 2, 3, 4].map(d => (
                 <button key={d} onClick={() => { setDown(d); persistGameSituation({ down: d }); }}
-                  className={`w-9 h-9 rounded-lg text-xs font-black transition-colors ${
-                    down === d ? "bg-amber-500 text-black" : "bg-surface-bg text-neutral-500 active:bg-surface-hover"
+                  className={`w-9 h-9 rounded-lg text-xs font-black transition-all duration-200 cursor-pointer ${
+                    down === d ? "bg-amber-500 text-black shadow-glow-gold" : "bg-surface-bg text-slate-500 active:bg-surface-hover hover:bg-surface-hover"
                   }`}>
                   {d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}
                 </button>
               ))}
             </div>
-            <span className="text-neutral-600 font-bold">&</span>
+            <span className="text-slate-600 font-bold">&</span>
             <div className="flex items-center gap-1">
-              <button onClick={() => { const v = Math.max(1, distance - 1); setDistance(v); persistGameSituation({ distance: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold">-</button>
-              <div className="w-8 h-9 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-black text-amber-400 tabular-nums">{distance}</div>
-              <button onClick={() => { const v = Math.min(99, distance + 1); setDistance(v); persistGameSituation({ distance: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold">+</button>
+              <button onClick={() => { const v = Math.max(1, distance - 1); setDistance(v); persistGameSituation({ distance: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">-</button>
+              <div className="w-8 h-9 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-black text-amber-400 font-mono tabular-nums">{distance}</div>
+              <button onClick={() => { const v = Math.min(99, distance + 1); setDistance(v); persistGameSituation({ distance: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">+</button>
             </div>
             <div className="flex-1" />
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold text-neutral-600 mr-1">BALL</span>
-              <button onClick={() => { const v = Math.max(1, ballOn - 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-neutral-500">-5</button>
-              <button onClick={() => { const v = Math.max(1, ballOn - 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold">-</button>
-              <div className="min-w-[52px] h-9 rounded-lg bg-surface-bg flex items-center justify-center text-xs font-black text-emerald-400 tabular-nums px-1">{yardLabel(ballOn)}</div>
-              <button onClick={() => { const v = Math.min(99, ballOn + 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold">+</button>
-              <button onClick={() => { const v = Math.min(99, ballOn + 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-neutral-500">+5</button>
+              <span className="text-[10px] font-bold text-slate-600 mr-1 font-mono">BALL</span>
+              <button onClick={() => { const v = Math.max(1, ballOn - 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-slate-500 cursor-pointer">-5</button>
+              <button onClick={() => { const v = Math.max(1, ballOn - 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">-</button>
+              <div className="min-w-[52px] h-9 rounded-lg bg-surface-bg flex items-center justify-center text-xs font-black text-emerald-400 font-mono tabular-nums px-1">{yardLabel(ballOn)}</div>
+              <button onClick={() => { const v = Math.min(99, ballOn + 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">+</button>
+              <button onClick={() => { const v = Math.min(99, ballOn + 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-slate-500 cursor-pointer">+5</button>
             </div>
           </div>
         </div>
@@ -825,8 +825,8 @@ export default function GameScreen() {
             { label: "PEN", val: stats.pens },
           ].map(s => (
             <div key={s.label} className="card p-1.5 text-center">
-              <div className="text-[8px] font-bold text-neutral-600 tracking-wider">{s.label}</div>
-              <div className="text-xs font-black tabular-nums">{s.val}</div>
+              <div className="text-[8px] font-bold text-slate-600 tracking-wider font-mono">{s.label}</div>
+              <div className="text-xs font-black font-mono tabular-nums text-slate-200">{s.val}</div>
             </div>
           ))}
         </div>
@@ -844,12 +844,12 @@ export default function GameScreen() {
         {plays.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-neutral-600 tracking-wider">RECENT PLAYS</span>
+              <span className="text-[10px] font-bold text-slate-600 tracking-wider font-mono">RECENT PLAYS</span>
               <div className="flex items-center gap-3">
-                <button onClick={handleUndo} className="text-[10px] font-bold text-red-400 flex items-center gap-0.5">
+                <button onClick={handleUndo} className="text-[10px] font-bold text-red-400 flex items-center gap-0.5 cursor-pointer hover:text-red-300 transition-colors">
                   <RotateCcw className="w-3 h-3" /> UNDO
                 </button>
-                <button onClick={() => setShowLog(true)} className="text-[10px] font-bold text-dragon-primary">
+                <button onClick={() => setShowLog(true)} className="text-[10px] font-bold text-dragon-primary cursor-pointer hover:text-dragon-light transition-colors">
                   All {plays.length}
                 </button>
               </div>
@@ -858,16 +858,16 @@ export default function GameScreen() {
               {plays.slice(-5).reverse().map(play => (
                 <button key={play.id}
                   onClick={() => setEditPlay(play)}
-                  className="w-full flex items-center gap-2 rounded-xl px-3 py-2 border border-surface-border bg-surface-card text-left active:bg-surface-hover"
+                  className="w-full flex items-center gap-2 rounded-xl px-3 py-2 border border-surface-border bg-surface-card text-left active:bg-surface-hover cursor-pointer hover:border-slate-700 transition-all duration-200"
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold truncate">{play.description}</div>
-                    <div className="text-[10px] text-neutral-600">
+                    <div className="text-xs font-bold truncate text-slate-200">{play.description}</div>
+                    <div className="text-[10px] text-slate-600 font-mono">
                       {QUARTER_LABELS[play.quarter]} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance}
                     </div>
                   </div>
-                  <div className={`text-xs font-black tabular-nums ${
-                    play.yards > 0 ? "text-emerald-400" : play.yards < 0 ? "text-red-400" : "text-neutral-500"
+                  <div className={`text-xs font-black font-mono tabular-nums ${
+                    play.yards > 0 ? "text-emerald-400" : play.yards < 0 ? "text-red-400" : "text-slate-500"
                   }`}>
                     {play.yards > 0 ? `+${play.yards}` : play.yards}
                   </div>
@@ -881,7 +881,7 @@ export default function GameScreen() {
         {/* Navigate to summary */}
         {plays.length > 0 && (
           <button onClick={() => navigate(`/game/${gameId}/summary`)}
-            className="w-full text-center py-2 text-xs font-bold text-dragon-primary">
+            className="w-full text-center py-2 text-xs font-bold text-dragon-primary cursor-pointer hover:text-dragon-light transition-colors">
             View Game Summary
           </button>
         )}
@@ -955,27 +955,27 @@ export default function GameScreen() {
 
       {/* PAT Gate */}
       {showPatGate && (
-        <div className="sheet bg-black/80">
+        <div className="sheet bg-black/60 backdrop-blur-sm">
           <div className="sheet-panel p-6 space-y-3 max-w-sm mx-auto">
-            <h2 className="text-lg font-black text-center">Extra Point</h2>
-            <p className="text-sm text-neutral-400 text-center">Touchdown scored. Record the conversion attempt next:</p>
+            <h2 className="text-lg font-black text-center text-slate-50">Extra Point</h2>
+            <p className="text-sm text-slate-400 text-center">Touchdown scored. Record the conversion attempt next:</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => handlePatGate("pat")}
-                className="py-3 rounded-xl text-sm font-black bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/30">PAT Kick</button>
+                className="py-3 rounded-xl text-sm font-black bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/30 cursor-pointer hover:bg-emerald-500/30 transition-colors">PAT Kick</button>
               <button onClick={() => handlePatGate("two_pt")}
-                className="py-3 rounded-xl text-sm font-black bg-blue-500/20 text-blue-400 border-2 border-blue-500/30">2PT Try</button>
+                className="py-3 rounded-xl text-sm font-black bg-blue-500/20 text-blue-400 border-2 border-blue-500/30 cursor-pointer hover:bg-blue-500/30 transition-colors">2PT Try</button>
             </div>
             <button onClick={() => handlePatGate("skip")}
-              className="w-full text-xs text-neutral-500 font-bold py-2">Skip</button>
+              className="w-full text-xs text-slate-500 font-bold py-2 cursor-pointer hover:text-slate-400 transition-colors">Skip</button>
           </div>
         </div>
       )}
 
       {/* Clock Editor */}
       {showClockEditor && (
-        <div className="sheet bg-black/80">
+        <div className="sheet bg-black/60 backdrop-blur-sm">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-sm font-black text-center">Set Clock</h2>
+            <h2 className="text-sm font-black text-center text-slate-50">Set Clock</h2>
             <div className="flex items-center justify-center gap-2">
               <input type="number" min={0} max={15} value={clockMins} onChange={e => setClockMins(Number(e.target.value))}
                 className="input w-16 text-center text-xl font-black" />
@@ -985,41 +985,41 @@ export default function GameScreen() {
             </div>
             <button onClick={() => { const v = clockMins * 60 + clockSecs; setClock(v); persistGameSituation({ clock: v }); setShowClockEditor(false); }}
               className="btn-primary w-full text-sm">Set</button>
-            <button onClick={() => setShowClockEditor(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
+            <button onClick={() => setShowClockEditor(false)} className="w-full text-xs text-slate-500 font-bold py-1 cursor-pointer hover:text-slate-400 transition-colors">Cancel</button>
           </div>
         </div>
       )}
 
       {/* End Game Confirm */}
       {showEndGame && (
-        <div className="sheet bg-black/80">
+        <div className="sheet bg-black/60 backdrop-blur-sm">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-lg font-black text-center">End Game?</h2>
-            <p className="text-sm text-neutral-400 text-center">
+            <h2 className="text-lg font-black text-center text-slate-50">End Game?</h2>
+            <p className="text-sm text-slate-400 text-center">
               Final score: {progName} {ourScore} — {oppName} {theirScore}
             </p>
             <button onClick={handleEndGame} className="btn-primary w-full">Mark as Final</button>
-            <button onClick={() => setShowEndGame(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Continue Playing</button>
+            <button onClick={() => setShowEndGame(false)} className="w-full text-xs text-slate-500 font-bold py-1 cursor-pointer hover:text-slate-400 transition-colors">Continue Playing</button>
           </div>
         </div>
       )}
 
       {/* Situation Adjuster (after penalty) */}
       {showSituationAdj && (
-        <div className="sheet bg-black/80">
+        <div className="sheet bg-black/60 backdrop-blur-sm">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-sm font-black text-center">Adjust Next Situation</h2>
+            <h2 className="text-sm font-black text-center text-slate-50">Adjust Next Situation</h2>
             <div>
-              <label className="text-[10px] font-bold text-neutral-500 block mb-1">Possession</label>
+              <label className="text-[10px] font-bold text-slate-500 block mb-1">Possession</label>
               <div className="grid grid-cols-2 gap-2">
                 {(["us", "them"] as const).map((team) => (
                   <button
                     key={team}
                     onClick={() => setAdjPossession(team)}
-                    className={`py-2 rounded-xl text-xs font-bold border-2 uppercase transition-colors ${
+                    className={`py-2 rounded-xl text-xs font-bold border-2 uppercase transition-all duration-200 cursor-pointer ${
                       adjPossession === team
                         ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
-                        : "border-surface-border bg-surface-bg text-neutral-500"
+                        : "border-surface-border bg-surface-bg text-slate-500 hover:border-slate-600"
                     }`}
                   >
                     {team}
@@ -1029,19 +1029,19 @@ export default function GameScreen() {
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[10px] font-bold text-neutral-500 block mb-1">Ball On</label>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">Ball On</label>
                 <input type="number" value={adjBallOn} onChange={e => setAdjBallOn(Number(e.target.value))}
-                  className="input text-center text-sm font-black" min={1} max={99} />
+                  className="input text-center text-sm font-black font-mono" min={1} max={99} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-neutral-500 block mb-1">Down</label>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">Down</label>
                 <input type="number" value={adjDown} onChange={e => setAdjDown(Number(e.target.value))}
-                  className="input text-center text-sm font-black" min={1} max={4} />
+                  className="input text-center text-sm font-black font-mono" min={1} max={4} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-neutral-500 block mb-1">Distance</label>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">Distance</label>
                 <input type="number" value={adjDistance} onChange={e => setAdjDistance(Number(e.target.value))}
-                  className="input text-center text-sm font-black" min={1} max={99} />
+                  className="input text-center text-sm font-black font-mono" min={1} max={99} />
               </div>
             </div>
             <button onClick={applySituationAdjustment} className="btn-primary w-full text-sm">Apply</button>

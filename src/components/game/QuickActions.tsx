@@ -15,7 +15,7 @@ const COLOR_MAP: Record<string, string> = {
   purple: "bg-purple-900/60 text-purple-400 border-purple-700/50",
   orange: "bg-orange-900/60 text-orange-400 border-orange-700/50",
   yellow: "bg-yellow-900/60 text-yellow-400 border-yellow-700/50",
-  neutral: "bg-neutral-800 text-neutral-400 border-neutral-700/50",
+  neutral: "bg-slate-800 text-slate-400 border-slate-700/50",
 };
 
 const CATEGORY_ORDER: Record<string, number> = {
@@ -87,10 +87,10 @@ export default function QuickActions({ onSelect, possession, suggestedPhase }: P
           <button
             key={tab.value}
             onClick={() => { setPhase(tab.value); setManualOverride(true); }}
-            className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors ${
+            className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
               phase === tab.value
-                ? "bg-dragon-primary/20 text-dragon-primary border border-dragon-primary/30"
-                : "bg-surface-bg text-neutral-500 border border-transparent active:bg-surface-hover"
+                ? "bg-dragon-primary/20 text-dragon-primary border border-dragon-primary/30 shadow-glow-sm"
+                : "bg-surface-bg text-slate-500 border border-transparent active:bg-surface-hover hover:text-slate-400"
             }`}
           >
             {tab.label}
@@ -99,13 +99,13 @@ export default function QuickActions({ onSelect, possession, suggestedPhase }: P
       </div>
 
       {possession === "them" && (
-        <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider">
+        <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider font-mono">
           Opponent has ball
         </div>
       )}
       {categories.map(cat => (
         <div key={cat}>
-          <div className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
+          <div className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mb-1.5 font-mono">
             {CATEGORY_LABELS[cat] ?? cat}
           </div>
           <div className="grid grid-cols-4 gap-1.5">
@@ -113,7 +113,7 @@ export default function QuickActions({ onSelect, possession, suggestedPhase }: P
               <button
                 key={pt.id}
                 onClick={() => onSelect(pt)}
-                className={`py-2.5 px-1 rounded-xl text-[11px] font-bold border transition-all active:scale-95 ${COLOR_MAP[pt.color] ?? COLOR_MAP.neutral}`}
+                className={`py-2.5 px-1 rounded-xl text-[11px] font-bold border transition-all duration-200 active:scale-95 cursor-pointer ${COLOR_MAP[pt.color] ?? COLOR_MAP.neutral}`}
               >
                 {pt.label}
               </button>

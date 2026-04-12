@@ -102,7 +102,7 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
     <div className="mt-3 border border-surface-border rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-neutral-400 hover:bg-surface-hover"
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-400 hover:bg-surface-hover"
       >
         <Users className="w-3.5 h-3.5" />
         Opponent Roster ({players.length})
@@ -114,8 +114,8 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
           {/* Import button */}
           <div className="px-3 py-2 flex gap-2">
             <button onClick={() => setShowImport(s => !s)}
-              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors ${
-                showImport ? "border-dragon-primary text-dragon-primary" : "border-surface-border text-neutral-500"
+              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all duration-200 cursor-pointer ${
+                showImport ? "border-dragon-primary text-dragon-primary" : "border-surface-border text-slate-500"
               }`}>
               {showImport ? "Hide Import" : "Import from MaxPreps / CSV"}
             </button>
@@ -127,14 +127,14 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
               <div className="flex gap-2">
                 <button onClick={() => { setImportMode("maxpreps"); setImportParsed(false); }}
                   className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg border ${
-                    importMode === "maxpreps" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-neutral-400"
+                    importMode === "maxpreps" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-slate-400"
                   }`}>MaxPreps</button>
                 <button onClick={() => { setImportMode("csv"); setImportParsed(false); }}
                   className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg border ${
-                    importMode === "csv" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-neutral-400"
+                    importMode === "csv" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-slate-400"
                   }`}>CSV / Tab</button>
               </div>
-              <p className="text-[10px] text-neutral-500">
+              <p className="text-[10px] text-slate-500">
                 {importMode === "maxpreps"
                   ? 'Copy the roster from MaxPreps.com (# Player Grade Pos Height Weight) and paste below.'
                   : "Paste comma or tab-separated: Jersey#, Name, Position"}
@@ -150,9 +150,9 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
                   <div className="max-h-32 overflow-y-auto divide-y divide-surface-border rounded-lg bg-surface-bg">
                     {importPreview.map((p, i) => (
                       <div key={i} className="flex items-center gap-2 px-2 py-1 text-[10px]">
-                        <span className="font-mono w-5 text-center text-neutral-500">{p.jerseyNumber ?? "—"}</span>
+                        <span className="font-mono w-5 text-center text-slate-500">{p.jerseyNumber ?? "—"}</span>
                         <span className="flex-1 truncate">{p.firstName} {p.lastName}</span>
-                        <span className="text-neutral-500">{p.position ?? ""}</span>
+                        <span className="text-slate-500">{p.position ?? ""}</span>
                       </div>
                     ))}
                   </div>
@@ -170,10 +170,10 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
             <div className="max-h-40 overflow-y-auto divide-y divide-surface-border">
               {players.map(p => (
                 <div key={p.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                  <span className="font-mono w-6 text-center text-neutral-500">{p.jersey_number ?? "—"}</span>
+                  <span className="font-mono w-6 text-center text-slate-500">{p.jersey_number ?? "—"}</span>
                   <span className="flex-1 truncate">{p.name}</span>
-                  <span className="text-neutral-500 w-8">{p.position ?? ""}</span>
-                  <button onClick={() => handleDelete(p.id)} className="text-neutral-600 hover:text-red-400">
+                  <span className="text-slate-500 w-8">{p.position ?? ""}</span>
+                  <button onClick={() => handleDelete(p.id)} className="text-slate-600 hover:text-red-400">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -235,7 +235,7 @@ function OpponentLogoUpload({
             </button>
           </div>
         ) : (
-          <div className="w-14 h-14 rounded-lg bg-surface-card border border-dashed border-surface-border flex items-center justify-center text-neutral-500">
+          <div className="w-14 h-14 rounded-lg bg-surface-card border border-dashed border-surface-border flex items-center justify-center text-slate-500">
             <Image className="w-6 h-6" />
           </div>
         )}
@@ -308,7 +308,7 @@ function OpponentModal({
   };
 
   return (
-    <div className="sheet bg-black/70">
+    <div className="sheet bg-black/60 backdrop-blur-sm">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 pb-3 shrink-0">
           <h2 className="text-lg font-black">{existing ? "Edit Opponent" : savedId ? "New Opponent" : "Add Opponent"}</h2>
@@ -362,7 +362,7 @@ function OpponentModal({
           {savedId ? (
             <OpponentLogoUpload currentUrl={logoUrl} onUploaded={handleLogoChange} opponentId={savedId} />
           ) : (
-            <div className="text-[10px] text-neutral-500 italic">Save the opponent first to upload a logo and add roster.</div>
+            <div className="text-[10px] text-slate-500 italic">Save the opponent first to upload a logo and add roster.</div>
           )}
 
           <div>
@@ -435,7 +435,7 @@ function AddGameModal({
   };
 
   return (
-    <div className="sheet bg-black/70">
+    <div className="sheet bg-black/60 backdrop-blur-sm">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 pb-3 shrink-0">
           <h2 className="text-lg font-black">Add Game</h2>
@@ -444,7 +444,7 @@ function AddGameModal({
         <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-3">
           {opponents.length === 0 ? (
             <div className="card p-6 text-center">
-              <p className="text-neutral-500 text-sm mb-3">You need to add an opponent first.</p>
+              <p className="text-slate-500 text-sm mb-3">You need to add an opponent first.</p>
               <button onClick={() => { onClose(); onAddOpp(); }} className="btn-primary text-sm">Add Opponent</button>
             </div>
           ) : (
@@ -476,8 +476,8 @@ function AddGameModal({
                 <div className="flex gap-2">
                   {(["home", "away", "neutral"] as Site[]).map(s => (
                     <button key={s} onClick={() => setSite(s)}
-                      className={`flex-1 h-10 rounded-xl font-bold text-sm border transition-colors capitalize ${
-                        site === s ? "bg-dragon-primary border-dragon-primary text-white" : "bg-surface-bg border-surface-border text-neutral-400"
+                      className={`flex-1 h-10 rounded-xl font-bold text-sm border transition-all duration-200 capitalize ${
+                        site === s ? "bg-dragon-primary border-dragon-primary text-white" : "bg-surface-bg border-surface-border text-slate-400"
                       }`}>
                       {s}
                     </button>
@@ -575,7 +575,7 @@ export default function ScheduleScreen() {
       );
       return <span className="text-[10px] font-bold bg-yellow-900/30 text-yellow-500 px-1.5 py-0.5 rounded">{label.toUpperCase()}</span>;
     }
-    if (game.status === "completed") return <span className="text-[10px] font-bold bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded">FINAL</span>;
+    if (game.status === "completed") return <span className="text-[10px] font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">FINAL</span>;
     if (game.status === "live") return <span className="text-[10px] font-bold bg-red-900/50 text-red-400 px-1.5 py-0.5 rounded animate-pulse">LIVE</span>;
     return null;
   };
@@ -594,7 +594,7 @@ export default function ScheduleScreen() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-black flex-1">Schedule</h1>
-        <button onClick={() => setOppModal({ open: true, editing: null })} className="btn-ghost p-2 text-neutral-400" title="Manage opponents">
+        <button onClick={() => setOppModal({ open: true, editing: null })} className="btn-ghost p-2 text-slate-400" title="Manage opponents">
           <Users className="w-5 h-5" />
         </button>
         <button onClick={() => setShowAddGame(true)} className="btn-ghost p-2 text-dragon-primary">
@@ -604,7 +604,7 @@ export default function ScheduleScreen() {
 
       {season && (
         <div className="px-5 pb-3">
-          <span className="text-xs font-bold text-neutral-600">
+          <span className="text-xs font-bold text-slate-600">
             {season.name ?? `${season.year} ${season.level}`}
           </span>
         </div>
@@ -613,12 +613,12 @@ export default function ScheduleScreen() {
       {/* Games list */}
       <div className="flex-1 px-5 lg:px-8 overflow-y-auto pb-4">
         {loading ? (
-          <div className="text-neutral-500 text-sm text-center py-12 animate-pulse">Loading schedule...</div>
+          <div className="text-slate-500 text-sm text-center py-12 animate-pulse">Loading schedule...</div>
         ) : games.length === 0 ? (
           <div className="card p-8 text-center">
-            <CalIcon className="w-10 h-10 text-neutral-700 mx-auto mb-3" />
-            <p className="text-neutral-500 text-sm font-semibold mb-1">No games scheduled</p>
-            <p className="text-neutral-600 text-xs mb-4">Tap + to add a game. You'll need to add an opponent first.</p>
+            <CalIcon className="w-10 h-10 text-slate-700 mx-auto mb-3" />
+            <p className="text-slate-500 text-sm font-semibold mb-1">No games scheduled</p>
+            <p className="text-slate-600 text-xs mb-4">Tap + to add a game. You'll need to add an opponent first.</p>
             {opponents.length === 0 && (
               <button onClick={() => setOppModal({ open: true, editing: null })} className="btn-secondary text-sm mx-auto">
                 Add First Opponent
@@ -633,7 +633,7 @@ export default function ScheduleScreen() {
                 className="card w-full p-4 text-left active:scale-[0.98] transition-transform"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-neutral-500">{formatDate(game.game_date)}</span>
+                  <span className="text-xs font-bold text-slate-500">{formatDate(game.game_date)}</span>
                   {getStatusBadge(game)}
                 </div>
                 <div className="flex items-center gap-3">
@@ -650,7 +650,7 @@ export default function ScheduleScreen() {
                       {getSiteLabel(game)} {game.opponent.name}
                     </div>
                     {game.location && (
-                      <div className="text-xs text-neutral-600 flex items-center gap-1 mt-0.5">
+                      <div className="text-xs text-slate-600 flex items-center gap-1 mt-0.5">
                         <MapPin className="w-3 h-3" /> {game.location}
                       </div>
                     )}
@@ -670,7 +670,7 @@ export default function ScheduleScreen() {
                   ) : game.status === "live" ? (
                     <Play className="w-5 h-5 text-dragon-primary" />
                   ) : (
-                    <span className="text-xs text-neutral-600 font-semibold">
+                    <span className="text-xs text-slate-600 font-semibold">
                       {game.kickoff_time
                         ? game.kickoff_time
                         : new Date(game.game_date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
@@ -685,13 +685,13 @@ export default function ScheduleScreen() {
         {/* Opponents section (below schedule) */}
         {opponents.length > 0 && (
           <div className="mt-6">
-            <h2 className="text-sm font-black text-neutral-500 mb-3">OPPONENTS</h2>
+            <h2 className="text-sm font-black text-slate-500 mb-3">OPPONENTS</h2>
             <div className="space-y-1.5">
               {opponents.map(opp => (
                 <button
                   key={opp.id}
                   onClick={() => setOppModal({ open: true, editing: opp })}
-                  className="card w-full flex items-center gap-3 p-3 text-left active:bg-surface-hover transition-colors"
+                  className="card w-full flex items-center gap-3 p-3 text-left active:bg-surface-hover transition-all duration-200"
                 >
                   {opp.logo_url ? (
                     <img src={opp.logo_url} alt={opp.name} className="w-7 h-7 object-contain rounded-lg shrink-0" />

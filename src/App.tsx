@@ -20,7 +20,7 @@ const GameSettingsScreen = lazy(() => import("@/screens/GameSettingsScreen"));
 function LoadingFallback() {
   return (
     <div className="screen items-center justify-center">
-      <div className="text-neutral-500 animate-pulse">Loading...</div>
+      <div className="text-slate-500 animate-pulse">Loading...</div>
     </div>
   );
 }

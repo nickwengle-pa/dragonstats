@@ -24,7 +24,7 @@ function NumberField({
           min={min} max={max}
           className="input flex-1 font-mono text-sm"
         />
-        {suffix && <span className="text-xs text-neutral-500 font-medium">{suffix}</span>}
+        {suffix && <span className="text-xs text-slate-500 font-medium">{suffix}</span>}
       </div>
     </div>
   );
@@ -40,16 +40,16 @@ function ToggleOption({
   return (
     <div>
       <label className="label block mb-1">{label}</label>
-      {description && <p className="text-xs text-neutral-500 mb-2">{description}</p>}
+      {description && <p className="text-xs text-slate-500 mb-2">{description}</p>}
       <div className="flex gap-2">
         {options.map(opt => (
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-colors ${
+            className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-all duration-200 cursor-pointer ${
               value === opt.value
                 ? "border-blue-500 bg-blue-500/10 text-blue-400"
-                : "border-surface-border text-neutral-500 active:bg-surface-hover"
+                : "border-surface-border text-slate-500 active:bg-surface-hover hover:border-slate-600"
             }`}
           >
             {opt.label}
@@ -102,7 +102,7 @@ export default function GameSettingsScreen() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-black flex-1">Game Setup</h1>
-        <button onClick={handleReset} className="btn-ghost p-2 text-neutral-500" title="Reset to defaults">
+        <button onClick={handleReset} className="btn-ghost p-2 text-slate-500" title="Reset to defaults">
           <RotateCcw className="w-4 h-4" />
         </button>
       </div>
@@ -196,10 +196,10 @@ export default function GameSettingsScreen() {
                   <button
                     key={m}
                     onClick={() => set("quarter_length_secs", m * 60)}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-colors ${
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-all duration-200 ${
                       quarterMins === m
                         ? "border-blue-500 bg-blue-500/10 text-blue-400"
-                        : "border-surface-border text-neutral-500 active:bg-surface-hover"
+                        : "border-surface-border text-slate-500 active:bg-surface-hover"
                     }`}
                   >
                     {m} min
@@ -225,7 +225,7 @@ export default function GameSettingsScreen() {
           {saved ? "Saved!" : saving ? "Saving..." : "Save Settings"}
         </button>
 
-        <p className="text-xs text-neutral-600 text-center pb-2">
+        <p className="text-xs text-slate-600 text-center pb-2">
           These settings apply to all new games. Existing games keep their original settings.
         </p>
       </div>

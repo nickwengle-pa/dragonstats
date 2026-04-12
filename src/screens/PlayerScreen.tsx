@@ -42,7 +42,7 @@ function StatBox({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center">
       <div className="text-lg font-black font-mono">{value}</div>
-      <div className="text-[10px] text-neutral-500 font-bold uppercase">{label}</div>
+      <div className="text-[10px] text-slate-500 font-bold uppercase">{label}</div>
     </div>
   );
 }
@@ -59,7 +59,7 @@ function PassingSection({ lines }: { lines: PlayerGameLine[] }) {
 
   return (
     <div className="card p-5">
-      <div className="text-xs font-bold text-neutral-500 uppercase mb-3">Passing</div>
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Passing</div>
       <div className="grid grid-cols-5 gap-2 mb-4">
         <StatBox label="CMP/ATT" value={`${comp}/${att}`} />
         <StatBox label="YDS" value={fmt(yds)} />
@@ -91,7 +91,7 @@ function RushingSection({ lines }: { lines: PlayerGameLine[] }) {
 
   return (
     <div className="card p-5">
-      <div className="text-xs font-bold text-neutral-500 uppercase mb-3">Rushing</div>
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Rushing</div>
       <div className="grid grid-cols-4 gap-2 mb-4">
         <StatBox label="CAR" value={fmt(car)} />
         <StatBox label="YDS" value={fmt(yds)} />
@@ -122,7 +122,7 @@ function ReceivingSection({ lines }: { lines: PlayerGameLine[] }) {
 
   return (
     <div className="card p-5">
-      <div className="text-xs font-bold text-neutral-500 uppercase mb-3">Receiving</div>
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Receiving</div>
       <div className="grid grid-cols-4 gap-2 mb-4">
         <StatBox label="REC" value={fmt(rec)} />
         <StatBox label="YDS" value={fmt(yds)} />
@@ -157,7 +157,7 @@ function DefenseSection({ lines }: { lines: PlayerGameLine[] }) {
 
   return (
     <div className="card p-5">
-      <div className="text-xs font-bold text-neutral-500 uppercase mb-3">Defense</div>
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Defense</div>
       <div className="grid grid-cols-4 gap-2 mb-4">
         <StatBox label="TKL" value={fmt(tkl)} />
         <StatBox label="SOLO" value={fmt(solo)} />
@@ -201,11 +201,11 @@ function GameLog<T>({
 
   return (
     <div>
-      <div className="text-[10px] font-bold text-neutral-500 uppercase mb-1">Game Log</div>
+      <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Game Log</div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-neutral-500">
+            <tr className="text-slate-500">
               <th className="text-left font-medium py-1 pr-2">OPP</th>
               {columns.map((c) => (
                 <th key={c.label} className="text-right font-medium py-1 px-1">{c.label}</th>
@@ -216,9 +216,9 @@ function GameLog<T>({
             {gamesWithData.map((line) => {
               const stats = line[category] as T;
               return (
-                <tr key={line.gameId} className="border-t border-neutral-800">
-                  <td className="py-1 pr-2 text-neutral-400">
-                    <span className="text-neutral-500 mr-1">{fmtDate(line.gameDate)}</span>
+                <tr key={line.gameId} className="border-t border-slate-800">
+                  <td className="py-1 pr-2 text-slate-400">
+                    <span className="text-slate-500 mr-1">{fmtDate(line.gameDate)}</span>
                     {line.opponentName}
                   </td>
                   {columns.map((c) => (
@@ -326,11 +326,11 @@ export default function PlayerScreen() {
               : "Loading..."}
           </div>
           {player?.preferred_name && (
-            <div className="text-xs text-neutral-600">
+            <div className="text-xs text-slate-600">
               {player.first_name} {player.last_name}
             </div>
           )}
-          <div className="text-sm text-neutral-500 mt-0.5">
+          <div className="text-sm text-slate-500 mt-0.5">
             {player?.positions && player.positions.length > 0
               ? player.positions.join(" / ")
               : player?.position ?? ""}
@@ -341,14 +341,14 @@ export default function PlayerScreen() {
         {/* Loading */}
         {loading && (
           <div className="card p-8 text-center">
-            <div className="text-neutral-500 animate-pulse">Computing stats...</div>
+            <div className="text-slate-500 animate-pulse">Computing stats...</div>
           </div>
         )}
 
         {/* No data */}
         {!loading && lines.length === 0 && (
           <div className="card p-8 text-center">
-            <div className="text-neutral-500 text-sm">No game data yet this season.</div>
+            <div className="text-slate-500 text-sm">No game data yet this season.</div>
           </div>
         )}
 

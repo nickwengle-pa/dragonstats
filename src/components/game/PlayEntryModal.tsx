@@ -80,7 +80,7 @@ function PlayerGrid({
 
   return (
     <div>
-      <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">{label}</div>
+      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{label}</div>
       <input
         type="text"
         placeholder="# or name..."
@@ -94,17 +94,17 @@ function PlayerGrid({
           <button
             key={p.player_id}
             onClick={() => onSelect(p)}
-            className={`flex flex-col items-center py-2 rounded-xl border-2 transition-colors ${
+            className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 ${
               selectedId === p.player_id
                 ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
-                : "border-transparent bg-surface-bg text-neutral-400 active:bg-surface-hover"
+                : "border-transparent bg-surface-bg text-slate-400 active:bg-surface-hover"
             }`}
           >
             <span className="text-base font-black tabular-nums">{p.jersey_number ?? "—"}</span>
-            <span className="text-[8px] font-bold text-neutral-500 truncate w-full text-center">
+            <span className="text-[8px] font-bold text-slate-500 truncate w-full text-center">
               {p.player.preferred_name || p.player.first_name}
             </span>
-            <span className="text-[7px] font-bold text-neutral-600">{p.position ?? ""}</span>
+            <span className="text-[7px] font-bold text-slate-600">{p.position ?? ""}</span>
           </button>
         ))}
       </div>
@@ -141,7 +141,7 @@ function OpponentPlayerGrid({
 
   return (
     <div>
-      <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">{label}</div>
+      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{label}</div>
       <input
         type="text"
         placeholder="# or name..."
@@ -154,18 +154,18 @@ function OpponentPlayerGrid({
           <button
             key={p.id}
             onClick={() => onSelect(p)}
-            className={`flex flex-col items-center py-2 rounded-xl border-2 transition-colors ${
+            className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 ${
               selectedId === p.id
                 ? "border-red-500 bg-red-500/10 text-red-400"
-                : "border-transparent bg-surface-bg text-neutral-400 active:bg-surface-hover"
+                : "border-transparent bg-surface-bg text-slate-400 active:bg-surface-hover"
             }`}
           >
             <span className="text-base font-black tabular-nums">{p.jersey_number ?? "—"}</span>
-            <span className="text-[8px] font-bold text-neutral-500 truncate w-full text-center">{p.name}</span>
+            <span className="text-[8px] font-bold text-slate-500 truncate w-full text-center">{p.name}</span>
           </button>
         ))}
         {filtered.length === 0 && !canQuickAdd && (
-          <div className="col-span-5 text-xs text-neutral-600 text-center py-4">
+          <div className="col-span-5 text-xs text-slate-600 text-center py-4">
             No opponent players found. Type a jersey # to quick-add.
           </div>
         )}
@@ -539,7 +539,7 @@ export default function PlayEntryModal({
     : ["interceptor"].includes(currentRole); // Our offense, opponent interceptor
 
   return (
-    <div className="sheet bg-black/80">
+    <div className="sheet bg-black/60 backdrop-blur-sm">
       <div className="sheet-panel max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center gap-3 p-4 pb-2 shrink-0 border-b border-surface-border">
@@ -550,7 +550,7 @@ export default function PlayEntryModal({
           )}
           <div className="flex-1">
             <div className="text-sm font-black">{playType.label}</div>
-            <div className="text-[10px] text-neutral-500">
+            <div className="text-[10px] text-slate-500">
               Step {stepIdx + 1} of {steps.length}: {
                 ({
                   players: "Players", yards: "Yards", formations: "Formations",
@@ -568,7 +568,7 @@ export default function PlayEntryModal({
           {/* Step dots */}
           <div className="flex gap-1">
             {steps.map((_, i) => (
-              <div key={i} className={`w-2 h-2 rounded-full ${i === stepIdx ? "bg-dragon-primary" : i < stepIdx ? "bg-emerald-500" : "bg-neutral-700"}`} />
+              <div key={i} className={`w-2 h-2 rounded-full ${i === stepIdx ? "bg-dragon-primary" : i < stepIdx ? "bg-emerald-500" : "bg-slate-700"}`} />
             ))}
           </div>
         </div>
@@ -581,7 +581,7 @@ export default function PlayEntryModal({
             <>
               {playType.id === "two_pt" && (
                 <div>
-                  <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Conversion Type</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Conversion Type</div>
                   <div className="grid grid-cols-2 gap-2">
                     {(["pass", "run"] as const).map((style) => (
                       <button
@@ -591,10 +591,10 @@ export default function PlayEntryModal({
                           setTagged([]);
                           setCurrentRoleIdx(0);
                         }}
-                        className={`py-2.5 rounded-xl text-sm font-black border-2 capitalize transition-colors ${
+                        className={`py-2.5 rounded-xl text-sm font-black border-2 capitalize transition-all duration-200 ${
                           twoPointStyle === style
                             ? "border-dragon-primary bg-dragon-primary/15 text-dragon-primary"
-                            : "border-surface-border bg-surface-bg text-neutral-500"
+                            : "border-surface-border bg-surface-bg text-slate-500"
                         }`}
                       >
                         {style}
@@ -610,10 +610,10 @@ export default function PlayEntryModal({
                   const tp = tagged.find(t => t.role === role);
                   return (
                     <button key={role} onClick={() => setCurrentRoleIdx(i)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors ${
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all duration-200 cursor-pointer ${
                         currentRoleIdx === i
                           ? "bg-dragon-primary text-white"
-                          : tp ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-surface-bg text-neutral-500"
+                          : tp ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-surface-bg text-slate-500"
                       }`}>
                       {role}{tp ? `: #${tp.jersey_number}` : ""}
                     </button>
@@ -692,7 +692,7 @@ export default function PlayEntryModal({
                   ))}
                 </div>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[10px] text-neutral-500">Or type:</span>
+                  <span className="text-[10px] text-slate-500">Or type:</span>
                   <input
                     type="number" inputMode="numeric" min={0} max={50}
                     placeholder="e.g. 5"
@@ -705,19 +705,19 @@ export default function PlayEntryModal({
                     className="input w-20 text-center text-sm font-black"
                   />
                 </div>
-                <div className="text-xs text-neutral-500 mt-2">
-                  {playType.id === "kickoff" ? "Kick" : "Punt"} distance: <span className="font-bold text-neutral-300">{(100 - kickedToYard) - gameState.ballOn} yards</span>
+                <div className="text-xs text-slate-500 mt-2">
+                  {playType.id === "kickoff" ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{(100 - kickedToYard) - gameState.ballOn} yards</span>
                   {" "}({yardLabel(gameState.ballOn)} → OPP {kickedToYard})
                 </div>
               </div>
 
               <button onClick={() => { setIsTouchback(t => !t); }}
-                className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
-                  isTouchback ? "border-sky-500 bg-sky-500/20 text-sky-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                  isTouchback ? "border-sky-500 bg-sky-500/20 text-sky-400" : "border-surface-border bg-surface-bg text-slate-500"
                 }`}>Touchback</button>
 
               {isTouchback && (
-                <div className="text-xs text-neutral-500 text-center">
+                <div className="text-xs text-slate-500 text-center">
                   Receiving team will start at their own 25 yard line.
                 </div>
               )}
@@ -727,7 +727,7 @@ export default function PlayEntryModal({
           {/* ── KICK STEP: Returner ── */}
           {currentStep === "kick_returner" && (
             <>
-              <div className="text-xs text-neutral-400 mb-1">
+              <div className="text-xs text-slate-400 mb-1">
                 {playType.id === "kickoff" ? "Kicked" : "Punted"} to OPP {kickedToYard} ({(100 - kickedToYard) - gameState.ballOn} yds). Select the returner.
               </div>
               {isTheirBall ? (
@@ -769,10 +769,10 @@ export default function PlayEntryModal({
                       <button
                         key={side}
                         onClick={() => setReturnToSide(side)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-colors ${
+                        className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
                           returnToSide === side
                             ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                            : "border-surface-border bg-surface-bg text-neutral-500"
+                            : "border-surface-border bg-surface-bg text-slate-500"
                         }`}
                       >
                         {label}
@@ -796,7 +796,7 @@ export default function PlayEntryModal({
                   ))}
                 </div>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[10px] text-neutral-500">Or type:</span>
+                  <span className="text-[10px] text-slate-500">Or type:</span>
                   <input
                     type="number" inputMode="numeric" min={1} max={50}
                     placeholder="e.g. 30"
@@ -809,7 +809,7 @@ export default function PlayEntryModal({
                     className="input w-20 text-center text-sm font-black"
                   />
                 </div>
-                <div className="text-xs text-neutral-500 mt-3">
+                <div className="text-xs text-slate-500 mt-3">
                   {(() => {
                     const sideLabel = returnToSide === "our"
                       ? (gameState.possession === "us" ? "OUR" : "OPP")
@@ -818,7 +818,7 @@ export default function PlayEntryModal({
                     const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
                     const retYds = receiverYard - kickedToYard;
                     return (
-                      <>Caught at OPP {kickedToYard} → returned to <span className="font-bold text-neutral-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
+                      <>Caught at OPP {kickedToYard} → returned to <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
                     );
                   })()}
                 </div>
@@ -826,8 +826,8 @@ export default function PlayEntryModal({
 
               {/* TD toggle for return TD */}
               <button onClick={() => setIsTD(t => !t)}
-                className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
-                  isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                  isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
                 }`}>Return TD</button>
             </>
           )}
@@ -835,7 +835,7 @@ export default function PlayEntryModal({
           {/* ── KICK STEP: Tacklers (optional) ── */}
           {currentStep === "kick_tacklers" && (
             <>
-              <div className="text-xs text-neutral-400 mb-1">
+              <div className="text-xs text-slate-400 mb-1">
                 Optional: Select tackler(s) from your roster. 1 player = 1.0 credit, 2+ = 0.5 each.
               </div>
               {tacklers.length > 0 && (
@@ -861,7 +861,7 @@ export default function PlayEntryModal({
                 search={tacklerSearch}
                 onSearch={setTacklerSearch}
               />
-              <div className="text-[10px] text-neutral-600 text-center mt-2">
+              <div className="text-[10px] text-slate-600 text-center mt-2">
                 Skip this step if not tracking tacklers.
               </div>
             </>
@@ -878,10 +878,10 @@ export default function PlayEntryModal({
                       <button
                         key={option.value}
                         onClick={() => setBlockedKickType(option.value)}
-                        className={`py-2 rounded-xl text-xs font-bold border-2 transition-colors ${
+                        className={`py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 ${
                           blockedKickType === option.value
                             ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
-                            : "border-surface-border bg-surface-bg text-neutral-500"
+                            : "border-surface-border bg-surface-bg text-slate-500"
                         }`}
                       >
                         {option.label}
@@ -901,10 +901,10 @@ export default function PlayEntryModal({
                       <button
                         key={side}
                         onClick={() => setResultSide(side)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-colors ${
+                        className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
                           resultSide === side
                             ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                            : "border-surface-border bg-surface-bg text-neutral-500"
+                            : "border-surface-border bg-surface-bg text-slate-500"
                         }`}
                       >
                         {side === "our" ? "Our Side" : "Opp Side"}
@@ -919,7 +919,7 @@ export default function PlayEntryModal({
                         className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
                     ))}
                     <div className={`w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums ${
-                      yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : "text-neutral-300"
+                      yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : "text-slate-300"
                     }`}>{resultYardLine}</div>
                     {[1, 5, 10].map(n => (
                       <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
@@ -927,7 +927,7 @@ export default function PlayEntryModal({
                     ))}
                   </div>
                   <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[10px] text-neutral-500">Or type:</span>
+                    <span className="text-[10px] text-slate-500">Or type:</span>
                     <input
                       type="number" inputMode="numeric" min={1} max={50}
                       placeholder="e.g. 35"
@@ -941,8 +941,8 @@ export default function PlayEntryModal({
                     />
                   </div>
 
-                  <div className="text-xs text-neutral-500 mt-3">
-                    {yardLabel(gameState.ballOn)} → <span className="font-bold text-neutral-300">{resultSide === "our" ? "OUR" : "OPP"} {resultYardLine}</span>
+                  <div className="text-xs text-slate-500 mt-3">
+                    {yardLabel(gameState.ballOn)} → <span className="font-bold text-slate-300">{resultSide === "our" ? "OUR" : "OPP"} {resultYardLine}</span>
                     {" "}(<span className={yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : ""}>{yards > 0 ? "+" : ""}{yards} yds</span>)
                   </div>
                 </div>
@@ -954,10 +954,10 @@ export default function PlayEntryModal({
                   <div className="flex gap-2">
                     {(["Good", "No Good"] as const).map(r => (
                       <button key={r} onClick={() => setResult(prev => prev === r ? "" : r)}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                           result === r
                             ? r === "Good" ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-red-500 bg-red-500/20 text-red-400"
-                            : "border-surface-border bg-surface-bg text-neutral-500"
+                            : "border-surface-border bg-surface-bg text-slate-500"
                         }`}>{r}</button>
                     ))}
                   </div>
@@ -968,12 +968,12 @@ export default function PlayEntryModal({
               {!needsResult && (
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => setIsTD(t => !t)}
-                    className={`py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
-                      isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                    className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                      isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
                     }`}>TD</button>
                   <button onClick={() => setIsFirstDown(f => !f)}
-                    className={`py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
-                      isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                    className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                      isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-slate-500"
                     }`}>1st Down</button>
                 </div>
               )}
@@ -981,15 +981,15 @@ export default function PlayEntryModal({
               {/* Touchback */}
               {needsTouchback && (
                 <button onClick={() => setIsTouchback(t => !t)}
-                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-colors ${
-                    isTouchback ? "border-sky-500 bg-sky-500/20 text-sky-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                    isTouchback ? "border-sky-500 bg-sky-500/20 text-sky-400" : "border-surface-border bg-surface-bg text-slate-500"
                   }`}>Touchback</button>
               )}
 
               {/* Penalty */}
               <button onClick={() => setShowPenalties(s => !s)}
-                className={`w-full py-2 rounded-xl text-xs font-bold border transition-colors ${
-                  penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-neutral-500"
+                className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
+                  penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
                 }`}>
                 <Flag className="w-3 h-3 inline mr-1" />
                 {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
@@ -1005,24 +1005,24 @@ export default function PlayEntryModal({
                         setFlagYards(PENALTY_DEFAULT_YARDS[p] ?? 5);
                         setShowPenalties(false);
                       }}
-                        className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-colors ${
-                          penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-neutral-400"
+                        className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-all duration-200 ${
+                          penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-slate-400"
                         }`}>{p}</button>
                     ))}
                   </div>
                   {penalty && (
                     <div className="space-y-2">
                       <div>
-                        <span className="text-xs text-neutral-500 block mb-1">Flag On</span>
+                        <span className="text-xs text-slate-500 block mb-1">Flag On</span>
                         <div className="grid grid-cols-2 gap-2">
                           {(["offense", "defense"] as const).map((side) => (
                             <button
                               key={side}
                               onClick={() => setPenaltyCategory(side)}
-                              className={`py-2 rounded-xl text-xs font-bold border-2 capitalize transition-colors ${
+                              className={`py-2 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
                                 penaltyCategory === side
                                   ? "border-orange-500 bg-orange-500/15 text-orange-400"
-                                  : "border-surface-border bg-surface-bg text-neutral-500"
+                                  : "border-surface-border bg-surface-bg text-slate-500"
                               }`}
                             >
                               {side}
@@ -1031,7 +1031,7 @@ export default function PlayEntryModal({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-neutral-500">Penalty yards:</span>
+                        <span className="text-xs text-slate-500">Penalty yards:</span>
                         <input type="number" value={flagYards} onChange={e => setFlagYards(Number(e.target.value))}
                           className="input w-16 text-center text-sm" />
                         <button onClick={() => { setPenalty(null); setPenaltyCategory(null); setFlagYards(5); }} className="text-xs text-red-400 ml-auto">Clear</button>
@@ -1051,8 +1051,8 @@ export default function PlayEntryModal({
                 <div className="flex gap-2">
                   {(["left", "middle", "right"] as const).map(h => (
                     <button key={h} onClick={() => setHashMark(prev => prev === h ? null : h)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 capitalize transition-colors ${
-                        hashMark === h ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-neutral-500"
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
+                        hashMark === h ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-slate-500"
                       }`}>{h}</button>
                   ))}
                 </div>
@@ -1062,8 +1062,8 @@ export default function PlayEntryModal({
                 <div className="flex flex-wrap gap-1.5">
                   {OFFENSIVE_FORMATIONS.map(f => (
                     <button key={f} onClick={() => setOffFormation(prev => prev === f ? null : f)}
-                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors ${
-                        offFormation === f ? "border-blue-500 bg-blue-500/15 text-blue-400" : "border-surface-border text-neutral-500"
+                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-all duration-200 cursor-pointer ${
+                        offFormation === f ? "border-blue-500 bg-blue-500/15 text-blue-400" : "border-surface-border text-slate-500"
                       }`}>{f}</button>
                   ))}
                 </div>
@@ -1073,13 +1073,13 @@ export default function PlayEntryModal({
                 <div className="flex flex-wrap gap-1.5">
                   {DEFENSIVE_FORMATIONS.map(f => (
                     <button key={f} onClick={() => setDefFormation(prev => prev === f ? null : f)}
-                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors ${
-                        defFormation === f ? "border-red-500 bg-red-500/15 text-red-400" : "border-surface-border text-neutral-500"
+                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-all duration-200 cursor-pointer ${
+                        defFormation === f ? "border-red-500 bg-red-500/15 text-red-400" : "border-surface-border text-slate-500"
                       }`}>{f}</button>
                   ))}
                 </div>
               </div>
-              <div className="text-[10px] text-neutral-600 text-center">
+              <div className="text-[10px] text-slate-600 text-center">
                 Formations are optional — skip if not tracking.
               </div>
             </>
@@ -1088,7 +1088,7 @@ export default function PlayEntryModal({
           {/* ── STEP: Defense (tacklers) ── */}
           {currentStep === "defense" && (
             <>
-              <div className="text-xs text-neutral-400 mb-1">
+              <div className="text-xs text-slate-400 mb-1">
                 {isTheirBall
                   ? "Select up to 3 tacklers from your roster. 1 player = 1.0 credit, 2+ = 0.5 each."
                   : "Select up to 3 opponent tacklers. 1 player = 1.0 credit, 2+ = 0.5 each."
@@ -1132,7 +1132,7 @@ export default function PlayEntryModal({
                   onQuickAdd={handleQuickAddOpponent}
                 />
               )}
-              <div className="text-[10px] text-neutral-600 text-center mt-2">
+              <div className="text-[10px] text-slate-600 text-center mt-2">
                 Optional — skip if not tracking tacklers on this play.
               </div>
             </>
@@ -1141,15 +1141,15 @@ export default function PlayEntryModal({
           {/* ── STEP: Review ── */}
           {currentStep === "review" && (
             <div className="space-y-3">
-              <div className="text-sm font-bold text-neutral-300">Review Play</div>
+              <div className="text-sm font-bold text-slate-300">Review Play</div>
               <div className="card p-3 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-neutral-500">Type</span>
+                  <span className="text-slate-500">Type</span>
                   <span className="font-bold">{playType.label}</span>
                 </div>
                 {tagged.map(t => (
                   <div key={t.role} className="flex justify-between">
-                    <span className="text-neutral-500 capitalize">{t.role}</span>
+                    <span className="text-slate-500 capitalize">{t.role}</span>
                     <span className="font-bold">
                       {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">OPP</span>}
                       #{t.jersey_number} {t.name}
@@ -1160,7 +1160,7 @@ export default function PlayEntryModal({
                   <>
                     {!isTD && (
                       <div className="flex justify-between">
-                        <span className="text-neutral-500">Spotted At</span>
+                        <span className="text-slate-500">Spotted At</span>
                         <span className="font-bold">{resultSide === "our" ? "OUR" : "OPP"} {resultYardLine}</span>
                       </div>
                     )}
@@ -1170,7 +1170,7 @@ export default function PlayEntryModal({
                         : yards;
                       return (
                         <div className="flex justify-between">
-                          <span className="text-neutral-500">Yards</span>
+                          <span className="text-slate-500">Yards</span>
                           <span className={`font-bold ${displayYards > 0 ? "text-emerald-400" : displayYards < 0 ? "text-red-400" : ""}`}>
                             {displayYards > 0 ? `+${displayYards}` : displayYards}
                           </span>
@@ -1182,16 +1182,16 @@ export default function PlayEntryModal({
                 {isKickPlay && (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-neutral-500">Kick Distance</span>
+                      <span className="text-slate-500">Kick Distance</span>
                       <span className="font-bold text-purple-400">{(100 - kickedToYard) - gameState.ballOn} yds</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-neutral-500">Landed At</span>
+                      <span className="text-slate-500">Landed At</span>
                       <span className="font-bold">{isTouchback ? "Touchback" : `OPP ${kickedToYard}`}</span>
                     </div>
                     {!isTouchback && (
                       <div className="flex justify-between">
-                        <span className="text-neutral-500">Returned To</span>
+                        <span className="text-slate-500">Returned To</span>
                         <span className="font-bold text-emerald-400">
                           {(() => {
                             const sideLabel = returnToSide === "our"
@@ -1209,13 +1209,13 @@ export default function PlayEntryModal({
                 )}
                 {needsResult && result && (
                   <div className="flex justify-between">
-                    <span className="text-neutral-500">Result</span>
+                    <span className="text-slate-500">Result</span>
                     <span className={`font-bold ${result === "Good" ? "text-emerald-400" : "text-red-400"}`}>{result}</span>
                   </div>
                 )}
                 {(isTD || isFirstDown) && (
                   <div className="flex justify-between">
-                    <span className="text-neutral-500">Flags</span>
+                    <span className="text-slate-500">Flags</span>
                     <span className="font-bold">
                       {[isTD && "TD", isFirstDown && "1st Down"].filter(Boolean).join(", ")}
                     </span>
@@ -1223,25 +1223,25 @@ export default function PlayEntryModal({
                 )}
                 {penalty && (
                   <div className="flex justify-between">
-                    <span className="text-neutral-500">Penalty</span>
+                    <span className="text-slate-500">Penalty</span>
                     <span className="font-bold text-orange-400">{penalty} ({flagYards} yds)</span>
                   </div>
                 )}
                 {offFormation && (
                   <div className="flex justify-between">
-                    <span className="text-neutral-500">OFF</span>
+                    <span className="text-slate-500">OFF</span>
                     <span className="font-bold">{offFormation}</span>
                   </div>
                 )}
                 {defFormation && (
                   <div className="flex justify-between">
-                    <span className="text-neutral-500">DEF</span>
+                    <span className="text-slate-500">DEF</span>
                     <span className="font-bold">{defFormation}</span>
                   </div>
                 )}
                 {tacklers.length > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-neutral-500">Tacklers</span>
+                    <span className="text-slate-500">Tacklers</span>
                     <span className="font-bold">{tacklers.map(t => `#${t.jersey_number}`).join(", ")}</span>
                   </div>
                 )}
