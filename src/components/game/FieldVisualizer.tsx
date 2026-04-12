@@ -1,3 +1,5 @@
+import { Fragment } from "react";
+
 interface Props {
   ballOn: number;
   ballPosition: number;
@@ -9,6 +11,10 @@ interface Props {
   oppAbbr: string;
   oppColor: string;
 }
+
+const YARD_NUMBERS = [10, 20, 30, 40, 50, 40, 30, 20, 10];
+const FIVE_YARD_LINES = [15, 25, 35, 45, 55, 65, 75, 85];
+const TEN_YARD_LINES = [20, 30, 40, 50, 60, 70, 80];
 
 export default function FieldVisualizer({
   ballOn,
@@ -27,51 +33,162 @@ export default function FieldVisualizer({
   const ourLabelRotation = ourEndZoneSide === "left" ? "rotate-[-90deg]" : "rotate-90";
   const theirLabelRotation = theirEndZoneSide === "left" ? "rotate-[-90deg]" : "rotate-90";
 
+  // 1-yard ticks: every yard in the playing field that isn't on a 5-yard line
+  const yardTicks = Array.from({ length: 79 }, (_, i) => i + 11).filter(
+    (yd) => yd % 5 !== 0
+  );
+
   return (
     <div className="card p-2 overflow-hidden">
-      <div className="relative w-full h-16 rounded-lg overflow-hidden bg-emerald-900 flex">
+      <div className="relative w-full h-28 rounded-lg overflow-hidden bg-emerald-800">
+        {/* Sideline borders */}
+        <div className="absolute inset-x-0 top-0 h-0.5 bg-white/50 z-[5]" />
+        <div className="absolute inset-x-0 bottom-0 h-0.5 bg-white/50 z-[5]" />
+
+        {/* Alternating grass stripes every 5 yards */}
+        {Array.from({ length: 16 }, (_, i) => {
+          const left = 10 + i * 5;
+          if (i % 2 !== 0) return null;
+          return (
+            <div
+              key={`grass-${i}`}
+              className="absolute top-0 bottom-0 bg-white/[0.03]"
+              style={{ left: `${left}%`, width: "5%" }}
+            />
+          );
+        })}
+
+        {/* Our end zone */}
         <div
           className="absolute top-0 bottom-0 w-[10%] flex items-center justify-center z-10 overflow-hidden"
           style={{ ...ourEndZoneStyle, backgroundColor: primaryColor }}
         >
-          <span className={`text-[9px] font-black text-white/80 uppercase tracking-tight whitespace-nowrap select-none ${ourLabelRotation}`}>
+          <span
+            className={`text-[10px] font-black text-white/80 uppercase tracking-tight whitespace-nowrap select-none ${ourLabelRotation}`}
+          >
             {progAbbr}
           </span>
         </div>
 
+        {/* Their end zone */}
         <div
           className="absolute top-0 bottom-0 w-[10%] flex items-center justify-center z-10 overflow-hidden"
           style={{ ...theirEndZoneStyle, backgroundColor: oppColor }}
         >
-          <span className={`text-[9px] font-black text-white/80 uppercase tracking-tight whitespace-nowrap select-none ${theirLabelRotation}`}>
+          <span
+            className={`text-[10px] font-black text-white/80 uppercase tracking-tight whitespace-nowrap select-none ${theirLabelRotation}`}
+          >
             {oppAbbr}
           </span>
         </div>
 
-        {[10, 20, 30, 40, 50, 60, 70, 80, 90].map((yd) => (
-          <div key={yd} className="absolute top-0 bottom-0 w-px bg-white/20" style={{ left: `${yd}%` }} />
+        {/* Goal lines */}
+        <div
+          className="absolute top-0 bottom-0 z-[5]"
+          style={{ left: "10%", width: 2, backgroundColor: "rgba(255,255,255,0.5)" }}
+        />
+        <div
+          className="absolute top-0 bottom-0 z-[5]"
+          style={{ left: "90%", width: 2, backgroundColor: "rgba(255,255,255,0.5)" }}
+        />
+
+        {/* 5-yard lines (full width, subtle) */}
+        {FIVE_YARD_LINES.map((yd) => (
+          <div
+            key={`5yd-${yd}`}
+            className="absolute top-0 bottom-0 w-px bg-white/15"
+            style={{ left: `${yd}%` }}
+          />
         ))}
 
-        {[10, 20, 30, 40, 50, 40, 30, 20, 10].map((num, i) => (
+        {/* 10-yard lines (full width, more visible) */}
+        {TEN_YARD_LINES.map((yd) => (
+          <div
+            key={`10yd-${yd}`}
+            className="absolute top-0 bottom-0 w-px bg-white/25"
+            style={{ left: `${yd}%` }}
+          />
+        ))}
+
+        {/* 1-yard tick marks at sidelines and hash positions */}
+        {yardTicks.map((yd) => (
+          <Fragment key={`tick-${yd}`}>
+            {/* Top sideline tick */}
+            <div
+              className="absolute w-px bg-white/30"
+              style={{ left: `${yd}%`, top: 0, height: 6 }}
+            />
+            {/* Bottom sideline tick */}
+            <div
+              className="absolute w-px bg-white/30"
+              style={{ left: `${yd}%`, bottom: 0, height: 6 }}
+            />
+            {/* Upper hash tick */}
+            <div
+              className="absolute w-px bg-white/20"
+              style={{ left: `${yd}%`, top: "34%", height: 5 }}
+            />
+            {/* Lower hash tick */}
+            <div
+              className="absolute w-px bg-white/20"
+              style={{ left: `${yd}%`, bottom: "34%", height: 5 }}
+            />
+          </Fragment>
+        ))}
+
+        {/* 5-yard hash ticks (reinforced at hash positions) */}
+        {FIVE_YARD_LINES.map((yd) => (
+          <Fragment key={`5tick-${yd}`}>
+            <div
+              className="absolute w-px bg-white/25"
+              style={{ left: `${yd}%`, top: "34%", height: 5 }}
+            />
+            <div
+              className="absolute w-px bg-white/25"
+              style={{ left: `${yd}%`, bottom: "34%", height: 5 }}
+            />
+          </Fragment>
+        ))}
+
+        {/* Yard numbers – upper row */}
+        {YARD_NUMBERS.map((num, i) => (
           <span
-            key={i}
-            className="absolute bottom-0.5 text-[8px] text-white/30 font-mono -translate-x-1/2"
-            style={{ left: `${(i + 1) * 10}%` }}
+            key={`num-t-${i}`}
+            className="absolute text-[8px] text-white/25 font-bold -translate-x-1/2 select-none"
+            style={{ left: `${(i + 1) * 10}%`, top: "16%" }}
           >
             {num}
           </span>
         ))}
 
+        {/* Yard numbers – lower row (inverted) */}
+        {YARD_NUMBERS.map((num, i) => (
+          <span
+            key={`num-b-${i}`}
+            className="absolute text-[8px] text-white/25 font-bold -translate-x-1/2 rotate-180 select-none"
+            style={{ left: `${(i + 1) * 10}%`, bottom: "16%" }}
+          >
+            {num}
+          </span>
+        ))}
+
+        {/* First down marker */}
         {firstDownPosition <= 100 && (
-          <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10" style={{ left: `${firstDownPosition}%` }} />
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-20"
+            style={{ left: `${firstDownPosition}%` }}
+          />
         )}
 
+        {/* Ball marker */}
         <div
-          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black text-white font-mono shadow-lg"
+          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black text-white font-mono shadow-lg"
           style={{
             left: `${ballPosition}%`,
             backgroundColor: possession === "us" ? primaryColor : oppColor,
-            boxShadow: `0 0 10px ${possession === "us" ? `${primaryColor}66` : `${oppColor}66`}`,
+            boxShadow: `0 0 10px ${
+              possession === "us" ? `${primaryColor}66` : `${oppColor}66`
+            }`,
           }}
         >
           {ballOn > 50 ? 100 - ballOn : ballOn}
