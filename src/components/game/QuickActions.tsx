@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PLAY_TYPES, type PlayTypeDef } from "./types";
 
 interface Props {
   onSelect: (pt: PlayTypeDef) => void;
   possession: "us" | "them";
+  suggestedPhase?: PhaseFilter;
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -41,8 +42,21 @@ const PHASE_TABS: Array<{ value: PhaseFilter; label: string }> = [
   { value: "special", label: "ST" },
 ];
 
-export default function QuickActions({ onSelect, possession }: Props) {
-  const [phase, setPhase] = useState<PhaseFilter>("all");
+export default function QuickActions({ onSelect, possession, suggestedPhase }: Props) {
+  const [phase, setPhase] = useState<PhaseFilter>(suggestedPhase ?? "all");
+  const [manualOverride, setManualOverride] = useState(false);
+
+  // Auto-select phase when game state changes, unless user manually overrode
+  useEffect(() => {
+    if (!manualOverride && suggestedPhase) {
+      setPhase(suggestedPhase);
+    }
+  }, [suggestedPhase, manualOverride]);
+
+  // Reset manual override when suggested phase changes (new play recorded)
+  useEffect(() => {
+    setManualOverride(false);
+  }, [suggestedPhase]);
 
   // Group play types by category
   const grouped = PLAY_TYPES.reduce<Record<string, PlayTypeDef[]>>((acc, pt) => {
@@ -72,7 +86,7 @@ export default function QuickActions({ onSelect, possession }: Props) {
         {PHASE_TABS.map(tab => (
           <button
             key={tab.value}
-            onClick={() => setPhase(tab.value)}
+            onClick={() => { setPhase(tab.value); setManualOverride(true); }}
             className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors ${
               phase === tab.value
                 ? "bg-dragon-primary/20 text-dragon-primary border border-dragon-primary/30"

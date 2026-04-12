@@ -765,7 +765,11 @@ export default function GameScreen() {
 
         {/* Quick Action Grid */}
         <div className="card p-3">
-          <QuickActions onSelect={handlePlayTypeSelect} possession={possession} />
+          <QuickActions onSelect={handlePlayTypeSelect} possession={possession} suggestedPhase={
+            ballOn === gc.kickoff_yard_line || ballOn === gc.safety_kick_yard_line || ballOn === 100 - gc.pat_distance
+              ? "special"
+              : possession === "us" ? "offense" : "defense"
+          } />
         </div>
 
         {/* Recent Plays */}
