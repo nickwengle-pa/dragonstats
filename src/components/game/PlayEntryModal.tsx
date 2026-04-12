@@ -298,16 +298,11 @@ export default function PlayEntryModal({
       steps.push("kick_returner");
       steps.push("kick_return_yards");
     }
-    // Tacklers only when WE are kicking (our coverage team makes the tackle)
-    if (gameState.possession === "us") steps.push("kick_tacklers");
     steps.push("review");
   } else {
     if (roles.length > 0) steps.push("players");
     if (needsYards || needsResult) steps.push("yards");
     steps.push("formations");
-    // Defense/tackler step for all non-scoring plays that involve contact
-    const noTacklerPlays = ["pass_inc", "spike", "penalty_only", "pat", "two_pt", "fg"];
-    if (!noTacklerPlays.includes(playType.id)) steps.push("defense");
     steps.push("review");
   }
 
@@ -496,6 +491,11 @@ export default function PlayEntryModal({
     if (isKickPlay) {
       const kickDistance = (100 - kickedToYard) - gameState.ballOn;
       playYards = isTouchback ? kickDistance : kickDistance - computedReturnYards;
+    } else if (isTD) {
+      // TD: yards = distance from line of scrimmage to endzone
+      // Turnovers (int/fumble) score in the opposite direction, so yards go negative (towards LOS endzone)
+      const isTurnover = ["int", "fumble"].includes(playType.id);
+      playYards = isTurnover ? -gameState.ballOn : 100 - gameState.ballOn;
     } else {
       playYards = isZeroYard ? 0 : yards;
     }
@@ -1158,16 +1158,25 @@ export default function PlayEntryModal({
                 ))}
                 {needsYards && (
                   <>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">Spotted At</span>
-                      <span className="font-bold">{resultSide === "our" ? "OUR" : "OPP"} {resultYardLine}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">Yards</span>
-                      <span className={`font-bold ${yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : ""}`}>
-                        {yards > 0 ? `+${yards}` : yards}
-                      </span>
-                    </div>
+                    {!isTD && (
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Spotted At</span>
+                        <span className="font-bold">{resultSide === "our" ? "OUR" : "OPP"} {resultYardLine}</span>
+                      </div>
+                    )}
+                    {(() => {
+                      const displayYards = isTD
+                        ? (["int", "fumble"].includes(playType.id) ? -gameState.ballOn : 100 - gameState.ballOn)
+                        : yards;
+                      return (
+                        <div className="flex justify-between">
+                          <span className="text-neutral-500">Yards</span>
+                          <span className={`font-bold ${displayYards > 0 ? "text-emerald-400" : displayYards < 0 ? "text-red-400" : ""}`}>
+                            {displayYards > 0 ? `+${displayYards}` : displayYards}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
                 {isKickPlay && (
