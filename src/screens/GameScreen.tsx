@@ -26,6 +26,7 @@ import {
   getOurEndZoneSideForQuarter,
   getPregameConfig,
   moveToQuarter,
+  normalizeQuarter,
   oppositeFieldDirection,
   rebuildPlaySituations,
   resolveGameConfig,
@@ -54,6 +55,19 @@ import {
   quarterLabel,
   yardLabel,
 } from "@/components/game/types";
+
+function readStoredQuarter(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? normalizeQuarter(value)
+    : null;
+}
+
+function readStoredClock(value: unknown): number | null {
+  if (typeof value !== "string" || !value.includes(":")) return null;
+  const [m, s] = value.split(":").map(Number);
+  if (!Number.isFinite(m) || !Number.isFinite(s)) return null;
+  return ((m || 0) * 60) + (s || 0);
+}
 
 /* ═══════════════════════════════════════════════
    GAME SCREEN — Main Wrapper
@@ -152,30 +166,25 @@ export default function GameScreen() {
     const rebuilt = rebuildPlaySituations(localPlays, pregameConfig, gameConfig);
     setPlays(rebuilt.plays);
 
+    const gd = gameData as Record<string, any> | null;
+    const persistedQuarter = readStoredQuarter(gd?.current_quarter);
+    const persistedClock = readStoredClock(gd?.current_clock);
+    const hasPersistedSituation = gd
+      && typeof gd.current_yard_line === "number"
+      && (gd.current_possession === "us" || gd.current_possession === "them")
+      && typeof gd.current_down === "number"
+      && typeof gd.current_distance === "number";
+
     // Resume game state from existing plays
     if (existingPlays.length > 0) {
       const state = deriveGameState(existingPlays, { config: gameConfig, pregame: pregameConfig });
       setOurScore(state.ourScore);
       setTheirScore(state.theirScore);
 
-      // Prefer the persisted game situation (captures manual adjustments, PAT skips, etc.)
-      const gd = gameData as Record<string, any> | null;
-      const hasPersistedSituation = gd
-        && typeof gd.current_yard_line === "number"
-        && (gd.current_possession === "us" || gd.current_possession === "them")
-        && typeof gd.current_down === "number"
-        && typeof gd.current_distance === "number";
-
       if (hasPersistedSituation) {
-        // Always use engine-rebuilt quarter (derived from plays, always correct)
-        setQuarter(rebuilt.currentQuarter);
-        // Parse clock from "M:SS" string
-        if (typeof gd.current_clock === "string" && gd.current_clock.includes(":")) {
-          const [m, s] = gd.current_clock.split(":").map(Number);
-          setClock((m || 0) * 60 + (s || 0));
-        } else {
-          setClock(state.clock);
-        }
+        // Preserve live quarter/clock between plays when no new play has been logged yet.
+        setQuarter(Math.max(rebuilt.currentQuarter, persistedQuarter ?? 1));
+        setClock(persistedClock ?? state.clock);
         setPossession(gd.current_possession);
         setDown(gd.current_down);
         setDistance(gd.current_distance);
@@ -189,14 +198,29 @@ export default function GameScreen() {
         setDistance(rebuilt.currentSituation.distance);
         setBallOn(rebuilt.currentSituation.ballOn);
       }
+    } else if (hasPersistedSituation) {
+      setOurScore(0);
+      setTheirScore(0);
+      setQuarter(persistedQuarter ?? 1);
+      setClock(persistedClock ?? gameConfig.quarter_length_secs);
+      setPossession(gd.current_possession);
+      setDown(gd.current_down);
+      setDistance(gd.current_distance);
+      setBallOn(gd.current_yard_line);
     } else {
       const initialSituation = createInitialSituation(pregameConfig, gameConfig);
-      setQuarter(1);
-      setClock(gameConfig.quarter_length_secs);
-      setPossession(initialSituation.possession);
-      setDown(initialSituation.down);
-      setDistance(initialSituation.distance);
-      setBallOn(initialSituation.ballOn);
+      const liveQuarter = persistedQuarter ?? 1;
+      const transition = liveQuarter > 1
+        ? moveToQuarter(1, liveQuarter, initialSituation, pregameConfig, gameConfig)
+        : { quarter: 1, clock: gameConfig.quarter_length_secs, situation: initialSituation };
+      setOurScore(0);
+      setTheirScore(0);
+      setQuarter(transition.quarter);
+      setClock(persistedClock ?? transition.clock);
+      setPossession(transition.situation.possession);
+      setDown(transition.situation.down);
+      setDistance(transition.situation.distance);
+      setBallOn(transition.situation.ballOn);
     }
 
     setLoading(false);
@@ -364,22 +388,32 @@ export default function GameScreen() {
 
     if (rebuilt.plays.length > 0) {
       const last = rebuilt.plays[rebuilt.plays.length - 1];
-      setQuarter(last.quarter);
-      setClock(last.clock);
-      applySituation(rebuilt.currentSituation);
-      persistGameSituation({ quarter: last.quarter, clock: last.clock });
+      const liveQuarter = Math.max(rebuilt.currentQuarter, quarter);
+      const liveTransition = liveQuarter > rebuilt.currentQuarter
+        ? moveToQuarter(rebuilt.currentQuarter, liveQuarter, rebuilt.currentSituation, pregame, gc)
+        : null;
+      const liveClock = liveQuarter > rebuilt.currentQuarter ? clock : last.clock;
+      setQuarter(liveQuarter);
+      setClock(liveClock);
+      applySituation(liveTransition?.situation ?? rebuilt.currentSituation);
+      persistGameSituation({ quarter: liveQuarter, clock: liveClock });
     } else {
       const reset = createInitialSituation(pregame, gc);
-      setQuarter(1);
-      setClock(gc.quarter_length_secs);
-      applySituation(reset);
-      persistGameSituation({ quarter: 1, clock: gc.quarter_length_secs });
+      const liveQuarter = Math.max(1, quarter);
+      const liveTransition = liveQuarter > 1
+        ? moveToQuarter(1, liveQuarter, reset, pregame, gc)
+        : { quarter: 1, clock: gc.quarter_length_secs, situation: reset };
+      const liveClock = liveQuarter > 1 ? clock : gc.quarter_length_secs;
+      setQuarter(liveTransition.quarter);
+      setClock(liveClock);
+      applySituation(liveTransition.situation);
+      persistGameSituation({ quarter: liveTransition.quarter, clock: liveClock });
     }
 
     if (gameId) {
       await updateGameScore(gameId, us, them, rebuilt.plays.length > 0 ? "live" : "scheduled");
     }
-  }, [applySituation, gameId, gc, persistPlaySituations, pregame]);
+  }, [applySituation, clock, gameId, gc, persistPlaySituations, pregame, quarter]);
 
   const applySituationAdjustment = useCallback(async () => {
     if (!pendingSituationPlayId) return;
@@ -430,27 +464,39 @@ export default function GameScreen() {
       const nextConfig = resolveGameConfig(baseGc, data.rules_config as Record<string, unknown> | null);
       if (plays.length === 0) {
         const reset = createInitialSituation(nextPregame, nextConfig);
-        setQuarter(1);
-        setClock(nextConfig.quarter_length_secs);
-        applySituation(reset);
-        persistGameSituation({ quarter: 1, clock: nextConfig.quarter_length_secs });
+        const storedQuarter = readStoredQuarter((data as Record<string, any>).current_quarter) ?? 1;
+        const storedClock = readStoredClock((data as Record<string, any>).current_clock);
+        const transition = storedQuarter > 1
+          ? moveToQuarter(1, storedQuarter, reset, nextPregame, nextConfig)
+          : { quarter: 1, clock: nextConfig.quarter_length_secs, situation: reset };
+        setQuarter(transition.quarter);
+        setClock(storedClock ?? transition.clock);
+        applySituation(transition.situation);
+        persistGameSituation({ quarter: transition.quarter, clock: storedClock ?? transition.clock });
       } else {
         const rebuilt = rebuildPlaySituations(plays, nextPregame, nextConfig);
         setPlays(rebuilt.plays);
         persistPlaySituations(rebuilt.plays);
         if (rebuilt.plays.length > 0) {
           const last = rebuilt.plays[rebuilt.plays.length - 1];
-          setQuarter(last.quarter);
-          setClock(last.clock);
-          applySituation(rebuilt.currentSituation);
-          persistGameSituation({ quarter: last.quarter, clock: last.clock });
+          const storedQuarter = readStoredQuarter((data as Record<string, any>).current_quarter) ?? quarter;
+          const storedClock = readStoredClock((data as Record<string, any>).current_clock) ?? clock;
+          const liveQuarter = Math.max(rebuilt.currentQuarter, storedQuarter);
+          const liveTransition = liveQuarter > rebuilt.currentQuarter
+            ? moveToQuarter(rebuilt.currentQuarter, liveQuarter, rebuilt.currentSituation, nextPregame, nextConfig)
+            : null;
+          const liveClock = liveQuarter > rebuilt.currentQuarter ? storedClock : last.clock;
+          setQuarter(liveQuarter);
+          setClock(liveClock);
+          applySituation(liveTransition?.situation ?? rebuilt.currentSituation);
+          persistGameSituation({ quarter: liveQuarter, clock: liveClock });
         }
       }
       setShowPregame(false);
     }
 
     setSavingPregame(false);
-  }, [applySituation, baseGc, game, gameId, persistPlaySituations, plays]);
+  }, [applySituation, baseGc, clock, game, gameId, persistPlaySituations, plays, quarter]);
 
   /* ── Handle play type selection from quick actions ── */
   const handlePlayTypeSelect = (pt: PlayTypeDef) => {

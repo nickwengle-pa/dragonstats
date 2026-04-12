@@ -18,6 +18,8 @@ interface Props {
 const YARD_NUMBERS = [10, 20, 30, 40, 50, 40, 30, 20, 10];
 const FIVE_YARD_LINES = [15, 25, 35, 45, 55, 65, 75, 85];
 const TEN_YARD_LINES = [20, 30, 40, 50, 60, 70, 80];
+const PLAYING_FIELD_START_PCT = 10;
+const PLAYING_FIELD_WIDTH_PCT = 80;
 
 export default function FieldVisualizer({
   ballOn,
@@ -33,6 +35,9 @@ export default function FieldVisualizer({
   onFieldTap,
 }: Props) {
   const fieldRef = useRef<HTMLDivElement>(null);
+  const toWidgetPercent = useCallback((displayPercent: number) => (
+    PLAYING_FIELD_START_PCT + (Math.max(0, Math.min(100, displayPercent)) * PLAYING_FIELD_WIDTH_PCT / 100)
+  ), []);
 
   const handleFieldPointer = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!onFieldTap || !fieldRef.current) return;
@@ -197,7 +202,7 @@ export default function FieldVisualizer({
         {firstDownPosition <= 100 && (
           <div
             className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-20"
-            style={{ left: `${firstDownPosition}%` }}
+            style={{ left: `${toWidgetPercent(firstDownPosition)}%` }}
           />
         )}
 
@@ -205,7 +210,7 @@ export default function FieldVisualizer({
         <div
           className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-black text-white font-mono"
           style={{
-            left: `${ballPosition}%`,
+            left: `${toWidgetPercent(ballPosition)}%`,
             backgroundColor: possession === "us" ? primaryColor : oppColor,
             boxShadow: `0 0 16px ${
               possession === "us" ? `${primaryColor}88` : `${oppColor}88`
