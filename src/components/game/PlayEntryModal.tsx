@@ -204,18 +204,6 @@ export default function PlayEntryModal({
   const [resultSide, setResultSide] = useState<"our" | "opp">(initSide);
   const [resultYardRaw, setResultYardRaw] = useState("");
 
-  // Compute yards from the yard-line picker
-  const yards = (() => {
-    if (!needsYards) return 0;
-    let targetBallOn: number;
-    if (gameState.possession === "us") {
-      targetBallOn = resultSide === "our" ? resultYardLine : 100 - resultYardLine;
-    } else {
-      targetBallOn = resultSide === "our" ? 100 - resultYardLine : resultYardLine;
-    }
-    return targetBallOn - gameState.ballOn;
-  })();
-
   // Toggles
   const [isTD, setIsTD] = useState(false);
   const [isFirstDown, setIsFirstDown] = useState(false);
@@ -258,6 +246,18 @@ export default function PlayEntryModal({
   const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
   const needsTouchback = false; // handled in kick-specific flow now
+
+  // Compute yards from the yard-line picker
+  const yards = (() => {
+    if (!needsYards) return 0;
+    let targetBallOn: number;
+    if (gameState.possession === "us") {
+      targetBallOn = resultSide === "our" ? resultYardLine : 100 - resultYardLine;
+    } else {
+      targetBallOn = resultSide === "our" ? 100 - resultYardLine : resultYardLine;
+    }
+    return targetBallOn - gameState.ballOn;
+  })();
 
   const steps: Step[] = [];
   if (isKickPlay) {
