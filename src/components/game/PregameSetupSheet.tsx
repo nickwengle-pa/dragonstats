@@ -116,12 +116,14 @@ export default function PregameSetupSheet({
             onChange={(value) => setForm((prev) => ({
               ...prev,
               tossWinner: value,
-              openingKickoffReceiver: deriveOpeningKickoffReceiver(value, prev.tossChoice, prev.openingKickoffReceiver),
+              openingKickoffReceiver: deriveOpeningKickoffReceiver(value, prev.tossChoice, null),
             }))}
           />
 
           <div>
-            <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1.5">Winner Choice</div>
+            <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1.5">
+              {teamLabel(form.tossWinner, progName, oppName)} Chose To
+            </div>
             <div className="grid grid-cols-2 gap-2">
               {[
                 { value: "receive", label: "Receive" },
@@ -138,7 +140,7 @@ export default function PregameSetupSheet({
                     openingKickoffReceiver: deriveOpeningKickoffReceiver(
                       prev.tossWinner,
                       option.value as TossChoice,
-                      prev.openingKickoffReceiver,
+                      null,
                     ),
                   }))}
                   className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
@@ -154,11 +156,11 @@ export default function PregameSetupSheet({
           </div>
 
           <ToggleRow<FieldDirection>
-            label="We Drive In 1st Quarter"
+            label={`${progName} Drives Toward (Q1)`}
             value={form.ourDriveDirectionQ1}
             options={[
-              { value: "right", label: "To The Right" },
-              { value: "left", label: "To The Left" },
+              { value: "right", label: "Right End Zone" },
+              { value: "left", label: "Left End Zone" },
             ]}
             onChange={(value) => setForm((prev) => ({ ...prev, ourDriveDirectionQ1: value }))}
           />

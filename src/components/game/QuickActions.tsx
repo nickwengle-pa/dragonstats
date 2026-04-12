@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PLAY_TYPES, type PlayTypeDef } from "./types";
 
 interface Props {
@@ -24,27 +25,65 @@ const CATEGORY_LABELS: Record<string, string> = {
   run: "RUN", pass: "PASS", scoring: "SCORING", kicking: "KICKING", turnover: "TURNOVER", other: "OTHER",
 };
 
+type PhaseFilter = "all" | "offense" | "defense" | "special";
+
+const PHASE_CATEGORIES: Record<PhaseFilter, Set<string>> = {
+  all: new Set(["run", "pass", "scoring", "kicking", "turnover", "other"]),
+  offense: new Set(["run", "pass", "other"]),
+  defense: new Set(["turnover", "other"]),
+  special: new Set(["kicking", "scoring"]),
+};
+
+const PHASE_TABS: Array<{ value: PhaseFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "offense", label: "OFF" },
+  { value: "defense", label: "DEF" },
+  { value: "special", label: "ST" },
+];
+
 export default function QuickActions({ onSelect, possession }: Props) {
+  const [phase, setPhase] = useState<PhaseFilter>("all");
+
   // Group play types by category
   const grouped = PLAY_TYPES.reduce<Record<string, PlayTypeDef[]>>((acc, pt) => {
     (acc[pt.category] ??= []).push(pt);
     return acc;
   }, {});
 
+  const allowedCategories = PHASE_CATEGORIES[phase];
+
   // When opponent has ball, show defensive-relevant categories first, but still show everything
-  const categories = Object.keys(grouped).sort((a, b) => {
-    if (possession === "them") {
-      // Prioritize kicking/turnover/other when opponent has ball
-      const defPriority: Record<string, number> = {
-        kicking: 0, turnover: 1, other: 2, run: 3, pass: 4, scoring: 5,
-      };
-      return (defPriority[a] ?? 99) - (defPriority[b] ?? 99);
-    }
-    return (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99);
-  });
+  const categories = Object.keys(grouped)
+    .filter(cat => allowedCategories.has(cat))
+    .sort((a, b) => {
+      if (possession === "them") {
+        const defPriority: Record<string, number> = {
+          kicking: 0, turnover: 1, other: 2, run: 3, pass: 4, scoring: 5,
+        };
+        return (defPriority[a] ?? 99) - (defPriority[b] ?? 99);
+      }
+      return (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99);
+    });
 
   return (
     <div className="space-y-3">
+      {/* Phase filter tabs */}
+      <div className="flex gap-1">
+        {PHASE_TABS.map(tab => (
+          <button
+            key={tab.value}
+            onClick={() => setPhase(tab.value)}
+            className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors ${
+              phase === tab.value
+                ? "bg-dragon-primary/20 text-dragon-primary border border-dragon-primary/30"
+                : "bg-surface-bg text-neutral-500 border border-transparent active:bg-surface-hover"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {possession === "them" && (
         <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider">
           Opponent has ball
