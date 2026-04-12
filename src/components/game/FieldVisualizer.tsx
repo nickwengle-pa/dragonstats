@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useCallback, useRef } from "react";
 import { ArrowLeftRight } from "lucide-react";
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   oppAbbr: string;
   oppColor: string;
   onFlipDirection?: () => void;
+  onFieldTap?: (displayPercent: number) => void;
 }
 
 const YARD_NUMBERS = [10, 20, 30, 40, 50, 40, 30, 20, 10];
@@ -29,7 +30,19 @@ export default function FieldVisualizer({
   oppAbbr,
   oppColor,
   onFlipDirection,
+  onFieldTap,
 }: Props) {
+  const fieldRef = useRef<HTMLDivElement>(null);
+
+  const handleFieldPointer = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!onFieldTap || !fieldRef.current) return;
+    const rect = fieldRef.current.getBoundingClientRect();
+    const clientX = "touches" in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const pct = ((clientX - rect.left) / rect.width) * 100;
+    // Clamp to playing field (10%-90% of widget = 0-100 display yards)
+    const displayPct = Math.max(0, Math.min(100, ((pct - 10) / 80) * 100));
+    onFieldTap(displayPct);
+  }, [onFieldTap]);
   const theirEndZoneSide = ourEndZoneSide === "left" ? "right" : "left";
   const ourEndZoneStyle = ourEndZoneSide === "left" ? { left: 0 } : { right: 0 };
   const theirEndZoneStyle = theirEndZoneSide === "left" ? { left: 0 } : { right: 0 };
@@ -43,7 +56,12 @@ export default function FieldVisualizer({
 
   return (
     <div className="card p-2 overflow-hidden">
-      <div className="relative w-full h-28 rounded-lg overflow-hidden bg-emerald-800">
+      <div
+        ref={fieldRef}
+        className="relative w-full h-28 rounded-lg overflow-hidden bg-emerald-800 cursor-pointer touch-none"
+        onClick={handleFieldPointer}
+        onTouchStart={handleFieldPointer}
+      >
         {/* Sideline borders */}
         <div className="absolute inset-x-0 top-0 h-0.5 bg-white/50 z-[5]" />
         <div className="absolute inset-x-0 bottom-0 h-0.5 bg-white/50 z-[5]" />

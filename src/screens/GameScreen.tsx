@@ -22,6 +22,7 @@ import {
   createKickoffSituation,
   createDefaultPregameConfig,
   createInitialSituation,
+  getOffenseDriveDirection,
   getOurEndZoneSideForQuarter,
   getPregameConfig,
   moveToQuarter,
@@ -166,7 +167,8 @@ export default function GameScreen() {
         && typeof gd.current_distance === "number";
 
       if (hasPersistedSituation) {
-        setQuarter(gd.current_quarter ?? rebuilt.currentQuarter);
+        // Always use engine-rebuilt quarter (derived from plays, always correct)
+        setQuarter(rebuilt.currentQuarter);
         // Parse clock from "M:SS" string
         if (typeof gd.current_clock === "string" && gd.current_clock.includes(":")) {
           const [m, s] = gd.current_clock.split(":").map(Number);
@@ -769,6 +771,17 @@ export default function GameScreen() {
           oppAbbr={oppAbbr}
           oppColor={oppColor}
           onFlipDirection={() => setDirectionFlipped(f => !f)}
+          onFieldTap={(displayPct) => {
+            // Convert display % back to ballOn coordinate
+            const direction = getOffenseDriveDirection(possession, quarter, pregame);
+            const effectiveDir = directionFlipped
+              ? (direction === "right" ? "left" : "right")
+              : direction;
+            const raw = effectiveDir === "right" ? displayPct : 100 - displayPct;
+            const v = Math.max(1, Math.min(99, Math.round(raw)));
+            setBallOn(v);
+            persistGameSituation({ ballOn: v });
+          }}
         />
 
         {/* Down & Distance */}
