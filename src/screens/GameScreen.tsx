@@ -25,6 +25,7 @@ import {
   getOurEndZoneSideForQuarter,
   getPregameConfig,
   moveToQuarter,
+  oppositeFieldDirection,
   rebuildPlaySituations,
   resolveGameConfig,
   toDisplayFieldPosition,
@@ -213,18 +214,19 @@ export default function GameScreen() {
   /* ── Derived state ── */
   const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
   const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
-  const ballDisplayPosition = useMemo(
-    () => toDisplayFieldPosition(ballOn, possession, quarter, pregame),
-    [ballOn, possession, quarter, pregame],
-  );
-  const firstDownDisplayPosition = useMemo(
-    () => toDisplayFieldPosition(firstDownMarker, possession, quarter, pregame),
-    [firstDownMarker, possession, quarter, pregame],
-  );
-  const ourEndZoneSide = useMemo(
-    () => getOurEndZoneSideForQuarter(quarter, pregame),
-    [quarter, pregame],
-  );
+  const [directionFlipped, setDirectionFlipped] = useState(false);
+  const ballDisplayPosition = useMemo(() => {
+    const pos = toDisplayFieldPosition(ballOn, possession, quarter, pregame);
+    return directionFlipped ? 100 - pos : pos;
+  }, [ballOn, possession, quarter, pregame, directionFlipped]);
+  const firstDownDisplayPosition = useMemo(() => {
+    const pos = toDisplayFieldPosition(firstDownMarker, possession, quarter, pregame);
+    return directionFlipped ? 100 - pos : pos;
+  }, [firstDownMarker, possession, quarter, pregame, directionFlipped]);
+  const ourEndZoneSide = useMemo(() => {
+    const side = getOurEndZoneSideForQuarter(quarter, pregame);
+    return directionFlipped ? oppositeFieldDirection(side) : side;
+  }, [quarter, pregame, directionFlipped]);
 
   useEffect(() => {
     if (!loading && game && !pregame) {
@@ -714,6 +716,7 @@ export default function GameScreen() {
           progAbbr={progAbbr}
           oppAbbr={oppAbbr}
           oppColor={oppColor}
+          onFlipDirection={() => setDirectionFlipped(f => !f)}
         />
 
         {/* Down & Distance */}

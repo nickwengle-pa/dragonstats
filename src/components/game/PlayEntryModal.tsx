@@ -204,6 +204,26 @@ export default function PlayEntryModal({
   const [resultSide, setResultSide] = useState<"our" | "opp">(initSide);
   const [resultYardRaw, setResultYardRaw] = useState("");
 
+  // Helper: adjust yard line and flip side when crossing 50
+  const adjustYardLine = (
+    currentYL: number,
+    delta: number,
+    currentSide: "our" | "opp",
+    setYL: (v: number) => void,
+    setSide: (v: "our" | "opp") => void,
+  ) => {
+    const newYL = currentYL + delta;
+    if (newYL > 50) {
+      setSide(currentSide === "our" ? "opp" : "our");
+      setYL(Math.min(50, 100 - newYL));
+    } else if (newYL < 1) {
+      setSide(currentSide === "our" ? "opp" : "our");
+      setYL(Math.max(1, Math.abs(newYL) + 1));
+    } else {
+      setYL(newYL);
+    }
+  };
+
   // Toggles
   const [isTD, setIsTD] = useState(false);
   const [isFirstDown, setIsFirstDown] = useState(false);
@@ -268,7 +288,8 @@ export default function PlayEntryModal({
       steps.push("kick_returner");
       steps.push("kick_return_yards");
     }
-    steps.push("kick_tacklers");
+    // Tacklers only when WE are kicking (our coverage team makes the tackle)
+    if (gameState.possession === "us") steps.push("kick_tacklers");
     steps.push("review");
   } else {
     if (roles.length > 0) steps.push("players");
@@ -726,14 +747,14 @@ export default function PlayEntryModal({
                 {/* Yard line stepper */}
                 <div className="flex items-center gap-1.5">
                   {[-10, -5, -1].map(n => (
-                    <button key={n} onClick={() => setReturnToYardLine(y => Math.max(1, Math.min(50, y + n)))}
+                    <button key={n} onClick={() => adjustYardLine(returnToYardLine, n, returnToSide, setReturnToYardLine, setReturnToSide)}
                       className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
                   ))}
                   <div className="w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-emerald-400">
                     {returnToYardLine}
                   </div>
                   {[1, 5, 10].map(n => (
-                    <button key={n} onClick={() => setReturnToYardLine(y => Math.max(1, Math.min(50, y + n)))}
+                    <button key={n} onClick={() => adjustYardLine(returnToYardLine, n, returnToSide, setReturnToYardLine, setReturnToSide)}
                       className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
                   ))}
                 </div>
@@ -857,14 +878,14 @@ export default function PlayEntryModal({
                   {/* Yard line stepper */}
                   <div className="flex items-center gap-1.5">
                     {[-10, -5, -1].map(n => (
-                      <button key={n} onClick={() => setResultYardLine(y => Math.max(1, Math.min(50, y + n)))}
+                      <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
                         className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
                     ))}
                     <div className={`w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums ${
                       yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : "text-neutral-300"
                     }`}>{resultYardLine}</div>
                     {[1, 5, 10].map(n => (
-                      <button key={n} onClick={() => setResultYardLine(y => Math.max(1, Math.min(50, y + n)))}
+                      <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
                         className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
                     ))}
                   </div>

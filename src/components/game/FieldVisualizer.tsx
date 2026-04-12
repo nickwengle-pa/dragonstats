@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { ArrowLeftRight } from "lucide-react";
 
 interface Props {
   ballOn: number;
@@ -10,6 +11,7 @@ interface Props {
   progAbbr: string;
   oppAbbr: string;
   oppColor: string;
+  onFlipDirection?: () => void;
 }
 
 const YARD_NUMBERS = [10, 20, 30, 40, 50, 40, 30, 20, 10];
@@ -26,6 +28,7 @@ export default function FieldVisualizer({
   progAbbr,
   oppAbbr,
   oppColor,
+  onFlipDirection,
 }: Props) {
   const theirEndZoneSide = ourEndZoneSide === "left" ? "right" : "left";
   const ourEndZoneStyle = ourEndZoneSide === "left" ? { left: 0 } : { right: 0 };
@@ -193,6 +196,17 @@ export default function FieldVisualizer({
         >
           {ballOn > 50 ? 100 - ballOn : ballOn}
         </div>
+
+        {/* Flip direction button */}
+        {onFlipDirection && (
+          <button
+            onClick={onFlipDirection}
+            className="absolute bottom-1 right-[11%] z-30 p-1 rounded bg-black/40 text-white/50 active:text-white active:bg-black/60 transition-colors"
+            title="Flip field direction"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
