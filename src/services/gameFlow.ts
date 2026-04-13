@@ -82,6 +82,10 @@ function clampBallOn(ballOn: number): number {
   return Math.max(0, Math.min(100, ballOn));
 }
 
+function flipFieldPosition(ballOn: number): number {
+  return Math.max(1, 100 - Math.max(1, clampBallOn(ballOn)));
+}
+
 export function oppositeTeam(team: TeamSide): TeamSide {
   return team === "us" ? "them" : "us";
 }
@@ -358,7 +362,7 @@ export function advanceSituationAfterPlay(
       possession: oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
-      ballOn: Math.max(config.touchback_yard_line, 100 - before.ballOn),
+      ballOn: Math.max(config.touchback_yard_line, flipFieldPosition(before.ballOn)),
     };
   }
 
@@ -367,7 +371,7 @@ export function advanceSituationAfterPlay(
       possession: oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
-      ballOn: play.isTouchback ? config.touchback_yard_line : Math.max(1, 100 - newBallOn),
+      ballOn: play.isTouchback ? config.touchback_yard_line : flipFieldPosition(newBallOn),
     };
   }
 
@@ -381,7 +385,7 @@ export function advanceSituationAfterPlay(
         possession: oppositeTeam(possession),
         down: 1,
         distance: config.first_down_distance,
-        ballOn: Math.max(config.touchback_yard_line, 100 - before.ballOn),
+        ballOn: Math.max(config.touchback_yard_line, flipFieldPosition(before.ballOn)),
       };
     }
 
@@ -390,7 +394,7 @@ export function advanceSituationAfterPlay(
         possession: oppositeTeam(possession),
         down: 1,
         distance: config.first_down_distance,
-        ballOn: play.isTouchback ? config.touchback_yard_line : Math.max(1, newBallOn),
+        ballOn: play.isTouchback ? config.touchback_yard_line : flipFieldPosition(newBallOn),
       };
     }
   }
@@ -400,7 +404,7 @@ export function advanceSituationAfterPlay(
       possession: oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
-      ballOn: Math.max(1, 100 - Math.max(1, newBallOn)),
+      ballOn: flipFieldPosition(newBallOn),
     };
   }
 
@@ -418,7 +422,7 @@ export function advanceSituationAfterPlay(
       possession: oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
-      ballOn: Math.max(1, 100 - newBallOn),
+      ballOn: flipFieldPosition(newBallOn),
     };
   }
 
