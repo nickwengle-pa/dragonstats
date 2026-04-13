@@ -27,13 +27,15 @@ import {
   getOurEndZoneSideForQuarter,
   getOurDriveDirectionForQuarter,
   getPregameConfig,
+  moveToQuarter,
+  normalizeQuarter,
+  oppositeFieldDirection,
   rebuildPlaySituations,
   resolveGameConfig,
   toDisplayFieldPosition,
   type PregameConfig,
 } from "@/services/gameFlow";
 import {
-  advanceLiveQuarterState,
   createInitialGameState,
   replayLiveGame,
   type LiveSessionConfig,
@@ -59,7 +61,6 @@ import {
   QUARTER_LABELS,
   fmtClock,
   quarterLabel,
-  yardLabel,
 } from "@/components/game/types";
 
 interface LiveSituationSnapshot {
@@ -75,6 +76,46 @@ interface ScoreSnapshot {
 }
 
 const LIVE_STATE_PERSIST_DELAY_MS = 250;
+type FieldSide = "program" | "opponent";
+
+function toTeamTag(name: string | null | undefined, explicitAbbreviation?: string | null) {
+  if (typeof explicitAbbreviation === "string" && explicitAbbreviation.trim().length > 0) {
+    return explicitAbbreviation.trim().toUpperCase();
+  }
+
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "TEAM";
+  if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
+  return parts.map((part) => part[0]).join("").slice(0, 3).toUpperCase();
+}
+
+function formatTeamYardLabel(
+  ballOn: number,
+  possession: "us" | "them",
+  programAbbr: string,
+  opponentAbbr: string,
+) {
+  if (ballOn === 50) return "50";
+  const offenseTag = possession === "us" ? programAbbr : opponentAbbr;
+  const defenseTag = possession === "us" ? opponentAbbr : programAbbr;
+  return ballOn <= 50 ? `${offenseTag} ${ballOn}` : `${defenseTag} ${100 - ballOn}`;
+}
+
+function getFieldSideForSpot(ballOn: number, possession: "us" | "them"): FieldSide {
+  if (possession === "us") {
+    return ballOn <= 50 ? "program" : "opponent";
+  }
+
+  return ballOn <= 50 ? "opponent" : "program";
+}
+
+function toBallOnFromFieldSide(fieldSide: FieldSide, yardLine: number, possession: "us" | "them") {
+  if (possession === "us") {
+    return fieldSide === "program" ? yardLine : 100 - yardLine;
+  }
+
+  return fieldSide === "opponent" ? yardLine : 100 - yardLine;
+}
 
 function parseClockText(clockText: unknown, fallback: number): number {
   if (typeof clockText !== "string") return fallback;
@@ -154,10 +195,10 @@ export default function GameScreen() {
       gameId,
       programTeamId: program.id,
       programName: program.name,
-      programAbbreviation: program.abbreviation ?? "US",
+      programAbbreviation: toTeamTag(program.name, program.abbreviation),
       opponentTeamId: game.opponent.id,
       opponentName: game.opponent.name ?? "Opponent",
-      opponentAbbreviation: game.opponent.abbreviation ?? "OPP",
+      opponentAbbreviation: toTeamTag(game.opponent.name ?? "Opponent", game.opponent.abbreviation),
       isHome: Boolean(game.is_home),
       gameConfig: gc,
       rulesConfig: game.rules_config as Record<string, unknown> | null,
@@ -168,6 +209,8 @@ export default function GameScreen() {
   const loadData = useCallback(async () => {
     if (!season || !gameId) return;
     setLoading(true);
+    quarterSnapshots.current = {};
+    setDirectionFlipped(false);
 
     const [gameRes, rosterRes, existingPlays] = await Promise.all([
       supabase.from("games").select("*, opponent:opponents(*)").eq("id", gameId).single(),
@@ -245,10 +288,10 @@ export default function GameScreen() {
           gameId,
           programTeamId: program.id,
           programName: program.name,
-          programAbbreviation: program.abbreviation ?? "US",
+          programAbbreviation: toTeamTag(program.name, program.abbreviation),
           opponentTeamId: gameData.opponent.id,
           opponentName: gameData.opponent.name ?? "Opponent",
-          opponentAbbreviation: gameData.opponent.abbreviation ?? "OPP",
+          opponentAbbreviation: toTeamTag(gameData.opponent.name ?? "Opponent", gameData.opponent.abbreviation),
           isHome: Boolean(gameData.is_home),
           gameConfig,
           rulesConfig: gameData?.rules_config as Record<string, unknown> | null,
@@ -260,10 +303,10 @@ export default function GameScreen() {
       gameId,
       programTeamId: program?.id ?? "program",
       programName: program?.name ?? "Team",
-      programAbbreviation: program?.abbreviation ?? "US",
+      programAbbreviation: toTeamTag(program?.name ?? "Team", program?.abbreviation),
       opponentTeamId: gameData?.opponent?.id ?? "opponent",
       opponentName: gameData?.opponent?.name ?? "Opponent",
-      opponentAbbreviation: gameData?.opponent?.abbreviation ?? "OPP",
+      opponentAbbreviation: toTeamTag(gameData?.opponent?.name ?? "Opponent", gameData?.opponent?.abbreviation),
       isHome: Boolean(gameData?.is_home),
       gameConfig,
       rulesConfig: gameData?.rules_config as Record<string, unknown> | null,
@@ -332,6 +375,10 @@ export default function GameScreen() {
   const [showClockEditor, setShowClockEditor] = useState(false);
   const [clockMins, setClockMins] = useState(12);
   const [clockSecs, setClockSecs] = useState(0);
+  const [showBallEditor, setShowBallEditor] = useState(false);
+  const [ballEditSide, setBallEditSide] = useState<FieldSide>("program");
+  const [ballEditYard, setBallEditYard] = useState(25);
+  const [ballEditRaw, setBallEditRaw] = useState("25");
   const [showEndGame, setShowEndGame] = useState(false);
   const [showSituationAdj, setShowSituationAdj] = useState(false);
   const [pendingSituationPlayId, setPendingSituationPlayId] = useState<string | null>(null);
@@ -345,17 +392,28 @@ export default function GameScreen() {
   /* ── Derived state ── */
   const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
   const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
+  const quarterSnapshots = useRef<Partial<Record<number, { clock: number; situation: LiveSituationSnapshot }>>>({});
+  const [directionFlipped, setDirectionFlipped] = useState(false);
   const ballDisplayPosition = useMemo(
-    () => toDisplayFieldPosition(ballOn, possession, quarter, pregame),
-    [ballOn, possession, quarter, pregame],
+    () => {
+      const displayPosition = toDisplayFieldPosition(ballOn, possession, quarter, pregame);
+      return directionFlipped ? 100 - displayPosition : displayPosition;
+    },
+    [ballOn, directionFlipped, possession, quarter, pregame],
   );
   const firstDownDisplayPosition = useMemo(
-    () => toDisplayFieldPosition(firstDownMarker, possession, quarter, pregame),
-    [firstDownMarker, possession, quarter, pregame],
+    () => {
+      const displayPosition = toDisplayFieldPosition(firstDownMarker, possession, quarter, pregame);
+      return directionFlipped ? 100 - displayPosition : displayPosition;
+    },
+    [directionFlipped, firstDownMarker, possession, quarter, pregame],
   );
   const ourEndZoneSide = useMemo(
-    () => getOurEndZoneSideForQuarter(quarter, pregame),
-    [quarter, pregame],
+    () => {
+      const side = getOurEndZoneSideForQuarter(quarter, pregame);
+      return directionFlipped ? oppositeFieldDirection(side) : side;
+    },
+    [directionFlipped, quarter, pregame],
   );
 
   useEffect(() => {
@@ -363,6 +421,11 @@ export default function GameScreen() {
       setShowPregame(true);
     }
   }, [loading, game, pregame]);
+
+  useEffect(() => {
+    quarterSnapshots.current = {};
+    setDirectionFlipped(false);
+  }, [gameId]);
 
   const toBoardScore = useCallback((score: ScoreSnapshot) => {
     const isHome = game?.is_home ?? true;
@@ -379,6 +442,8 @@ export default function GameScreen() {
     snapshotClock: number,
     situation: LiveSituationSnapshot,
   ) => {
+    const programTag = toTeamTag(program?.name ?? "Team", program?.abbreviation);
+    const opponentTag = toTeamTag(game?.opponent?.name ?? "Opponent", game?.opponent?.abbreviation);
     const firstDownAt = Math.min(situation.ballOn + situation.distance, 100);
     return {
       quarter: snapshotQuarter,
@@ -389,7 +454,7 @@ export default function GameScreen() {
       down: situation.down,
       distance: situation.distance,
       yard_line: situation.ballOn,
-      yard_label: yardLabel(situation.ballOn),
+      yard_label: formatTeamYardLabel(situation.ballOn, situation.possession, programTag, opponentTag),
       first_down_yard_line: firstDownAt,
       display_ball_on: toDisplayFieldPosition(situation.ballOn, situation.possession, snapshotQuarter, pregame),
       display_first_down: toDisplayFieldPosition(firstDownAt, situation.possession, snapshotQuarter, pregame),
@@ -397,7 +462,7 @@ export default function GameScreen() {
       offense_drive_direction: getOffenseDriveDirection(situation.possession, snapshotQuarter, pregame),
       our_end_zone_side: getOurEndZoneSideForQuarter(snapshotQuarter, pregame),
     };
-  }, [pregame]);
+  }, [game?.opponent?.abbreviation, game?.opponent?.name, pregame, program?.abbreviation, program?.name]);
 
   const buildWorksheetRow = useCallback((
     play: PlayRecord,
@@ -415,9 +480,11 @@ export default function GameScreen() {
     const primaryTag = play.tagged[0] ?? null;
     const eventParts = [play.result, play.penalty].filter(Boolean);
     const storedTags = Array.isArray(play.playData?.tags) ? (play.playData?.tags as string[]) : null;
+    const programTag = toTeamTag(program?.name ?? "Team", program?.abbreviation);
+    const opponentTag = toTeamTag(game?.opponent?.name ?? "Opponent", game?.opponent?.abbreviation);
     const teamAbbreviation = play.possession === "us"
-      ? (program?.abbreviation ?? "US")
-      : (game?.opponent?.abbreviation ?? "THEM");
+      ? programTag
+      : opponentTag;
     const playTypeLabel = findPlayTypeDef(play.type)?.label ?? play.type;
     const scoreBeforeBoard = toBoardScore(scoreBefore);
     const scoreAfterBoard = toBoardScore(scoreAfter);
@@ -435,7 +502,7 @@ export default function GameScreen() {
       down: before.down,
       to_go: before.distance,
       ball_on: before.ballOn,
-      ball_on_label: yardLabel(before.ballOn),
+      ball_on_label: formatTeamYardLabel(before.ballOn, before.possession, programTag, opponentTag),
       type: play.type,
       type_label: playTypeLabel,
       yards: play.yards,
@@ -454,7 +521,7 @@ export default function GameScreen() {
       end_clock: null,
       tags: storedTags,
     };
-  }, [game?.opponent?.abbreviation, program?.abbreviation, toBoardScore]);
+  }, [game?.opponent?.abbreviation, game?.opponent?.name, program?.abbreviation, program?.name, toBoardScore]);
 
   const buildStoredPlayData = useCallback((
     play: PlayRecord,
@@ -560,12 +627,54 @@ export default function GameScreen() {
     return { rushAtt, rushYds, passAtt, passComp, passYds, firstDowns, tos, pens };
   }, [plays]);
 
+  const progAbbr = useMemo(
+    () => toTeamTag(program?.name ?? "Team", program?.abbreviation),
+    [program?.abbreviation, program?.name],
+  );
+  const oppAbbr = useMemo(
+    () => toTeamTag(game?.opponent?.name ?? "Opponent", game?.opponent?.abbreviation),
+    [game?.opponent?.abbreviation, game?.opponent?.name],
+  );
+  const currentBallLabel = useMemo(
+    () => formatTeamYardLabel(ballOn, possession, progAbbr, oppAbbr),
+    [ballOn, oppAbbr, possession, progAbbr],
+  );
+  const suggestedPhase = useMemo(() => {
+    const isKickState = ballOn === gc.kickoff_yard_line || ballOn === gc.safety_kick_yard_line;
+    const isConversionState = ballOn === 100 - gc.pat_distance && distance <= gc.pat_distance;
+    if (isKickState || isConversionState) return "special" as const;
+    return possession === "us" ? "offense" as const : "defense" as const;
+  }, [ballOn, distance, gc.kickoff_yard_line, gc.pat_distance, gc.safety_kick_yard_line, possession]);
+
   const applySituation = useCallback((next: { possession: "us" | "them"; down: number; distance: number; ballOn: number }) => {
     setPossession(next.possession);
     setDown(next.down);
     setDistance(next.distance);
     setBallOn(next.ballOn);
   }, []);
+
+  const adjustDistance = useCallback((delta: number) => {
+    setDistance((current) => Math.max(1, Math.min(99, current + delta)));
+  }, []);
+
+  const adjustBall = useCallback((delta: number) => {
+    setBallOn((current) => Math.max(1, Math.min(99, current + delta)));
+  }, []);
+
+  const openBallEditor = useCallback(() => {
+    const nextSide = getFieldSideForSpot(ballOn, possession);
+    const nextYard = ballOn <= 50 ? ballOn : 100 - ballOn;
+    setBallEditSide(nextSide);
+    setBallEditYard(nextYard);
+    setBallEditRaw(String(nextYard));
+    setShowBallEditor(true);
+  }, [ballOn, possession]);
+
+  const applyBallEdit = useCallback(() => {
+    const nextBallOn = toBallOnFromFieldSide(ballEditSide, ballEditYard, possession);
+    setBallOn(nextBallOn);
+    setShowBallEditor(false);
+  }, [ballEditSide, ballEditYard, possession]);
 
   const persistPlaySituations = useCallback((
     nextPlays: PlayRecord[],
@@ -838,7 +947,7 @@ export default function GameScreen() {
       is_touchdown: data.isTouchdown,
       is_turnover: isTurnover,
       is_penalty: !!data.penalty,
-      primary_player_id: data.tagged[0]?.player_id ?? null,
+      primary_player_id: data.tagged.find((tag) => !tag.isOpponent)?.player_id ?? null,
       description: data.description,
       end_yard_line: storedPreview.after.ballOn,
       play_start_time: clock,
@@ -849,7 +958,7 @@ export default function GameScreen() {
       ...(data.hashMark ? { hash_mark: data.hashMark } : {}),
     };
 
-    const playerInserts = data.tagged.map(t => ({
+    const playerInserts = data.tagged.filter((tag) => !tag.isOpponent).map(t => ({
       player_id: t.player_id,
       role: t.role,
       credit: t.credit ?? null,
@@ -934,7 +1043,7 @@ export default function GameScreen() {
       is_touchdown: result.isTouchdown,
       is_turnover: ["int", "fumble"].includes(result.playType.id),
       is_penalty: !!result.penalty,
-      primary_player_id: result.tagged[0]?.player_id ?? null,
+      primary_player_id: result.tagged.find((tag) => !tag.isOpponent)?.player_id ?? null,
       description: result.description,
       ...(result.offensiveFormation != null ? { offensive_formation: result.offensiveFormation } : {}),
       ...(result.defensiveFormation != null ? { defensive_formation: result.defensiveFormation } : {}),
@@ -954,7 +1063,7 @@ export default function GameScreen() {
         next_yard_line: null,
         next_situation_source: result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
       },
-    }, result.tagged.map(t => ({
+    }, result.tagged.filter((tag) => !tag.isOpponent).map(t => ({
       player_id: t.player_id,
       role: t.role,
       credit: t.credit ?? null,
@@ -1042,32 +1151,55 @@ export default function GameScreen() {
     setShowPatGate(false);
   };
 
-  /* ── Cycle quarter ── */
-  const cycleQuarter = () => {
-    if (!liveSessionConfig) return;
+  const changeQuarter = useCallback((delta: number) => {
+    const targetQuarter = Math.max(1, Math.min(5, quarter + delta));
+    if (targetQuarter === quarter) return;
 
-    const nextState = advanceLiveQuarterState({
-      quarter,
-      clock,
-      possession,
-      ourScore,
-      theirScore,
-      down,
-      distance,
-      ballOn,
-    }, liveSessionConfig);
+    const liveSituation: LiveSituationSnapshot = { possession, down, distance, ballOn };
+    quarterSnapshots.current[quarter] = { clock, situation: { ...liveSituation } };
 
-    if (nextState.quarter === quarter) return;
+    let transition: { quarter: number; clock: number; situation: LiveSituationSnapshot } | null = null;
 
-    setQuarter(nextState.quarter);
-    setClock(nextState.clock);
-    applySituation({
-      possession: nextState.possession,
-      down: nextState.down,
-      distance: nextState.distance,
-      ballOn: nextState.ballOn,
-    });
-  };
+    if (targetQuarter > quarter) {
+      transition = moveToQuarter(quarter, targetQuarter, liveSituation, pregame, gc);
+    } else {
+      const savedSnapshot = quarterSnapshots.current[targetQuarter];
+      if (savedSnapshot) {
+        transition = {
+          quarter: targetQuarter,
+          clock: savedSnapshot.clock,
+          situation: { ...savedSnapshot.situation },
+        };
+      } else {
+        const priorPlays = plays.filter((play) => normalizeQuarter(play.quarter) <= targetQuarter);
+        if (priorPlays.length > 0) {
+          const rebuilt = rebuildPlaySituations(priorPlays, pregame, gc);
+          transition = rebuilt.currentQuarter < targetQuarter
+            ? moveToQuarter(rebuilt.currentQuarter, targetQuarter, rebuilt.currentSituation, pregame, gc)
+            : { quarter: targetQuarter, clock: gc.quarter_length_secs, situation: rebuilt.currentSituation };
+        } else {
+          const startingSituation = createInitialSituation(pregame, gc);
+          transition = targetQuarter > 1
+            ? moveToQuarter(1, targetQuarter, startingSituation, pregame, gc)
+            : { quarter: 1, clock: gc.quarter_length_secs, situation: startingSituation };
+        }
+      }
+    }
+
+    if (!transition) return;
+
+    setQuarter(transition.quarter);
+    setClock(transition.clock);
+    applySituation(transition.situation);
+  }, [applySituation, ballOn, clock, distance, down, gc, plays, possession, pregame, quarter]);
+
+  const goToPreviousQuarter = useCallback(() => {
+    changeQuarter(-1);
+  }, [changeQuarter]);
+
+  const goToNextQuarter = useCallback(() => {
+    changeQuarter(1);
+  }, [changeQuarter]);
 
   /* ── End game ── */
   const handleEndGame = async () => {
@@ -1093,8 +1225,6 @@ export default function GameScreen() {
   const oppName = game?.opponent?.name ?? "Opponent";
   const progName = program?.name ?? "Team";
   const primaryColor = program?.primary_color ?? "#ef4444";
-  const progAbbr = program?.abbreviation ?? progName.slice(0, 3).toUpperCase();
-  const oppAbbr = game?.opponent?.abbreviation ?? oppName.slice(0, 3).toUpperCase();
   const oppColor = game?.opponent?.primary_color ?? "#6b7280";
   const progLogoUrl = program?.logo_url ?? null;
   const oppLogoUrl = game?.opponent?.logo_url ?? null;
@@ -1122,13 +1252,23 @@ export default function GameScreen() {
           state={gameState}
           progName={progName}
           oppName={oppName}
+          progAbbr={progAbbr}
+          oppAbbr={oppAbbr}
           primaryColor={primaryColor}
+          ballLabel={currentBallLabel}
           progLogoUrl={progLogoUrl}
           oppLogoUrl={oppLogoUrl}
           oppColor={oppColor}
-          onCycleQuarter={cycleQuarter}
+          onPreviousQuarter={goToPreviousQuarter}
+          onNextQuarter={goToNextQuarter}
+          canPreviousQuarter={quarter > 1}
+          canNextQuarter={quarter < 5}
           onEditClock={() => { setClockMins(Math.floor(clock / 60)); setClockSecs(clock % 60); setShowClockEditor(true); }}
           onEndGame={() => setShowEndGame(true)}
+          onSetDown={setDown}
+          onAdjustDistance={adjustDistance}
+          onAdjustBall={adjustBall}
+          onEditBall={openBallEditor}
         />
 
         {/* Field */}
@@ -1139,41 +1279,15 @@ export default function GameScreen() {
           possession={possession}
           ourEndZoneSide={ourEndZoneSide}
           primaryColor={primaryColor}
+          progName={progName}
+          oppName={oppName}
           progAbbr={progAbbr}
           oppAbbr={oppAbbr}
+          progLogoUrl={progLogoUrl}
+          oppLogoUrl={oppLogoUrl}
           oppColor={oppColor}
+          onFlipDirection={() => setDirectionFlipped((current) => !current)}
         />
-
-        {/* Down & Distance */}
-        <div className="rounded-2xl border border-surface-border p-3" style={{ background: "linear-gradient(180deg, #111820, #0d1117)" }}>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1">
-              {[1, 2, 3, 4].map(d => (
-                <button key={d} onClick={() => setDown(d)}
-                  className={`w-9 h-9 rounded-lg text-xs font-display font-bold transition-colors cursor-pointer ${
-                    down === d ? "bg-amber-500 text-black" : "bg-surface-bg text-surface-muted active:bg-surface-hover"
-                  }`}>
-                  {d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}
-                </button>
-              ))}
-            </div>
-            <span className="text-surface-muted/40 font-display font-bold">&</span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setDistance(d => Math.max(1, d - 1))} className="btn-ghost w-7 h-9 text-sm font-display font-bold cursor-pointer">-</button>
-              <div className="w-8 h-9 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-display font-extrabold text-amber-400 tabular-nums">{distance}</div>
-              <button onClick={() => setDistance(d => Math.min(99, d + 1))} className="btn-ghost w-7 h-9 text-sm font-display font-bold cursor-pointer">+</button>
-            </div>
-            <div className="flex-1" />
-            <div className="flex items-center gap-1">
-              <span className="text-[9px] font-display font-bold text-surface-muted uppercase tracking-widest mr-1">Ball</span>
-              <button onClick={() => setBallOn(b => Math.max(1, b - 5))} className="btn-ghost px-1 h-9 text-[10px] font-display font-bold text-surface-muted cursor-pointer">-5</button>
-              <button onClick={() => setBallOn(b => Math.max(1, b - 1))} className="btn-ghost w-7 h-9 text-sm font-display font-bold cursor-pointer">-</button>
-              <div className="min-w-[52px] h-9 rounded-lg bg-surface-bg flex items-center justify-center text-xs font-display font-extrabold text-emerald-400 tabular-nums px-1">{yardLabel(ballOn)}</div>
-              <button onClick={() => setBallOn(b => Math.min(99, b + 1))} className="btn-ghost w-7 h-9 text-sm font-display font-bold cursor-pointer">+</button>
-              <button onClick={() => setBallOn(b => Math.min(99, b + 5))} className="btn-ghost px-1 h-9 text-[10px] font-display font-bold text-surface-muted cursor-pointer">+5</button>
-            </div>
-          </div>
-        </div>
 
         {/* Quick stats */}
         <div className="grid grid-cols-5 gap-1.5">
@@ -1193,7 +1307,13 @@ export default function GameScreen() {
 
         {/* Quick Action Grid */}
         <div className="card p-3">
-          <QuickActions onSelect={handlePlayTypeSelect} possession={possession} />
+          <QuickActions
+            onSelect={handlePlayTypeSelect}
+            possession={possession}
+            progName={progName}
+            oppName={oppName}
+            suggestedPhase={suggestedPhase}
+          />
         </div>
 
         {/* Recent Plays */}
@@ -1350,6 +1470,75 @@ export default function GameScreen() {
         </div>
       )}
 
+      {showBallEditor && (
+        <div className="sheet bg-black/80">
+          <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
+            <h2 className="text-sm font-black text-center">Set Line Of Scrimmage</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: "program" as const, label: progName },
+                { value: "opponent" as const, label: oppName },
+              ]).map((side) => (
+                <button
+                  key={side.value}
+                  onClick={() => setBallEditSide(side.value)}
+                  className={`py-2 rounded-xl text-xs font-bold border-2 uppercase transition-colors ${
+                    ballEditSide === side.value
+                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-400"
+                      : "border-surface-border bg-surface-bg text-neutral-500"
+                  }`}
+                >
+                  {side.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => {
+                const nextValue = Math.max(1, ballEditYard - 5);
+                setBallEditYard(nextValue);
+                setBallEditRaw(String(nextValue));
+              }} className="btn-ghost px-2 py-2 text-xs font-bold cursor-pointer">-5</button>
+              <button onClick={() => {
+                const nextValue = Math.max(1, ballEditYard - 1);
+                setBallEditYard(nextValue);
+                setBallEditRaw(String(nextValue));
+              }} className="btn-ghost px-2 py-2 text-xs font-bold cursor-pointer">-1</button>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={ballEditRaw}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setBallEditRaw(nextValue);
+                  const parsed = Number(nextValue);
+                  if (Number.isFinite(parsed)) {
+                    setBallEditYard(Math.max(1, Math.min(50, parsed)));
+                  }
+                }}
+                onBlur={() => setBallEditRaw(String(ballEditYard))}
+                className="input flex-1 text-center text-lg font-black tabular-nums"
+              />
+              <button onClick={() => {
+                const nextValue = Math.min(50, ballEditYard + 1);
+                setBallEditYard(nextValue);
+                setBallEditRaw(String(nextValue));
+              }} className="btn-ghost px-2 py-2 text-xs font-bold cursor-pointer">+1</button>
+              <button onClick={() => {
+                const nextValue = Math.min(50, ballEditYard + 5);
+                setBallEditYard(nextValue);
+                setBallEditRaw(String(nextValue));
+              }} className="btn-ghost px-2 py-2 text-xs font-bold cursor-pointer">+5</button>
+            </div>
+            <div className="text-xs text-neutral-500 text-center">
+              {ballEditSide === "program" ? progAbbr : oppAbbr} {ballEditYard}
+            </div>
+            <button onClick={applyBallEdit} className="btn-primary w-full text-sm">Set</button>
+            <button onClick={() => setShowBallEditor(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* End Game Confirm */}
       {showEndGame && (
         <div className="sheet bg-black/80">
@@ -1372,17 +1561,20 @@ export default function GameScreen() {
             <div>
               <label className="text-[10px] font-bold text-neutral-500 block mb-1">Possession</label>
               <div className="grid grid-cols-2 gap-2">
-                {(["us", "them"] as const).map((team) => (
+                {([
+                  { value: "us" as const, label: progName },
+                  { value: "them" as const, label: oppName },
+                ]).map((team) => (
                   <button
-                    key={team}
-                    onClick={() => setAdjPossession(team)}
+                    key={team.value}
+                    onClick={() => setAdjPossession(team.value)}
                     className={`py-2 rounded-xl text-xs font-bold border-2 uppercase transition-colors ${
-                      adjPossession === team
+                      adjPossession === team.value
                         ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
                         : "border-surface-border bg-surface-bg text-neutral-500"
                     }`}
                   >
-                    {team}
+                    {team.label}
                   </button>
                 ))}
               </div>

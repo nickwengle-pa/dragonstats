@@ -1,8 +1,14 @@
+import { useEffect, useState } from "react";
 import { PLAY_TYPES, type PlayTypeDef } from "./types";
+
+type PhaseFilter = "all" | "offense" | "defense" | "special";
 
 interface Props {
   onSelect: (pt: PlayTypeDef) => void;
   possession: "us" | "them";
+  progName: string;
+  oppName: string;
+  suggestedPhase?: PhaseFilter;
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -17,52 +23,122 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 const CATEGORY_ORDER: Record<string, number> = {
-  run: 0, pass: 1, scoring: 2, kicking: 3, turnover: 4, other: 5,
+  run: 0,
+  pass: 1,
+  scoring: 2,
+  kicking: 3,
+  turnover: 4,
+  other: 5,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
-  run: "Run", pass: "Pass", scoring: "Scoring", kicking: "Kicking", turnover: "Turnover", other: "Other",
+  run: "Run",
+  pass: "Pass",
+  scoring: "Scoring",
+  kicking: "Kicking",
+  turnover: "Turnover",
+  other: "Other",
 };
 
-export default function QuickActions({ onSelect, possession }: Props) {
+const PHASE_CATEGORIES: Record<PhaseFilter, Set<string>> = {
+  all: new Set(["run", "pass", "scoring", "kicking", "turnover", "other"]),
+  offense: new Set(["run", "pass", "other"]),
+  defense: new Set(["turnover", "other"]),
+  special: new Set(["kicking", "scoring"]),
+};
+
+const PHASE_TABS: Array<{ value: PhaseFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "offense", label: "OFF" },
+  { value: "defense", label: "DEF" },
+  { value: "special", label: "ST" },
+];
+
+export default function QuickActions({
+  onSelect,
+  possession,
+  progName,
+  oppName,
+  suggestedPhase,
+}: Props) {
+  const [phase, setPhase] = useState<PhaseFilter>(suggestedPhase ?? "all");
+  const [manualOverride, setManualOverride] = useState(false);
+
+  useEffect(() => {
+    if (!manualOverride && suggestedPhase) {
+      setPhase(suggestedPhase);
+    }
+  }, [suggestedPhase, manualOverride]);
+
+  useEffect(() => {
+    setManualOverride(false);
+  }, [suggestedPhase]);
+
   const grouped = PLAY_TYPES.reduce<Record<string, PlayTypeDef[]>>((acc, pt) => {
     (acc[pt.category] ??= []).push(pt);
     return acc;
   }, {});
 
-  const categories = Object.keys(grouped).sort((a, b) => {
-    if (possession === "them") {
-      const defPriority: Record<string, number> = {
-        kicking: 0, turnover: 1, other: 2, run: 3, pass: 4, scoring: 5,
-      };
-      return (defPriority[a] ?? 99) - (defPriority[b] ?? 99);
-    }
-    return (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99);
-  });
+  const allowedCategories = PHASE_CATEGORIES[phase];
+  const categories = Object.keys(grouped)
+    .filter((category) => allowedCategories.has(category))
+    .sort((a, b) => {
+      if (possession === "them") {
+        const defensePriority: Record<string, number> = {
+          kicking: 0,
+          turnover: 1,
+          other: 2,
+          run: 3,
+          pass: 4,
+          scoring: 5,
+        };
+        return (defensePriority[a] ?? 99) - (defensePriority[b] ?? 99);
+      }
+
+      return (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99);
+    });
+
+  const possessionLabel = possession === "us" ? `${progName} possession` : `${oppName} possession`;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <div className="flex gap-1">
+        {PHASE_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => { setPhase(tab.value); setManualOverride(true); }}
+            className={`flex-1 py-1.5 rounded-lg text-[10px] font-display font-black uppercase tracking-wider transition-colors ${
+              phase === tab.value
+                ? "bg-dragon-primary/20 text-dragon-primary border border-dragon-primary/30"
+                : "bg-surface-bg text-surface-muted border border-transparent active:bg-surface-hover"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {possession === "them" && (
-        <div className="flex items-center gap-2 mb-1">
-          <div className="live-dot" style={{ width: 6, height: 6 }} />
-          <span className="text-[10px] font-display font-bold text-red-400 uppercase tracking-widest">
-            Opponent Possession
-          </span>
+        <div className="text-[10px] font-display font-bold text-red-400 uppercase tracking-widest">
+          {possessionLabel}
         </div>
       )}
-      {categories.map(cat => (
-        <div key={cat}>
+
+      {categories.map((category) => (
+        <div key={category}>
           <div className="section-title text-[10px] mb-2">
-            {CATEGORY_LABELS[cat] ?? cat}
+            {CATEGORY_LABELS[category] ?? category}
           </div>
           <div className="grid grid-cols-4 gap-1.5">
-            {grouped[cat].map(pt => (
+            {grouped[category].map((playType) => (
               <button
-                key={pt.id}
-                onClick={() => onSelect(pt)}
-                className={`py-2.5 px-1 rounded-xl text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${COLOR_MAP[pt.color] ?? COLOR_MAP.neutral}`}
+                key={playType.id}
+                onClick={() => onSelect(playType)}
+                className={`py-2.5 px-1 rounded-xl text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${
+                  COLOR_MAP[playType.color] ?? COLOR_MAP.neutral
+                }`}
               >
-                {pt.label}
+                {playType.label}
               </button>
             ))}
           </div>

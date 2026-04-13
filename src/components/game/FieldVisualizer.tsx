@@ -1,3 +1,4 @@
+import { ArrowLeftRight } from "lucide-react";
 import { Fragment, useMemo } from "react";
 
 interface Props {
@@ -7,9 +8,14 @@ interface Props {
   possession: "us" | "them";
   ourEndZoneSide: "left" | "right";
   primaryColor: string;
+  progName: string;
+  oppName: string;
   progAbbr: string;
   oppAbbr: string;
+  progLogoUrl?: string | null;
+  oppLogoUrl?: string | null;
   oppColor: string;
+  onFlipDirection?: () => void;
 }
 
 const YARD_NUMBERS = [10, 20, 30, 40, 50, 40, 30, 20, 10];
@@ -22,6 +28,10 @@ function toWidgetPercent(displayPercent: number) {
   return PLAYING_FIELD_START_PCT + (clamped * PLAYING_FIELD_WIDTH_PCT) / 100;
 }
 
+function endZoneLabel(name: string, abbr: string) {
+  return name.trim().length > 0 ? name.toUpperCase() : abbr;
+}
+
 export default function FieldVisualizer({
   ballOn,
   ballPosition,
@@ -29,9 +39,14 @@ export default function FieldVisualizer({
   possession,
   ourEndZoneSide,
   primaryColor,
+  progName,
+  oppName,
   progAbbr,
   oppAbbr,
+  progLogoUrl,
+  oppLogoUrl,
   oppColor,
+  onFlipDirection,
 }: Props) {
   const theirEndZoneSide = ourEndZoneSide === "left" ? "right" : "left";
   const ourEndZoneStyle = ourEndZoneSide === "left" ? { left: 0 } : { right: 0 };
@@ -40,12 +55,12 @@ export default function FieldVisualizer({
   const theirLabelRotation = theirEndZoneSide === "left" ? "rotate-[-90deg]" : "rotate-90";
 
   const yardTicks = useMemo(
-    () =>
-      Array.from({ length: 99 }, (_, index) => index + 1).filter(
-        (yard) => yard % 5 !== 0,
-      ),
+    () => Array.from({ length: 99 }, (_, index) => index + 1).filter((yard) => yard % 5 !== 0),
     [],
   );
+
+  const programEndZoneLabel = endZoneLabel(progName, progAbbr);
+  const opponentEndZoneLabel = endZoneLabel(oppName, oppAbbr);
 
   return (
     <div
@@ -55,8 +70,7 @@ export default function FieldVisualizer({
       <div
         className="relative w-full h-32 rounded-xl overflow-hidden"
         style={{
-          background:
-            "linear-gradient(180deg, rgba(34, 94, 45, 0.98), rgba(19, 78, 36, 1))",
+          background: "linear-gradient(180deg, rgba(34, 94, 45, 0.98), rgba(19, 78, 36, 1))",
           boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
         }}
       >
@@ -80,10 +94,17 @@ export default function FieldVisualizer({
           className="absolute top-0 bottom-0 w-[10%] flex items-center justify-center z-10 overflow-hidden"
           style={{ ...ourEndZoneStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)` }}
         >
+          {progLogoUrl && (
+            <img
+              src={progLogoUrl}
+              alt={progName}
+              className="absolute inset-2 w-auto h-auto object-contain opacity-20 mix-blend-screen pointer-events-none"
+            />
+          )}
           <span
-            className={`text-[11px] font-display font-extrabold text-white/85 uppercase tracking-[0.18em] whitespace-nowrap select-none ${ourLabelRotation}`}
+            className={`relative text-[9px] font-display font-extrabold text-white/88 uppercase tracking-[0.14em] whitespace-nowrap select-none ${ourLabelRotation}`}
           >
-            {progAbbr}
+            {programEndZoneLabel}
           </span>
         </div>
 
@@ -91,10 +112,17 @@ export default function FieldVisualizer({
           className="absolute top-0 bottom-0 w-[10%] flex items-center justify-center z-10 overflow-hidden"
           style={{ ...theirEndZoneStyle, background: `linear-gradient(135deg, ${oppColor}, ${oppColor}cc)` }}
         >
+          {oppLogoUrl && (
+            <img
+              src={oppLogoUrl}
+              alt={oppName}
+              className="absolute inset-2 w-auto h-auto object-contain opacity-20 mix-blend-screen pointer-events-none"
+            />
+          )}
           <span
-            className={`text-[11px] font-display font-extrabold text-white/85 uppercase tracking-[0.18em] whitespace-nowrap select-none ${theirLabelRotation}`}
+            className={`relative text-[9px] font-display font-extrabold text-white/88 uppercase tracking-[0.14em] whitespace-nowrap select-none ${theirLabelRotation}`}
           >
-            {oppAbbr}
+            {opponentEndZoneLabel}
           </span>
         </div>
 
@@ -134,22 +162,10 @@ export default function FieldVisualizer({
 
           return (
             <Fragment key={`tick-${yard}`}>
-              <div
-                className="absolute w-px bg-white/35 z-[4]"
-                style={{ left: `${left}%`, top: 0, height: 7 }}
-              />
-              <div
-                className="absolute w-px bg-white/35 z-[4]"
-                style={{ left: `${left}%`, bottom: 0, height: 7 }}
-              />
-              <div
-                className="absolute w-px bg-white/22 z-[4]"
-                style={{ left: `${left}%`, top: "32%", height: 6 }}
-              />
-              <div
-                className="absolute w-px bg-white/22 z-[4]"
-                style={{ left: `${left}%`, bottom: "32%", height: 6 }}
-              />
+              <div className="absolute w-px bg-white/35 z-[4]" style={{ left: `${left}%`, top: 0, height: 7 }} />
+              <div className="absolute w-px bg-white/35 z-[4]" style={{ left: `${left}%`, bottom: 0, height: 7 }} />
+              <div className="absolute w-px bg-white/22 z-[4]" style={{ left: `${left}%`, top: "32%", height: 6 }} />
+              <div className="absolute w-px bg-white/22 z-[4]" style={{ left: `${left}%`, bottom: "32%", height: 6 }} />
             </Fragment>
           );
         })}
@@ -159,14 +175,8 @@ export default function FieldVisualizer({
 
           return (
             <Fragment key={`hash-${yard}`}>
-              <div
-                className="absolute w-px bg-white/30 z-[5]"
-                style={{ left: `${left}%`, top: "32%", height: 6 }}
-              />
-              <div
-                className="absolute w-px bg-white/30 z-[5]"
-                style={{ left: `${left}%`, bottom: "32%", height: 6 }}
-              />
+              <div className="absolute w-px bg-white/30 z-[5]" style={{ left: `${left}%`, top: "32%", height: 6 }} />
+              <div className="absolute w-px bg-white/30 z-[5]" style={{ left: `${left}%`, bottom: "32%", height: 6 }} />
             </Fragment>
           );
         })}
@@ -206,13 +216,21 @@ export default function FieldVisualizer({
           style={{
             left: `${toWidgetPercent(ballPosition)}%`,
             backgroundColor: possession === "us" ? primaryColor : oppColor,
-            boxShadow: `0 0 16px ${
-              possession === "us" ? `${primaryColor}88` : `${oppColor}88`
-            }, 0 0 5px rgba(255,255,255,0.25)`,
+            boxShadow: `0 0 16px ${possession === "us" ? `${primaryColor}88` : `${oppColor}88`}, 0 0 5px rgba(255,255,255,0.25)`,
           }}
         >
           {ballOn > 50 ? 100 - ballOn : ballOn}
         </div>
+
+        {onFlipDirection && (
+          <button
+            onClick={onFlipDirection}
+            className="absolute bottom-1 right-[11%] z-30 p-1 rounded bg-black/45 text-white/60 active:text-white active:bg-black/65 transition-colors cursor-pointer"
+            title="Swap field sides"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -50,6 +50,7 @@ export interface PlaySubmitData {
 
 type Step = "players" | "yards" | "formations" | "defense" | "review"
   | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards" | "kick_tacklers";
+type FieldTeam = "program" | "opponent";
 
 function defaultBlockedKickType(gameState: GameState): BlockedKickType {
   if (gameState.ballOn >= 95) return "extra_point";
@@ -243,6 +244,26 @@ export default function PlayEntryModal({
     }
   };
 
+  const adjustFieldTeamYardLine = (
+    currentYL: number,
+    delta: number,
+    currentSide: FieldTeam,
+    setYL: (value: number) => void,
+    setSide: (value: FieldTeam) => void,
+  ) => {
+    const newYL = currentYL + delta;
+    const oppositeSide: FieldTeam = currentSide === "program" ? "opponent" : "program";
+    if (newYL > 50) {
+      setSide(oppositeSide);
+      setYL(Math.min(50, 100 - newYL));
+    } else if (newYL < 1) {
+      setSide(oppositeSide);
+      setYL(Math.max(1, Math.abs(newYL) + 1));
+    } else {
+      setYL(newYL);
+    }
+  };
+
   // Toggles
   const [isTD, setIsTD] = useState(false);
   const [isFirstDown, setIsFirstDown] = useState(false);
@@ -270,7 +291,8 @@ export default function PlayEntryModal({
   const [kickedToYard, setKickedToYard] = useState(5); // receiving team's yard line where ball lands
   const [kickedToRaw, setKickedToRaw] = useState("");
   const [returnToYardLine, setReturnToYardLine] = useState(20);
-  const [returnToSide, setReturnToSide] = useState<"our" | "opp">("opp");
+  const receivingFieldSide: FieldTeam = gameState.possession === "us" ? "opponent" : "program";
+  const [returnToTeam, setReturnToTeam] = useState<FieldTeam>(receivingFieldSide);
   const [returnToRaw, setReturnToRaw] = useState("");
   const [kickerSearch, setKickerSearch] = useState("");
   const [returnerSearch, setReturnerSearch] = useState("");
@@ -286,6 +308,19 @@ export default function PlayEntryModal({
   const oppTag = teamTag(oppName);
   const perspectiveSideLabel = (side: "our" | "opp") => side === "our" ? progName : oppName;
   const perspectiveSideTag = (side: "our" | "opp") => side === "our" ? progTag : oppTag;
+  const fieldTeamLabel = (side: FieldTeam) => side === "program" ? progName : oppName;
+  const fieldTeamTag = (side: FieldTeam) => side === "program" ? progTag : oppTag;
+  const kickingFieldSide: FieldTeam = receivingFieldSide === "program" ? "opponent" : "program";
+  const receivingTeamLabel = fieldTeamLabel(receivingFieldSide);
+  const formatFieldSpot = (ballOn: number, possession: "us" | "them") => {
+    const offenseTag = possession === "us" ? progTag : oppTag;
+    const defenseTag = possession === "us" ? oppTag : progTag;
+    if (ballOn === 50) return "50";
+    return ballOn <= 50 ? `${offenseTag} ${ballOn}` : `${defenseTag} ${100 - ballOn}`;
+  };
+  const kickStartLabel = formatFieldSpot(gameState.ballOn, gameState.possession);
+  const landingLabel = kickedToYard === 0 ? `${fieldTeamTag(receivingFieldSide)} EZ` : `${fieldTeamTag(receivingFieldSide)} ${kickedToYard}`;
+  const kickDistance = isKickPlay ? Math.max(0, (100 - kickedToYard) - gameState.ballOn) : 0;
   const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
   const needsTouchback = false; // handled in kick-specific flow now
@@ -495,14 +530,12 @@ export default function PlayEntryModal({
     // Compute return yards from yard-line picker for kick plays
     let computedReturnYards = 0;
     if (isKickPlay && !isTouchback) {
-      // Convert returnToYardLine + returnToSide to receiver's coordinate (yards from receiver endzone)
-      const isReceiverSide = gameState.possession === "us" ? returnToSide === "opp" : returnToSide === "our";
+      const isReceiverSide = returnToTeam === receivingFieldSide;
       const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
       computedReturnYards = receiverYard - kickedToYard;
     }
 
     if (isKickPlay) {
-      const kickDistance = (100 - kickedToYard) - gameState.ballOn;
       playYards = isTouchback ? kickDistance : kickDistance - computedReturnYards;
     } else if (isTD) {
       // TD: yards = distance from line of scrimmage to endzone
@@ -517,10 +550,11 @@ export default function PlayEntryModal({
     const scored = isTD || (!isKickPlay && newBallOn >= 100);
 
     const desc = buildDescription(playType, allTagged, playYards, scored, penalty, finalResult, isKickPlay ? {
-      kickDistance: (100 - kickedToYard) - gameState.ballOn,
+      kickDistance,
       kickedToYard,
       returnYards: isTouchback ? 0 : computedReturnYards,
       isTouchback,
+      landingLabel,
     } : undefined);
 
     onSubmit({
@@ -689,7 +723,7 @@ export default function PlayEntryModal({
             <>
               <div>
                 <label className="label block mb-2">
-                  {playType.id === "kickoff" ? "Kicked" : "Punted"} To (Opponent Yard Line)
+                  {playType.id === "kickoff" ? "Kicked" : "Punted"} To ({receivingTeamLabel} Yard Line)
                 </label>
                 <div className="flex items-center gap-1.5">
                   {[-10, -5, -1].map(n => (
@@ -697,7 +731,7 @@ export default function PlayEntryModal({
                       className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
                   ))}
                   <div className="w-20 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-purple-400">
-                    {kickedToYard === 0 ? "EZ" : `OPP ${kickedToYard}`}
+                    {landingLabel}
                   </div>
                   {[1, 5, 10].map(n => (
                     <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(50, y + n)))}
@@ -719,8 +753,8 @@ export default function PlayEntryModal({
                   />
                 </div>
                 <div className="text-xs text-slate-500 mt-2">
-                  {playType.id === "kickoff" ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{(100 - kickedToYard) - gameState.ballOn} yards</span>
-                  {" "}({yardLabel(gameState.ballOn)} → OPP {kickedToYard})
+                  {playType.id === "kickoff" ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{kickDistance} yards</span>
+                  {" "}({kickStartLabel} → {landingLabel})
                 </div>
               </div>
 
@@ -741,7 +775,7 @@ export default function PlayEntryModal({
           {currentStep === "kick_returner" && (
             <>
               <div className="text-xs text-slate-400 mb-1">
-                {playType.id === "kickoff" ? "Kicked" : "Punted"} to OPP {kickedToYard} ({(100 - kickedToYard) - gameState.ballOn} yds). Select the returner.
+                {playType.id === "kickoff" ? "Kicked" : "Punted"} to {landingLabel} ({kickDistance} yds). Select the returner.
               </div>
               {isTheirBall ? (
                 <PlayerGrid
@@ -774,37 +808,32 @@ export default function PlayEntryModal({
 
                 {/* Side selector */}
                 <div className="flex gap-1.5 mb-3">
-                  {(["opp", "our"] as const).map(side => {
-                    const label = side === "our"
-                      ? (gameState.possession === "us" ? progName : oppName)
-                      : (gameState.possession === "us" ? oppName : progName);
-                    return (
-                      <button
-                        key={side}
-                        onClick={() => setReturnToSide(side)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
-                          returnToSide === side
+                  {(["program", "opponent"] as const).map((side) => (
+                    <button
+                      key={side}
+                      onClick={() => setReturnToTeam(side)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                        returnToTeam === side
                             ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
                             : "border-surface-border bg-surface-bg text-slate-500"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
+                      }`}
+                    >
+                      {fieldTeamLabel(side)}
+                    </button>
+                  ))}
                 </div>
 
                 {/* Yard line stepper */}
                 <div className="flex items-center gap-1.5">
                   {[-10, -5, -1].map(n => (
-                    <button key={n} onClick={() => adjustYardLine(returnToYardLine, n, returnToSide, setReturnToYardLine, setReturnToSide)}
+                    <button key={n} onClick={() => adjustFieldTeamYardLine(returnToYardLine, n, returnToTeam, setReturnToYardLine, setReturnToTeam)}
                       className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
                   ))}
                   <div className="w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-emerald-400">
                     {returnToYardLine}
                   </div>
                   {[1, 5, 10].map(n => (
-                    <button key={n} onClick={() => adjustYardLine(returnToYardLine, n, returnToSide, setReturnToYardLine, setReturnToSide)}
+                    <button key={n} onClick={() => adjustFieldTeamYardLine(returnToYardLine, n, returnToTeam, setReturnToYardLine, setReturnToTeam)}
                       className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
                   ))}
                 </div>
@@ -824,14 +853,12 @@ export default function PlayEntryModal({
                 </div>
                 <div className="text-xs text-slate-500 mt-3">
                   {(() => {
-                    const sideLabel = returnToSide === "our"
-                      ? (gameState.possession === "us" ? progTag : oppTag)
-                      : (gameState.possession === "us" ? oppTag : progTag);
-                    const isReceiverSide = gameState.possession === "us" ? returnToSide === "opp" : returnToSide === "our";
+                    const sideLabel = fieldTeamTag(returnToTeam);
+                    const isReceiverSide = returnToTeam === receivingFieldSide;
                     const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
                     const retYds = receiverYard - kickedToYard;
                     return (
-                      <>Caught at OPP {kickedToYard} → returned to <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
+                      <>Caught at {landingLabel} → returned to <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
                     );
                   })()}
                 </div>
@@ -1196,21 +1223,19 @@ export default function PlayEntryModal({
                   <>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Kick Distance</span>
-                      <span className="font-bold text-purple-400">{(100 - kickedToYard) - gameState.ballOn} yds</span>
+                      <span className="font-bold text-purple-400">{kickDistance} yds</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Landed At</span>
-                      <span className="font-bold">{isTouchback ? "Touchback" : `OPP ${kickedToYard}`}</span>
+                      <span className="font-bold">{isTouchback ? "Touchback" : landingLabel}</span>
                     </div>
                     {!isTouchback && (
                       <div className="flex justify-between">
                         <span className="text-slate-500">Returned To</span>
                         <span className="font-bold text-emerald-400">
                           {(() => {
-                            const sideLabel = returnToSide === "our"
-                              ? (gameState.possession === "us" ? progTag : oppTag)
-                              : (gameState.possession === "us" ? oppTag : progTag);
-                            const isReceiverSide = gameState.possession === "us" ? returnToSide === "opp" : returnToSide === "our";
+                            const sideLabel = fieldTeamTag(returnToTeam);
+                            const isReceiverSide = returnToTeam === receivingFieldSide;
                             const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
                             const retYds = receiverYard - kickedToYard;
                             return `${sideLabel} ${returnToYardLine} (${retYds > 0 ? "+" : ""}${retYds} yds)`;

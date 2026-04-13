@@ -154,7 +154,7 @@ export default function PregameSetupSheet({
           </div>
 
           <ToggleRow<FieldDirection>
-            label="We Drive In 1st Quarter"
+            label="Drive Direction In 1st Quarter"
             value={form.ourDriveDirectionQ1}
             options={[
               { value: "right", label: "To The Right" },

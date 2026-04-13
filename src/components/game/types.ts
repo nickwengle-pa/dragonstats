@@ -234,7 +234,13 @@ export function buildDescription(
   scored: boolean,
   penalty: string | null,
   result: string,
-  kickInfo?: { kickDistance: number; kickedToYard: number; returnYards: number; isTouchback: boolean },
+  kickInfo?: {
+    kickDistance: number;
+    kickedToYard: number;
+    returnYards: number;
+    isTouchback: boolean;
+    landingLabel?: string;
+  },
 ): string {
   const parts: string[] = [];
   const byRole = (r: string) => tagged.find(t => t.role === r);
@@ -273,7 +279,9 @@ export function buildDescription(
     case "kickoff": {
       const k = byRole("kicker"), ret = byRole("returner");
       if (kickInfo) {
-        const kickLabel = kickInfo.isTouchback ? "Touchback" : `to OPP ${kickInfo.kickedToYard}`;
+        const kickLabel = kickInfo.isTouchback
+          ? "Touchback"
+          : `to ${kickInfo.landingLabel ?? `OPP ${kickInfo.kickedToYard}`}`;
         const retLabel = !kickInfo.isTouchback && ret ? `, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : "";
         parts.push(`Kickoff${k ? ` ${playerLabel(k)}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
       } else {
@@ -284,7 +292,9 @@ export function buildDescription(
     case "punt": {
       const p = byRole("punter"), ret = byRole("returner");
       if (kickInfo) {
-        const kickLabel = kickInfo.isTouchback ? "Touchback" : `to OPP ${kickInfo.kickedToYard}`;
+        const kickLabel = kickInfo.isTouchback
+          ? "Touchback"
+          : `to ${kickInfo.landingLabel ?? `OPP ${kickInfo.kickedToYard}`}`;
         const retLabel = !kickInfo.isTouchback && ret ? `, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : "";
         parts.push(`Punt${p ? ` ${playerLabel(p)}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
       } else {
