@@ -134,7 +134,7 @@ export default function DashboardScreen() {
       </div>
 
       <div className="px-5 py-4 text-center">
-        <p className="text-xs text-neutral-700">Dragon Stats v0.1.0</p>
+        <p className="text-xs text-neutral-700">Dragon Stats v1.0.0</p>
       </div>
     </div>
   );

@@ -240,7 +240,7 @@ export default function DashboardScreen() {
 
       {/* Version */}
       <div className="px-5 py-6 mt-4 text-center">
-        <p className="text-[10px] font-display font-semibold text-surface-muted/30 uppercase tracking-[0.2em]">Dragon Stats v0.1.0</p>
+        <p className="text-[10px] font-display font-semibold text-surface-muted/30 uppercase tracking-[0.2em]">Dragon Stats v1.0.0</p>
       </div>
 
       <TabBar />
