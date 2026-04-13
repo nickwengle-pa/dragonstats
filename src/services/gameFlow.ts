@@ -461,9 +461,16 @@ export function rebuildPlaySituations(
       possession: currentSituation.possession,
     };
 
-    currentSituation = getRecordedNextSituation(nextPlay) ?? advanceSituationAfterPlay(nextPlay, currentSituation, config);
+    const nextSituation = getRecordedNextSituation(nextPlay) ?? advanceSituationAfterPlay(nextPlay, currentSituation, config);
+    currentSituation = nextSituation;
     currentQuarter = playQuarter;
-    return nextPlay;
+    return {
+      ...nextPlay,
+      nextPossession: nextSituation.possession,
+      nextDown: nextSituation.down,
+      nextDistance: nextSituation.distance,
+      nextBallOn: nextSituation.ballOn,
+    };
   });
 
   return {

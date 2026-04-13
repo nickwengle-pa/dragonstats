@@ -4,6 +4,7 @@ import {
   ArrowLeft, Plus, X, Trash2, UserRound, Upload, Edit2,
   Check, AlertTriangle, FileText,
 } from "lucide-react";
+import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { parseCSVRoster, parseMaxPrepsRoster, type ParsedPlayer } from "@/utils/rosterImport";
@@ -39,12 +40,12 @@ const CLASSIFICATIONS = ["FR","SO","JR","SR"];
 /* ─── Position Tag Component ─── */
 
 function PosTags({ positions, primary }: { positions: string[]; primary?: string }) {
-  if (!positions.length) return <span className="text-slate-600">—</span>;
+  if (!positions.length) return <span className="text-neutral-600">—</span>;
   return (
     <span className="flex gap-1 flex-wrap">
       {positions.map(p => (
         <span key={p} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-          p === primary ? "bg-dragon-primary/20 text-dragon-primary" : "bg-surface-bg text-slate-400"
+          p === primary ? "bg-dragon-primary/20 text-dragon-primary" : "bg-surface-bg text-neutral-400"
         }`}>{p}</span>
       ))}
     </span>
@@ -76,7 +77,7 @@ function ImportModal({
   };
 
   return (
-    <div className="sheet bg-black/60 backdrop-blur-sm">
+    <div className="sheet bg-black/70">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 pb-3 shrink-0">
           <h2 className="text-lg font-black">Import Roster</h2>
@@ -88,16 +89,16 @@ function ImportModal({
           <div className="flex gap-2">
             <button
               onClick={() => { setMode("maxpreps"); setParsed(false); }}
-              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition-all duration-200 cursor-pointer ${
-                mode === "maxpreps" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-slate-400"
+              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition-colors ${
+                mode === "maxpreps" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-neutral-400"
               }`}
             >
               MaxPreps Paste
             </button>
             <button
               onClick={() => { setMode("csv"); setParsed(false); }}
-              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition-all duration-200 cursor-pointer ${
-                mode === "csv" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-slate-400"
+              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition-colors ${
+                mode === "csv" ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border text-neutral-400"
               }`}
             >
               CSV / Tab
@@ -105,7 +106,7 @@ function ImportModal({
           </div>
 
           {/* Instructions */}
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <p className="text-xs text-neutral-400 leading-relaxed">
             {mode === "maxpreps"
               ? 'Copy the roster table from MaxPreps.com (including the "# Player Grade Position Height Weight" header row) and paste it below.'
               : "Paste comma or tab-separated data. Expected columns: Jersey#, Name, Position, Class, GradYear. A header row is auto-detected."}
@@ -145,14 +146,14 @@ function ImportModal({
           {/* Preview */}
           {parsed && preview.length > 0 && (
             <>
-              <div className="text-xs font-bold text-slate-300 mb-1">{preview.length} player{preview.length !== 1 && "s"} found:</div>
+              <div className="text-xs font-bold text-neutral-300 mb-1">{preview.length} player{preview.length !== 1 && "s"} found:</div>
               <div className="max-h-52 overflow-y-auto border border-surface-border rounded-lg divide-y divide-surface-border">
                 {preview.map((p, i) => (
                   <div key={i} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                    <span className="font-mono w-7 text-center text-slate-500">{p.jerseyNumber ?? "—"}</span>
+                    <span className="font-mono w-7 text-center text-neutral-500">{p.jerseyNumber ?? "—"}</span>
                     <span className="flex-1 truncate">{p.firstName} {p.lastName}</span>
-                    <span className="text-slate-400">{p.positions.join("/") || "—"}</span>
-                    <span className="text-slate-500 w-6 text-center">{p.classification ?? ""}</span>
+                    <span className="text-neutral-400">{p.positions.join("/") || "—"}</span>
+                    <span className="text-neutral-500 w-6 text-center">{p.classification ?? ""}</span>
                   </div>
                 ))}
               </div>
@@ -201,7 +202,7 @@ function PlayerFormModal({
   };
 
   return (
-    <div className="sheet bg-black/60 backdrop-blur-sm">
+    <div className="sheet bg-black/70">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 pb-3 shrink-0">
           <h2 className="text-lg font-black">{editing ? "Edit Player" : "Add Player"}</h2>
@@ -234,7 +235,7 @@ function PlayerFormModal({
           {/* Multi-position selector */}
           <div>
             <label className="label block mb-1.5">
-              Positions {positions.length > 0 && <span className="text-slate-500">({positions.join(", ")})</span>}
+              Positions {positions.length > 0 && <span className="text-neutral-500">({positions.join(", ")})</span>}
             </label>
             <div className="flex flex-wrap gap-1.5">
               {POSITIONS.map(pos => (
@@ -242,10 +243,10 @@ function PlayerFormModal({
                   key={pos}
                   type="button"
                   onClick={() => togglePosition(pos)}
-                  className={`text-[11px] font-bold px-2 py-1 rounded-lg border transition-all duration-200 cursor-pointer ${
+                  className={`text-[11px] font-bold px-2 py-1 rounded-lg border transition-colors ${
                     positions.includes(pos)
                       ? "border-dragon-primary bg-dragon-primary/15 text-dragon-primary"
-                      : "border-surface-border text-slate-500 hover:border-slate-500"
+                      : "border-surface-border text-neutral-500 hover:border-neutral-500"
                   }`}
                 >
                   {pos}
@@ -419,26 +420,27 @@ export default function RosterScreen() {
   };
 
   return (
-    <div className="screen safe-top safe-bottom lg:max-w-tablet lg:mx-auto">
+    <div className="screen safe-top lg:max-w-tablet lg:mx-auto pb-20">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-        <button onClick={() => navigate("/")} className="btn-ghost p-2">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-2">
+        <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-black flex-1">Roster</h1>
-        <span className="text-xs text-slate-500 font-bold">{roster.length} players</span>
-        <button onClick={() => setShowImport(true)} className="btn-ghost p-2 text-slate-400" title="Import roster">
+        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Roster</h1>
+        <span className="text-[11px] font-display font-bold text-surface-muted uppercase tracking-wider">{roster.length} players</span>
+        <button onClick={() => setShowImport(true)} className="btn-ghost p-2 text-surface-muted cursor-pointer" title="Import roster">
           <Upload className="w-5 h-5" />
         </button>
-        <button onClick={() => { setEditingEntry(null); setShowAdd(true); }} className="btn-ghost p-2 text-dragon-primary">
+        <button onClick={() => { setEditingEntry(null); setShowAdd(true); }} className="btn-ghost p-2 text-dragon-primary cursor-pointer">
           <Plus className="w-5 h-5" />
         </button>
       </div>
+      <div className="mx-5 mt-1 mb-3 accent-line" />
 
       {/* Season label */}
       {season && (
         <div className="px-5 pb-3">
-          <span className="text-xs font-bold text-slate-600">
+          <span className="text-[11px] font-display font-semibold text-surface-muted uppercase tracking-wider">
             {season.name ?? `${season.year} ${season.level}`}
           </span>
         </div>
@@ -447,12 +449,12 @@ export default function RosterScreen() {
       {/* Roster list */}
       <div className="flex-1 px-5 overflow-y-auto pb-4">
         {loading ? (
-          <div className="text-slate-500 text-sm text-center py-12 animate-pulse">Loading roster...</div>
+          <div className="text-neutral-500 text-sm text-center py-12 animate-pulse">Loading roster...</div>
         ) : roster.length === 0 ? (
           <div className="card p-8 text-center">
-            <UserRound className="w-10 h-10 text-slate-700 mx-auto mb-3" />
-            <p className="text-slate-500 text-sm font-semibold mb-1">No players yet</p>
-            <p className="text-slate-600 text-xs mb-4">Tap + to add players or import a roster from MaxPreps.</p>
+            <UserRound className="w-10 h-10 text-neutral-700 mx-auto mb-3" />
+            <p className="text-neutral-500 text-sm font-semibold mb-1">No players yet</p>
+            <p className="text-neutral-600 text-xs mb-4">Tap + to add players or import a roster from MaxPreps.</p>
             <button onClick={() => setShowImport(true)} className="btn-ghost text-sm text-dragon-primary">
               <Upload className="w-4 h-4 mr-1.5 inline" /> Import Roster
             </button>
@@ -462,7 +464,7 @@ export default function RosterScreen() {
             {roster.map(entry => (
               <div
                 key={entry.id}
-                className="card flex items-center gap-3 p-3 active:bg-surface-hover transition-all duration-200"
+                className="card flex items-center gap-3 p-3 active:bg-surface-hover transition-colors"
                 onClick={() => navigate(`/player/${entry.player_id}`)}
               >
                 <div
@@ -481,19 +483,19 @@ export default function RosterScreen() {
                       primary={entry.position ?? undefined}
                     />
                     {entry.classification && (
-                      <span className="text-[10px] text-slate-500 font-bold">{entry.classification}</span>
+                      <span className="text-[10px] text-neutral-500 font-bold">{entry.classification}</span>
                     )}
                   </div>
                 </div>
                 <button
                   onClick={e => { e.stopPropagation(); setEditingEntry(entry); setShowAdd(true); }}
-                  className="btn-ghost p-1.5 text-slate-600"
+                  className="btn-ghost p-1.5 text-neutral-600"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
                   onClick={e => { e.stopPropagation(); handleDelete(entry); }}
-                  className="btn-ghost p-1.5 text-slate-700 hover:text-red-400"
+                  className="btn-ghost p-1.5 text-neutral-700 hover:text-red-400"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -508,7 +510,7 @@ export default function RosterScreen() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
           <div className="card p-6 text-center">
             <div className="animate-pulse text-sm font-bold mb-2">Importing players...</div>
-            <p className="text-xs text-slate-500">This may take a moment.</p>
+            <p className="text-xs text-neutral-500">This may take a moment.</p>
           </div>
         </div>
       )}
@@ -530,6 +532,7 @@ export default function RosterScreen() {
           seasonYear={season?.year}
         />
       )}
+      <TabBar />
     </div>
   );
 }

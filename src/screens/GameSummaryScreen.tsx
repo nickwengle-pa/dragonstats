@@ -235,14 +235,15 @@ export default function GameSummaryScreen() {
   return (
     <div className="screen safe-top safe-bottom">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-        <button onClick={() => navigate(`/game/${gameId}`)} className="btn-ghost p-2">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-2">
+        <button onClick={() => navigate(`/game/${gameId}`)} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-black flex-1">Game Summary</h1>
-        <button className="btn-ghost p-2"><Share2 className="w-5 h-5" /></button>
-        <button className="btn-ghost p-2"><Download className="w-5 h-5" /></button>
+        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Summary</h1>
+        <button className="btn-ghost p-2 cursor-pointer"><Share2 className="w-5 h-5" /></button>
+        <button className="btn-ghost p-2 cursor-pointer"><Download className="w-5 h-5" /></button>
       </div>
+      <div className="mx-5 mt-1 mb-4 accent-line" />
 
       <div className="flex-1 px-5 space-y-4 overflow-y-auto pb-8">
         {/* Return to live game banner */}

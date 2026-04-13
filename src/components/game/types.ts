@@ -38,6 +38,7 @@ export type BlockedKickType = "field_goal" | "extra_point" | "punt" | "kickoff";
 
 export interface PlayRecord {
   id: string;
+  sequence?: number;
   quarter: number;
   clock: number;
   type: string;
@@ -64,6 +65,7 @@ export interface PlayRecord {
   offensiveFormation?: string | null;
   defensiveFormation?: string | null;
   hashMark?: string | null;
+  playData?: Record<string, unknown>;
 }
 
 export interface GameState {

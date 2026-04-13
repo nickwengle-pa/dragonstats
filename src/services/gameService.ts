@@ -8,6 +8,38 @@ import {
 } from "./gameFlow";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "./programService";
 
+const APP_META_KEY = "_dragonstats";
+const LIVE_STATE_VERSION = 1;
+
+type RulesConfig = Record<string, unknown>;
+
+function asRecord(value: unknown): RulesConfig | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as RulesConfig
+    : null;
+}
+
+export function withManagedLiveState(
+  rulesConfig: RulesConfig | null | undefined,
+): RulesConfig {
+  const nextRules = { ...(rulesConfig ?? {}) };
+  const currentMeta = asRecord(nextRules[APP_META_KEY]);
+
+  nextRules[APP_META_KEY] = {
+    ...(currentMeta ?? {}),
+    liveStateVersion: LIVE_STATE_VERSION,
+  };
+
+  return nextRules;
+}
+
+export function hasManagedLiveState(
+  rulesConfig: RulesConfig | null | undefined,
+): boolean {
+  const meta = asRecord(asRecord(rulesConfig)?.[APP_META_KEY]);
+  return Number(meta?.liveStateVersion) >= LIVE_STATE_VERSION;
+}
+
 /* ─────────────────────────────────────────────
    Types — match your Supabase schema
    ───────────────────────────────────────────── */
@@ -53,6 +85,15 @@ export interface PlayRow extends PlayInsert {
 
 export interface PlayPlayerRow extends PlayPlayerInsert {
   id: string;
+}
+
+export interface CurrentGameStateUpdate {
+  quarter: number;
+  clock: string | null;
+  possession: "us" | "them";
+  down: number;
+  distance: number;
+  yard_line: number;
 }
 
 /* ─────────────────────────────────────────────
@@ -291,15 +332,63 @@ export async function updatePlaySituation(
     down: number;
     distance: number;
     yard_line: number;
+    quarter?: number;
+    clock?: string | null;
+    end_yard_line?: number | null;
+    play_start_time?: number | null;
+    play_end_time?: number | null;
   },
+  playData?: Record<string, unknown>,
 ): Promise<boolean> {
+  const updateObj: Record<string, unknown> = { ...fields };
+  if (playData) {
+    updateObj.play_data = playData;
+  }
+
+  for (const [key, value] of Object.entries(updateObj)) {
+    if (value === undefined) {
+      delete updateObj[key];
+    }
+  }
+
   const { error } = await supabase
     .from("plays")
-    .update(fields)
+    .update(updateObj)
     .eq("id", playId);
 
   if (error) {
     console.error("Failed to update play situation:", error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function updateCurrentGameState(
+  gameId: string,
+  state: CurrentGameStateUpdate,
+  rulesConfig?: RulesConfig | null,
+): Promise<boolean> {
+  const updateObj: Record<string, unknown> = {
+    current_quarter: normalizeQuarter(state.quarter),
+    current_clock: state.clock,
+    current_possession: state.possession,
+    current_down: state.down,
+    current_distance: state.distance,
+    current_yard_line: state.yard_line,
+  };
+
+  if (rulesConfig !== undefined) {
+    updateObj.rules_config = withManagedLiveState(rulesConfig);
+  }
+
+  const { error } = await supabase
+    .from("games")
+    .update(updateObj)
+    .eq("id", gameId);
+
+  if (error) {
+    console.error("Failed to update current game state:", error);
     return false;
   }
 

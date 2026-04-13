@@ -39,7 +39,7 @@ function ToggleRow<T extends string>({
 }) {
   return (
     <div>
-      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{label}</div>
+      <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest mb-1.5">{label}</div>
       <div className="grid grid-cols-2 gap-2">
         {options.map((option) => (
           <button
@@ -50,7 +50,7 @@ function ToggleRow<T extends string>({
             className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
               value === option.value
                 ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
-                : "border-surface-border bg-surface-bg text-slate-400"
+                : "border-surface-border bg-surface-bg text-neutral-400"
             } ${disabled ? "opacity-50" : "active:bg-surface-hover"}`}
           >
             {option.label}
@@ -93,12 +93,12 @@ export default function PregameSetupSheet({
   };
 
   return (
-    <div className="sheet bg-black/60 backdrop-blur-sm">
+    <div className="sheet bg-black/80">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 pb-3 shrink-0">
           <div>
             <h2 className="text-lg font-black">Pregame Setup</h2>
-            <p className="text-xs text-slate-500 mt-1">Opening kickoff, field direction, and halftime kickoff flow.</p>
+            <p className="text-xs text-neutral-500 mt-1">Opening kickoff, field direction, and halftime kickoff flow.</p>
           </div>
           <button onClick={onClose} className="btn-ghost p-1.5">
             <X className="w-5 h-5" />
@@ -116,14 +116,12 @@ export default function PregameSetupSheet({
             onChange={(value) => setForm((prev) => ({
               ...prev,
               tossWinner: value,
-              openingKickoffReceiver: deriveOpeningKickoffReceiver(value, prev.tossChoice, null),
+              openingKickoffReceiver: deriveOpeningKickoffReceiver(value, prev.tossChoice, prev.openingKickoffReceiver),
             }))}
           />
 
           <div>
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-              {teamLabel(form.tossWinner, progName, oppName)} Chose To
-            </div>
+            <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest mb-1.5">Winner Choice</div>
             <div className="grid grid-cols-2 gap-2">
               {[
                 { value: "receive", label: "Receive" },
@@ -140,13 +138,13 @@ export default function PregameSetupSheet({
                     openingKickoffReceiver: deriveOpeningKickoffReceiver(
                       prev.tossWinner,
                       option.value as TossChoice,
-                      null,
+                      prev.openingKickoffReceiver,
                     ),
                   }))}
                   className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
                     form.tossChoice === option.value
                       ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
-                      : "border-surface-border bg-surface-bg text-slate-400 active:bg-surface-hover"
+                      : "border-surface-border bg-surface-bg text-neutral-400 active:bg-surface-hover"
                   }`}
                 >
                   {option.label}
@@ -156,11 +154,11 @@ export default function PregameSetupSheet({
           </div>
 
           <ToggleRow<FieldDirection>
-            label={`${progName} Drives Toward (Q1)`}
+            label="We Drive In 1st Quarter"
             value={form.ourDriveDirectionQ1}
             options={[
-              { value: "right", label: "Right End Zone" },
-              { value: "left", label: "Left End Zone" },
+              { value: "right", label: "To The Right" },
+              { value: "left", label: "To The Left" },
             ]}
             onChange={(value) => setForm((prev) => ({ ...prev, ourDriveDirectionQ1: value }))}
           />
@@ -177,18 +175,18 @@ export default function PregameSetupSheet({
           />
 
           <div className="card p-3 space-y-1.5">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Summary</div>
+            <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest">Summary</div>
             <div className="text-sm font-bold">
               {teamLabel(oppositeTeam(openingReceiver), progName, oppName)} kicks off to {teamLabel(openingReceiver, progName, oppName)} to start the game.
             </div>
             <div className="text-sm font-bold">
               {teamLabel(oppositeTeam(secondHalfReceiver), progName, oppName)} kicks off to {teamLabel(secondHalfReceiver, progName, oppName)} to start the 3rd quarter.
             </div>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-neutral-500">
               Teams switch ends every quarter. The first-quarter direction sets the field display for the whole game.
             </div>
             {openingReceiverLocked && (
-              <div className="text-[11px] text-slate-500">
+              <div className="text-[11px] text-neutral-500">
                 Opening receiver is locked because the toss winner chose to {form.tossChoice.replace("_", " ")}.
               </div>
             )}

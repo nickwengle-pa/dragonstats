@@ -305,22 +305,24 @@ export default function PlayerScreen() {
 
   return (
     <div className="screen safe-top safe-bottom">
-      <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-        <button onClick={() => navigate(-1)} className="btn-ghost p-2">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-2">
+        <button onClick={() => navigate(-1)} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-black flex-1">Player Profile</h1>
+        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Player Profile</h1>
       </div>
+      <div className="mx-5 mt-1 mb-4 accent-line" />
 
       <div className="flex-1 px-5 space-y-4 overflow-y-auto pb-8">
         {/* Player header */}
         <div className="card p-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-dragon-primary/20 flex items-center justify-center mx-auto mb-3">
-            <span className="text-2xl font-black text-dragon-primary">
-              #{player?.jersey_number ?? "—"}
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
+            style={{ background: "linear-gradient(135deg, rgba(220,38,38,0.2), rgba(220,38,38,0.05))" }}>
+            <span className="text-2xl font-display font-extrabold text-dragon-primary">
+              #{player?.jersey_number ?? "\u2014"}
             </span>
           </div>
-          <div className="text-lg font-bold">
+          <div className="text-lg font-display font-bold uppercase tracking-wide">
             {player
               ? `${player.preferred_name || player.first_name} ${player.last_name}`
               : "Loading..."}

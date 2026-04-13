@@ -32,47 +32,70 @@ export default function LoginScreen() {
   };
 
   return (
-    <div className="screen items-center justify-center p-6 safe-top safe-bottom">
-      <div className="w-full max-w-sm">
-        {/* Logo / Title */}
-        <div className="text-center mb-10">
-          <div className="text-5xl font-black tracking-tight text-dragon-primary mb-1"
-            style={{ textShadow: "0 0 40px rgba(220,38,38,0.3)" }}>
-            DRAGON
+    <div className="screen items-center justify-center p-6 safe-top safe-bottom relative overflow-hidden">
+      {/* Background texture */}
+      <div className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 39px, #fff 39px, #fff 40px)`,
+          backgroundSize: "100% 40px",
+        }}
+      />
+
+      {/* Top accent */}
+      <div className="absolute top-0 left-0 right-0 h-1 accent-line" />
+
+      <div className="w-full max-w-sm relative z-10">
+        {/* Logo */}
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-6"
+            style={{
+              background: "linear-gradient(135deg, #dc2626, #991b1b)",
+              boxShadow: "0 0 40px rgba(220, 38, 38, 0.25)",
+            }}>
+            <span className="text-3xl font-display font-black text-white italic tracking-wider">DS</span>
           </div>
-          <div className="text-lg font-bold tracking-widest text-slate-500 uppercase font-mono">
-            Stats
-          </div>
+          <h1 className="text-4xl font-display font-extrabold tracking-[0.15em] uppercase">
+            Dragon Stats
+          </h1>
+          <p className="text-xs font-display font-semibold text-surface-muted uppercase tracking-[0.3em] mt-2">
+            Football Intelligence
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <input
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="Email"
-            className="input"
-            autoComplete="email"
-            required
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="Password"
-            className="input"
-            autoComplete={isSignUp ? "new-password" : "current-password"}
-            required
-          />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div>
+            <label className="label block mb-1.5 ml-1">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="coach@school.edu"
+              className="input"
+              autoComplete="email"
+              required
+            />
+          </div>
+          <div>
+            <label className="label block mb-1.5 ml-1">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Enter password"
+              className="input"
+              autoComplete={isSignUp ? "new-password" : "current-password"}
+              required
+            />
+          </div>
 
           {error && (
-            <p className="text-sm text-red-400 text-center">{error}</p>
+            <p className="text-sm text-red-400 text-center font-medium py-1">{error}</p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary mt-2"
+            className="btn-primary mt-3 text-base tracking-[0.15em]"
           >
             {loading ? "..." : isSignUp ? "Create Account" : "Sign In"}
           </button>
@@ -80,10 +103,17 @@ export default function LoginScreen() {
 
         <button
           onClick={() => { setIsSignUp(!isSignUp); setError(""); }}
-          className="btn-ghost w-full mt-4 text-sm cursor-pointer"
+          className="btn-ghost w-full mt-4 text-sm normal-case tracking-normal font-body"
         >
           {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
         </button>
+      </div>
+
+      {/* Bottom branding */}
+      <div className="absolute bottom-6 left-0 right-0 text-center">
+        <p className="text-[10px] font-display font-semibold text-surface-muted/40 uppercase tracking-[0.25em]">
+          Powered by Dragon Stats
+        </p>
       </div>
     </div>
   );

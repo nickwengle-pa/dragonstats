@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useProgramContext } from "@/hooks/useProgramContext";
+import { TabBar } from "@/screens/DashboardScreen";
 import { supabase } from "@/lib/supabase";
 import { coachService, seasonService, type Coach, type Season } from "@/services/seasonService";
 
@@ -127,7 +128,7 @@ function LogoUpload({
             </button>
           </div>
         ) : (
-          <div className="w-14 h-14 rounded-lg bg-surface-card border border-dashed border-surface-border flex items-center justify-center text-slate-500">
+          <div className="w-14 h-14 rounded-lg bg-surface-card border border-dashed border-surface-border flex items-center justify-center text-neutral-500">
             <Image className="w-6 h-6" />
           </div>
         )}
@@ -195,7 +196,7 @@ function CoachRow({
       <div className="flex items-center gap-3 py-2 border-b border-surface-border last:border-0">
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{coach.name}</div>
-          <div className="text-xs text-slate-400 capitalize">
+          <div className="text-xs text-neutral-400 capitalize">
             {coach.role}
             {coach.email ? ` · ${coach.email}` : ""}
           </div>
@@ -495,21 +496,22 @@ export default function SettingsScreen({ firstTime = false }: Props) {
   );
 
   return (
-    <div className="screen safe-top safe-bottom">
-      <div className="flex items-center gap-3 px-5 pt-5 pb-4">
+    <div className="screen safe-top pb-20">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-2">
         {!firstTime && (
-          <button onClick={() => navigate("/")} className="btn-ghost p-2">
+          <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer">
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
-        <h1 className="text-xl font-black flex-1">
-          {firstTime ? "Set Up Your Program" : "Settings"}
+        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">
+          {firstTime ? "Set Up Your Program" : "Program"}
         </h1>
       </div>
+      <div className="mx-5 mt-1 mb-4 accent-line" />
 
       {firstTime && (
         <div className="px-5 pb-4">
-          <p className="text-sm text-slate-400 leading-relaxed">
+          <p className="text-sm text-surface-muted font-body leading-relaxed">
             Welcome to Dragon Stats. Set up your school and first season so the app has an active year to work from.
           </p>
         </div>
@@ -634,13 +636,13 @@ export default function SettingsScreen({ firstTime = false }: Props) {
               <Calendar className="w-5 h-5 text-dragon-primary" />
               <span className="font-bold">Seasons</span>
               {season && (
-                <span className="text-xs text-slate-500 ml-auto">{formatSeasonName(season)}</span>
+                <span className="text-xs text-neutral-500 ml-auto">{formatSeasonName(season)}</span>
               )}
             </div>
 
             <div className="space-y-3">
               {seasons.length === 0 ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-neutral-500">
                   Save the program first to create its first active season.
                 </p>
               ) : (
@@ -654,7 +656,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm truncate">{formatSeasonName(entry)}</div>
-                      <div className="text-xs text-slate-500">{formatLevel(entry.level)} season</div>
+                      <div className="text-xs text-neutral-500">{formatLevel(entry.level)} season</div>
                     </div>
 
                     {entry.is_active ? (
@@ -703,7 +705,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
                     </div>
                   </div>
 
-                  <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <label className="flex items-center gap-2 text-sm text-neutral-300">
                     <input
                       type="checkbox"
                       checked={newSeasonActive}
@@ -751,11 +753,11 @@ export default function SettingsScreen({ firstTime = false }: Props) {
             <div className="flex items-center gap-2 mb-4">
               <UserCog className="w-5 h-5 text-dragon-primary" />
               <span className="font-bold">Coaching Staff</span>
-              <span className="text-xs text-slate-500 ml-auto">{formatSeasonName(season)}</span>
+              <span className="text-xs text-neutral-500 ml-auto">{formatSeasonName(season)}</span>
             </div>
 
             {coaches.length === 0 && !addingCoach && (
-              <p className="text-sm text-slate-500 mb-3">No coaches added yet.</p>
+              <p className="text-sm text-neutral-500 mb-3">No coaches added yet.</p>
             )}
 
             {coaches.map((coach) => (
@@ -818,6 +820,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
           {saved ? "Saved!" : saving ? "Saving..." : firstTime ? "Create Program" : "Save Changes"}
         </button>
       </div>
+      {!firstTime && <TabBar />}
     </div>
   );
 }

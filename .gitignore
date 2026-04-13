@@ -6,3 +6,12 @@ node_modules/
 Thumbs.db
 *.swp
 *.swo
+
+# Local assistant/tooling state
+.claude/
+.codex/
+
+# Keep the reusable graph artifacts, ignore the rest of graphify output
+graphify-out/*
+!graphify-out/graph.json
+!graphify-out/GRAPH_REPORT.md

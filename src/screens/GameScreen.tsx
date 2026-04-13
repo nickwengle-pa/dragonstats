@@ -6,15 +6,16 @@ import { supabase } from "@/lib/supabase";
 import {
   insertPlay,
   deletePlay,
-  updatePlay,
   updatePlayFull,
   updatePlaySituation,
   loadGamePlays,
   updateGameScore,
-  deriveGameState,
+  hasManagedLiveState,
+  updateCurrentGameState,
+  withManagedLiveState,
   type PlayInsert,
 } from "@/services/gameService";
-import { opponentPlayerService, type OpponentPlayer } from "@/services/opponentService";
+import { opponentPlayerService } from "@/services/opponentService";
 import { getGameConfig } from "@/services/programService";
 import {
   advanceSituationAfterPlay,
@@ -24,16 +25,20 @@ import {
   createInitialSituation,
   getOffenseDriveDirection,
   getOurEndZoneSideForQuarter,
+  getOurDriveDirectionForQuarter,
   getPregameConfig,
-  moveToQuarter,
-  normalizeQuarter,
-  oppositeFieldDirection,
   rebuildPlaySituations,
   resolveGameConfig,
   toDisplayFieldPosition,
-  type LiveSituation,
   type PregameConfig,
 } from "@/services/gameFlow";
+import {
+  advanceLiveQuarterState,
+  createInitialGameState,
+  replayLiveGame,
+  type LiveSessionConfig,
+  type LiveSessionPlayResult,
+} from "@/services/liveGameSession";
 
 // Game components
 import Scoreboard from "@/components/game/Scoreboard";
@@ -57,26 +62,69 @@ import {
   yardLabel,
 } from "@/components/game/types";
 
-function readStoredQuarter(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value)
-    ? normalizeQuarter(value)
-    : null;
+interface LiveSituationSnapshot {
+  possession: "us" | "them";
+  down: number;
+  distance: number;
+  ballOn: number;
 }
 
-function readStoredClock(value: unknown): number | null {
-  if (typeof value !== "string" || !value.includes(":")) return null;
-  const [m, s] = value.split(":").map(Number);
-  if (!Number.isFinite(m) || !Number.isFinite(s)) return null;
-  return ((m || 0) * 60) + (s || 0);
+interface ScoreSnapshot {
+  us: number;
+  them: number;
 }
 
-function cloneSituation(situation: LiveSituation): LiveSituation {
+const LIVE_STATE_PERSIST_DELAY_MS = 250;
+
+function parseClockText(clockText: unknown, fallback: number): number {
+  if (typeof clockText !== "string") return fallback;
+  const [mins, secs] = clockText.split(":").map(Number);
+  if (Number.isNaN(mins) || Number.isNaN(secs)) return fallback;
+  return mins * 60 + secs;
+}
+
+function serializeEngineSnapshot(snapshot: Record<string, any> | null | undefined) {
+  if (!snapshot) return null;
+
   return {
-    possession: situation.possession,
-    down: situation.down,
-    distance: situation.distance,
-    ballOn: situation.ballOn,
+    ...snapshot,
+    overtime: snapshot.overtime ? {
+      ...snapshot.overtime,
+      teamsThatHavePossessed: Array.isArray(snapshot.overtime.teamsThatHavePossessed)
+        ? snapshot.overtime.teamsThatHavePossessed
+        : Array.from(snapshot.overtime.teamsThatHavePossessed ?? []),
+    } : null,
   };
+}
+
+function applyScoreDelta(
+  play: Pick<PlayRecord, "isTouchdown" | "possession" | "type" | "result">,
+  before: ScoreSnapshot,
+): ScoreSnapshot {
+  const next = { ...before };
+
+  if (play.isTouchdown) {
+    if (play.possession === "us") next.us += 6;
+    else next.them += 6;
+  }
+  if (play.type === "pat" && play.result === "Good") {
+    if (play.possession === "us") next.us += 1;
+    else next.them += 1;
+  }
+  if (play.type === "fg" && play.result === "Good") {
+    if (play.possession === "us") next.us += 3;
+    else next.them += 3;
+  }
+  if (play.type === "two_pt" && play.result === "Good") {
+    if (play.possession === "us") next.us += 2;
+    else next.them += 2;
+  }
+  if (play.type === "safety") {
+    if (play.possession === "us") next.them += 2;
+    else next.us += 2;
+  }
+
+  return next;
 }
 
 /* ═══════════════════════════════════════════════
@@ -98,12 +146,28 @@ export default function GameScreen() {
   const [loading, setLoading] = useState(true);
   const gc = useMemo(() => resolveGameConfig(baseGc, game?.rules_config as Record<string, unknown> | null), [baseGc, game]);
   const pregame = useMemo(() => getPregameConfig(game), [game]);
+  const persistedLiveStateKey = useRef<string | null>(null);
+  const liveSessionConfig = useMemo<LiveSessionConfig | null>(() => {
+    if (!gameId || !program || !game?.opponent?.id) return null;
+
+    return {
+      gameId,
+      programTeamId: program.id,
+      programName: program.name,
+      programAbbreviation: program.abbreviation ?? "US",
+      opponentTeamId: game.opponent.id,
+      opponentName: game.opponent.name ?? "Opponent",
+      opponentAbbreviation: game.opponent.abbreviation ?? "OPP",
+      isHome: Boolean(game.is_home),
+      gameConfig: gc,
+      rulesConfig: game.rules_config as Record<string, unknown> | null,
+      pregame,
+    };
+  }, [game, gameId, gc, pregame, program]);
 
   const loadData = useCallback(async () => {
     if (!season || !gameId) return;
     setLoading(true);
-    quarterSnapshots.current = {};
-    setDirectionFlipped(false);
 
     const [gameRes, rosterRes, existingPlays] = await Promise.all([
       supabase.from("games").select("*, opponent:opponents(*)").eq("id", gameId).single(),
@@ -127,13 +191,10 @@ export default function GameScreen() {
     // Convert DB plays to local PlayRecord format
     const localPlays: PlayRecord[] = existingPlays.map(p => {
       const pd = (p.play_data ?? {}) as Record<string, any>;
-      let clockSecs = 0;
-      if (p.clock) {
-        const [m, s] = p.clock.split(":").map(Number);
-        clockSecs = (m || 0) * 60 + (s || 0);
-      }
+      const clockSecs = parseClockText(p.clock, 0);
       return {
         id: p.id,
+        sequence: p.sequence,
         quarter: p.quarter,
         clock: clockSecs,
         type: p.play_type,
@@ -172,71 +233,78 @@ export default function GameScreen() {
         offensiveFormation: (p as any).offensive_formation ?? null,
         defensiveFormation: (p as any).defensive_formation ?? null,
         hashMark: (p as any).hash_mark ?? null,
+        playData: { ...pd },
       };
     });
 
     const rebuilt = rebuildPlaySituations(localPlays, pregameConfig, gameConfig);
     setPlays(rebuilt.plays);
 
-    const gd = gameData as Record<string, any> | null;
-    const persistedQuarter = readStoredQuarter(gd?.current_quarter);
-    const persistedClock = readStoredClock(gd?.current_clock);
-    const hasPersistedSituation = gd
-      && typeof gd.current_yard_line === "number"
-      && (gd.current_possession === "us" || gd.current_possession === "them")
-      && typeof gd.current_down === "number"
-      && typeof gd.current_distance === "number";
+    const sessionConfig = program && gameData?.opponent?.id
+      ? {
+          gameId,
+          programTeamId: program.id,
+          programName: program.name,
+          programAbbreviation: program.abbreviation ?? "US",
+          opponentTeamId: gameData.opponent.id,
+          opponentName: gameData.opponent.name ?? "Opponent",
+          opponentAbbreviation: gameData.opponent.abbreviation ?? "OPP",
+          isHome: Boolean(gameData.is_home),
+          gameConfig,
+          rulesConfig: gameData?.rules_config as Record<string, unknown> | null,
+          pregame: pregameConfig,
+        } satisfies LiveSessionConfig
+      : null;
+    const replay = sessionConfig ? replayLiveGame(rebuilt.plays, sessionConfig) : null;
+    const derivedState = replay?.currentState ?? createInitialGameState({
+      gameId,
+      programTeamId: program?.id ?? "program",
+      programName: program?.name ?? "Team",
+      programAbbreviation: program?.abbreviation ?? "US",
+      opponentTeamId: gameData?.opponent?.id ?? "opponent",
+      opponentName: gameData?.opponent?.name ?? "Opponent",
+      opponentAbbreviation: gameData?.opponent?.abbreviation ?? "OPP",
+      isHome: Boolean(gameData?.is_home),
+      gameConfig,
+      rulesConfig: gameData?.rules_config as Record<string, unknown> | null,
+      pregame: pregameConfig,
+    });
 
-    // Resume game state from existing plays
-    if (existingPlays.length > 0) {
-      const state = deriveGameState(existingPlays, { config: gameConfig, pregame: pregameConfig });
-      setOurScore(state.ourScore);
-      setTheirScore(state.theirScore);
+    const useStoredLiveState = hasManagedLiveState(gameData?.rules_config as Record<string, unknown> | null);
+    const resumedQuarter = useStoredLiveState
+      ? Number(gameData?.current_quarter ?? derivedState.quarter)
+      : derivedState.quarter;
+    const resumedClock = useStoredLiveState
+      ? parseClockText(gameData?.current_clock, derivedState.clock)
+      : derivedState.clock;
+    const resumedPossession = useStoredLiveState && (gameData?.current_possession === "us" || gameData?.current_possession === "them")
+      ? gameData.current_possession
+      : derivedState.possession;
+    const resumedDown = useStoredLiveState && typeof gameData?.current_down === "number"
+      ? gameData.current_down
+      : derivedState.down;
+    const resumedDistance = useStoredLiveState && typeof gameData?.current_distance === "number"
+      ? gameData.current_distance
+      : derivedState.distance;
+    const resumedBallOn = useStoredLiveState && typeof gameData?.current_yard_line === "number"
+      ? gameData.current_yard_line
+      : derivedState.ballOn;
 
-      if (hasPersistedSituation) {
-        // Preserve live quarter/clock between plays when no new play has been logged yet.
-        setQuarter(Math.max(rebuilt.currentQuarter, persistedQuarter ?? 1));
-        setClock(persistedClock ?? state.clock);
-        setPossession(gd.current_possession);
-        setDown(gd.current_down);
-        setDistance(gd.current_distance);
-        setBallOn(gd.current_yard_line);
-      } else {
-        // Fallback: reconstruct from play history
-        setQuarter(rebuilt.currentQuarter);
-        setClock(state.clock);
-        setPossession(rebuilt.currentSituation.possession);
-        setDown(rebuilt.currentSituation.down);
-        setDistance(rebuilt.currentSituation.distance);
-        setBallOn(rebuilt.currentSituation.ballOn);
-      }
-    } else if (hasPersistedSituation) {
-      setOurScore(0);
-      setTheirScore(0);
-      setQuarter(persistedQuarter ?? 1);
-      setClock(persistedClock ?? gameConfig.quarter_length_secs);
-      setPossession(gd.current_possession);
-      setDown(gd.current_down);
-      setDistance(gd.current_distance);
-      setBallOn(gd.current_yard_line);
-    } else {
-      const initialSituation = createInitialSituation(pregameConfig, gameConfig);
-      const liveQuarter = persistedQuarter ?? 1;
-      const transition = liveQuarter > 1
-        ? moveToQuarter(1, liveQuarter, initialSituation, pregameConfig, gameConfig)
-        : { quarter: 1, clock: gameConfig.quarter_length_secs, situation: initialSituation };
-      setOurScore(0);
-      setTheirScore(0);
-      setQuarter(transition.quarter);
-      setClock(persistedClock ?? transition.clock);
-      setPossession(transition.situation.possession);
-      setDown(transition.situation.down);
-      setDistance(transition.situation.distance);
-      setBallOn(transition.situation.ballOn);
-    }
+    setQuarter(resumedQuarter);
+    setClock(resumedClock);
+    setPossession(resumedPossession);
+    setOurScore(derivedState.ourScore);
+    setTheirScore(derivedState.theirScore);
+    setDown(resumedDown);
+    setDistance(resumedDistance);
+    setBallOn(resumedBallOn);
+
+    persistedLiveStateKey.current = useStoredLiveState
+      ? [resumedQuarter, resumedClock, resumedPossession, resumedDown, resumedDistance, resumedBallOn].join("|")
+      : null;
 
     setLoading(false);
-  }, [season, gameId, baseGc]);
+  }, [season, gameId, baseGc, program]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -264,10 +332,6 @@ export default function GameScreen() {
   const [showClockEditor, setShowClockEditor] = useState(false);
   const [clockMins, setClockMins] = useState(12);
   const [clockSecs, setClockSecs] = useState(0);
-  const [showBallEditor, setShowBallEditor] = useState(false);
-  const [ballEditSide, setBallEditSide] = useState<"own" | "opp">("own");
-  const [ballEditYard, setBallEditYard] = useState(25);
-  const [ballEditRaw, setBallEditRaw] = useState("25");
   const [showEndGame, setShowEndGame] = useState(false);
   const [showSituationAdj, setShowSituationAdj] = useState(false);
   const [pendingSituationPlayId, setPendingSituationPlayId] = useState<string | null>(null);
@@ -281,20 +345,18 @@ export default function GameScreen() {
   /* ── Derived state ── */
   const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
   const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
-  const quarterSnapshots = useRef<Partial<Record<number, { clock: number; situation: LiveSituation }>>>({});
-  const [directionFlipped, setDirectionFlipped] = useState(false);
-  const ballDisplayPosition = useMemo(() => {
-    const pos = toDisplayFieldPosition(ballOn, possession, quarter, pregame);
-    return directionFlipped ? 100 - pos : pos;
-  }, [ballOn, possession, quarter, pregame, directionFlipped]);
-  const firstDownDisplayPosition = useMemo(() => {
-    const pos = toDisplayFieldPosition(firstDownMarker, possession, quarter, pregame);
-    return directionFlipped ? 100 - pos : pos;
-  }, [firstDownMarker, possession, quarter, pregame, directionFlipped]);
-  const ourEndZoneSide = useMemo(() => {
-    const side = getOurEndZoneSideForQuarter(quarter, pregame);
-    return directionFlipped ? oppositeFieldDirection(side) : side;
-  }, [quarter, pregame, directionFlipped]);
+  const ballDisplayPosition = useMemo(
+    () => toDisplayFieldPosition(ballOn, possession, quarter, pregame),
+    [ballOn, possession, quarter, pregame],
+  );
+  const firstDownDisplayPosition = useMemo(
+    () => toDisplayFieldPosition(firstDownMarker, possession, quarter, pregame),
+    [firstDownMarker, possession, quarter, pregame],
+  );
+  const ourEndZoneSide = useMemo(
+    () => getOurEndZoneSideForQuarter(quarter, pregame),
+    [quarter, pregame],
+  );
 
   useEffect(() => {
     if (!loading && game && !pregame) {
@@ -302,10 +364,185 @@ export default function GameScreen() {
     }
   }, [loading, game, pregame]);
 
+  const toBoardScore = useCallback((score: ScoreSnapshot) => {
+    const isHome = game?.is_home ?? true;
+    return {
+      us: score.us,
+      them: score.them,
+      home: isHome ? score.us : score.them,
+      visitor: isHome ? score.them : score.us,
+    };
+  }, [game?.is_home]);
+
+  const buildSituationSnapshot = useCallback((
+    snapshotQuarter: number,
+    snapshotClock: number,
+    situation: LiveSituationSnapshot,
+  ) => {
+    const firstDownAt = Math.min(situation.ballOn + situation.distance, 100);
+    return {
+      quarter: snapshotQuarter,
+      quarter_label: quarterLabel(snapshotQuarter),
+      clock: fmtClock(snapshotClock),
+      clock_seconds: snapshotClock,
+      possession: situation.possession,
+      down: situation.down,
+      distance: situation.distance,
+      yard_line: situation.ballOn,
+      yard_label: yardLabel(situation.ballOn),
+      first_down_yard_line: firstDownAt,
+      display_ball_on: toDisplayFieldPosition(situation.ballOn, situation.possession, snapshotQuarter, pregame),
+      display_first_down: toDisplayFieldPosition(firstDownAt, situation.possession, snapshotQuarter, pregame),
+      our_drive_direction: getOurDriveDirectionForQuarter(snapshotQuarter, pregame),
+      offense_drive_direction: getOffenseDriveDirection(situation.possession, snapshotQuarter, pregame),
+      our_end_zone_side: getOurEndZoneSideForQuarter(snapshotQuarter, pregame),
+    };
+  }, [pregame]);
+
+  const buildWorksheetRow = useCallback((
+    play: PlayRecord,
+    before: LiveSituationSnapshot,
+    after: LiveSituationSnapshot,
+    scoreBefore: ScoreSnapshot,
+    scoreAfter: ScoreSnapshot,
+  ) => {
+    const formatTaggedName = (name: string, jerseyNumber: number | null | undefined) =>
+      jerseyNumber != null ? `#${jerseyNumber} ${name}` : name;
+    const defenders = play.tagged
+      .filter((tag) => ["tackler", "assist", "sacker", "interceptor", "blocker"].includes(tag.role))
+      .map((tag) => formatTaggedName(tag.name, tag.jersey_number))
+      .join(", ");
+    const primaryTag = play.tagged[0] ?? null;
+    const eventParts = [play.result, play.penalty].filter(Boolean);
+    const storedTags = Array.isArray(play.playData?.tags) ? (play.playData?.tags as string[]) : null;
+    const teamAbbreviation = play.possession === "us"
+      ? (program?.abbreviation ?? "US")
+      : (game?.opponent?.abbreviation ?? "THEM");
+    const playTypeLabel = findPlayTypeDef(play.type)?.label ?? play.type;
+    const scoreBeforeBoard = toBoardScore(scoreBefore);
+    const scoreAfterBoard = toBoardScore(scoreAfter);
+
+    return {
+      sequence: play.sequence ?? null,
+      team_side: play.possession,
+      team_abbreviation: teamAbbreviation,
+      quarter: play.quarter,
+      clock: fmtClock(play.clock),
+      home_score_before: scoreBeforeBoard.home,
+      visitor_score_before: scoreBeforeBoard.visitor,
+      home_score_after: scoreAfterBoard.home,
+      visitor_score_after: scoreAfterBoard.visitor,
+      down: before.down,
+      to_go: before.distance,
+      ball_on: before.ballOn,
+      ball_on_label: yardLabel(before.ballOn),
+      type: play.type,
+      type_label: playTypeLabel,
+      yards: play.yards,
+      event: eventParts.length > 0 ? eventParts.join(" | ") : null,
+      tackled_by: defenders || null,
+      play: play.description,
+      formation: play.offensiveFormation ?? null,
+      defense: play.defensiveFormation ?? null,
+      hash: play.hashMark ?? null,
+      primary_player_number: primaryTag?.jersey_number ?? null,
+      primary_player_role: primaryTag?.role ?? null,
+      possession: play.possession,
+      start_ball_on: before.ballOn,
+      end_ball_on: after.ballOn,
+      start_clock: fmtClock(play.clock),
+      end_clock: null,
+      tags: storedTags,
+    };
+  }, [game?.opponent?.abbreviation, program?.abbreviation, toBoardScore]);
+
+  const buildStoredPlayData = useCallback((
+    play: PlayRecord,
+    before: LiveSituationSnapshot,
+    scoreBefore: ScoreSnapshot,
+    resolved?: Pick<LiveSessionPlayResult, "afterSituation" | "scoreAfter" | "events" | "engineSnapshot">,
+  ) => {
+    const autoAfter = advanceSituationAfterPlay(play, before, gc);
+    const after: LiveSituationSnapshot = resolved?.afterSituation ?? {
+      possession: play.nextPossession ?? autoAfter.possession,
+      down: play.nextDown ?? autoAfter.down,
+      distance: play.nextDistance ?? autoAfter.distance,
+      ballOn: play.nextBallOn ?? autoAfter.ballOn,
+    };
+    const scoreAfter = resolved?.scoreAfter ?? applyScoreDelta(play, scoreBefore);
+    const existingSource = typeof play.playData?.next_situation_source === "string"
+      ? play.playData?.next_situation_source
+      : null;
+    const nextSituationSource = existingSource
+      ?? ((play.penalty || play.type === "blocked_kick") ? "pending_review" : "auto");
+    const worksheetRow = buildWorksheetRow(play, before, after, scoreBefore, scoreAfter);
+
+    return {
+      after,
+      scoreAfter,
+      playData: {
+        ...(play.playData ?? {}),
+        result: play.result || null,
+        is_first_down: play.firstDown,
+        is_touchback: play.isTouchback ?? false,
+        penalty_type: play.penalty,
+        play_category: play.penaltyCategory ?? null,
+        penalty_yards: play.flagYards,
+        blocked_kick_type: play.blockedKickType ?? null,
+        next_possession: after.possession,
+        next_down: after.down,
+        next_distance: after.distance,
+        next_yard_line: after.ballOn,
+        next_situation_source: nextSituationSource,
+        recorded_clock: fmtClock(play.clock),
+        recorded_clock_seconds: play.clock,
+        context_before: buildSituationSnapshot(play.quarter, play.clock, before),
+        context_after: buildSituationSnapshot(play.quarter, play.clock, after),
+        context_after_auto: buildSituationSnapshot(play.quarter, play.clock, autoAfter),
+        score_before: toBoardScore(scoreBefore),
+        score_after: toBoardScore(scoreAfter),
+        pregame_snapshot: pregame ? { ...pregame } : null,
+        config_snapshot: { ...gc },
+        engine_events: (resolved?.events ?? []).map((event) => ({ ...event })),
+        engine_state_after: serializeEngineSnapshot(resolved?.engineSnapshot as Record<string, any> | null | undefined),
+        worksheet_row: worksheetRow,
+      },
+    };
+  }, [buildSituationSnapshot, buildWorksheetRow, gc, pregame, toBoardScore]);
+
   useEffect(() => {
-    quarterSnapshots.current = {};
-    setDirectionFlipped(false);
-  }, [gameId]);
+    if (!gameId || !game || loading) return;
+
+    const liveStateKey = [quarter, clock, possession, down, distance, ballOn].join("|");
+    const alreadyManaged = hasManagedLiveState(game?.rules_config as Record<string, unknown> | null);
+    if (persistedLiveStateKey.current === liveStateKey && alreadyManaged) return;
+
+    const timeoutId = window.setTimeout(() => {
+      void updateCurrentGameState(gameId, {
+        quarter,
+        clock: fmtClock(clock),
+        possession,
+        down,
+        distance,
+        yard_line: ballOn,
+      }, game?.rules_config as Record<string, unknown> | null).then((saved) => {
+        if (!saved) return;
+        persistedLiveStateKey.current = liveStateKey;
+        setGame((prev: any) => prev ? ({
+          ...prev,
+          current_quarter: quarter,
+          current_clock: fmtClock(clock),
+          current_possession: possession,
+          current_down: down,
+          current_distance: distance,
+          current_yard_line: ballOn,
+          rules_config: withManagedLiveState(prev.rules_config as Record<string, unknown> | null),
+        }) : prev);
+      });
+    }, LIVE_STATE_PERSIST_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [ballOn, clock, distance, down, game, gameId, loading, possession, quarter]);
 
   /* ── Quick stats ── */
   const stats = useMemo(() => {
@@ -323,59 +560,56 @@ export default function GameScreen() {
     return { rushAtt, rushYds, passAtt, passComp, passYds, firstDowns, tos, pens };
   }, [plays]);
 
-  const persistGameSituation = useCallback((fields: {
-    quarter?: number; clock?: number;
-    possession?: "us" | "them"; down?: number; distance?: number; ballOn?: number;
-  }) => {
-    if (!gameId) return;
-    const update: Record<string, unknown> = {};
-    if (fields.quarter !== undefined) update.current_quarter = fields.quarter;
-    if (fields.clock !== undefined) {
-      const m = Math.floor(fields.clock / 60);
-      const s = fields.clock % 60;
-      update.current_clock = `${m}:${String(s).padStart(2, "0")}`;
-    }
-    if (fields.possession !== undefined) update.current_possession = fields.possession;
-    if (fields.down !== undefined) update.current_down = fields.down;
-    if (fields.distance !== undefined) update.current_distance = fields.distance;
-    if (fields.ballOn !== undefined) update.current_yard_line = fields.ballOn;
-    if (Object.keys(update).length > 0) {
-      void supabase.from("games").update(update).eq("id", gameId);
-    }
-  }, [gameId]);
-
   const applySituation = useCallback((next: { possession: "us" | "them"; down: number; distance: number; ballOn: number }) => {
     setPossession(next.possession);
     setDown(next.down);
     setDistance(next.distance);
     setBallOn(next.ballOn);
-    persistGameSituation(next);
-  }, [persistGameSituation]);
-
-  const openBallEditor = useCallback(() => {
-    const nextSide = ballOn <= 50 ? "own" : "opp";
-    const nextYard = ballOn <= 50 ? ballOn : 100 - ballOn;
-    setBallEditSide(nextSide);
-    setBallEditYard(nextYard);
-    setBallEditRaw(String(nextYard));
-    setShowBallEditor(true);
-  }, [ballOn]);
-
-  const applyBallEdit = useCallback(() => {
-    const nextBallOn = ballEditSide === "own" ? ballEditYard : 100 - ballEditYard;
-    setBallOn(nextBallOn);
-    persistGameSituation({ ballOn: nextBallOn });
-    setShowBallEditor(false);
-  }, [ballEditSide, ballEditYard, persistGameSituation]);
-
-  const persistPlaySituations = useCallback((nextPlays: PlayRecord[]) => {
-    void Promise.all(nextPlays.map((play) => updatePlaySituation(play.id, {
-      possession: play.possession,
-      down: play.down,
-      distance: play.distance,
-      yard_line: play.ballOn,
-    })));
   }, []);
+
+  const persistPlaySituations = useCallback((
+    nextPlays: PlayRecord[],
+    replayResults?: LiveSessionPlayResult[],
+  ) => {
+    const results = replayResults ?? (liveSessionConfig ? replayLiveGame(nextPlays, liveSessionConfig).playResults : []);
+    let scoreCursor: ScoreSnapshot = { us: 0, them: 0 };
+
+    const updates = nextPlays.map((play, index) => {
+      const resolved = results[index];
+      const before: LiveSituationSnapshot = resolved?.beforeSituation ?? {
+        possession: play.possession,
+        down: play.down,
+        distance: play.distance,
+        ballOn: play.ballOn,
+      };
+      const stored = buildStoredPlayData(
+        play,
+        before,
+        resolved?.scoreBefore ?? scoreCursor,
+        resolved ? {
+          afterSituation: resolved.afterSituation,
+          scoreAfter: resolved.scoreAfter,
+          events: resolved.events,
+          engineSnapshot: resolved.engineSnapshot,
+        } : undefined,
+      );
+      scoreCursor = stored.scoreAfter;
+
+      return updatePlaySituation(play.id, {
+        quarter: play.quarter,
+        clock: fmtClock(play.clock),
+        possession: play.possession,
+        down: play.down,
+        distance: play.distance,
+        yard_line: play.ballOn,
+        end_yard_line: stored.after.ballOn,
+        play_start_time: play.clock,
+        play_end_time: null,
+      }, stored.playData);
+    });
+
+    void Promise.all(updates);
+  }, [buildStoredPlayData, liveSessionConfig]);
 
   const queueSituationAdjustment = useCallback((
     playId: string,
@@ -393,65 +627,47 @@ export default function GameScreen() {
 
   const recalcScoreAndState = useCallback(async (allPlays: PlayRecord[]) => {
     const rebuilt = rebuildPlaySituations(allPlays, pregame, gc);
+    const replay = liveSessionConfig ? replayLiveGame(rebuilt.plays, liveSessionConfig) : null;
+
     setPlays(rebuilt.plays);
-    persistPlaySituations(rebuilt.plays);
+    persistPlaySituations(rebuilt.plays, replay?.playResults);
 
-    let us = 0;
-    let them = 0;
-    rebuilt.plays.forEach((play) => {
-      if (play.isTouchdown) {
-        if (play.possession === "us") us += 6;
-        else them += 6;
-      }
-      if (play.type === "pat" && play.result === "Good") {
-        if (play.possession === "us") us += 1;
-        else them += 1;
-      }
-      if (play.type === "fg" && play.result === "Good") {
-        if (play.possession === "us") us += 3;
-        else them += 3;
-      }
-      if (play.type === "two_pt" && play.result === "Good") {
-        if (play.possession === "us") us += 2;
-        else them += 2;
-      }
-      if (play.type === "safety") {
-        if (play.possession === "us") them += 2;
-        else us += 2;
-      }
-    });
-
-    setOurScore(us);
-    setTheirScore(them);
-
-    if (rebuilt.plays.length > 0) {
+    const replayState = replay?.currentState;
+    if (replayState) {
+      setQuarter(replayState.quarter);
+      setClock(replayState.clock);
+      setOurScore(replayState.ourScore);
+      setTheirScore(replayState.theirScore);
+      applySituation({
+        possession: replayState.possession,
+        down: replayState.down,
+        distance: replayState.distance,
+        ballOn: replayState.ballOn,
+      });
+    } else if (rebuilt.plays.length > 0) {
       const last = rebuilt.plays[rebuilt.plays.length - 1];
-      const liveQuarter = Math.max(rebuilt.currentQuarter, quarter);
-      const liveTransition = liveQuarter > rebuilt.currentQuarter
-        ? moveToQuarter(rebuilt.currentQuarter, liveQuarter, rebuilt.currentSituation, pregame, gc)
-        : null;
-      const liveClock = liveQuarter > rebuilt.currentQuarter ? clock : last.clock;
-      setQuarter(liveQuarter);
-      setClock(liveClock);
-      applySituation(liveTransition?.situation ?? rebuilt.currentSituation);
-      persistGameSituation({ quarter: liveQuarter, clock: liveClock });
+      setQuarter(last.quarter);
+      setClock(last.clock);
+      applySituation(rebuilt.currentSituation);
     } else {
       const reset = createInitialSituation(pregame, gc);
-      const liveQuarter = Math.max(1, quarter);
-      const liveTransition = liveQuarter > 1
-        ? moveToQuarter(1, liveQuarter, reset, pregame, gc)
-        : { quarter: 1, clock: gc.quarter_length_secs, situation: reset };
-      const liveClock = liveQuarter > 1 ? clock : gc.quarter_length_secs;
-      setQuarter(liveTransition.quarter);
-      setClock(liveClock);
-      applySituation(liveTransition.situation);
-      persistGameSituation({ quarter: liveTransition.quarter, clock: liveClock });
+      setQuarter(1);
+      setClock(gc.quarter_length_secs);
+      setOurScore(0);
+      setTheirScore(0);
+      applySituation(reset);
     }
 
     if (gameId) {
-      await updateGameScore(gameId, us, them, rebuilt.plays.length > 0 ? "live" : "scheduled");
+      const replayScore = replay?.score ?? { us: 0, them: 0 };
+      await updateGameScore(
+        gameId,
+        replayScore.us,
+        replayScore.them,
+        rebuilt.plays.length > 0 ? "live" : "scheduled",
+      );
     }
-  }, [applySituation, clock, gameId, gc, persistPlaySituations, pregame, quarter]);
+  }, [applySituation, gameId, gc, liveSessionConfig, persistPlaySituations, pregame]);
 
   const applySituationAdjustment = useCallback(async () => {
     if (!pendingSituationPlayId) return;
@@ -464,17 +680,13 @@ export default function GameScreen() {
             nextDown: adjDown,
             nextDistance: adjDistance,
             nextBallOn: adjBallOn,
+            playData: {
+              ...(play.playData ?? {}),
+              next_situation_source: "manual_override",
+            },
           }
         : play
     ));
-
-    const ok = await updatePlay(pendingSituationPlayId, {}, {
-      next_possession: adjPossession,
-      next_down: adjDown,
-      next_distance: adjDistance,
-      next_yard_line: adjBallOn,
-    });
-    if (!ok) return;
 
     setShowSituationAdj(false);
     setPendingSituationPlayId(null);
@@ -499,43 +711,57 @@ export default function GameScreen() {
 
     if (!error && data) {
       setGame(data);
-      setDirectionFlipped(false);
       const nextConfig = resolveGameConfig(baseGc, data.rules_config as Record<string, unknown> | null);
       if (plays.length === 0) {
         const reset = createInitialSituation(nextPregame, nextConfig);
-        const storedQuarter = readStoredQuarter((data as Record<string, any>).current_quarter) ?? 1;
-        const storedClock = readStoredClock((data as Record<string, any>).current_clock);
-        const transition = storedQuarter > 1
-          ? moveToQuarter(1, storedQuarter, reset, nextPregame, nextConfig)
-          : { quarter: 1, clock: nextConfig.quarter_length_secs, situation: reset };
-        setQuarter(transition.quarter);
-        setClock(storedClock ?? transition.clock);
-        applySituation(transition.situation);
-        persistGameSituation({ quarter: transition.quarter, clock: storedClock ?? transition.clock });
+        setQuarter(1);
+        setClock(nextConfig.quarter_length_secs);
+        setOurScore(0);
+        setTheirScore(0);
+        applySituation(reset);
       } else {
         const rebuilt = rebuildPlaySituations(plays, nextPregame, nextConfig);
+        const replayConfig = program && data.opponent?.id
+          ? {
+              gameId,
+              programTeamId: program.id,
+              programName: program.name,
+              programAbbreviation: program.abbreviation ?? "US",
+              opponentTeamId: data.opponent.id,
+              opponentName: data.opponent.name ?? "Opponent",
+              opponentAbbreviation: data.opponent.abbreviation ?? "OPP",
+              isHome: Boolean(data.is_home),
+              gameConfig: nextConfig,
+              rulesConfig: data.rules_config as Record<string, unknown> | null,
+              pregame: nextPregame,
+            } satisfies LiveSessionConfig
+          : null;
+        const replay = replayConfig ? replayLiveGame(rebuilt.plays, replayConfig) : null;
         setPlays(rebuilt.plays);
-        persistPlaySituations(rebuilt.plays);
-        if (rebuilt.plays.length > 0) {
+        persistPlaySituations(rebuilt.plays, replay?.playResults);
+        if (replay) {
+          setQuarter(replay.currentState.quarter);
+          setClock(replay.currentState.clock);
+          setOurScore(replay.currentState.ourScore);
+          setTheirScore(replay.currentState.theirScore);
+          applySituation({
+            possession: replay.currentState.possession,
+            down: replay.currentState.down,
+            distance: replay.currentState.distance,
+            ballOn: replay.currentState.ballOn,
+          });
+        } else if (rebuilt.plays.length > 0) {
           const last = rebuilt.plays[rebuilt.plays.length - 1];
-          const storedQuarter = readStoredQuarter((data as Record<string, any>).current_quarter) ?? quarter;
-          const storedClock = readStoredClock((data as Record<string, any>).current_clock) ?? clock;
-          const liveQuarter = Math.max(rebuilt.currentQuarter, storedQuarter);
-          const liveTransition = liveQuarter > rebuilt.currentQuarter
-            ? moveToQuarter(rebuilt.currentQuarter, liveQuarter, rebuilt.currentSituation, nextPregame, nextConfig)
-            : null;
-          const liveClock = liveQuarter > rebuilt.currentQuarter ? storedClock : last.clock;
-          setQuarter(liveQuarter);
-          setClock(liveClock);
-          applySituation(liveTransition?.situation ?? rebuilt.currentSituation);
-          persistGameSituation({ quarter: liveQuarter, clock: liveClock });
+          setQuarter(last.quarter);
+          setClock(last.clock);
+          applySituation(rebuilt.currentSituation);
         }
       }
       setShowPregame(false);
     }
 
     setSavingPregame(false);
-  }, [applySituation, baseGc, clock, game, gameId, persistPlaySituations, plays, quarter]);
+  }, [applySituation, baseGc, game, gameId, persistPlaySituations, plays, program]);
 
   /* ── Handle play type selection from quick actions ── */
   const handlePlayTypeSelect = (pt: PlayTypeDef) => {
@@ -552,7 +778,52 @@ export default function GameScreen() {
     isSubmitting.current = true;
 
     try {
-    const before = { possession, down, distance, ballOn };
+    const before: LiveSituationSnapshot = { possession, down, distance, ballOn };
+    const scoreBefore: ScoreSnapshot = { us: ourScore, them: theirScore };
+    const isTurnover = ["int", "fumble"].includes(data.playType.id);
+    const previewPlay: PlayRecord = {
+      id: "pending",
+      sequence: plays.length + 1,
+      quarter,
+      clock,
+      type: data.playType.id,
+      yards: data.yards,
+      result: data.result,
+      penalty: data.penalty,
+      penaltyCategory: data.penaltyCategory,
+      flagYards: data.flagYards,
+      isTouchdown: data.isTouchdown,
+      firstDown: data.isFirstDown,
+      turnover: isTurnover,
+      isTouchback: data.isTouchback,
+      blockedKickType: data.blockedKickType,
+      tagged: data.tagged,
+      ballOn,
+      down,
+      distance,
+      description: data.description,
+      possession,
+      offensiveFormation: data.offensiveFormation,
+      defensiveFormation: data.defensiveFormation,
+      hashMark: data.hashMark,
+      playData: {
+        season_id: season.id,
+        next_situation_source: data.penalty || data.playType.id === "blocked_kick" ? "pending_review" : "auto",
+      },
+    };
+    const liveReplay = liveSessionConfig ? replayLiveGame([...plays, previewPlay], liveSessionConfig) : null;
+    const resolution = liveReplay?.playResults[liveReplay.playResults.length - 1];
+    const storedPreview = buildStoredPlayData(
+      previewPlay,
+      before,
+      scoreBefore,
+      resolution ? {
+        afterSituation: resolution.afterSituation,
+        scoreAfter: resolution.scoreAfter,
+        events: resolution.events,
+        engineSnapshot: resolution.engineSnapshot,
+      } : undefined,
+    );
     const playInsert: PlayInsert = {
       game_id: gameId,
       quarter,
@@ -562,58 +833,48 @@ export default function GameScreen() {
       distance,
       yard_line: ballOn,
       play_type: data.playType.id,
-      play_data: {
-        season_id: season.id,
-        result: data.result || null,
-        is_first_down: data.isFirstDown,
-        is_touchback: data.isTouchback,
-        penalty_type: data.penalty,
-        play_category: data.penaltyCategory,
-        penalty_yards: data.flagYards,
-        blocked_kick_type: data.blockedKickType,
-        next_possession: null,
-        next_down: null,
-        next_distance: null,
-        next_yard_line: null,
-      },
+      play_data: storedPreview.playData,
       yards_gained: data.yards,
       is_touchdown: data.isTouchdown,
-      is_turnover: ["int", "fumble"].includes(data.playType.id),
+      is_turnover: isTurnover,
       is_penalty: !!data.penalty,
-      primary_player_id: data.tagged.find(t => !t.isOpponent)?.player_id ?? null,
+      primary_player_id: data.tagged[0]?.player_id ?? null,
       description: data.description,
+      end_yard_line: storedPreview.after.ballOn,
+      play_start_time: clock,
+      play_end_time: null,
       // Extended fields — only include if non-null to avoid missing-column errors
       ...(data.offensiveFormation ? { offensive_formation: data.offensiveFormation } : {}),
       ...(data.defensiveFormation ? { defensive_formation: data.defensiveFormation } : {}),
       ...(data.hashMark ? { hash_mark: data.hashMark } : {}),
     };
 
-    const playerInserts = data.tagged
-      .filter(t => !t.isOpponent)
-      .map(t => ({
-        player_id: t.player_id,
-        role: t.role,
-        credit: t.credit ?? null,
-      }));
+    const playerInserts = data.tagged.map(t => ({
+      player_id: t.player_id,
+      role: t.role,
+      credit: t.credit ?? null,
+    }));
 
     const savedPlay = await insertPlay(playInsert, playerInserts);
     if (!savedPlay) { console.error("insertPlay returned null — check Supabase logs"); isSubmitting.current = false; setSelectedPlayType(null); return; }
 
     // Add to local play log
+    const storedWorksheetRow = (storedPreview.playData.worksheet_row as Record<string, unknown> | undefined) ?? {};
     const localPlay: PlayRecord = {
+      ...previewPlay,
       id: savedPlay.id,
-      quarter, clock, type: data.playType.id, yards: data.yards,
-      result: data.result, penalty: data.penalty,
-      penaltyCategory: data.penaltyCategory,
-      flagYards: data.flagYards, isTouchdown: data.isTouchdown,
-      firstDown: data.isFirstDown, turnover: playInsert.is_turnover,
-      isTouchback: data.isTouchback,
-      blockedKickType: data.blockedKickType,
-      tagged: data.tagged, ballOn, down, distance,
-      description: data.description, possession,
-      offensiveFormation: data.offensiveFormation,
-      defensiveFormation: data.defensiveFormation,
-      hashMark: data.hashMark,
+      sequence: savedPlay.sequence,
+      nextPossession: storedPreview.after.possession,
+      nextDown: storedPreview.after.down,
+      nextDistance: storedPreview.after.distance,
+      nextBallOn: storedPreview.after.ballOn,
+      playData: {
+        ...storedPreview.playData,
+        worksheet_row: {
+          ...storedWorksheetRow,
+          sequence: savedPlay.sequence,
+        },
+      },
     };
     setPlays(prev => [...prev, localPlay]);
 
@@ -621,12 +882,9 @@ export default function GameScreen() {
     if (plays.length === 0) await updateGameScore(gameId, ourScore, theirScore, "live");
 
     // ── Scoring ──
-    let nextOur = ourScore, nextTheir = theirScore;
-    if (data.isTouchdown) { if (possession === "us") nextOur += 6; else nextTheir += 6; }
-    if (data.playType.id === "pat" && data.result === "Good") { if (possession === "us") nextOur += 1; else nextTheir += 1; }
-    if (data.playType.id === "fg" && data.result === "Good") { if (possession === "us") nextOur += 3; else nextTheir += 3; }
-    if (data.playType.id === "two_pt" && data.result === "Good") { if (possession === "us") nextOur += 2; else nextTheir += 2; }
-    if (data.playType.id === "safety") { if (possession === "us") nextTheir += 2; else nextOur += 2; }
+    const nextScore = resolution?.scoreAfter ?? storedPreview.scoreAfter;
+    const nextOur = nextScore.us;
+    const nextTheir = nextScore.them;
 
     if (nextOur !== ourScore || nextTheir !== theirScore) {
       setOurScore(nextOur); setTheirScore(nextTheir);
@@ -637,12 +895,12 @@ export default function GameScreen() {
     if (data.penalty || data.playType.id === "blocked_kick") {
       queueSituationAdjustment(savedPlay.id, localPlay, before);
     } else if (data.isTouchdown) {
-      const afterTouchdown = advanceSituationAfterPlay(localPlay, before, gc);
-      applySituation(afterTouchdown);
-      setPatGatePossession(afterTouchdown.possession);
+      const nextSituation = resolution?.afterSituation ?? storedPreview.after;
+      applySituation(nextSituation);
+      setPatGatePossession(nextSituation.possession);
       setShowPatGate(true);
     } else {
-      applySituation(advanceSituationAfterPlay(localPlay, before, gc));
+      applySituation(resolution?.afterSituation ?? storedPreview.after);
     }
 
     } catch (err) {
@@ -676,12 +934,13 @@ export default function GameScreen() {
       is_touchdown: result.isTouchdown,
       is_turnover: ["int", "fumble"].includes(result.playType.id),
       is_penalty: !!result.penalty,
-      primary_player_id: result.tagged.find(t => !t.isOpponent)?.player_id ?? null,
+      primary_player_id: result.tagged[0]?.player_id ?? null,
       description: result.description,
       ...(result.offensiveFormation != null ? { offensive_formation: result.offensiveFormation } : {}),
       ...(result.defensiveFormation != null ? { defensive_formation: result.defensiveFormation } : {}),
       ...(result.hashMark != null ? { hash_mark: result.hashMark } : {}),
       play_data: {
+        ...(original.playData ?? {}),
         result: result.result || null,
         is_first_down: result.isFirstDown,
         is_touchback: result.isTouchback,
@@ -693,8 +952,9 @@ export default function GameScreen() {
         next_down: null,
         next_distance: null,
         next_yard_line: null,
+        next_situation_source: result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
       },
-    }, result.tagged.filter(t => !t.isOpponent).map(t => ({
+    }, result.tagged.map(t => ({
       player_id: t.player_id,
       role: t.role,
       credit: t.credit ?? null,
@@ -724,6 +984,17 @@ export default function GameScreen() {
       offensiveFormation: result.offensiveFormation,
       defensiveFormation: result.defensiveFormation,
       hashMark: result.hashMark,
+      playData: {
+        ...(original.playData ?? {}),
+        result: result.result || null,
+        is_first_down: result.isFirstDown,
+        is_touchback: result.isTouchback,
+        penalty_type: result.penalty,
+        play_category: result.penaltyCategory ?? null,
+        penalty_yards: result.flagYards,
+        blocked_kick_type: result.blockedKickType ?? null,
+        next_situation_source: result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
+      },
     };
 
     const newPlays = [...plays];
@@ -771,56 +1042,32 @@ export default function GameScreen() {
     setShowPatGate(false);
   };
 
-  const changeQuarter = useCallback((delta: number) => {
-    const targetQuarter = Math.max(1, Math.min(5, quarter + delta));
-    if (targetQuarter === quarter) return;
+  /* ── Cycle quarter ── */
+  const cycleQuarter = () => {
+    if (!liveSessionConfig) return;
 
-    const liveSituation = cloneSituation({ possession, down, distance, ballOn });
-    quarterSnapshots.current[quarter] = { clock, situation: liveSituation };
+    const nextState = advanceLiveQuarterState({
+      quarter,
+      clock,
+      possession,
+      ourScore,
+      theirScore,
+      down,
+      distance,
+      ballOn,
+    }, liveSessionConfig);
 
-    let transition: { quarter: number; clock: number; situation: LiveSituation } | null = null;
+    if (nextState.quarter === quarter) return;
 
-    if (targetQuarter > quarter) {
-      transition = moveToQuarter(quarter, targetQuarter, liveSituation, pregame, gc);
-    } else {
-      const savedSnapshot = quarterSnapshots.current[targetQuarter];
-      if (savedSnapshot) {
-        transition = {
-          quarter: targetQuarter,
-          clock: savedSnapshot.clock,
-          situation: cloneSituation(savedSnapshot.situation),
-        };
-      } else {
-        const priorPlays = plays.filter((play) => normalizeQuarter(play.quarter) <= targetQuarter);
-        if (priorPlays.length > 0) {
-          const rebuilt = rebuildPlaySituations(priorPlays, pregame, gc);
-          transition = rebuilt.currentQuarter < targetQuarter
-            ? moveToQuarter(rebuilt.currentQuarter, targetQuarter, rebuilt.currentSituation, pregame, gc)
-            : { quarter: targetQuarter, clock: gc.quarter_length_secs, situation: rebuilt.currentSituation };
-        } else {
-          const initialSituation = createInitialSituation(pregame, gc);
-          transition = targetQuarter > 1
-            ? moveToQuarter(1, targetQuarter, initialSituation, pregame, gc)
-            : { quarter: 1, clock: gc.quarter_length_secs, situation: initialSituation };
-        }
-      }
-    }
-
-    if (!transition) return;
-
-    setQuarter(transition.quarter);
-    setClock(transition.clock);
-    applySituation(transition.situation);
-    persistGameSituation({ quarter: transition.quarter, clock: transition.clock });
-  }, [applySituation, ballOn, clock, distance, down, gc, plays, possession, pregame, quarter, persistGameSituation]);
-
-  const goToPreviousQuarter = useCallback(() => {
-    changeQuarter(-1);
-  }, [changeQuarter]);
-
-  const goToNextQuarter = useCallback(() => {
-    changeQuarter(1);
-  }, [changeQuarter]);
+    setQuarter(nextState.quarter);
+    setClock(nextState.clock);
+    applySituation({
+      possession: nextState.possession,
+      down: nextState.down,
+      distance: nextState.distance,
+      ballOn: nextState.ballOn,
+    });
+  };
 
   /* ── End game ── */
   const handleEndGame = async () => {
@@ -836,9 +1083,9 @@ export default function GameScreen() {
       <div className="screen safe-top safe-bottom">
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
           <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
-          <h1 className="text-xl font-black flex-1 text-slate-50">Game</h1>
+          <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game</h1>
         </div>
-        <div className="text-slate-500 text-sm text-center py-12 animate-pulse font-mono">Loading game...</div>
+        <div className="text-surface-muted text-sm text-center py-12 animate-pulse font-body">Loading game...</div>
       </div>
     );
   }
@@ -855,16 +1102,16 @@ export default function GameScreen() {
   return (
     <div className="screen safe-top safe-bottom">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+      <div className="flex items-center gap-3 px-5 pt-4 pb-2">
         <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
-        <h1 className="text-lg font-black flex-1 truncate text-slate-50">vs {oppName}</h1>
+        <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] flex-1 truncate">vs {oppName}</h1>
         <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-1.5 cursor-pointer" title="Game Stats">
-          <BarChart3 className="w-4 h-4 text-slate-400" />
+          <BarChart3 className="w-4 h-4 text-surface-muted" />
         </button>
-        <button onClick={() => setShowLog(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-slate-400 cursor-pointer">
+        <button onClick={() => setShowLog(true)} className="btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
           {plays.length} plays
         </button>
-        <button onClick={() => setShowPregame(true)} className="btn-ghost px-2 py-1 text-xs font-bold text-slate-400 cursor-pointer">
+        <button onClick={() => setShowPregame(true)} className="btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
           Pregame
         </button>
       </div>
@@ -879,10 +1126,7 @@ export default function GameScreen() {
           progLogoUrl={progLogoUrl}
           oppLogoUrl={oppLogoUrl}
           oppColor={oppColor}
-          onPreviousQuarter={goToPreviousQuarter}
-          onNextQuarter={goToNextQuarter}
-          canPreviousQuarter={quarter > 1}
-          canNextQuarter={quarter < 5}
+          onCycleQuarter={cycleQuarter}
           onEditClock={() => { setClockMins(Math.floor(clock / 60)); setClockSecs(clock % 60); setShowClockEditor(true); }}
           onEndGame={() => setShowEndGame(true)}
         />
@@ -898,54 +1142,35 @@ export default function GameScreen() {
           progAbbr={progAbbr}
           oppAbbr={oppAbbr}
           oppColor={oppColor}
-          onFlipDirection={() => setDirectionFlipped(f => !f)}
-          onFieldTap={(displayPct) => {
-            // Convert display % back to ballOn coordinate
-            const direction = getOffenseDriveDirection(possession, quarter, pregame);
-            const effectiveDir = directionFlipped
-              ? (direction === "right" ? "left" : "right")
-              : direction;
-            const raw = effectiveDir === "right" ? displayPct : 100 - displayPct;
-            const v = Math.max(1, Math.min(99, Math.round(raw)));
-            setBallOn(v);
-            persistGameSituation({ ballOn: v });
-          }}
         />
 
         {/* Down & Distance */}
-        <div className="card p-3">
+        <div className="rounded-2xl border border-surface-border p-3" style={{ background: "linear-gradient(180deg, #111820, #0d1117)" }}>
           <div className="flex items-center gap-2">
             <div className="flex gap-1">
               {[1, 2, 3, 4].map(d => (
-                <button key={d} onClick={() => { setDown(d); persistGameSituation({ down: d }); }}
-                  className={`w-9 h-9 rounded-lg text-xs font-black transition-all duration-200 cursor-pointer ${
-                    down === d ? "bg-amber-500 text-black shadow-glow-gold" : "bg-surface-bg text-slate-500 active:bg-surface-hover hover:bg-surface-hover"
+                <button key={d} onClick={() => setDown(d)}
+                  className={`w-9 h-9 rounded-lg text-xs font-display font-bold transition-colors cursor-pointer ${
+                    down === d ? "bg-amber-500 text-black" : "bg-surface-bg text-surface-muted active:bg-surface-hover"
                   }`}>
                   {d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}
                 </button>
               ))}
             </div>
-            <span className="text-slate-600 font-bold">&</span>
+            <span className="text-surface-muted/40 font-display font-bold">&</span>
             <div className="flex items-center gap-1">
-              <button onClick={() => { const v = Math.max(1, distance - 1); setDistance(v); persistGameSituation({ distance: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">-</button>
-              <div className="w-8 h-9 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-black text-amber-400 font-mono tabular-nums">{distance}</div>
-              <button onClick={() => { const v = Math.min(99, distance + 1); setDistance(v); persistGameSituation({ distance: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">+</button>
+              <button onClick={() => setDistance(d => Math.max(1, d - 1))} className="btn-ghost w-7 h-9 text-sm font-display font-bold cursor-pointer">-</button>
+              <div className="w-8 h-9 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-display font-extrabold text-amber-400 tabular-nums">{distance}</div>
+              <button onClick={() => setDistance(d => Math.min(99, d + 1))} className="btn-ghost w-7 h-9 text-sm font-display font-bold cursor-pointer">+</button>
             </div>
             <div className="flex-1" />
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold text-slate-600 mr-1 font-mono">BALL</span>
-              <button onClick={() => { const v = Math.max(1, ballOn - 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-slate-500 cursor-pointer">-5</button>
-              <button onClick={() => { const v = Math.max(1, ballOn - 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">-</button>
-              <button
-                onClick={openBallEditor}
-                className="min-w-[58px] h-9 rounded-lg bg-surface-bg flex items-center justify-center text-xs font-black text-emerald-400 font-mono tabular-nums px-1 cursor-pointer hover:bg-surface-hover transition-colors"
-                title="Type line of scrimmage"
-              >
-                {yardLabel(ballOn)}
-              </button>
-              <button onClick={() => { const v = Math.min(99, ballOn + 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">+</button>
-              <button onClick={() => { const v = Math.min(99, ballOn + 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-slate-500 cursor-pointer">+5</button>
-              <button onClick={openBallEditor} className="btn-ghost px-2 h-9 text-[10px] font-bold text-slate-500 cursor-pointer">TYPE</button>
+              <span className="text-[9px] font-display font-bold text-surface-muted uppercase tracking-widest mr-1">Ball</span>
+              <button onClick={() => setBallOn(b => Math.max(1, b - 5))} className="btn-ghost px-1 h-9 text-[10px] font-display font-bold text-surface-muted cursor-pointer">-5</button>
+              <button onClick={() => setBallOn(b => Math.max(1, b - 1))} className="btn-ghost w-7 h-9 text-sm font-display font-bold cursor-pointer">-</button>
+              <div className="min-w-[52px] h-9 rounded-lg bg-surface-bg flex items-center justify-center text-xs font-display font-extrabold text-emerald-400 tabular-nums px-1">{yardLabel(ballOn)}</div>
+              <button onClick={() => setBallOn(b => Math.min(99, b + 1))} className="btn-ghost w-7 h-9 text-sm font-display font-bold cursor-pointer">+</button>
+              <button onClick={() => setBallOn(b => Math.min(99, b + 5))} className="btn-ghost px-1 h-9 text-[10px] font-display font-bold text-surface-muted cursor-pointer">+5</button>
             </div>
           </div>
         </div>
@@ -960,31 +1185,27 @@ export default function GameScreen() {
             { label: "PEN", val: stats.pens },
           ].map(s => (
             <div key={s.label} className="card p-1.5 text-center">
-              <div className="text-[8px] font-bold text-slate-600 tracking-wider font-mono">{s.label}</div>
-              <div className="text-xs font-black font-mono tabular-nums text-slate-200">{s.val}</div>
+              <div className="stat-label text-[8px]">{s.label}</div>
+              <div className="text-xs font-display font-extrabold tabular-nums">{s.val}</div>
             </div>
           ))}
         </div>
 
         {/* Quick Action Grid */}
         <div className="card p-3">
-          <QuickActions onSelect={handlePlayTypeSelect} possession={possession} suggestedPhase={
-            ballOn === gc.kickoff_yard_line || ballOn === gc.safety_kick_yard_line || ballOn === 100 - gc.pat_distance
-              ? "special"
-              : possession === "us" ? "offense" : "defense"
-          } />
+          <QuickActions onSelect={handlePlayTypeSelect} possession={possession} />
         </div>
 
         {/* Recent Plays */}
         {plays.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-slate-600 tracking-wider font-mono">RECENT PLAYS</span>
+              <span className="section-title mb-0">Recent Plays</span>
               <div className="flex items-center gap-3">
-                <button onClick={handleUndo} className="text-[10px] font-bold text-red-400 flex items-center gap-0.5 cursor-pointer hover:text-red-300 transition-colors">
-                  <RotateCcw className="w-3 h-3" /> UNDO
+                <button onClick={handleUndo} className="text-[10px] font-display font-bold text-red-400 flex items-center gap-1 uppercase tracking-wider cursor-pointer">
+                  <RotateCcw className="w-3 h-3" /> Undo
                 </button>
-                <button onClick={() => setShowLog(true)} className="text-[10px] font-bold text-dragon-primary cursor-pointer hover:text-dragon-light transition-colors">
+                <button onClick={() => setShowLog(true)} className="text-[10px] font-display font-bold text-dragon-primary uppercase tracking-wider cursor-pointer">
                   All {plays.length}
                 </button>
               </div>
@@ -993,20 +1214,20 @@ export default function GameScreen() {
               {plays.slice(-5).reverse().map(play => (
                 <button key={play.id}
                   onClick={() => setEditPlay(play)}
-                  className="w-full flex items-center gap-2 rounded-xl px-3 py-2 border border-surface-border bg-surface-card text-left active:bg-surface-hover cursor-pointer hover:border-slate-700 transition-all duration-200"
+                  className="w-full flex items-center gap-2 rounded-xl px-3 py-2 border border-surface-border bg-surface-card text-left active:bg-surface-hover cursor-pointer"
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold truncate text-slate-200">{play.description}</div>
-                    <div className="text-[10px] text-slate-600 font-mono">
+                    <div className="text-xs font-body font-semibold truncate">{play.description}</div>
+                    <div className="text-[10px] text-surface-muted font-body">
                       {QUARTER_LABELS[play.quarter]} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance}
                     </div>
                   </div>
-                  <div className={`text-xs font-black font-mono tabular-nums ${
-                    play.yards > 0 ? "text-emerald-400" : play.yards < 0 ? "text-red-400" : "text-slate-500"
+                  <div className={`text-xs font-display font-extrabold tabular-nums ${
+                    play.yards > 0 ? "text-emerald-400" : play.yards < 0 ? "text-red-400" : "text-surface-muted"
                   }`}>
                     {play.yards > 0 ? `+${play.yards}` : play.yards}
                   </div>
-                  {play.isTouchdown && <span className="text-[10px] font-bold text-amber-400">TD</span>}
+                  {play.isTouchdown && <span className="text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider">TD</span>}
                 </button>
               ))}
             </div>
@@ -1016,7 +1237,7 @@ export default function GameScreen() {
         {/* Navigate to summary */}
         {plays.length > 0 && (
           <button onClick={() => navigate(`/game/${gameId}/summary`)}
-            className="w-full text-center py-2 text-xs font-bold text-dragon-primary cursor-pointer hover:text-dragon-light transition-colors">
+            className="w-full text-center py-2 text-[11px] font-display font-bold text-dragon-primary uppercase tracking-wider cursor-pointer">
             View Game Summary
           </button>
         )}
@@ -1094,27 +1315,27 @@ export default function GameScreen() {
 
       {/* PAT Gate */}
       {showPatGate && (
-        <div className="sheet bg-black/60 backdrop-blur-sm">
+        <div className="sheet bg-black/80">
           <div className="sheet-panel p-6 space-y-3 max-w-sm mx-auto">
-            <h2 className="text-lg font-black text-center text-slate-50">Extra Point</h2>
-            <p className="text-sm text-slate-400 text-center">Touchdown scored. Record the conversion attempt next:</p>
+            <h2 className="text-lg font-black text-center">Extra Point</h2>
+            <p className="text-sm text-neutral-400 text-center">Touchdown scored. Record the conversion attempt next:</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => handlePatGate("pat")}
-                className="py-3 rounded-xl text-sm font-black bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/30 cursor-pointer hover:bg-emerald-500/30 transition-colors">PAT Kick</button>
+                className="py-3 rounded-xl text-sm font-black bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/30">PAT Kick</button>
               <button onClick={() => handlePatGate("two_pt")}
-                className="py-3 rounded-xl text-sm font-black bg-blue-500/20 text-blue-400 border-2 border-blue-500/30 cursor-pointer hover:bg-blue-500/30 transition-colors">2PT Try</button>
+                className="py-3 rounded-xl text-sm font-black bg-blue-500/20 text-blue-400 border-2 border-blue-500/30">2PT Try</button>
             </div>
             <button onClick={() => handlePatGate("skip")}
-              className="w-full text-xs text-slate-500 font-bold py-2 cursor-pointer hover:text-slate-400 transition-colors">Skip</button>
+              className="w-full text-xs text-neutral-500 font-bold py-2">Skip</button>
           </div>
         </div>
       )}
 
       {/* Clock Editor */}
       {showClockEditor && (
-        <div className="sheet bg-black/60 backdrop-blur-sm">
+        <div className="sheet bg-black/80">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-sm font-black text-center text-slate-50">Set Clock</h2>
+            <h2 className="text-sm font-black text-center">Set Clock</h2>
             <div className="flex items-center justify-center gap-2">
               <input type="number" min={0} max={15} value={clockMins} onChange={e => setClockMins(Number(e.target.value))}
                 className="input w-16 text-center text-xl font-black" />
@@ -1122,86 +1343,43 @@ export default function GameScreen() {
               <input type="number" min={0} max={59} value={clockSecs} onChange={e => setClockSecs(Number(e.target.value))}
                 className="input w-16 text-center text-xl font-black" />
             </div>
-            <button onClick={() => { const v = clockMins * 60 + clockSecs; setClock(v); persistGameSituation({ clock: v }); setShowClockEditor(false); }}
+            <button onClick={() => { setClock(clockMins * 60 + clockSecs); setShowClockEditor(false); }}
               className="btn-primary w-full text-sm">Set</button>
-            <button onClick={() => setShowClockEditor(false)} className="w-full text-xs text-slate-500 font-bold py-1 cursor-pointer hover:text-slate-400 transition-colors">Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* Ball Editor */}
-      {showBallEditor && (
-        <div className="sheet bg-black/60 backdrop-blur-sm">
-          <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-sm font-black text-center text-slate-50">Set Line Of Scrimmage</h2>
-            <div className="grid grid-cols-2 gap-2">
-              {(["own", "opp"] as const).map((side) => (
-                <button
-                  key={side}
-                  onClick={() => setBallEditSide(side)}
-                  className={`py-2 rounded-xl text-xs font-black border-2 uppercase transition-all duration-200 cursor-pointer ${
-                    ballEditSide === side
-                      ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                      : "border-surface-border bg-surface-bg text-slate-500 hover:border-slate-600"
-                  }`}
-                >
-                  {side}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center justify-center gap-2">
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={ballEditRaw}
-                onChange={(e) => {
-                  setBallEditRaw(e.target.value);
-                  const next = Number.parseInt(e.target.value, 10);
-                  if (!Number.isNaN(next)) setBallEditYard(Math.max(1, Math.min(50, next)));
-                }}
-                className="input w-24 text-center text-xl font-black font-mono"
-              />
-            </div>
-            <div className="text-xs text-slate-500 text-center">
-              Current spot: <span className="font-bold text-slate-300">{ballEditSide.toUpperCase()} {ballEditYard}</span>
-            </div>
-            <button onClick={applyBallEdit} className="btn-primary w-full text-sm">Set</button>
-            <button onClick={() => setShowBallEditor(false)} className="w-full text-xs text-slate-500 font-bold py-1 cursor-pointer hover:text-slate-400 transition-colors">Cancel</button>
+            <button onClick={() => setShowClockEditor(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
           </div>
         </div>
       )}
 
       {/* End Game Confirm */}
       {showEndGame && (
-        <div className="sheet bg-black/60 backdrop-blur-sm">
+        <div className="sheet bg-black/80">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-lg font-black text-center text-slate-50">End Game?</h2>
-            <p className="text-sm text-slate-400 text-center">
+            <h2 className="text-lg font-black text-center">End Game?</h2>
+            <p className="text-sm text-neutral-400 text-center">
               Final score: {progName} {ourScore} — {oppName} {theirScore}
             </p>
             <button onClick={handleEndGame} className="btn-primary w-full">Mark as Final</button>
-            <button onClick={() => setShowEndGame(false)} className="w-full text-xs text-slate-500 font-bold py-1 cursor-pointer hover:text-slate-400 transition-colors">Continue Playing</button>
+            <button onClick={() => setShowEndGame(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Continue Playing</button>
           </div>
         </div>
       )}
 
       {/* Situation Adjuster (after penalty) */}
       {showSituationAdj && (
-        <div className="sheet bg-black/60 backdrop-blur-sm">
+        <div className="sheet bg-black/80">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-sm font-black text-center text-slate-50">Adjust Next Situation</h2>
+            <h2 className="text-sm font-black text-center">Adjust Next Situation</h2>
             <div>
-              <label className="text-[10px] font-bold text-slate-500 block mb-1">Possession</label>
+              <label className="text-[10px] font-bold text-neutral-500 block mb-1">Possession</label>
               <div className="grid grid-cols-2 gap-2">
                 {(["us", "them"] as const).map((team) => (
                   <button
                     key={team}
                     onClick={() => setAdjPossession(team)}
-                    className={`py-2 rounded-xl text-xs font-bold border-2 uppercase transition-all duration-200 cursor-pointer ${
+                    className={`py-2 rounded-xl text-xs font-bold border-2 uppercase transition-colors ${
                       adjPossession === team
                         ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
-                        : "border-surface-border bg-surface-bg text-slate-500 hover:border-slate-600"
+                        : "border-surface-border bg-surface-bg text-neutral-500"
                     }`}
                   >
                     {team}
@@ -1211,19 +1389,19 @@ export default function GameScreen() {
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">Ball On</label>
+                <label className="text-[10px] font-bold text-neutral-500 block mb-1">Ball On</label>
                 <input type="number" value={adjBallOn} onChange={e => setAdjBallOn(Number(e.target.value))}
-                  className="input text-center text-sm font-black font-mono" min={1} max={99} />
+                  className="input text-center text-sm font-black" min={1} max={99} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">Down</label>
+                <label className="text-[10px] font-bold text-neutral-500 block mb-1">Down</label>
                 <input type="number" value={adjDown} onChange={e => setAdjDown(Number(e.target.value))}
-                  className="input text-center text-sm font-black font-mono" min={1} max={4} />
+                  className="input text-center text-sm font-black" min={1} max={4} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">Distance</label>
+                <label className="text-[10px] font-bold text-neutral-500 block mb-1">Distance</label>
                 <input type="number" value={adjDistance} onChange={e => setAdjDistance(Number(e.target.value))}
-                  className="input text-center text-sm font-black font-mono" min={1} max={99} />
+                  className="input text-center text-sm font-black" min={1} max={99} />
               </div>
             </div>
             <button onClick={applySituationAdjustment} className="btn-primary w-full text-sm">Apply</button>

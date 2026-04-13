@@ -9,47 +9,51 @@ export default {
           dark: "#991b1b",
           light: "#fca5a5",
           gold: "#f59e0b",
+          glow: "#ff3b3b",
         },
         surface: {
-          bg: "#020617",       // slate-950 — deep navy
-          card: "#0f172a",     // slate-900
-          border: "#1e293b",   // slate-800
-          hover: "#1e293b",    // slate-800
-          raised: "#1e293b",   // slate-800
-        },
-        accent: {
-          green: "#22c55e",
-          cyan: "#06b6d4",
+          bg: "#070a0f",
+          raised: "#0d1117",
+          card: "#111820",
+          cardHover: "#161d27",
+          border: "#1c2433",
+          borderLight: "#263044",
+          hover: "#151c26",
+          muted: "#8892a4",
         },
       },
       fontFamily: {
-        display: ['"Fira Sans"', "system-ui", "sans-serif"],
-        mono: ['"Fira Code"', "monospace"],
+        display: ['"Barlow Condensed"', "sans-serif"],
+        body: ['"Barlow"', "sans-serif"],
+        mono: ['"JetBrains Mono"', "monospace"],
       },
       maxWidth: {
         app: "28rem",
         tablet: "48rem",
       },
-      boxShadow: {
-        glow: "0 0 20px rgba(220,38,38,0.15)",
-        "glow-sm": "0 0 10px rgba(220,38,38,0.1)",
-        "glow-gold": "0 0 16px rgba(245,158,11,0.2)",
-        "glow-green": "0 0 16px rgba(34,197,94,0.2)",
-        card: "0 4px 24px rgba(0,0,0,0.3)",
-        "card-hover": "0 8px 32px rgba(0,0,0,0.4)",
+      borderRadius: {
+        "2xl": "1rem",
+        "3xl": "1.25rem",
       },
-      backgroundImage: {
-        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "shimmer": "linear-gradient(110deg, transparent 33%, rgba(255,255,255,0.03) 50%, transparent 67%)",
+      boxShadow: {
+        glow: "0 0 20px rgba(220, 38, 38, 0.15)",
+        "glow-gold": "0 0 20px rgba(245, 158, 11, 0.12)",
+        "card-hover": "0 8px 32px rgba(0, 0, 0, 0.4)",
+        scoreboard: "0 2px 24px rgba(0, 0, 0, 0.5)",
       },
       animation: {
-        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        "shimmer": "shimmer 2s ease-in-out infinite",
+        "pulse-slow": "pulse 3s ease-in-out infinite",
+        "slide-up": "slideUp 0.3s ease-out",
+        "fade-in": "fadeIn 0.25s ease-out",
       },
       keyframes: {
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
+        slideUp: {
+          "0%": { transform: "translateY(16px)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
+        },
+        fadeIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
         },
       },
     },

@@ -3,62 +3,39 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-    <meta name="theme-color" content="#020617" />
-    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#070a0f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="Dragon Stats — High School Football Play-by-Play & Statistics" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
     <title>Dragon Stats</title>
-    <!-- GitHub Pages SPA redirect restore -->
-    <script type="text/javascript">
-      (function(l) {
-        if (l.search[1] === '/') {
-          var decoded = l.search.slice(1).split('&').map(function(s) {
-            return s.replace(/~and~/g, '&')
-          }).join('?');
-          window.history.replaceState(null, null,
-            l.pathname.slice(0, -1) + decoded + l.hash
-          );
-        }
-      }(window.location))
-    </script>
   </head>
-  <body class="bg-surface-bg text-slate-50 antialiased font-display">
+  <body class="bg-surface-bg text-white antialiased">
     <div id="root">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;gap:24px;font-family:'Fira Sans',system-ui,sans-serif;background:#020617">
-        <!-- Team logo placeholder — replaced by React once loaded -->
-        <div id="splash-logo" style="width:100px;height:100px;display:flex;align-items:center;justify-content:center">
-          <svg viewBox="0 0 100 100" width="100" height="100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="50" cy="50" r="46" stroke="#1e293b" stroke-width="2" fill="#0f172a"/>
-            <text x="50" y="62" text-anchor="middle" font-size="38" font-weight="900" fill="#ef4444" font-family="'Impact','Arial Black','Haettenschweiler',sans-serif" font-style="italic" letter-spacing="2">PL</text>
-          </svg>
-        </div>
-        <!-- Bouncing football -->
-        <div style="position:relative;width:120px;height:28px">
-          <div style="position:absolute;top:0;left:0;animation:bounce-fb 1.4s ease-in-out infinite">
-            <svg viewBox="0 0 40 24" width="36" height="22" xmlns="http://www.w3.org/2000/svg">
-              <ellipse cx="20" cy="12" rx="18" ry="10" fill="#8B4513" stroke="#5C2E00" stroke-width="1.5"/>
-              <path d="M20 2 L20 22" stroke="#fff" stroke-width="1" opacity="0.6"/>
-              <path d="M12 5 Q20 8 28 5" stroke="#fff" stroke-width="0.8" fill="none" opacity="0.5"/>
-              <path d="M12 19 Q20 16 28 19" stroke="#fff" stroke-width="0.8" fill="none" opacity="0.5"/>
-              <path d="M14 8 L14 16 M17 7 L17 17 M20 6 L20 18 M23 7 L23 17 M26 8 L26 16" stroke="#fff" stroke-width="0.6" opacity="0.4"/>
-            </svg>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;gap:20px;font-family:'Barlow Condensed',sans-serif;background:#070a0f">
+        <!-- Splash logo -->
+        <div style="position:relative">
+          <div style="width:88px;height:88px;border-radius:20px;background:linear-gradient(135deg,#dc2626,#991b1b);display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(220,38,38,0.3)">
+            <span style="font-size:36px;font-weight:900;color:white;letter-spacing:2px;font-style:italic">DS</span>
           </div>
         </div>
         <!-- App name -->
-        <div style="font-size:1.75rem;font-weight:900;letter-spacing:-0.5px;color:#e5e5e5">DRAGON STATS</div>
-        <!-- Loading text -->
-        <div style="font-size:0.7rem;color:#999;font-weight:600;letter-spacing:1px">LOADING</div>
+        <div>
+          <div style="font-size:2rem;font-weight:800;letter-spacing:3px;color:#fff;text-transform:uppercase;text-align:center">DRAGON STATS</div>
+          <div style="font-size:0.65rem;font-weight:600;letter-spacing:4px;color:#555;text-align:center;margin-top:4px;font-family:'Barlow',sans-serif;text-transform:uppercase">Football Intelligence</div>
+        </div>
+        <!-- Loading bar -->
+        <div style="width:120px;height:3px;background:#1a1d24;border-radius:4px;overflow:hidden;margin-top:8px">
+          <div style="width:40%;height:100%;background:linear-gradient(90deg,#dc2626,#f59e0b);border-radius:4px;animation:load-bar 1.5s ease-in-out infinite"></div>
+        </div>
       </div>
       <style>
-        @keyframes bounce-fb {
-          0%   { transform: translateX(0px) rotate(0deg); }
-          25%  { transform: translateX(80px) rotate(15deg) translateY(-4px); }
-          50%  { transform: translateX(80px) rotate(0deg); }
-          75%  { transform: translateX(0px) rotate(-15deg) translateY(-4px); }
-          100% { transform: translateX(0px) rotate(0deg); }
+        @keyframes load-bar {
+          0%   { width: 10%; margin-left: 0; }
+          50%  { width: 50%; margin-left: 25%; }
+          100% { width: 10%; margin-left: 90%; }
         }
       </style>
     </div>

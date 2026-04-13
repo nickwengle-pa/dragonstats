@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Shield, Zap, Target } from "lucide-react";
+import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
@@ -61,7 +62,7 @@ function fmt(n: number): string {
 /* ─── Components ─── */
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{children}</div>;
+  return <div className="section-title">{children}</div>;
 }
 
 /* ═══════════════════════════════════════════════
@@ -229,24 +230,25 @@ export default function SeasonStatsScreen() {
   const primaryColor = program?.primary_color ?? "#ef4444";
 
   return (
-    <div className="screen safe-top safe-bottom">
-      <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-        <button onClick={() => navigate("/")} className="btn-ghost p-2">
+    <div className="screen safe-top pb-20">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-2">
+        <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-black flex-1">Season Stats</h1>
+        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Season Stats</h1>
       </div>
+      <div className="mx-5 mt-1 mb-4 accent-line" />
 
       <div className="flex-1 px-5 overflow-y-auto pb-8 space-y-4">
         {loading && (
           <div className="card p-8 text-center">
-            <div className="text-slate-500 animate-pulse">Computing season stats...</div>
+            <div className="text-neutral-500 animate-pulse">Computing season stats...</div>
           </div>
         )}
 
         {!loading && summaries.length === 0 && (
           <div className="card p-8 text-center">
-            <div className="text-slate-500 text-sm">No completed games yet this season.</div>
+            <div className="text-neutral-500 text-sm">No completed games yet this season.</div>
           </div>
         )}
 
@@ -260,8 +262,8 @@ export default function SeasonStatsScreen() {
                 { label: "PPG Allowed", val: teamTotals.papg },
               ].map(s => (
                 <div key={s.label} className="card p-3 text-center">
-                  <div className="text-2xl font-black" style={{ color: primaryColor }}>{s.val}</div>
-                  <div className="text-[9px] font-bold text-slate-500 uppercase">{s.label}</div>
+                  <div className="stat-value" style={{ color: primaryColor }}>{s.val}</div>
+                  <div className="stat-label mt-1">{s.label}</div>
                 </div>
               ))}
             </div>
@@ -274,8 +276,8 @@ export default function SeasonStatsScreen() {
                 { label: "1st Downs", val: teamTotals.firstDowns },
               ].map(s => (
                 <div key={s.label} className="card p-2 text-center">
-                  <div className="text-sm font-black tabular-nums">{s.val}</div>
-                  <div className="text-[8px] font-bold text-slate-600">{s.label}</div>
+                  <div className="text-sm font-display font-extrabold tabular-nums">{s.val}</div>
+                  <div className="text-[8px] font-display font-bold text-surface-muted uppercase tracking-wider">{s.label}</div>
                 </div>
               ))}
             </div>
@@ -283,20 +285,20 @@ export default function SeasonStatsScreen() {
             {/* Tab switcher */}
             <div className="flex gap-2">
               <button onClick={() => setTab("offense")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer flex items-center justify-center gap-1 ${
-                  tab === "offense" ? "border-blue-500 bg-blue-500/10 text-blue-400" : "border-surface-border text-slate-500"
+                className={`flex-1 py-2.5 rounded-xl text-xs font-display font-bold uppercase tracking-wider border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                  tab === "offense" ? "border-blue-500 bg-blue-500/10 text-blue-400" : "border-surface-border text-surface-muted"
                 }`}>
                 <Zap className="w-3.5 h-3.5" /> Offense
               </button>
               <button onClick={() => setTab("defense")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer flex items-center justify-center gap-1 ${
-                  tab === "defense" ? "border-red-500 bg-red-500/10 text-red-400" : "border-surface-border text-slate-500"
+                className={`flex-1 py-2.5 rounded-xl text-xs font-display font-bold uppercase tracking-wider border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                  tab === "defense" ? "border-red-500 bg-red-500/10 text-red-400" : "border-surface-border text-surface-muted"
                 }`}>
                 <Shield className="w-3.5 h-3.5" /> Defense
               </button>
               <button onClick={() => setTab("specialteams")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer flex items-center justify-center gap-1 ${
-                  tab === "specialteams" ? "border-purple-500 bg-purple-500/10 text-purple-400" : "border-surface-border text-slate-500"
+                className={`flex-1 py-2.5 rounded-xl text-xs font-display font-bold uppercase tracking-wider border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                  tab === "specialteams" ? "border-purple-500 bg-purple-500/10 text-purple-400" : "border-surface-border text-surface-muted"
                 }`}>
                 <Target className="w-3.5 h-3.5" /> Special Teams
               </button>
@@ -312,7 +314,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">GP</th>
                             <th className="text-right py-1.5 font-bold">C/A</th>
@@ -326,7 +328,7 @@ export default function SeasonStatsScreen() {
                             <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                               onClick={() => navigate(`/player/${p.playerId}`)}>
                               <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-slate-400">{p.games}</td>
+                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
                               <td className="py-1.5 text-right font-mono">{p.completions}/{p.attempts}</td>
                               <td className="py-1.5 text-right font-mono font-bold">{p.yards}</td>
                               <td className="py-1.5 text-right font-mono text-emerald-400">{p.tds}</td>
@@ -346,7 +348,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">GP</th>
                             <th className="text-right py-1.5 font-bold">Car</th>
@@ -361,7 +363,7 @@ export default function SeasonStatsScreen() {
                             <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                               onClick={() => navigate(`/player/${p.playerId}`)}>
                               <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-slate-400">{p.games}</td>
+                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
                               <td className="py-1.5 text-right font-mono">{p.carries}</td>
                               <td className="py-1.5 text-right font-mono font-bold">{p.yards}</td>
                               <td className="py-1.5 text-right font-mono">{p.carries > 0 ? (p.yards / p.carries).toFixed(1) : "0.0"}</td>
@@ -382,7 +384,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">GP</th>
                             <th className="text-right py-1.5 font-bold">Rec</th>
@@ -397,7 +399,7 @@ export default function SeasonStatsScreen() {
                             <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                               onClick={() => navigate(`/player/${p.playerId}`)}>
                               <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-slate-400">{p.games}</td>
+                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
                               <td className="py-1.5 text-right font-mono">{p.receptions}</td>
                               <td className="py-1.5 text-right font-mono font-bold">{p.yards}</td>
                               <td className="py-1.5 text-right font-mono">{p.receptions > 0 ? (p.yards / p.receptions).toFixed(1) : "0.0"}</td>
@@ -423,7 +425,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">GP</th>
                             <th className="text-right py-1.5 font-bold">Tot</th>
@@ -437,7 +439,7 @@ export default function SeasonStatsScreen() {
                             <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                               onClick={() => navigate(`/player/${p.playerId}`)}>
                               <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-slate-400">{p.games}</td>
+                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
                               <td className="py-1.5 text-right font-mono font-bold">{fmt(p.totalTackles)}</td>
                               <td className="py-1.5 text-right font-mono">{fmt(p.soloTackles)}</td>
                               <td className="py-1.5 text-right font-mono">{fmt(p.assistedTackles)}</td>
@@ -457,7 +459,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">Sacks</th>
                             <th className="text-right py-1.5 font-bold">INT</th>
@@ -486,7 +488,7 @@ export default function SeasonStatsScreen() {
                 )}
 
                 {defense.length === 0 && (
-                  <div className="card p-6 text-center text-slate-500 text-sm">
+                  <div className="card p-6 text-center text-neutral-500 text-sm">
                     No defensive stats recorded yet. Add tackler info during PBP to populate this.
                   </div>
                 )}
@@ -503,7 +505,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">GP</th>
                             <th className="text-right py-1.5 font-bold">FG</th>
@@ -518,7 +520,7 @@ export default function SeasonStatsScreen() {
                             <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                               onClick={() => navigate(`/player/${p.playerId}`)}>
                               <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-slate-400">{p.games}</td>
+                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
                               <td className="py-1.5 text-right font-mono">{p.fgMade}/{p.fgAtt}</td>
                               <td className="py-1.5 text-right font-mono">{p.fgAtt > 0 ? (p.fgMade / p.fgAtt * 100).toFixed(0) : "0"}%</td>
                               <td className="py-1.5 text-right font-mono">{p.fgLong || "-"}</td>
@@ -539,7 +541,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">GP</th>
                             <th className="text-right py-1.5 font-bold">Punts</th>
@@ -555,7 +557,7 @@ export default function SeasonStatsScreen() {
                             <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                               onClick={() => navigate(`/player/${p.playerId}`)}>
                               <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-slate-400">{p.games}</td>
+                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
                               <td className="py-1.5 text-right font-mono">{p.punts}</td>
                               <td className="py-1.5 text-right font-mono font-bold">{p.puntYards}</td>
                               <td className="py-1.5 text-right font-mono">{p.punts > 0 ? (p.puntYards / p.punts).toFixed(1) : "0.0"}</td>
@@ -577,7 +579,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">GP</th>
                             <th className="text-right py-1.5 font-bold">Ret</th>
@@ -594,7 +596,7 @@ export default function SeasonStatsScreen() {
                               <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                                 onClick={() => navigate(`/player/${p.playerId}`)}>
                                 <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                                <td className="py-1.5 text-right font-mono text-slate-400">{p.games}</td>
+                                <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
                                 <td className="py-1.5 text-right font-mono">{p.kickReturns}</td>
                                 <td className="py-1.5 text-right font-mono font-bold">{p.kickReturnYards}</td>
                                 <td className="py-1.5 text-right font-mono">{p.kickReturns > 0 ? (p.kickReturnYards / p.kickReturns).toFixed(1) : "0.0"}</td>
@@ -615,7 +617,7 @@ export default function SeasonStatsScreen() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-surface-border">
+                          <tr className="text-neutral-500 border-b border-surface-border">
                             <th className="text-left py-1.5 font-bold">Player</th>
                             <th className="text-right py-1.5 font-bold">GP</th>
                             <th className="text-right py-1.5 font-bold">Ret</th>
@@ -632,7 +634,7 @@ export default function SeasonStatsScreen() {
                               <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                                 onClick={() => navigate(`/player/${p.playerId}`)}>
                                 <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                                <td className="py-1.5 text-right font-mono text-slate-400">{p.games}</td>
+                                <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
                                 <td className="py-1.5 text-right font-mono">{p.puntReturns}</td>
                                 <td className="py-1.5 text-right font-mono font-bold">{p.puntReturnYards}</td>
                                 <td className="py-1.5 text-right font-mono">{p.puntReturns > 0 ? (p.puntReturnYards / p.puntReturns).toFixed(1) : "0.0"}</td>
@@ -647,7 +649,7 @@ export default function SeasonStatsScreen() {
                 )}
 
                 {kicking.length === 0 && punting.length === 0 && returns.length === 0 && (
-                  <div className="card p-6 text-center text-slate-500 text-sm">
+                  <div className="card p-6 text-center text-neutral-500 text-sm">
                     No special teams stats recorded yet.
                   </div>
                 )}
@@ -656,6 +658,7 @@ export default function SeasonStatsScreen() {
           </>
         )}
       </div>
+      <TabBar />
     </div>
   );
 }
