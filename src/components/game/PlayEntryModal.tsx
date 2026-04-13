@@ -23,6 +23,8 @@ interface Props {
   gameState: GameState;
   roster: RosterPlayer[];
   opponentPlayers: OpponentPlayerRef[];
+  progName: string;
+  oppName: string;
   onSubmit: (data: PlaySubmitData) => void;
   onClose: () => void;
   onAddOpponentPlayer?: (player: OpponentPlayerRef) => void;
@@ -54,6 +56,13 @@ function defaultBlockedKickType(gameState: GameState): BlockedKickType {
   if (gameState.down === 4 && gameState.ballOn >= 60) return "field_goal";
   if (gameState.down === 4) return "punt";
   return "field_goal";
+}
+
+function teamTag(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "TEAM";
+  if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
+  return parts.map((part) => part[0]).join("").slice(0, 3).toUpperCase();
 }
 
 /* ── Player selector grid (our roster) ── */
@@ -187,7 +196,7 @@ function OpponentPlayerGrid({
    ═══════════════════════════════════════════════ */
 
 export default function PlayEntryModal({
-  playType, gameState, roster, opponentPlayers, onSubmit, onClose, onAddOpponentPlayer,
+  playType, gameState, roster, opponentPlayers, progName, oppName, onSubmit, onClose, onAddOpponentPlayer,
 }: Props) {
   // Local copy of opponent players (can grow via quick-add)
   const [localOppPlayers, setLocalOppPlayers] = useState<OpponentPlayerRef[]>(opponentPlayers);
@@ -273,6 +282,10 @@ export default function PlayEntryModal({
     return twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
   }, [playType, twoPointStyle]);
   const isTheirBall = gameState.possession === "them";
+  const progTag = teamTag(progName);
+  const oppTag = teamTag(oppName);
+  const perspectiveSideLabel = (side: "our" | "opp") => side === "our" ? progName : oppName;
+  const perspectiveSideTag = (side: "our" | "opp") => side === "our" ? progTag : oppTag;
   const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
   const needsTouchback = false; // handled in kick-specific flow now
@@ -561,7 +574,7 @@ export default function PlayEntryModal({
                 } as Record<string, string>)[currentStep] ?? currentStep
               }
               {isTheirBall && currentStep === "players" && (
-                <span className="text-red-400 ml-1">(Opponent ball)</span>
+                <span className="text-red-400 ml-1">({oppName} ball)</span>
               )}
             </div>
           </div>
@@ -733,7 +746,7 @@ export default function PlayEntryModal({
               {isTheirBall ? (
                 <PlayerGrid
                   roster={roster}
-                  label="Select returner (your team)"
+                  label={`Select returner (${progName})`}
                   onSelect={handleReturnerSelect}
                   selectedId={tagged.find(t => t.role === "returner")?.player_id ?? null}
                   search={returnerSearch}
@@ -742,7 +755,7 @@ export default function PlayEntryModal({
               ) : (
                 <OpponentPlayerGrid
                   players={localOppPlayers}
-                  label="Select returner (opponent)"
+                  label={`Select returner (${oppName})`}
                   onSelect={handleReturnerSelectOpp}
                   selectedId={tagged.find(t => t.role === "returner")?.id ?? null}
                   search={returnerSearch}
@@ -763,8 +776,8 @@ export default function PlayEntryModal({
                 <div className="flex gap-1.5 mb-3">
                   {(["opp", "our"] as const).map(side => {
                     const label = side === "our"
-                      ? (gameState.possession === "us" ? "Our Side" : "Opp Side")
-                      : (gameState.possession === "us" ? "Opp Side" : "Our Side");
+                      ? (gameState.possession === "us" ? progName : oppName)
+                      : (gameState.possession === "us" ? oppName : progName);
                     return (
                       <button
                         key={side}
@@ -812,8 +825,8 @@ export default function PlayEntryModal({
                 <div className="text-xs text-slate-500 mt-3">
                   {(() => {
                     const sideLabel = returnToSide === "our"
-                      ? (gameState.possession === "us" ? "OUR" : "OPP")
-                      : (gameState.possession === "us" ? "OPP" : "OUR");
+                      ? (gameState.possession === "us" ? progTag : oppTag)
+                      : (gameState.possession === "us" ? oppTag : progTag);
                     const isReceiverSide = gameState.possession === "us" ? returnToSide === "opp" : returnToSide === "our";
                     const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
                     const retYds = receiverYard - kickedToYard;
@@ -836,7 +849,7 @@ export default function PlayEntryModal({
           {currentStep === "kick_tacklers" && (
             <>
               <div className="text-xs text-slate-400 mb-1">
-                Optional: Select tackler(s) from your roster. 1 player = 1.0 credit, 2+ = 0.5 each.
+                Optional: Select tackler(s) from {progName}. 1 player = 1.0 credit, 2+ = 0.5 each.
               </div>
               {tacklers.length > 0 && (
                 <div className="flex gap-2 flex-wrap mb-2">
@@ -898,16 +911,16 @@ export default function PlayEntryModal({
                   {/* Side selector */}
                   <div className="flex gap-1.5 mb-3">
                     {(["our", "opp"] as const).map(side => (
-                      <button
-                        key={side}
-                        onClick={() => setResultSide(side)}
+                    <button
+                      key={side}
+                      onClick={() => setResultSide(side)}
                         className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
                           resultSide === side
                             ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
                             : "border-surface-border bg-surface-bg text-slate-500"
                         }`}
-                      >
-                        {side === "our" ? "Our Side" : "Opp Side"}
+                    >
+                        {perspectiveSideLabel(side)}
                       </button>
                     ))}
                   </div>
@@ -942,7 +955,7 @@ export default function PlayEntryModal({
                   </div>
 
                   <div className="text-xs text-slate-500 mt-3">
-                    {yardLabel(gameState.ballOn)} → <span className="font-bold text-slate-300">{resultSide === "our" ? "OUR" : "OPP"} {resultYardLine}</span>
+                    {yardLabel(gameState.ballOn)} → <span className="font-bold text-slate-300">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
                     {" "}(<span className={yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : ""}>{yards > 0 ? "+" : ""}{yards} yds</span>)
                   </div>
                 </div>
@@ -1090,8 +1103,8 @@ export default function PlayEntryModal({
             <>
               <div className="text-xs text-slate-400 mb-1">
                 {isTheirBall
-                  ? "Select up to 3 tacklers from your roster. 1 player = 1.0 credit, 2+ = 0.5 each."
-                  : "Select up to 3 opponent tacklers. 1 player = 1.0 credit, 2+ = 0.5 each."
+                  ? `Select up to 3 tacklers from ${progName}. 1 player = 1.0 credit, 2+ = 0.5 each.`
+                  : `Select up to 3 ${oppName} tacklers. 1 player = 1.0 credit, 2+ = 0.5 each.`
                 }
               </div>
               {tacklers.length > 0 && (
@@ -1100,7 +1113,7 @@ export default function PlayEntryModal({
                     <span key={t.id} className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${
                       t.isOpponent ? "bg-orange-900/30 text-orange-400" : "bg-red-900/30 text-red-400"
                     }`}>
-                      {t.isOpponent && <span className="text-[9px]">OPP</span>}
+                      {t.isOpponent && <span className="text-[9px]">{oppTag}</span>}
                       #{t.jersey_number} {t.name.split(" ")[1]}
                       <span className="text-[10px] opacity-60">({t.credit})</span>
                       <button onClick={() => setTacklers(prev => {
@@ -1115,7 +1128,7 @@ export default function PlayEntryModal({
               {isTheirBall ? (
                 <PlayerGrid
                   roster={roster}
-                  label="Select tackler(s) from your roster"
+                  label={`Select tackler(s) from ${progName}`}
                   onSelect={p => handleAddTackler(p)}
                   selectedId={null}
                   search={tacklerSearch}
@@ -1124,7 +1137,7 @@ export default function PlayEntryModal({
               ) : (
                 <OpponentPlayerGrid
                   players={opponentPlayers}
-                  label="Select opponent tackler(s)"
+                  label={`Select ${oppName} tackler(s)`}
                   onSelect={p => handleAddOpponentTackler(p)}
                   selectedId={null}
                   search={tacklerSearch}
@@ -1151,7 +1164,7 @@ export default function PlayEntryModal({
                   <div key={t.role} className="flex justify-between">
                     <span className="text-slate-500 capitalize">{t.role}</span>
                     <span className="font-bold">
-                      {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">OPP</span>}
+                      {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>}
                       #{t.jersey_number} {t.name}
                     </span>
                   </div>
@@ -1161,7 +1174,7 @@ export default function PlayEntryModal({
                     {!isTD && (
                       <div className="flex justify-between">
                         <span className="text-slate-500">Spotted At</span>
-                        <span className="font-bold">{resultSide === "our" ? "OUR" : "OPP"} {resultYardLine}</span>
+                        <span className="font-bold">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
                       </div>
                     )}
                     {(() => {
@@ -1195,8 +1208,8 @@ export default function PlayEntryModal({
                         <span className="font-bold text-emerald-400">
                           {(() => {
                             const sideLabel = returnToSide === "our"
-                              ? (gameState.possession === "us" ? "OUR" : "OPP")
-                              : (gameState.possession === "us" ? "OPP" : "OUR");
+                              ? (gameState.possession === "us" ? progTag : oppTag)
+                              : (gameState.possession === "us" ? oppTag : progTag);
                             const isReceiverSide = gameState.possession === "us" ? returnToSide === "opp" : returnToSide === "our";
                             const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
                             const retYds = receiverYard - kickedToYard;

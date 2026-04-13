@@ -39,13 +39,13 @@ export default function FieldVisualizer({
     PLAYING_FIELD_START_PCT + (Math.max(0, Math.min(100, displayPercent)) * PLAYING_FIELD_WIDTH_PCT / 100)
   ), []);
 
-  const handleFieldPointer = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const handleFieldPointer = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!onFieldTap || !fieldRef.current) return;
-    const rect = fieldRef.current.getBoundingClientRect();
-    const clientX = "touches" in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clientX = e.clientX;
     const pct = ((clientX - rect.left) / rect.width) * 100;
     // Clamp to playing field (10%-90% of widget = 0-100 display yards)
-    const displayPct = Math.max(0, Math.min(100, ((pct - 10) / 80) * 100));
+    const displayPct = Math.max(0, Math.min(100, ((pct - PLAYING_FIELD_START_PCT) / PLAYING_FIELD_WIDTH_PCT) * 100));
     onFieldTap(displayPct);
   }, [onFieldTap]);
   const theirEndZoneSide = ourEndZoneSide === "left" ? "right" : "left";
@@ -64,8 +64,7 @@ export default function FieldVisualizer({
       <div
         ref={fieldRef}
         className="relative w-full h-28 rounded-lg overflow-hidden bg-emerald-800 cursor-pointer touch-none"
-        onClick={handleFieldPointer}
-        onTouchStart={handleFieldPointer}
+        onPointerDown={handleFieldPointer}
       >
         {/* Sideline borders */}
         <div className="absolute inset-x-0 top-0 h-0.5 bg-white/50 z-[5]" />
@@ -223,7 +222,10 @@ export default function FieldVisualizer({
         {/* Flip direction button */}
         {onFlipDirection && (
           <button
-            onClick={onFlipDirection}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFlipDirection();
+            }}
             className="absolute bottom-1 right-[11%] z-30 p-1 rounded bg-black/40 text-white/50 active:text-white active:bg-black/60 transition-all duration-200 cursor-pointer hover:bg-black/50 hover:text-white/70"
             title="Flip field direction"
           >

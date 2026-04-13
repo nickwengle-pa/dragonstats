@@ -43,6 +43,8 @@ interface Props {
   play: PlayRecord;
   roster: RosterPlayer[];
   opponentPlayers: OpponentPlayerRef[];
+  progName: string;
+  oppName: string;
   ballOnBefore: number;
   downBefore: number;
   distanceBefore: number;
@@ -56,6 +58,13 @@ type Step = "type" | "players" | "yards" | "formations" | "defense" | "review";
 function inferTwoPointStyle(play: PlayRecord): "pass" | "run" {
   if (play.type !== "two_pt") return "pass";
   return play.tagged.some((tag) => tag.role === "rusher") ? "run" : "pass";
+}
+
+function teamTag(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "TEAM";
+  if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
+  return parts.map((part) => part[0]).join("").slice(0, 3).toUpperCase();
 }
 
 /* ── Player selector grid ── */
@@ -171,7 +180,7 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 export default function PlayEditModal({
-  play, roster, opponentPlayers, ballOnBefore, downBefore, distanceBefore,
+  play, roster, opponentPlayers, progName, oppName, ballOnBefore, downBefore, distanceBefore,
   onSave, onDelete, onClose,
 }: Props) {
   // Play type
@@ -219,6 +228,7 @@ export default function PlayEditModal({
 
   // Step management
   const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">(() => inferTwoPointStyle(play));
+  const oppTag = teamTag(oppName);
   const roles = useMemo(() => {
     if (playType.id !== "two_pt") return playType.roles;
     return twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
@@ -658,7 +668,7 @@ export default function PlayEditModal({
           {currentStep === "defense" && (
             <>
               <div className="text-xs text-slate-400 mb-1">
-                Select up to 3 tacklers. {play.possession === "them" ? "(Our defense)" : "(Opponent defense)"} · 1 = 1.0, 2+ = 0.5 each.
+                Select up to 3 tacklers. {play.possession === "them" ? `(${progName} defense)` : `(${oppName} defense)`} · 1 = 1.0, 2+ = 0.5 each.
               </div>
               {tacklers.length > 0 && (
                 <div className="flex gap-2 flex-wrap mb-2">
@@ -678,7 +688,7 @@ export default function PlayEditModal({
               {play.possession === "them" ? (
                 /* They have ball — our guys make the tackles */
                 <PlayerGrid
-                  roster={roster} label="Select tackler(s) — Our defense"
+                  roster={roster} label={`Select tackler(s) — ${progName} defense`}
                   onSelect={p => handleAddTackler(p)} selectedId={null}
                   search={tacklerSearch} onSearch={setTacklerSearch}
                 />
@@ -703,7 +713,10 @@ export default function PlayEditModal({
                 {tagged.map(t => (
                   <div key={t.role} className="flex justify-between">
                     <span className="text-slate-500 capitalize">{t.role}</span>
-                    <span className="font-bold">#{t.jersey_number} {t.name}</span>
+                    <span className="font-bold">
+                      {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>}
+                      #{t.jersey_number} {t.name}
+                    </span>
                   </div>
                 ))}
                 {needsYards && (

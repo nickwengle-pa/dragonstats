@@ -31,6 +31,7 @@ import {
   rebuildPlaySituations,
   resolveGameConfig,
   toDisplayFieldPosition,
+  type LiveSituation,
   type PregameConfig,
 } from "@/services/gameFlow";
 
@@ -69,6 +70,15 @@ function readStoredClock(value: unknown): number | null {
   return ((m || 0) * 60) + (s || 0);
 }
 
+function cloneSituation(situation: LiveSituation): LiveSituation {
+  return {
+    possession: situation.possession,
+    down: situation.down,
+    distance: situation.distance,
+    ballOn: situation.ballOn,
+  };
+}
+
 /* ═══════════════════════════════════════════════
    GAME SCREEN — Main Wrapper
    ═══════════════════════════════════════════════ */
@@ -92,6 +102,8 @@ export default function GameScreen() {
   const loadData = useCallback(async () => {
     if (!season || !gameId) return;
     setLoading(true);
+    quarterSnapshots.current = {};
+    setDirectionFlipped(false);
 
     const [gameRes, rosterRes, existingPlays] = await Promise.all([
       supabase.from("games").select("*, opponent:opponents(*)").eq("id", gameId).single(),
@@ -252,6 +264,10 @@ export default function GameScreen() {
   const [showClockEditor, setShowClockEditor] = useState(false);
   const [clockMins, setClockMins] = useState(12);
   const [clockSecs, setClockSecs] = useState(0);
+  const [showBallEditor, setShowBallEditor] = useState(false);
+  const [ballEditSide, setBallEditSide] = useState<"own" | "opp">("own");
+  const [ballEditYard, setBallEditYard] = useState(25);
+  const [ballEditRaw, setBallEditRaw] = useState("25");
   const [showEndGame, setShowEndGame] = useState(false);
   const [showSituationAdj, setShowSituationAdj] = useState(false);
   const [pendingSituationPlayId, setPendingSituationPlayId] = useState<string | null>(null);
@@ -265,6 +281,7 @@ export default function GameScreen() {
   /* ── Derived state ── */
   const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
   const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
+  const quarterSnapshots = useRef<Partial<Record<number, { clock: number; situation: LiveSituation }>>>({});
   const [directionFlipped, setDirectionFlipped] = useState(false);
   const ballDisplayPosition = useMemo(() => {
     const pos = toDisplayFieldPosition(ballOn, possession, quarter, pregame);
@@ -284,6 +301,11 @@ export default function GameScreen() {
       setShowPregame(true);
     }
   }, [loading, game, pregame]);
+
+  useEffect(() => {
+    quarterSnapshots.current = {};
+    setDirectionFlipped(false);
+  }, [gameId]);
 
   /* ── Quick stats ── */
   const stats = useMemo(() => {
@@ -329,6 +351,22 @@ export default function GameScreen() {
     setBallOn(next.ballOn);
     persistGameSituation(next);
   }, [persistGameSituation]);
+
+  const openBallEditor = useCallback(() => {
+    const nextSide = ballOn <= 50 ? "own" : "opp";
+    const nextYard = ballOn <= 50 ? ballOn : 100 - ballOn;
+    setBallEditSide(nextSide);
+    setBallEditYard(nextYard);
+    setBallEditRaw(String(nextYard));
+    setShowBallEditor(true);
+  }, [ballOn]);
+
+  const applyBallEdit = useCallback(() => {
+    const nextBallOn = ballEditSide === "own" ? ballEditYard : 100 - ballEditYard;
+    setBallOn(nextBallOn);
+    persistGameSituation({ ballOn: nextBallOn });
+    setShowBallEditor(false);
+  }, [ballEditSide, ballEditYard, persistGameSituation]);
 
   const persistPlaySituations = useCallback((nextPlays: PlayRecord[]) => {
     void Promise.all(nextPlays.map((play) => updatePlaySituation(play.id, {
@@ -461,6 +499,7 @@ export default function GameScreen() {
 
     if (!error && data) {
       setGame(data);
+      setDirectionFlipped(false);
       const nextConfig = resolveGameConfig(baseGc, data.rules_config as Record<string, unknown> | null);
       if (plays.length === 0) {
         const reset = createInitialSituation(nextPregame, nextConfig);
@@ -732,16 +771,56 @@ export default function GameScreen() {
     setShowPatGate(false);
   };
 
-  /* ── Cycle quarter ── */
-  const cycleQuarter = () => {
-    const nextQuarter = Math.min(5, quarter + 1);
-    if (nextQuarter === quarter) return;
-    const transition = moveToQuarter(quarter, nextQuarter, { possession, down, distance, ballOn }, pregame, gc);
+  const changeQuarter = useCallback((delta: number) => {
+    const targetQuarter = Math.max(1, Math.min(5, quarter + delta));
+    if (targetQuarter === quarter) return;
+
+    const liveSituation = cloneSituation({ possession, down, distance, ballOn });
+    quarterSnapshots.current[quarter] = { clock, situation: liveSituation };
+
+    let transition: { quarter: number; clock: number; situation: LiveSituation } | null = null;
+
+    if (targetQuarter > quarter) {
+      transition = moveToQuarter(quarter, targetQuarter, liveSituation, pregame, gc);
+    } else {
+      const savedSnapshot = quarterSnapshots.current[targetQuarter];
+      if (savedSnapshot) {
+        transition = {
+          quarter: targetQuarter,
+          clock: savedSnapshot.clock,
+          situation: cloneSituation(savedSnapshot.situation),
+        };
+      } else {
+        const priorPlays = plays.filter((play) => normalizeQuarter(play.quarter) <= targetQuarter);
+        if (priorPlays.length > 0) {
+          const rebuilt = rebuildPlaySituations(priorPlays, pregame, gc);
+          transition = rebuilt.currentQuarter < targetQuarter
+            ? moveToQuarter(rebuilt.currentQuarter, targetQuarter, rebuilt.currentSituation, pregame, gc)
+            : { quarter: targetQuarter, clock: gc.quarter_length_secs, situation: rebuilt.currentSituation };
+        } else {
+          const initialSituation = createInitialSituation(pregame, gc);
+          transition = targetQuarter > 1
+            ? moveToQuarter(1, targetQuarter, initialSituation, pregame, gc)
+            : { quarter: 1, clock: gc.quarter_length_secs, situation: initialSituation };
+        }
+      }
+    }
+
+    if (!transition) return;
+
     setQuarter(transition.quarter);
     setClock(transition.clock);
     applySituation(transition.situation);
     persistGameSituation({ quarter: transition.quarter, clock: transition.clock });
-  };
+  }, [applySituation, ballOn, clock, distance, down, gc, plays, possession, pregame, quarter, persistGameSituation]);
+
+  const goToPreviousQuarter = useCallback(() => {
+    changeQuarter(-1);
+  }, [changeQuarter]);
+
+  const goToNextQuarter = useCallback(() => {
+    changeQuarter(1);
+  }, [changeQuarter]);
 
   /* ── End game ── */
   const handleEndGame = async () => {
@@ -800,7 +879,10 @@ export default function GameScreen() {
           progLogoUrl={progLogoUrl}
           oppLogoUrl={oppLogoUrl}
           oppColor={oppColor}
-          onCycleQuarter={cycleQuarter}
+          onPreviousQuarter={goToPreviousQuarter}
+          onNextQuarter={goToNextQuarter}
+          canPreviousQuarter={quarter > 1}
+          canNextQuarter={quarter < 5}
           onEditClock={() => { setClockMins(Math.floor(clock / 60)); setClockSecs(clock % 60); setShowClockEditor(true); }}
           onEndGame={() => setShowEndGame(true)}
         />
@@ -854,9 +936,16 @@ export default function GameScreen() {
               <span className="text-[10px] font-bold text-slate-600 mr-1 font-mono">BALL</span>
               <button onClick={() => { const v = Math.max(1, ballOn - 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-slate-500 cursor-pointer">-5</button>
               <button onClick={() => { const v = Math.max(1, ballOn - 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">-</button>
-              <div className="min-w-[52px] h-9 rounded-lg bg-surface-bg flex items-center justify-center text-xs font-black text-emerald-400 font-mono tabular-nums px-1">{yardLabel(ballOn)}</div>
+              <button
+                onClick={openBallEditor}
+                className="min-w-[58px] h-9 rounded-lg bg-surface-bg flex items-center justify-center text-xs font-black text-emerald-400 font-mono tabular-nums px-1 cursor-pointer hover:bg-surface-hover transition-colors"
+                title="Type line of scrimmage"
+              >
+                {yardLabel(ballOn)}
+              </button>
               <button onClick={() => { const v = Math.min(99, ballOn + 1); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost w-7 h-9 text-sm font-bold cursor-pointer">+</button>
               <button onClick={() => { const v = Math.min(99, ballOn + 5); setBallOn(v); persistGameSituation({ ballOn: v }); }} className="btn-ghost px-1 h-9 text-[10px] font-bold text-slate-500 cursor-pointer">+5</button>
+              <button onClick={openBallEditor} className="btn-ghost px-2 h-9 text-[10px] font-bold text-slate-500 cursor-pointer">TYPE</button>
             </div>
           </div>
         </div>
@@ -953,6 +1042,8 @@ export default function GameScreen() {
           gameState={gameState}
           roster={roster}
           opponentPlayers={oppPlayers}
+          progName={progName}
+          oppName={oppName}
           onSubmit={handlePlaySubmit}
           onClose={() => setSelectedPlayType(null)}
           onAddOpponentPlayer={async (player) => {
@@ -989,6 +1080,8 @@ export default function GameScreen() {
             play={editPlay}
             roster={roster}
             opponentPlayers={oppPlayers}
+            progName={progName}
+            oppName={oppName}
             ballOnBefore={editPlay.ballOn}
             downBefore={editPlay.down}
             distanceBefore={editPlay.distance}
@@ -1032,6 +1125,49 @@ export default function GameScreen() {
             <button onClick={() => { const v = clockMins * 60 + clockSecs; setClock(v); persistGameSituation({ clock: v }); setShowClockEditor(false); }}
               className="btn-primary w-full text-sm">Set</button>
             <button onClick={() => setShowClockEditor(false)} className="w-full text-xs text-slate-500 font-bold py-1 cursor-pointer hover:text-slate-400 transition-colors">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Ball Editor */}
+      {showBallEditor && (
+        <div className="sheet bg-black/60 backdrop-blur-sm">
+          <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
+            <h2 className="text-sm font-black text-center text-slate-50">Set Line Of Scrimmage</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {(["own", "opp"] as const).map((side) => (
+                <button
+                  key={side}
+                  onClick={() => setBallEditSide(side)}
+                  className={`py-2 rounded-xl text-xs font-black border-2 uppercase transition-all duration-200 cursor-pointer ${
+                    ballEditSide === side
+                      ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                      : "border-surface-border bg-surface-bg text-slate-500 hover:border-slate-600"
+                  }`}
+                >
+                  {side}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={ballEditRaw}
+                onChange={(e) => {
+                  setBallEditRaw(e.target.value);
+                  const next = Number.parseInt(e.target.value, 10);
+                  if (!Number.isNaN(next)) setBallEditYard(Math.max(1, Math.min(50, next)));
+                }}
+                className="input w-24 text-center text-xl font-black font-mono"
+              />
+            </div>
+            <div className="text-xs text-slate-500 text-center">
+              Current spot: <span className="font-bold text-slate-300">{ballEditSide.toUpperCase()} {ballEditYard}</span>
+            </div>
+            <button onClick={applyBallEdit} className="btn-primary w-full text-sm">Set</button>
+            <button onClick={() => setShowBallEditor(false)} className="w-full text-xs text-slate-500 font-bold py-1 cursor-pointer hover:text-slate-400 transition-colors">Cancel</button>
           </div>
         </div>
       )}

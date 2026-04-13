@@ -136,7 +136,7 @@ export function getPregameConfig(game: GameRulesCarrier | null | undefined): Pre
 
   const rulesConfig = asRecord(game.rules_config);
   const pregame = asRecord(rulesConfig?.pregame);
-  const direction = parseStoredDirection(game.direction ?? pregame?.ourDriveDirectionQ1);
+  const direction = parseStoredDirection(pregame?.ourDriveDirectionQ1) ?? parseStoredDirection(game.direction);
   const openingKickoffReceiver = isTeamSide(game.opening_kickoff_receiver)
     ? game.opening_kickoff_receiver
     : isTeamSide(pregame?.openingKickoffReceiver)

@@ -1,4 +1,4 @@
-import { Trophy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trophy } from "lucide-react";
 import { fmtClock, quarterLabel, type GameState } from "./types";
 
 interface Props {
@@ -9,7 +9,10 @@ interface Props {
   progLogoUrl?: string | null;
   oppLogoUrl?: string | null;
   oppColor?: string;
-  onCycleQuarter: () => void;
+  onPreviousQuarter: () => void;
+  onNextQuarter: () => void;
+  canPreviousQuarter: boolean;
+  canNextQuarter: boolean;
   onEditClock: () => void;
   onEndGame: () => void;
 }
@@ -22,7 +25,10 @@ export default function Scoreboard({
   progLogoUrl,
   oppLogoUrl,
   oppColor,
-  onCycleQuarter,
+  onPreviousQuarter,
+  onNextQuarter,
+  canPreviousQuarter,
+  canNextQuarter,
   onEditClock,
   onEndGame,
 }: Props) {
@@ -49,12 +55,27 @@ export default function Scoreboard({
         </div>
 
         <div className="flex flex-col items-center gap-0.5">
-          <button
-            onClick={onCycleQuarter}
-            className="text-[10px] font-bold text-slate-500 border border-surface-border rounded px-2 py-0.5 active:bg-surface-hover cursor-pointer transition-colors hover:border-slate-600"
-          >
-            {quarterLabel(state.quarter)}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onPreviousQuarter}
+              disabled={!canPreviousQuarter}
+              className="border border-surface-border rounded p-1 text-slate-500 active:bg-surface-hover cursor-pointer transition-colors hover:border-slate-600 disabled:cursor-default disabled:opacity-35"
+              title="Previous quarter"
+            >
+              <ChevronLeft className="w-3 h-3" />
+            </button>
+            <div className="text-[10px] font-bold text-slate-500 border border-surface-border rounded px-2 py-1 min-w-[52px] text-center">
+              {quarterLabel(state.quarter)}
+            </div>
+            <button
+              onClick={onNextQuarter}
+              disabled={!canNextQuarter}
+              className="border border-surface-border rounded p-1 text-slate-500 active:bg-surface-hover cursor-pointer transition-colors hover:border-slate-600 disabled:cursor-default disabled:opacity-35"
+              title="Next quarter"
+            >
+              <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
           <button
             onClick={onEditClock}
             className="text-xl font-black font-mono tabular-nums text-amber-400 active:opacity-60 cursor-pointer"
@@ -63,7 +84,9 @@ export default function Scoreboard({
             {fmtClock(state.clock)}
           </button>
           <div className="text-[10px] font-bold text-slate-600 font-mono">
-            {state.possession === "us" ? "OUR BALL" : "THEIR BALL"}
+            <span className="block max-w-[110px] truncate text-center">
+              {state.possession === "us" ? `${progName} BALL` : `${oppName} BALL`}
+            </span>
           </div>
         </div>
 
