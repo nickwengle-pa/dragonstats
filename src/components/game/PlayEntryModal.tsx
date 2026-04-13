@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
 import {
   type BlockedKickType,
@@ -46,6 +46,7 @@ export interface PlaySubmitData {
   defensiveFormation: string | null;
   hashMark: string | null;
   description: string;
+  playData?: Record<string, unknown>;
 }
 
 type Step = "players" | "yards" | "formations" | "defense" | "review"
@@ -223,6 +224,7 @@ export default function PlayEntryModal({
   const [resultYardLine, setResultYardLine] = useState(initResult.yl);
   const [resultSide, setResultSide] = useState<"our" | "opp">(initResult.side);
   const [resultYardRaw, setResultYardRaw] = useState("");
+  const [totalYardsRaw, setTotalYardsRaw] = useState("");
 
   // Helper: adjust yard line and flip side when crossing 50
   const adjustYardLine = (
@@ -296,6 +298,30 @@ export default function PlayEntryModal({
   const [returnToRaw, setReturnToRaw] = useState("");
   const [kickerSearch, setKickerSearch] = useState("");
   const [returnerSearch, setReturnerSearch] = useState("");
+  const isInterception = playType.id === "int";
+
+  const toProgramBallOn = (fieldSide: FieldTeam, yardLine: number) =>
+    fieldSide === "program" ? yardLine : 100 - yardLine;
+
+  const toOffensePerspectiveBallOn = (fieldSide: FieldTeam, yardLine: number) => {
+    const programBallOn = toProgramBallOn(fieldSide, yardLine);
+    return gameState.possession === "us" ? programBallOn : 100 - programBallOn;
+  };
+
+  const toFieldSpot = (offenseBallOn: number): { side: FieldTeam; yardLine: number } => {
+    const programBallOn = gameState.possession === "us" ? offenseBallOn : 100 - offenseBallOn;
+    return programBallOn <= 50
+      ? { side: "program", yardLine: Math.max(1, Math.min(50, programBallOn)) }
+      : { side: "opponent", yardLine: Math.max(1, Math.min(50, 100 - programBallOn)) };
+  };
+
+  const initialIntCatchSpot = toFieldSpot(Math.max(1, Math.min(99, gameState.ballOn + 10)));
+  const [intCaughtTeam, setIntCaughtTeam] = useState<FieldTeam>(initialIntCatchSpot.side);
+  const [intCaughtYardLine, setIntCaughtYardLine] = useState(initialIntCatchSpot.yardLine);
+  const [intCaughtRaw, setIntCaughtRaw] = useState(String(initialIntCatchSpot.yardLine));
+  const [intReturnTeam, setIntReturnTeam] = useState<FieldTeam>(initialIntCatchSpot.side);
+  const [intReturnYardLine, setIntReturnYardLine] = useState(initialIntCatchSpot.yardLine);
+  const [intReturnRaw, setIntReturnRaw] = useState(String(initialIntCatchSpot.yardLine));
 
   // Step management
   const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">("pass");
@@ -324,6 +350,23 @@ export default function PlayEntryModal({
   const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
   const needsTouchback = false; // handled in kick-specific flow now
+  const interceptionSpotBallOn = isInterception
+    ? toOffensePerspectiveBallOn(intCaughtTeam, intCaughtYardLine)
+    : null;
+  const interceptionReturnBallOn = isInterception
+    ? (isTD ? 0 : toOffensePerspectiveBallOn(intReturnTeam, intReturnYardLine))
+    : null;
+  const interceptionNetYards = isInterception && interceptionReturnBallOn != null
+    ? interceptionReturnBallOn - gameState.ballOn
+    : 0;
+  const interceptionReturnYards = isInterception && interceptionSpotBallOn != null && interceptionReturnBallOn != null
+    ? interceptionSpotBallOn - interceptionReturnBallOn
+    : 0;
+  const interceptionReturnLabel = isInterception
+    ? (isTD
+      ? `${fieldTeamTag(gameState.possession === "us" ? "program" : "opponent")} EZ`
+      : `${fieldTeamTag(intReturnTeam)} ${intReturnYardLine}`)
+    : null;
 
   // Compute yards from the yard-line picker
   const yards = (() => {
@@ -336,6 +379,21 @@ export default function PlayEntryModal({
     }
     return targetBallOn - gameState.ballOn;
   })();
+
+  const setResultFromTotalYards = (totalYards: number) => {
+    const targetBallOn = Math.max(1, Math.min(99, gameState.ballOn + totalYards));
+    const programBallOn = gameState.possession === "us" ? targetBallOn : 100 - targetBallOn;
+    const side: "our" | "opp" = programBallOn <= 50 ? "our" : "opp";
+    const yardLine = programBallOn <= 50 ? programBallOn : 100 - programBallOn;
+    setResultSide(side);
+    setResultYardLine(Math.max(1, Math.min(50, yardLine)));
+    setResultYardRaw(String(Math.max(1, Math.min(50, yardLine))));
+  };
+
+  useEffect(() => {
+    if (!needsYards) return;
+    setTotalYardsRaw(String(yards));
+  }, [needsYards, yards]);
 
   const steps: Step[] = [];
   if (isKickPlay) {
@@ -537,6 +595,8 @@ export default function PlayEntryModal({
 
     if (isKickPlay) {
       playYards = isTouchback ? kickDistance : kickDistance - computedReturnYards;
+    } else if (isInterception && interceptionReturnBallOn != null) {
+      playYards = interceptionNetYards;
     } else if (isTD) {
       // TD: yards = distance from line of scrimmage to endzone
       // Turnovers (int/fumble) score in the opposite direction, so yards go negative (towards LOS endzone)
@@ -555,6 +615,10 @@ export default function PlayEntryModal({
       returnYards: isTouchback ? 0 : computedReturnYards,
       isTouchback,
       landingLabel,
+    } : undefined, isInterception ? {
+      turnoverSpotLabel: `${fieldTeamTag(intCaughtTeam)} ${intCaughtYardLine}`,
+      returnSpotLabel: interceptionReturnLabel ?? undefined,
+      returnYards: interceptionReturnYards,
     } : undefined);
 
     onSubmit({
@@ -573,6 +637,22 @@ export default function PlayEntryModal({
       defensiveFormation: defFormation,
       hashMark,
       description: desc,
+      playData: isInterception ? {
+        interception_spot: {
+          field_side: intCaughtTeam,
+          yard_line: intCaughtYardLine,
+          ball_on: interceptionSpotBallOn,
+          label: `${fieldTeamTag(intCaughtTeam)} ${intCaughtYardLine}`,
+        },
+        interception_return_to: {
+          field_side: isTD ? (gameState.possession === "us" ? "program" : "opponent") : intReturnTeam,
+          yard_line: isTD ? 0 : intReturnYardLine,
+          ball_on: interceptionReturnBallOn,
+          label: interceptionReturnLabel,
+        },
+        interception_return_yards: interceptionReturnYards,
+        interception_net_yards: playYards,
+      } : undefined,
     });
   };
 
@@ -933,58 +1013,227 @@ export default function PlayEntryModal({
 
               {needsYards && (
                 <div>
-                  <label className="label block mb-2">Ball Spotted At</label>
+                  {isInterception ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="label block mb-2">Intercepted At</label>
+                        <div className="flex gap-1.5 mb-3">
+                          {(["program", "opponent"] as const).map((side) => (
+                            <button
+                              key={side}
+                              onClick={() => setIntCaughtTeam(side)}
+                              className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                                intCaughtTeam === side
+                                  ? "border-red-500 bg-red-500/20 text-red-400"
+                                  : "border-surface-border bg-surface-bg text-slate-500"
+                              }`}
+                            >
+                              {fieldTeamLabel(side)}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {[-10, -5, -1].map((n) => (
+                            <button
+                              key={`int-caught-${n}`}
+                              onClick={() => adjustFieldTeamYardLine(intCaughtYardLine, n, intCaughtTeam, setIntCaughtYardLine, setIntCaughtTeam)}
+                              className="btn-ghost flex-1 h-10 text-sm font-bold"
+                            >
+                              {n}
+                            </button>
+                          ))}
+                          <div className="w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-red-300">
+                            {intCaughtYardLine}
+                          </div>
+                          {[1, 5, 10].map((n) => (
+                            <button
+                              key={`int-caught+${n}`}
+                              onClick={() => adjustFieldTeamYardLine(intCaughtYardLine, n, intCaughtTeam, setIntCaughtYardLine, setIntCaughtTeam)}
+                              className="btn-ghost flex-1 h-10 text-sm font-bold"
+                            >
+                              +{n}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[10px] text-slate-500">Or type:</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={50}
+                            placeholder="e.g. 35"
+                            value={intCaughtRaw}
+                            onChange={(e) => {
+                              setIntCaughtRaw(e.target.value);
+                              const n = parseInt(e.target.value, 10);
+                              if (!isNaN(n)) setIntCaughtYardLine(Math.max(1, Math.min(50, n)));
+                            }}
+                            className="input w-20 text-center text-sm font-black"
+                          />
+                        </div>
+                      </div>
 
-                  {/* Side selector */}
-                  <div className="flex gap-1.5 mb-3">
-                    {(["our", "opp"] as const).map(side => (
-                    <button
-                      key={side}
-                      onClick={() => setResultSide(side)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
-                          resultSide === side
-                            ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                            : "border-surface-border bg-surface-bg text-slate-500"
-                        }`}
-                    >
-                        {perspectiveSideLabel(side)}
-                      </button>
-                    ))}
-                  </div>
+                      <div>
+                        <label className="label block mb-2">Returned To</label>
+                        {!isTD && (
+                          <div className="flex gap-1.5 mb-3">
+                            {(["program", "opponent"] as const).map((side) => (
+                              <button
+                                key={side}
+                                onClick={() => setIntReturnTeam(side)}
+                                className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                                  intReturnTeam === side
+                                    ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                                    : "border-surface-border bg-surface-bg text-slate-500"
+                                }`}
+                              >
+                                {fieldTeamLabel(side)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {isTD ? (
+                          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-bold text-amber-300">
+                            {fieldTeamTag(gameState.possession === "us" ? "program" : "opponent")} EZ
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-1.5">
+                              {[-10, -5, -1].map((n) => (
+                                <button
+                                  key={`int-return-${n}`}
+                                  onClick={() => adjustFieldTeamYardLine(intReturnYardLine, n, intReturnTeam, setIntReturnYardLine, setIntReturnTeam)}
+                                  className="btn-ghost flex-1 h-10 text-sm font-bold"
+                                >
+                                  {n}
+                                </button>
+                              ))}
+                              <div className="w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-emerald-300">
+                                {intReturnYardLine}
+                              </div>
+                              {[1, 5, 10].map((n) => (
+                                <button
+                                  key={`int-return+${n}`}
+                                  onClick={() => adjustFieldTeamYardLine(intReturnYardLine, n, intReturnTeam, setIntReturnYardLine, setIntReturnTeam)}
+                                  className="btn-ghost flex-1 h-10 text-sm font-bold"
+                                >
+                                  +{n}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-[10px] text-slate-500">Or type:</span>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={50}
+                                placeholder="e.g. 35"
+                                value={intReturnRaw}
+                                onChange={(e) => {
+                                  setIntReturnRaw(e.target.value);
+                                  const n = parseInt(e.target.value, 10);
+                                  if (!isNaN(n)) setIntReturnYardLine(Math.max(1, Math.min(50, n)));
+                                }}
+                                className="input w-20 text-center text-sm font-black"
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
 
-                  {/* Yard line stepper */}
-                  <div className="flex items-center gap-1.5">
-                    {[-10, -5, -1].map(n => (
-                      <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
-                        className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
-                    ))}
-                    <div className={`w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums ${
-                      yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : "text-slate-300"
-                    }`}>{resultYardLine}</div>
-                    {[1, 5, 10].map(n => (
-                      <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
-                        className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[10px] text-slate-500">Or type:</span>
-                    <input
-                      type="number" inputMode="numeric" min={1} max={50}
-                      placeholder="e.g. 35"
-                      value={resultYardRaw}
-                      onChange={e => {
-                        setResultYardRaw(e.target.value);
-                        const n = parseInt(e.target.value, 10);
-                        if (!isNaN(n)) setResultYardLine(Math.max(1, Math.min(50, n)));
-                      }}
-                      className="input w-20 text-center text-sm font-black"
-                    />
-                  </div>
+                      <div className="text-xs text-slate-500 space-y-1">
+                        <div>
+                          INT at <span className="font-bold text-slate-300">{fieldTeamTag(intCaughtTeam)} {intCaughtYardLine}</span>
+                        </div>
+                        <div>
+                          Return to <span className="font-bold text-slate-300">{interceptionReturnLabel}</span>
+                          {" "}(<span className={interceptionReturnYards > 0 ? "text-emerald-400" : interceptionReturnYards < 0 ? "text-red-400" : ""}>
+                            {interceptionReturnYards > 0 ? "+" : ""}{interceptionReturnYards} yds
+                          </span>)
+                        </div>
+                        <div>
+                          Net from LOS: <span className={interceptionNetYards > 0 ? "text-emerald-400 font-bold" : interceptionNetYards < 0 ? "text-red-400 font-bold" : "font-bold text-slate-300"}>
+                            {interceptionNetYards > 0 ? "+" : ""}
+                            {interceptionNetYards} yds
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="label block mb-2">Ball Spotted At</label>
 
-                  <div className="text-xs text-slate-500 mt-3">
-                    {yardLabel(gameState.ballOn)} → <span className="font-bold text-slate-300">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
-                    {" "}(<span className={yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : ""}>{yards > 0 ? "+" : ""}{yards} yds</span>)
-                  </div>
+                      <div className="flex gap-1.5 mb-3">
+                        {(["our", "opp"] as const).map(side => (
+                        <button
+                          key={side}
+                          onClick={() => setResultSide(side)}
+                            className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                              resultSide === side
+                                ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                                : "border-surface-border bg-surface-bg text-slate-500"
+                            }`}
+                        >
+                            {perspectiveSideLabel(side)}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {[-10, -5, -1].map(n => (
+                          <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
+                            className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
+                        ))}
+                        <div className={`w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums ${
+                          yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : "text-slate-300"
+                        }`}>{resultYardLine}</div>
+                        {[1, 5, 10].map(n => (
+                          <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
+                            className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] text-slate-500">Or type:</span>
+                        <input
+                          type="number" inputMode="numeric" min={1} max={50}
+                          placeholder="e.g. 35"
+                          value={resultYardRaw}
+                          onChange={e => {
+                            setResultYardRaw(e.target.value);
+                            const n = parseInt(e.target.value, 10);
+                            if (!isNaN(n)) setResultYardLine(Math.max(1, Math.min(50, n)));
+                          }}
+                          className="input w-20 text-center text-sm font-black"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] text-slate-500">Yards:</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="+7 or -2"
+                          value={totalYardsRaw}
+                          onChange={e => {
+                            const nextValue = e.target.value;
+                            setTotalYardsRaw(nextValue);
+                            const parsed = parseInt(nextValue, 10);
+                            if (!isNaN(parsed)) {
+                              setResultFromTotalYards(parsed);
+                            }
+                          }}
+                          onBlur={() => setTotalYardsRaw(String(yards))}
+                          className="input w-24 text-center text-sm font-black"
+                        />
+                      </div>
+
+                      <div className="text-xs text-slate-500 mt-3">
+                        {yardLabel(gameState.ballOn)} → <span className="font-bold text-slate-300">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
+                        {" "}(<span className={yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : ""}>{yards > 0 ? "+" : ""}{yards} yds</span>)
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1198,25 +1447,52 @@ export default function PlayEntryModal({
                 ))}
                 {needsYards && (
                   <>
-                    {!isTD && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Spotted At</span>
-                        <span className="font-bold">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
-                      </div>
-                    )}
-                    {(() => {
-                      const displayYards = isTD
-                        ? (["int", "fumble"].includes(playType.id) ? -gameState.ballOn : 100 - gameState.ballOn)
-                        : yards;
-                      return (
+                    {isInterception ? (
+                      <>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">Yards</span>
-                          <span className={`font-bold ${displayYards > 0 ? "text-emerald-400" : displayYards < 0 ? "text-red-400" : ""}`}>
-                            {displayYards > 0 ? `+${displayYards}` : displayYards}
+                          <span className="text-slate-500">Intercepted At</span>
+                          <span className="font-bold">{fieldTeamTag(intCaughtTeam)} {intCaughtYardLine}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Returned To</span>
+                          <span className="font-bold">{interceptionReturnLabel}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Return Yards</span>
+                          <span className={`font-bold ${interceptionReturnYards > 0 ? "text-emerald-400" : interceptionReturnYards < 0 ? "text-red-400" : ""}`}>
+                            {interceptionReturnYards > 0 ? `+${interceptionReturnYards}` : interceptionReturnYards}
                           </span>
                         </div>
-                      );
-                    })()}
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Net Yards</span>
+                          <span className={`font-bold ${interceptionNetYards > 0 ? "text-emerald-400" : interceptionNetYards < 0 ? "text-red-400" : ""}`}>
+                            {interceptionNetYards > 0 ? `+${interceptionNetYards}` : interceptionNetYards}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {!isTD && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Spotted At</span>
+                            <span className="font-bold">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
+                          </div>
+                        )}
+                        {(() => {
+                          const displayYards = isTD
+                            ? (["int", "fumble"].includes(playType.id) ? -gameState.ballOn : 100 - gameState.ballOn)
+                            : yards;
+                          return (
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Yards</span>
+                              <span className={`font-bold ${displayYards > 0 ? "text-emerald-400" : displayYards < 0 ? "text-red-400" : ""}`}>
+                                {displayYards > 0 ? `+${displayYards}` : displayYards}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
                   </>
                 )}
                 {isKickPlay && (

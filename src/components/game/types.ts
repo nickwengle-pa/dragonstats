@@ -241,6 +241,11 @@ export function buildDescription(
     isTouchback: boolean;
     landingLabel?: string;
   },
+  turnoverInfo?: {
+    turnoverSpotLabel?: string;
+    returnSpotLabel?: string;
+    returnYards?: number | null;
+  },
 ): string {
   const parts: string[] = [];
   const byRole = (r: string) => tagged.find(t => t.role === r);
@@ -268,7 +273,12 @@ export function buildDescription(
     }
     case "int": {
       const p = byRole("passer"), i = byRole("interceptor");
-      parts.push(`${playerLabel(p)} INT by ${playerLabel(i)}`);
+      const returnSummary = turnoverInfo?.returnSpotLabel
+        ? `, ret ${turnoverInfo.returnSpotLabel}${typeof turnoverInfo.returnYards === "number" ? ` (${turnoverInfo.returnYards > 0 ? "+" : ""}${turnoverInfo.returnYards} yds)` : ""}`
+        : "";
+      parts.push(
+        `${playerLabel(p)} INT by ${playerLabel(i)}${turnoverInfo?.turnoverSpotLabel ? ` at ${turnoverInfo.turnoverSpotLabel}` : ""}${returnSummary}`,
+      );
       break;
     }
     case "fumble": parts.push("Fumble"); break;

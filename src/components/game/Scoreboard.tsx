@@ -22,10 +22,52 @@ interface Props {
   onAdjustDistance: (delta: number) => void;
   onAdjustBall: (delta: number) => void;
   onEditBall: () => void;
+  ourTimeoutsRemaining: number;
+  theirTimeoutsRemaining: number;
+  onTakeTimeout: (team: "us" | "them") => void;
 }
 
 function downLabel(down: number) {
   return `${down}${down === 1 ? "st" : down === 2 ? "nd" : down === 3 ? "rd" : "th"}`;
+}
+
+function TimeoutButtons({
+  team,
+  remaining,
+  accentColor,
+  align = "left",
+  onTakeTimeout,
+}: {
+  team: "us" | "them";
+  remaining: number;
+  accentColor: string;
+  align?: "left" | "right";
+  onTakeTimeout: (team: "us" | "them") => void;
+}) {
+  return (
+    <div className={`mt-1 flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
+      <span className="text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">TO</span>
+      {[0, 1, 2].map((slot) => {
+        const available = slot < remaining;
+        return (
+          <button
+            key={`${team}-${slot}`}
+            onClick={() => onTakeTimeout(team)}
+            disabled={!available}
+            className={`h-3.5 w-3.5 rounded-full border transition-colors ${
+              available ? "cursor-pointer" : "cursor-default"
+            }`}
+            style={{
+              backgroundColor: available ? accentColor : "rgba(148, 163, 184, 0.15)",
+              borderColor: available ? accentColor : "rgba(148, 163, 184, 0.25)",
+              opacity: available ? 1 : 0.6,
+            }}
+            title={`${team === "us" ? "Program" : "Opponent"} timeout`}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 export default function Scoreboard({
@@ -49,6 +91,9 @@ export default function Scoreboard({
   onAdjustDistance,
   onAdjustBall,
   onEditBall,
+  ourTimeoutsRemaining,
+  theirTimeoutsRemaining,
+  onTakeTimeout,
 }: Props) {
   const effOppColor = oppColor ?? "#6b7280";
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
@@ -91,6 +136,12 @@ export default function Scoreboard({
                   <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[7px] border-l-amber-400" />
                 )}
               </div>
+              <TimeoutButtons
+                team="us"
+                remaining={ourTimeoutsRemaining}
+                accentColor={primaryColor}
+                onTakeTimeout={onTakeTimeout}
+              />
             </div>
           </div>
 
@@ -147,6 +198,13 @@ export default function Scoreboard({
                   {state.theirScore}
                 </span>
               </div>
+              <TimeoutButtons
+                team="them"
+                remaining={theirTimeoutsRemaining}
+                accentColor={effOppColor}
+                align="right"
+                onTakeTimeout={onTakeTimeout}
+              />
             </div>
             {oppLogoUrl ? (
               <img src={oppLogoUrl} alt={oppName} className="w-9 h-9 object-contain rounded-lg shrink-0" />

@@ -336,6 +336,9 @@ function convertPlay(
       const passer = firstPlayerByRole(play, "passer")
         ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
       const interceptor = firstPlayerByRole(play, "interceptor");
+      const interceptionReturnYards = typeof pd?.interception_return_yards === "number"
+        ? pd.interception_return_yards
+        : play.yards_gained > 0 ? play.yards_gained : undefined;
       return {
         type: PlayType.Pass,
         passer,
@@ -343,7 +346,7 @@ function convertPlay(
         yardsGained: play.yards_gained,
         isTouchdown: play.is_touchdown,
         interceptedBy: interceptor,
-        interceptionReturnYards: play.yards_gained > 0 ? play.yards_gained : undefined,
+        interceptionReturnYards,
         penalties,
         description: play.description ?? undefined,
         context,
@@ -669,6 +672,9 @@ function convertPlay(
         context,
       } satisfies PenaltyPlay & { context: PlayContext } as Play;
     }
+
+    case "timeout":
+      return null;
 
     default:
       // Unknown play type — skip

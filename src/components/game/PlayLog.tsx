@@ -22,6 +22,7 @@ const PLAY_ICONS: Record<string, string> = {
   two_pt: "\u2161",
   safety: "\u25B2",
   penalty_only: "\u2691",
+  timeout: "TO",
 };
 
 const PLAY_ICON_COLORS: Record<string, string> = {
@@ -38,6 +39,7 @@ const PLAY_ICON_COLORS: Record<string, string> = {
   two_pt: "text-blue-400",
   safety: "text-amber-500",
   penalty_only: "text-orange-400",
+  timeout: "text-amber-300",
 };
 
 export default function PlayLog({ plays, onEdit, onUndo, onClose }: Props) {
@@ -86,16 +88,24 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose }: Props) {
                   </div>
                   <div className="flex flex-col items-end gap-0.5 shrink-0">
                     <div className={`text-xs font-display font-extrabold tabular-nums ${
-                      play.yards > 0 ? "text-emerald-400" : play.yards < 0 ? "text-red-400" : "text-surface-muted"
+                      play.type === "timeout"
+                        ? "text-amber-300"
+                        : play.yards > 0
+                          ? "text-emerald-400"
+                          : play.yards < 0
+                            ? "text-red-400"
+                            : "text-surface-muted"
                     }`}>
-                      {play.yards > 0 ? `+${play.yards}` : play.yards === 0 ? "0" : play.yards}
+                      {play.type === "timeout" ? "TO" : play.yards > 0 ? `+${play.yards}` : play.yards === 0 ? "0" : play.yards}
                     </div>
                     {play.isTouchdown && <span className="text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider">TD</span>}
                     {play.penalty && <span className="text-[10px] font-display font-bold text-orange-400 uppercase tracking-wider">PEN</span>}
                   </div>
-                  <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer">
-                    <Pencil className="w-3 h-3" />
-                  </button>
+                  {play.type !== "timeout" && (
+                    <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer">
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               );
             })

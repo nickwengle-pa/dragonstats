@@ -369,6 +369,9 @@ function toEnginePlay(
     case "int": {
       const passer = firstTaggedPlayer(play, "passer")?.player_id ?? genericPlayerId(play, "passer", config);
       const interceptor = firstTaggedPlayer(play, "interceptor")?.player_id;
+      const interceptionReturnYards = typeof play.playData?.interception_return_yards === "number"
+        ? play.playData.interception_return_yards
+        : play.yards > 0 ? play.yards : undefined;
       return {
         type: PlayType.Pass,
         passer,
@@ -376,7 +379,7 @@ function toEnginePlay(
         yardsGained: play.yards,
         isTouchdown: play.isTouchdown,
         interceptedBy: interceptor,
-        interceptionReturnYards: play.yards > 0 ? play.yards : undefined,
+        interceptionReturnYards,
         penalties,
         description: play.description || undefined,
         context,

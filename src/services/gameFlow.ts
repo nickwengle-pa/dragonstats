@@ -312,6 +312,15 @@ export function advanceSituationAfterPlay(
   before: LiveSituation,
   config: GameConfig,
 ): LiveSituation {
+  if (play.type === "timeout") {
+    return {
+      possession: before.possession,
+      down: before.down,
+      distance: before.distance,
+      ballOn: before.ballOn,
+    };
+  }
+
   const possession = before.possession;
   const newBallOn = clampBallOn(before.ballOn + play.yards);
 
