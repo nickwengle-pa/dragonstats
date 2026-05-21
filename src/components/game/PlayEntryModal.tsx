@@ -288,8 +288,12 @@ export default function PlayEntryModal({
   const [tacklers, setTacklers] = useState<TaggedPlayer[]>([]);
   const [tacklerSearch, setTacklerSearch] = useState("");
 
-  // Kickoff / Punt specific state
-  const isKickPlay = playType.id === "kickoff" || playType.id === "punt";
+  // Kickoff / Punt specific state (includes onside + fair catch variants)
+  const isKickPlay =
+    playType.id === "kickoff" ||
+    playType.id === "punt" ||
+    playType.id === "onside_kick" ||
+    playType.id === "fair_catch";
   const [kickedToYard, setKickedToYard] = useState(5); // receiving team's yard line where ball lands
   const [kickedToRaw, setKickedToRaw] = useState("");
   const [returnToYardLine, setReturnToYardLine] = useState(20);
@@ -347,7 +351,7 @@ export default function PlayEntryModal({
   const kickStartLabel = formatFieldSpot(gameState.ballOn, gameState.possession);
   const landingLabel = kickedToYard === 0 ? `${fieldTeamTag(receivingFieldSide)} EZ` : `${fieldTeamTag(receivingFieldSide)} ${kickedToYard}`;
   const kickDistance = isKickPlay ? Math.max(0, (100 - kickedToYard) - gameState.ballOn) : 0;
-  const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt"].includes(playType.id);
+  const needsYards = !["pass_inc", "throwaway", "drop", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt", "onside_kick", "fair_catch"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
   const needsTouchback = false; // handled in kick-specific flow now
   const interceptionSpotBallOn = isInterception
@@ -420,7 +424,7 @@ export default function PlayEntryModal({
       return roles.length === 0 || roles.every((role) => tagged.some((player) => player.role === role));
     }
     if (currentStep === "kick_kicker") {
-      const kickerRole = playType.id === "kickoff" ? "kicker" : "punter";
+      const kickerRole = (playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter";
       return tagged.some(t => t.role === kickerRole);
     }
     if (currentStep === "kick_returner") {
@@ -541,7 +545,7 @@ export default function PlayEntryModal({
 
   /* ── Kick-specific player selection helpers ── */
   const handleKickerSelect = (p: RosterPlayer) => {
-    const role = playType.id === "kickoff" ? "kicker" : "punter";
+    const role = (playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter";
     const tp: TaggedPlayer = {
       id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
       name: `${p.player.first_name} ${p.player.last_name}`, role,
@@ -551,7 +555,7 @@ export default function PlayEntryModal({
   };
 
   const handleKickerSelectOpp = (p: OpponentPlayerRef) => {
-    const role = playType.id === "kickoff" ? "kicker" : "punter";
+    const role = (playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter";
     const tp: TaggedPlayer = {
       id: p.id, player_id: p.id, jersey_number: p.jersey_number,
       name: p.name, role, isOpponent: true,
@@ -583,7 +587,7 @@ export default function PlayEntryModal({
     const passResult = playType.id === "pass_comp" ? "Complete" : playType.id === "pass_inc" ? "Incomplete" : "";
     const finalResult = result || passResult;
 
-    const isZeroYard = ["pass_inc", "spike", "penalty_only"].includes(playType.id) || needsResult;
+    const isZeroYard = ["pass_inc", "throwaway", "drop", "spike", "penalty_only"].includes(playType.id) || needsResult;
     let playYards: number;
     // Compute return yards from yard-line picker for kick plays
     let computedReturnYards = 0;
@@ -682,7 +686,7 @@ export default function PlayEntryModal({
                 ({
                   players: "Players", yards: "Yards", formations: "Formations",
                   defense: "Defense", review: "Review",
-                  kick_kicker: playType.id === "kickoff" ? "Kicker" : "Punter",
+                  kick_kicker: (playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicker" : "Punter",
                   kick_location: "Kick Location", kick_returner: "Returner",
                   kick_return_yards: "Return To", kick_tacklers: "Tacklers",
                 } as Record<string, string>)[currentStep] ?? currentStep
@@ -778,9 +782,9 @@ export default function PlayEntryModal({
               {isTheirBall ? (
                 <OpponentPlayerGrid
                   players={localOppPlayers}
-                  label={`Select ${playType.id === "kickoff" ? "kicker" : "punter"} (opponent)`}
+                  label={`Select ${(playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter"} (opponent)`}
                   onSelect={handleKickerSelectOpp}
-                  selectedId={tagged.find(t => t.role === (playType.id === "kickoff" ? "kicker" : "punter"))?.id ?? null}
+                  selectedId={tagged.find(t => t.role === ((playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter"))?.id ?? null}
                   search={kickerSearch}
                   onSearch={setKickerSearch}
                   onQuickAdd={handleQuickAddOpponent}
@@ -788,9 +792,9 @@ export default function PlayEntryModal({
               ) : (
                 <PlayerGrid
                   roster={roster}
-                  label={`Select ${playType.id === "kickoff" ? "kicker" : "punter"}`}
+                  label={`Select ${(playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter"}`}
                   onSelect={handleKickerSelect}
-                  selectedId={tagged.find(t => t.role === (playType.id === "kickoff" ? "kicker" : "punter"))?.player_id ?? null}
+                  selectedId={tagged.find(t => t.role === ((playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter"))?.player_id ?? null}
                   search={kickerSearch}
                   onSearch={setKickerSearch}
                 />
@@ -803,7 +807,7 @@ export default function PlayEntryModal({
             <>
               <div>
                 <label className="label block mb-2">
-                  {playType.id === "kickoff" ? "Kicked" : "Punted"} To ({receivingTeamLabel} Yard Line)
+                  {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicked" : "Punted"} To ({receivingTeamLabel} Yard Line)
                 </label>
                 <div className="flex items-center gap-1.5">
                   {[-10, -5, -1].map(n => (
@@ -833,7 +837,7 @@ export default function PlayEntryModal({
                   />
                 </div>
                 <div className="text-xs text-slate-500 mt-2">
-                  {playType.id === "kickoff" ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{kickDistance} yards</span>
+                  {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{kickDistance} yards</span>
                   {" "}({kickStartLabel} → {landingLabel})
                 </div>
               </div>
@@ -855,7 +859,7 @@ export default function PlayEntryModal({
           {currentStep === "kick_returner" && (
             <>
               <div className="text-xs text-slate-400 mb-1">
-                {playType.id === "kickoff" ? "Kicked" : "Punted"} to {landingLabel} ({kickDistance} yds). Select the returner.
+                {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicked" : "Punted"} to {landingLabel} ({kickDistance} yds). Select the returner.
               </div>
               {isTheirBall ? (
                 <PlayerGrid

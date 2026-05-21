@@ -460,7 +460,18 @@ export function deriveGameState(
   // Accumulate score
   for (const play of plays) {
     const pd = play.play_data ?? {};
-    if (play.is_touchdown) { if (play.possession === "us") state.ourScore += 6; else state.theirScore += 6; }
+    if (play.is_touchdown) {
+      const isReturnTd =
+        play.play_type === "int" ||
+        play.play_type === "fumble" ||
+        play.play_type === "kickoff" ||
+        play.play_type === "punt" ||
+        play.play_type === "blocked_kick";
+      const scoringSide = isReturnTd
+        ? (play.possession === "us" ? "them" : "us")
+        : play.possession;
+      if (scoringSide === "us") state.ourScore += 6; else state.theirScore += 6;
+    }
     if (play.play_type === "pat" && pd.result === "Good") { if (play.possession === "us") state.ourScore += 1; else state.theirScore += 1; }
     if (play.play_type === "fg" && pd.result === "Good") { if (play.possession === "us") state.ourScore += 3; else state.theirScore += 3; }
     if (play.play_type === "two_pt" && pd.result === "Good") { if (play.possession === "us") state.ourScore += 2; else state.theirScore += 2; }

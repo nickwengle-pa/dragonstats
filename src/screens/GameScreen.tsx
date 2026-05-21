@@ -206,7 +206,16 @@ function applyScoreDelta(
   const next = { ...before };
 
   if (play.isTouchdown) {
-    if (play.possession === "us") next.us += 6;
+    const isReturnTd =
+      play.type === "int" ||
+      play.type === "fumble" ||
+      play.type === "kickoff" ||
+      play.type === "punt" ||
+      play.type === "blocked_kick";
+    const scoringSide = isReturnTd
+      ? (play.possession === "us" ? "them" : "us")
+      : play.possession;
+    if (scoringSide === "us") next.us += 6;
     else next.them += 6;
   }
   if (play.type === "pat" && play.result === "Good") {

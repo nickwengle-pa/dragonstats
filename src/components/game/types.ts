@@ -92,12 +92,15 @@ export interface PlayTypeDef {
 export const PLAY_TYPES: PlayTypeDef[] = [
   // Run plays
   { id: "rush", label: "Run", color: "emerald", category: "run", roles: ["rusher"] },
+  { id: "scramble", label: "Scramble", color: "emerald", category: "run", roles: ["passer"] },
   { id: "kneel", label: "Kneel", color: "neutral", category: "run", roles: ["rusher"] },
   { id: "spike", label: "Spike", color: "neutral", category: "other", roles: ["passer"] },
 
   // Pass plays
   { id: "pass_comp", label: "Complete", color: "blue", category: "pass", roles: ["passer", "receiver"] },
   { id: "pass_inc", label: "Incomplete", color: "neutral", category: "pass", roles: ["passer", "target"] },
+  { id: "throwaway", label: "Throw Away", color: "neutral", category: "pass", roles: ["passer"] },
+  { id: "drop", label: "Drop", color: "neutral", category: "pass", roles: ["passer", "target"] },
   { id: "sack", label: "Sack", color: "red", category: "pass", roles: ["passer", "sacker"] },
 
   // Scoring
@@ -107,7 +110,9 @@ export const PLAY_TYPES: PlayTypeDef[] = [
 
   // Kicking
   { id: "kickoff", label: "Kickoff", color: "purple", category: "kicking", roles: ["kicker", "returner"] },
+  { id: "onside_kick", label: "Onside", color: "purple", category: "kicking", roles: ["kicker", "recoverer"] },
   { id: "punt", label: "Punt", color: "purple", category: "kicking", roles: ["punter", "returner"] },
+  { id: "fair_catch", label: "Fair Catch", color: "purple", category: "kicking", roles: ["punter", "returner"] },
   { id: "blocked_kick", label: "Blocked", color: "red", category: "kicking", roles: ["blocker"] },
 
   // Turnovers

@@ -277,6 +277,29 @@ function convertPlay(
       } satisfies RushPlay & { context: PlayContext } as Play;
     }
 
+    case "scramble": {
+      // QB scramble — counts as a rush but the runner is the passer, and the
+      // engine flags it as a designed-pass-turned-run for split passing/rushing stats.
+      const rusher = firstPlayerByRole(play, "passer")
+        ?? firstPlayerByRole(play, "rusher")
+        ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
+      const result = play.is_touchdown ? RushResult.Touchdown : RushResult.Normal;
+      return {
+        type: PlayType.Rush,
+        rusher,
+        result,
+        yardsGained: play.yards_gained,
+        isTouchdown: play.is_touchdown,
+        isQBScramble: true,
+        tackledBy: playersByRole(play, "tackler"),
+        assistedTackle: playersByRole(play, "assist"),
+        fumble: buildFumble(play, rusher, ctx),
+        penalties,
+        description: play.description ?? undefined,
+        context,
+      } satisfies RushPlay & { context: PlayContext } as Play;
+    }
+
     case "pass_comp": {
       const passer = firstPlayerByRole(play, "passer")
         ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
@@ -311,6 +334,40 @@ function convertPlay(
         isTouchdown: false,
         penalties,
         description: play.description ?? undefined,
+        context,
+      } satisfies PassPlay & { context: PlayContext } as Play;
+    }
+
+    case "throwaway": {
+      const passer = firstPlayerByRole(play, "passer")
+        ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
+      return {
+        type: PlayType.Pass,
+        passer,
+        result: PassResult.ThrowAway,
+        yardsGained: 0,
+        isTouchdown: false,
+        penalties,
+        description: play.description ?? undefined,
+        context,
+      } satisfies PassPlay & { context: PlayContext } as Play;
+    }
+
+    case "drop": {
+      // Drop is recorded as an incomplete pass; the target's drop count is
+      // derived downstream from result=Incomplete + target tagged.
+      const passer = firstPlayerByRole(play, "passer")
+        ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
+      const target = firstPlayerByRole(play, "target") ?? firstPlayerByRole(play, "receiver");
+      return {
+        type: PlayType.Pass,
+        passer,
+        result: PassResult.Incomplete,
+        target,
+        yardsGained: 0,
+        isTouchdown: false,
+        penalties,
+        description: play.description ?? "Drop",
         context,
       } satisfies PassPlay & { context: PlayContext } as Play;
     }
@@ -440,6 +497,42 @@ function convertPlay(
         tackledBy: playersByRole(play, "tackler"),
         penalties,
         description: play.description ?? undefined,
+        context,
+      } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
+    }
+
+    case "onside_kick": {
+      const kicker = firstPlayerByRole(play, "kicker");
+      const recoverer = firstPlayerByRole(play, "recoverer") ?? firstPlayerByRole(play, "returner");
+      return {
+        type: PlayType.Kickoff,
+        kicker,
+        returner: recoverer,
+        result: SpecialTeamsResult.Normal,
+        returnYards: recoverer ? play.yards_gained : undefined,
+        isOnsideKick: true,
+        isTouchdown: play.is_touchdown,
+        tackledBy: playersByRole(play, "tackler"),
+        penalties,
+        description: play.description ?? "Onside kick",
+        context,
+      } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
+    }
+
+    case "fair_catch": {
+      // Treat as a punt with no return; returner caught and signaled.
+      const punter = firstPlayerByRole(play, "punter") ?? firstPlayerByRole(play, "kicker");
+      const returner = firstPlayerByRole(play, "returner");
+      return {
+        type: PlayType.Punt,
+        punter,
+        returner,
+        result: SpecialTeamsResult.FairCatch,
+        returnYards: 0,
+        isFairCatch: true,
+        isTouchdown: false,
+        penalties,
+        description: play.description ?? "Fair catch",
         context,
       } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
     }

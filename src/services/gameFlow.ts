@@ -346,8 +346,15 @@ export function advanceSituationAfterPlay(
   }
 
   if (play.isTouchdown) {
+    const isReturnTd =
+      play.type === "int" ||
+      play.type === "fumble" ||
+      play.type === "kickoff" ||
+      play.type === "punt" ||
+      play.type === "blocked_kick";
+    const scoringTeam = isReturnTd ? oppositeTeam(possession) : possession;
     return {
-      possession,
+      possession: scoringTeam,
       down: 1,
       distance: config.pat_distance,
       ballOn: 100 - config.pat_distance,
@@ -375,9 +382,23 @@ export function advanceSituationAfterPlay(
     };
   }
 
-  if (play.type === "kickoff" || play.type === "punt") {
+  if (play.type === "kickoff" || play.type === "punt" || play.type === "fair_catch") {
     return {
       possession: oppositeTeam(possession),
+      down: 1,
+      distance: config.first_down_distance,
+      ballOn: play.isTouchback ? config.touchback_yard_line : flipFieldPosition(newBallOn),
+    };
+  }
+
+  if (play.type === "onside_kick") {
+    // Possession is set explicitly via play.nextPossession when the user
+    // picks who recovered. Fall through to the default (kicking-team retains)
+    // when the recoverer is on the kicking team; flip when the receiving team
+    // gets it. The caller normally provides nextPossession so this is a safety net.
+    const recoveredByKicker = play.nextPossession === possession;
+    return {
+      possession: recoveredByKicker ? possession : oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
       ballOn: play.isTouchback ? config.touchback_yard_line : flipFieldPosition(newBallOn),
