@@ -204,11 +204,17 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
     ? otherTeam(possTeamId, ctx)
     : possTeamId;
 
+  const enforcementRaw = pd?.penalty_enforcement;
+  const enforcement: PenaltyEnforcement =
+    enforcementRaw === "declined" ? PenaltyEnforcement.Declined
+    : enforcementRaw === "offset" ? PenaltyEnforcement.Offset
+    : PenaltyEnforcement.Accepted;
+
   return [{
     penaltyType: getPenaltyEngineCode(penaltyType) ?? penaltyType.toLowerCase().replace(/\s+/g, "_"),
     team: penTeam,
-    yards: pd?.penalty_yards ?? 5,
-    enforcement: PenaltyEnforcement.Accepted,
+    yards: enforcement === PenaltyEnforcement.Accepted ? (pd?.penalty_yards ?? 5) : 0,
+    enforcement,
   }];
 }
 

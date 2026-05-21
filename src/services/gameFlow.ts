@@ -35,6 +35,7 @@ interface AdvanceablePlay {
   result: string;
   penalty: string | null;
   penaltyCategory?: PenaltySide | null;
+  penaltyEnforcement?: "accepted" | "declined" | "offset";
   flagYards: number;
   isTouchdown: boolean;
   firstDown: boolean;
@@ -325,24 +326,40 @@ export function advanceSituationAfterPlay(
   const newBallOn = clampBallOn(before.ballOn + play.yards);
 
   if (play.penalty) {
-    const isOffensePenalty = isPenaltyOnOffense(play.penalty, play.penaltyCategory);
+    const enforcement = play.penaltyEnforcement ?? "accepted";
 
-    if (isOffensePenalty) {
+    // Offsetting penalties: no yardage, down replays.
+    if (enforcement === "offset") {
       return {
         possession,
         down: before.down,
-        distance: Math.min(99, before.distance + play.flagYards),
-        ballOn: Math.max(1, before.ballOn - play.flagYards),
+        distance: before.distance,
+        ballOn: before.ballOn,
       };
     }
 
-    const penaltyBallOn = Math.min(98, before.ballOn + play.flagYards);
-    return {
-      possession,
-      down: 1,
-      distance: Math.min(config.first_down_distance, 100 - penaltyBallOn),
-      ballOn: penaltyBallOn,
-    };
+    // Declined penalty: fall through to normal play advancement below.
+    if (enforcement === "accepted") {
+      const isOffensePenalty = isPenaltyOnOffense(play.penalty, play.penaltyCategory);
+
+      if (isOffensePenalty) {
+        return {
+          possession,
+          down: before.down,
+          distance: Math.min(99, before.distance + play.flagYards),
+          ballOn: Math.max(1, before.ballOn - play.flagYards),
+        };
+      }
+
+      const penaltyBallOn = Math.min(98, before.ballOn + play.flagYards);
+      return {
+        possession,
+        down: 1,
+        distance: Math.min(config.first_down_distance, 100 - penaltyBallOn),
+        ballOn: penaltyBallOn,
+      };
+    }
+    // enforcement === "declined" — fall through to normal play advancement.
   }
 
   if (play.isTouchdown) {
@@ -366,6 +383,11 @@ export function advanceSituationAfterPlay(
   }
 
   if (play.type === "pat" || play.type === "two_pt") {
+    // Defensive 2-point return ("two-point safety"): defense scored, so they
+    // become the kicking team for the next kickoff.
+    if (play.result === "Returned") {
+      return createKickoffSituation(oppositeTeam(possession), config);
+    }
     return createKickoffSituation(possession, config);
   }
 

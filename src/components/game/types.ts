@@ -45,6 +45,7 @@ export interface PlayRecord {
   yards: number;
   result: string;
   penalty: string | null;
+  penaltyEnforcement?: "accepted" | "declined" | "offset";
   flagYards: number;
   isTouchdown: boolean;
   firstDown: boolean;

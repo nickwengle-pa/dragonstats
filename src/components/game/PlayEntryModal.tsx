@@ -30,6 +30,8 @@ interface Props {
   onAddOpponentPlayer?: (player: OpponentPlayerRef) => void;
 }
 
+export type PenaltyEnforcement = "accepted" | "declined" | "offset";
+
 export interface PlaySubmitData {
   playType: PlayTypeDef;
   tagged: TaggedPlayer[];
@@ -37,9 +39,10 @@ export interface PlaySubmitData {
   isTouchdown: boolean;
   isFirstDown: boolean;
   isTouchback: boolean;
-  result: string; // "Good" | "No Good" | "Complete" | "Incomplete" | ""
+  result: string; // "Good" | "No Good" | "Returned" | "Complete" | "Incomplete" | ""
   penalty: string | null;
   penaltyCategory: PenaltySide | null;
+  penaltyEnforcement: PenaltyEnforcement;
   flagYards: number;
   blockedKickType: BlockedKickType | null;
   offensiveFormation: string | null;
@@ -270,11 +273,12 @@ export default function PlayEntryModal({
   const [isTD, setIsTD] = useState(false);
   const [isFirstDown, setIsFirstDown] = useState(false);
   const [isTouchback, setIsTouchback] = useState(false);
-  const [result, setResult] = useState<"Good" | "No Good" | "">("");
+  const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">("");
 
   // Penalty
   const [penalty, setPenalty] = useState<string | null>(null);
   const [penaltyCategory, setPenaltyCategory] = useState<PenaltySide | null>(null);
+  const [penaltyEnforcement, setPenaltyEnforcement] = useState<PenaltyEnforcement>("accepted");
   const [flagYards, setFlagYards] = useState(5);
   const [showPenalties, setShowPenalties] = useState(false);
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(() => defaultBlockedKickType(gameState));
@@ -635,7 +639,8 @@ export default function PlayEntryModal({
       result: finalResult,
       penalty,
       penaltyCategory,
-      flagYards: penalty ? flagYards : 0,
+      penaltyEnforcement: penalty ? penaltyEnforcement : "accepted",
+      flagYards: penalty && penaltyEnforcement === "accepted" ? flagYards : 0,
       blockedKickType: playType.id === "blocked_kick" ? blockedKickType : null,
       offensiveFormation: offFormation,
       defensiveFormation: defFormation,
@@ -1245,11 +1250,16 @@ export default function PlayEntryModal({
                 <div>
                   <label className="label block mb-1.5">Result</label>
                   <div className="flex gap-2">
-                    {(["Good", "No Good"] as const).map(r => (
+                    {(["pat", "two_pt"].includes(playType.id)
+                      ? (["Good", "No Good", "Returned"] as const)
+                      : (["Good", "No Good"] as const)
+                    ).map(r => (
                       <button key={r} onClick={() => setResult(prev => prev === r ? "" : r)}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                           result === r
-                            ? r === "Good" ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-red-500 bg-red-500/20 text-red-400"
+                            ? r === "Good" ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                              : r === "Returned" ? "border-orange-500 bg-orange-500/20 text-orange-400"
+                              : "border-red-500 bg-red-500/20 text-red-400"
                             : "border-surface-border bg-surface-bg text-slate-500"
                         }`}>{r}</button>
                     ))}
@@ -1323,11 +1333,32 @@ export default function PlayEntryModal({
                           ))}
                         </div>
                       </div>
+                      <div>
+                        <span className="text-xs text-slate-500 block mb-1">Enforcement</span>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(["accepted", "declined", "offset"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => setPenaltyEnforcement(mode)}
+                              className={`py-2 rounded-xl text-[11px] font-bold border-2 capitalize transition-all duration-200 ${
+                                penaltyEnforcement === mode
+                                  ? mode === "accepted" ? "border-orange-500 bg-orange-500/15 text-orange-400"
+                                    : mode === "declined" ? "border-slate-500 bg-slate-500/15 text-slate-300"
+                                    : "border-yellow-500 bg-yellow-500/15 text-yellow-300"
+                                  : "border-surface-border bg-surface-bg text-slate-500"
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-500">Penalty yards:</span>
                         <input type="number" value={flagYards} onChange={e => setFlagYards(Number(e.target.value))}
-                          className="input w-16 text-center text-sm" />
-                        <button onClick={() => { setPenalty(null); setPenaltyCategory(null); setFlagYards(5); }} className="text-xs text-red-400 ml-auto">Clear</button>
+                          className="input w-16 text-center text-sm"
+                          disabled={penaltyEnforcement !== "accepted"} />
+                        <button onClick={() => { setPenalty(null); setPenaltyCategory(null); setFlagYards(5); setPenaltyEnforcement("accepted"); }} className="text-xs text-red-400 ml-auto">Clear</button>
                       </div>
                     </div>
                   )}

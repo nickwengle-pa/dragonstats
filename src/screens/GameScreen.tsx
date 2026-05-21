@@ -166,6 +166,7 @@ function shouldPromptForClockCapture(
   if (play.isTouchdown) return true;
   if (play.type === "fg" && play.result === "Good") return true;
   if (play.type === "safety") return true;
+  if (play.type === "spike") return true;
   return after.possession !== before.possession;
 }
 
@@ -177,6 +178,7 @@ function getClockCaptureReason(
   if (play.isTouchdown) return "after scoring play";
   if (play.type === "fg" && play.result === "Good") return "after field goal";
   if (play.type === "safety") return "after safety";
+  if (play.type === "spike") return "after spike";
   if (play.type === "kickoff") return "after kickoff";
   if (play.type === "punt") return "after punt";
   if (play.type === "int") return "after interception return";
@@ -231,6 +233,11 @@ function applyScoreDelta(
     else next.them += 2;
   }
   if (play.type === "safety") {
+    if (play.possession === "us") next.them += 2;
+    else next.us += 2;
+  }
+  if ((play.type === "pat" || play.type === "two_pt") && play.result === "Returned") {
+    // Defensive 2pt return — credit the opposite side.
     if (play.possession === "us") next.them += 2;
     else next.us += 2;
   }
@@ -320,6 +327,7 @@ export default function GameScreen() {
         turnover: p.is_turnover,
         isTouchback: !!pd.is_touchback,
         penaltyCategory: pd.play_category === "offense" || pd.play_category === "defense" ? pd.play_category : null,
+        penaltyEnforcement: pd.penalty_enforcement === "declined" || pd.penalty_enforcement === "offset" ? pd.penalty_enforcement : "accepted",
         blockedKickType: (
           pd.blocked_kick_type === "field_goal"
           || pd.blocked_kick_type === "extra_point"
@@ -641,6 +649,7 @@ export default function GameScreen() {
         is_touchback: play.isTouchback ?? false,
         penalty_type: play.penalty,
         play_category: play.penaltyCategory ?? null,
+        penalty_enforcement: play.penaltyEnforcement ?? (play.penalty ? "accepted" : null),
         penalty_yards: play.flagYards,
         blocked_kick_type: play.blockedKickType ?? null,
         next_possession: after.possession,
@@ -1026,6 +1035,7 @@ export default function GameScreen() {
       result: data.result,
       penalty: data.penalty,
       penaltyCategory: data.penaltyCategory,
+      penaltyEnforcement: data.penaltyEnforcement,
       flagYards: data.flagYards,
       isTouchdown: data.isTouchdown,
       firstDown: data.isFirstDown,

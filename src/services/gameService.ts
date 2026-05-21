@@ -476,6 +476,10 @@ export function deriveGameState(
     if (play.play_type === "fg" && pd.result === "Good") { if (play.possession === "us") state.ourScore += 3; else state.theirScore += 3; }
     if (play.play_type === "two_pt" && pd.result === "Good") { if (play.possession === "us") state.ourScore += 2; else state.theirScore += 2; }
     if (play.play_type === "safety") { if (play.possession === "us") state.theirScore += 2; else state.ourScore += 2; }
+    if ((play.play_type === "pat" || play.play_type === "two_pt") && pd?.result === "Returned") {
+      // Defensive 2pt return — credit the opposite side.
+      if (play.possession === "us") state.theirScore += 2; else state.ourScore += 2;
+    }
   }
 
   // Use last play to derive next situational state
@@ -499,6 +503,9 @@ export function deriveGameState(
     penaltyCategory: playData.play_category === "offense" || playData.play_category === "defense"
       ? playData.play_category
       : null,
+    penaltyEnforcement: playData.penalty_enforcement === "declined" || playData.penalty_enforcement === "offset"
+      ? playData.penalty_enforcement
+      : "accepted",
     flagYards: Number(playData.penalty_yards ?? 0),
     isTouchdown: last.is_touchdown,
     firstDown: Boolean(playData.is_first_down),
