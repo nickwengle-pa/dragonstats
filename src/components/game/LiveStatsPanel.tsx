@@ -7,6 +7,7 @@ import type {
   ReceivingStats,
   DefensiveStats,
 } from "football-stats-engine";
+import DrivesList from "./DrivesList";
 
 interface Props {
   summary: GameSummary | null;
@@ -17,7 +18,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "off" | "def" | "st";
+type Tab = "off" | "def" | "st" | "drives";
 
 /**
  * Pure presentation. Renders the engine GameSummary as a compact per-player
@@ -28,6 +29,7 @@ export default function LiveStatsPanel({
   summary,
   rosterNameById,
   oppPlayerNameById,
+  programTeamId,
   onClose,
 }: Props) {
   if (!summary) {
@@ -45,7 +47,7 @@ export default function LiveStatsPanel({
 
   return (
     <Shell onClose={onClose}>
-      <Tabs summary={summary} nameFor={nameFor} />
+      <Tabs summary={summary} nameFor={nameFor} programTeamId={programTeamId} />
     </Shell>
   );
 }
@@ -71,17 +73,31 @@ function Shell({ children, onClose }: { children: React.ReactNode; onClose: () =
 function Tabs({
   summary,
   nameFor,
+  programTeamId,
 }: {
   summary: GameSummary;
   nameFor: (id: string) => string;
+  programTeamId: string;
 }) {
   // Tabs are local UI state; component is small enough to avoid lifting.
   return (
     <TabContainer
       tabs={[
-        { id: "off", label: "Offense", render: () => <OffenseTab summary={summary} nameFor={nameFor} /> },
-        { id: "def", label: "Defense", render: () => <DefenseTab summary={summary} nameFor={nameFor} /> },
-        { id: "st", label: "Special Teams", render: () => <SpecialTeamsTab summary={summary} nameFor={nameFor} /> },
+        { id: "off", label: "Off", render: () => <OffenseTab summary={summary} nameFor={nameFor} /> },
+        { id: "def", label: "Def", render: () => <DefenseTab summary={summary} nameFor={nameFor} /> },
+        { id: "st", label: "ST", render: () => <SpecialTeamsTab summary={summary} nameFor={nameFor} /> },
+        {
+          id: "drives",
+          label: "Drives",
+          render: () => (
+            <DrivesList
+              drives={summary.drives}
+              programTeamId={programTeamId}
+              programAbbr={summary.homeTeam.id === programTeamId ? summary.homeTeam.abbreviation : summary.awayTeam.abbreviation}
+              opponentAbbr={summary.homeTeam.id === programTeamId ? summary.awayTeam.abbreviation : summary.homeTeam.abbreviation}
+            />
+          ),
+        },
       ]}
     />
   );

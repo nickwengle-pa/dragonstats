@@ -170,6 +170,34 @@ export function exportGameSummaryCsv(summary: GameSummary, opts: ExportGameOptio
       r.puntReturnTouchdowns,
     ]);
   }
+  rows.push([]);
+
+  // Drives
+  rows.push(["DRIVES"]);
+  rows.push([
+    "#", "Team", "Start Q", "Start Time", "Start Yard",
+    "End Q", "End Time", "End Yard",
+    "Plays", "Yards", "TOP", "Result", "First Downs", "Penalties", "Pen Yds",
+  ]);
+  for (const d of summary.drives ?? []) {
+    rows.push([
+      d.driveNumber,
+      d.team,
+      d.startQuarter,
+      d.startTime,
+      d.startYardLine,
+      d.endQuarter,
+      d.endTime,
+      d.endYardLine,
+      d.plays,
+      d.yards,
+      d.timeOfPossession,
+      d.result,
+      d.firstDowns,
+      d.penalties,
+      d.penaltyYards,
+    ]);
+  }
 
   downloadCsv(opts.filename, rowsToCsv(rows));
 }

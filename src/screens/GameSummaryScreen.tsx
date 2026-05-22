@@ -6,7 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
 import { exportGameSummaryCsv } from "@/services/csvExport";
 import { loadGamePlays } from "@/services/gameService";
-import { DriveResult, type GameSummary, type TeamStats, type PassingStats, type RushingStats, type ReceivingStats, type DefensiveStats } from "football-stats-engine";
+import DrivesList from "@/components/game/DrivesList";
+import { type GameSummary, type TeamStats, type PassingStats, type RushingStats, type ReceivingStats, type DefensiveStats } from "football-stats-engine";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -420,32 +421,15 @@ export default function GameSummaryScreen() {
         )}
 
         {/* Drive summary */}
-        {summary && summary.drives.length > 0 && (
+        {summary && summary.drives.length > 0 && program && (
           <div className="card p-5">
             <div className="text-xs font-bold text-slate-500 uppercase mb-3">Drives</div>
-            <div className="space-y-1">
-              {summary.drives.map((d, i) => {
-                const isOurs = d.team === program?.id;
-                return (
-                  <div key={i} className="flex items-center gap-2 text-xs py-1">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${isOurs ? "bg-dragon-primary" : "bg-slate-500"}`} />
-                    <span className="text-slate-500 font-mono w-8">Q{d.startQuarter}</span>
-                    <span className="flex-1 truncate text-slate-300">
-                      {d.plays} plays, {d.yards} yds
-                    </span>
-                    <span className="font-mono text-slate-400">{d.timeOfPossession}</span>
-                    <span className={`font-bold uppercase text-[10px] px-1.5 py-0.5 rounded ${
-                      d.result === DriveResult.Touchdown ? "bg-green-500/20 text-green-400"
-                      : d.result === DriveResult.FieldGoal ? "bg-yellow-500/20 text-yellow-400"
-                      : d.result === DriveResult.Turnover || d.result === DriveResult.TurnoverOnDowns ? "bg-red-500/20 text-red-400"
-                      : "bg-slate-700 text-slate-400"
-                    }`}>
-                      {d.result}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <DrivesList
+              drives={summary.drives}
+              programTeamId={program.id}
+              programAbbr={program.abbreviation}
+              opponentAbbr={gameInfo?.opponent_name?.slice(0, 3).toUpperCase() ?? "OPP"}
+            />
           </div>
         )}
 
