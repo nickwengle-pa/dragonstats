@@ -9,6 +9,7 @@ import {
   PenaltyEnforcement,
   type GameEvent,
   type GameStateSnapshot,
+  type GameSummary,
   type Play,
   type PlayContext,
   type PassPlay,
@@ -73,6 +74,8 @@ export interface LiveSessionReplay {
   currentState: GameState;
   score: LiveSessionScore;
   engineSnapshot: GameStateSnapshot | null;
+  /** Full GameSummary from the engine — per-player offense/defense/ST stats. */
+  summary: GameSummary | null;
   allEvents: GameEvent[];
 }
 
@@ -655,11 +658,19 @@ export function replayLiveGame(
     currentState = nextState;
   }
 
+  let summary: GameSummary | null = null;
+  try {
+    summary = engine.getGameSummary();
+  } catch (err) {
+    console.warn("[liveGameSession] engine.getGameSummary failed", err);
+  }
+
   return {
     playResults,
     currentState: plays.length > 0 ? currentState : createInitialGameState(config),
     score,
     engineSnapshot: engine.getGameStateSnapshot(),
+    summary,
     allEvents,
   };
 }

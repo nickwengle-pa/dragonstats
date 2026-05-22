@@ -4,6 +4,7 @@ import { ArrowLeft, Download, Share2 } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
+import { exportGameSummaryCsv } from "@/services/csvExport";
 import { loadGamePlays } from "@/services/gameService";
 import { DriveResult, type GameSummary, type TeamStats, type PassingStats, type RushingStats, type ReceivingStats, type DefensiveStats } from "football-stats-engine";
 
@@ -240,8 +241,32 @@ export default function GameSummaryScreen() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Summary</h1>
-        <button className="btn-ghost p-2 cursor-pointer"><Share2 className="w-5 h-5" /></button>
-        <button className="btn-ghost p-2 cursor-pointer"><Download className="w-5 h-5" /></button>
+        <button
+          onClick={() => window.print()}
+          className="btn-ghost p-2 cursor-pointer"
+          title="Print / Save as PDF"
+          disabled={!summary}
+        >
+          <Share2 className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => {
+            if (!summary || !gameInfo || !program) return;
+            const safeOpp = (gameInfo.opponent_name || "opponent").replace(/[^a-z0-9-_]+/gi, "_");
+            const safeDate = (gameInfo.game_date || "").slice(0, 10) || "game";
+            exportGameSummaryCsv(summary, {
+              filename: `${program.abbreviation}_vs_${safeOpp}_${safeDate}.csv`,
+              programName: program.name,
+              opponentName: gameInfo.opponent_name,
+              gameDate: gameInfo.game_date,
+            });
+          }}
+          className="btn-ghost p-2 cursor-pointer"
+          title="Download CSV"
+          disabled={!summary}
+        >
+          <Download className="w-5 h-5" />
+        </button>
       </div>
       <div className="mx-5 mt-1 mb-4 accent-line" />
 

@@ -220,7 +220,7 @@ export const DEFENSIVE_FORMATIONS = [
   "46", "3-3 Stack", "4-2-5", "Goal Line",
 ];
 
-export const QUARTER_LABELS = ["", "1st", "2nd", "3rd", "4th", "OT"];
+export const QUARTER_LABELS = ["", "1st", "2nd", "3rd", "4th", "OT", "2OT", "3OT"];
 export const NFHS_QUARTER_SECS = 720;
 
 export function quarterLabel(quarter: number) {

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computePlayerSeasonStats, type PlayerGameLine } from "@/services/statsService";
+import { exportPlayerSeasonCsv } from "@/services/csvExport";
 import type { PassingStats, RushingStats, ReceivingStats, DefensiveStats } from "football-stats-engine";
 
 // ---------------------------------------------------------------------------
@@ -238,6 +239,78 @@ function GameLog<T>({
 // Main screen
 // ---------------------------------------------------------------------------
 
+/**
+ * Situational splits the engine already tracks (trackSituationalSplits: true).
+ * Sums them across the season's per-game lines so coaches can see red-zone
+ * efficiency and 3rd-down conversion in one place.
+ */
+function SituationalSection({ lines }: { lines: PlayerGameLine[] }) {
+  const rzPassAtt = sumField<PassingStats>(lines, "passing", "redZoneAttempts");
+  const rzPassCmp = sumField<PassingStats>(lines, "passing", "redZoneCompletions");
+  const rzPassTd = sumField<PassingStats>(lines, "passing", "redZoneTouchdowns");
+  const tdPassAtt = sumField<PassingStats>(lines, "passing", "thirdDownAttempts");
+  const tdPassCmp = sumField<PassingStats>(lines, "passing", "thirdDownCompletions");
+  const tdPassCnv = sumField<PassingStats>(lines, "passing", "thirdDownConversions");
+
+  const rzRushCar = sumField<RushingStats>(lines, "rushing", "redZoneCarries");
+  const rzRushTd = sumField<RushingStats>(lines, "rushing", "redZoneTouchdowns");
+  const tdRushCar = sumField<RushingStats>(lines, "rushing", "thirdDownCarries");
+  const tdRushCnv = sumField<RushingStats>(lines, "rushing", "thirdDownConversions");
+
+  const rzRecTgt = sumField<ReceivingStats>(lines, "receiving", "redZoneTargets");
+  const rzRecRec = sumField<ReceivingStats>(lines, "receiving", "redZoneReceptions");
+  const rzRecTd = sumField<ReceivingStats>(lines, "receiving", "redZoneTouchdowns");
+  const tdRecTgt = sumField<ReceivingStats>(lines, "receiving", "thirdDownTargets");
+  const tdRecRec = sumField<ReceivingStats>(lines, "receiving", "thirdDownReceptions");
+  const tdRecCnv = sumField<ReceivingStats>(lines, "receiving", "thirdDownConversions");
+
+  const anyData =
+    rzPassAtt + tdPassAtt + rzRushCar + tdRushCar + rzRecTgt + tdRecTgt > 0;
+  if (!anyData) return null;
+
+  return (
+    <div className="card p-5">
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Situational</div>
+
+      {rzPassAtt + tdPassAtt > 0 && (
+        <div className="mb-4">
+          <div className="text-[10px] font-bold text-slate-600 uppercase mb-2">Passing</div>
+          <div className="grid grid-cols-2 gap-2">
+            <StatBox label="RZ C/A" value={`${rzPassCmp}/${rzPassAtt}`} />
+            <StatBox label="RZ TD" value={fmt(rzPassTd)} />
+            <StatBox label="3rd C/A" value={`${tdPassCmp}/${tdPassAtt}`} />
+            <StatBox label="3rd Cnv" value={fmt(tdPassCnv)} />
+          </div>
+        </div>
+      )}
+
+      {rzRushCar + tdRushCar > 0 && (
+        <div className="mb-4">
+          <div className="text-[10px] font-bold text-slate-600 uppercase mb-2">Rushing</div>
+          <div className="grid grid-cols-2 gap-2">
+            <StatBox label="RZ Car" value={fmt(rzRushCar)} />
+            <StatBox label="RZ TD" value={fmt(rzRushTd)} />
+            <StatBox label="3rd Car" value={fmt(tdRushCar)} />
+            <StatBox label="3rd Cnv" value={fmt(tdRushCnv)} />
+          </div>
+        </div>
+      )}
+
+      {rzRecTgt + tdRecTgt > 0 && (
+        <div>
+          <div className="text-[10px] font-bold text-slate-600 uppercase mb-2">Receiving</div>
+          <div className="grid grid-cols-2 gap-2">
+            <StatBox label="RZ R/T" value={`${rzRecRec}/${rzRecTgt}`} />
+            <StatBox label="RZ TD" value={fmt(rzRecTd)} />
+            <StatBox label="3rd R/T" value={`${tdRecRec}/${tdRecTgt}`} />
+            <StatBox label="3rd Cnv" value={fmt(tdRecCnv)} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface PlayerInfo {
   first_name: string;
   last_name: string;
@@ -310,6 +383,22 @@ export default function PlayerScreen() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Player Profile</h1>
+        <button
+          onClick={() => {
+            if (!player || lines.length === 0) return;
+            const name = player.preferred_name || player.first_name;
+            const safe = `${name}_${player.last_name}`.replace(/[^a-z0-9-_]+/gi, "_");
+            exportPlayerSeasonCsv(lines, {
+              filename: `${safe}_season.csv`,
+              playerName: `${name} ${player.last_name}`,
+            });
+          }}
+          className="btn-ghost p-2 cursor-pointer"
+          title="Download CSV"
+          disabled={!player || lines.length === 0}
+        >
+          <Download className="w-5 h-5" />
+        </button>
       </div>
       <div className="mx-5 mt-1 mb-4 accent-line" />
 
@@ -361,6 +450,7 @@ export default function PlayerScreen() {
             <RushingSection lines={lines} />
             <ReceivingSection lines={lines} />
             <DefenseSection lines={lines} />
+            <SituationalSection lines={lines} />
           </>
         )}
       </div>

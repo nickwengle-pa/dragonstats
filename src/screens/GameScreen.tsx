@@ -33,6 +33,7 @@ import {
   rebuildPlaySituations,
   resolveGameConfig,
   toDisplayFieldPosition,
+  MAX_QUARTER,
   type PregameConfig,
 } from "@/services/gameFlow";
 import {
@@ -50,6 +51,7 @@ import QuickActions from "@/components/game/QuickActions";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditModal";
 import PlayLog from "@/components/game/PlayLog";
+import LiveStatsPanel from "@/components/game/LiveStatsPanel";
 import {
   type RosterPlayer,
   type OpponentPlayerRef,
@@ -429,6 +431,33 @@ export default function GameScreen() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  /* ── Realtime sync — listen for plays changes from other devices ──
+     Requires the `plays` table to be in the supabase_realtime publication:
+       ALTER PUBLICATION supabase_realtime ADD TABLE plays;
+     If realtime isn't enabled, the subscription quietly does nothing and
+     local-only entry still works. */
+  useEffect(() => {
+    if (!gameId) return;
+    let refetchTimer: ReturnType<typeof setTimeout> | null = null;
+    const channel = supabase.channel(`game-plays:${gameId}`)
+      .on(
+        "postgres_changes" as any,
+        { event: "*", schema: "public", table: "plays", filter: `game_id=eq.${gameId}` },
+        () => {
+          // Coalesce bursts (e.g. an UPDATE followed by linked INSERTs) into
+          // one refetch — and skip while we're mid-submit on this device.
+          if (isSubmitting.current) return;
+          if (refetchTimer) clearTimeout(refetchTimer);
+          refetchTimer = setTimeout(() => { loadData(); }, 250);
+        },
+      )
+      .subscribe();
+    return () => {
+      if (refetchTimer) clearTimeout(refetchTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [gameId, loadData]);
+
   /* ── Game state ── */
   const initialSituation = useMemo(() => createInitialSituation(pregame, gc), [pregame, gc]);
   const [quarter, setQuarter] = useState(1);
@@ -447,6 +476,7 @@ export default function GameScreen() {
   /* ── Modal state ── */
   const [selectedPlayType, setSelectedPlayType] = useState<PlayTypeDef | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [showLiveStats, setShowLiveStats] = useState(false);
   const [editPlay, setEditPlay] = useState<PlayRecord | null>(null);
   const [showPatGate, setShowPatGate] = useState(false);
   const [patGatePossession, setPatGatePossession] = useState<"us" | "them">("us");
@@ -478,6 +508,43 @@ export default function GameScreen() {
   /* ── Derived state ── */
   const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
   const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
+
+  /* ── Live engine summary (re-derives per play change) ── */
+  const liveSummary = useMemo(() => {
+    if (!liveSessionConfig || plays.length === 0) return null;
+    try {
+      return replayLiveGame(plays, liveSessionConfig).summary;
+    } catch (err) {
+      console.warn("liveSummary derive failed", err);
+      return null;
+    }
+  }, [plays, liveSessionConfig]);
+
+  const rosterNameById = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const r of roster) {
+      const first = r.player?.preferred_name ?? r.player?.first_name ?? "";
+      const last = r.player?.last_name ?? "";
+      const jersey = r.jersey_number != null ? `#${r.jersey_number}` : "";
+      const name = `${jersey} ${first} ${last}`.trim();
+      // Stats are keyed by player_id; map both id and player_id so either resolves.
+      map[r.player_id] = name;
+      map[r.id] = name;
+    }
+    return map;
+  }, [roster]);
+
+  const oppPlayerNameById = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const p of oppPlayers) {
+      // playTransformer uses "opp_{position}_{jersey_number}" — match that key format.
+      const key = `opp_${p.position ?? "UNK"}_${p.jersey_number ?? "0"}`;
+      const label = `OPP #${p.jersey_number ?? "?"} ${p.position ?? ""}`.trim();
+      map[key] = label;
+      map[p.id] = label;
+    }
+    return map;
+  }, [oppPlayers]);
   const quarterSnapshots = useRef<Partial<Record<number, { clock: number; situation: LiveSituationSnapshot }>>>({});
   const [directionFlipped, setDirectionFlipped] = useState(false);
   const ballDisplayPosition = useMemo(
@@ -1514,7 +1581,7 @@ export default function GameScreen() {
   };
 
   const changeQuarter = useCallback((delta: number) => {
-    const targetQuarter = Math.max(1, Math.min(5, quarter + delta));
+    const targetQuarter = Math.max(1, Math.min(MAX_QUARTER, quarter + delta));
     if (targetQuarter === quarter) return;
 
     const liveSituation: LiveSituationSnapshot = { possession, down, distance, ballOn };
@@ -1597,8 +1664,11 @@ export default function GameScreen() {
       <div className="flex items-center gap-3 px-5 pt-4 pb-2">
         <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
         <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] flex-1 truncate">vs {oppName}</h1>
-        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-1.5 cursor-pointer" title="Game Stats">
-          <BarChart3 className="w-4 h-4 text-surface-muted" />
+        <button onClick={() => setShowLiveStats(true)} className="btn-ghost p-1.5 cursor-pointer" title="Live Stats">
+          <BarChart3 className="w-4 h-4 text-dragon-primary" />
+        </button>
+        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer" title="Full Summary">
+          Summary
         </button>
         <button onClick={() => setShowLog(true)} className="btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
           {plays.length} plays
@@ -1624,7 +1694,7 @@ export default function GameScreen() {
           onPreviousQuarter={goToPreviousQuarter}
           onNextQuarter={goToNextQuarter}
           canPreviousQuarter={quarter > 1}
-          canNextQuarter={quarter < 5}
+          canNextQuarter={quarter < MAX_QUARTER}
           onEditClock={() => { setClockMins(Math.floor(clock / 60)); setClockSecs(clock % 60); setShowClockEditor(true); }}
           onEndGame={() => setShowEndGame(true)}
           onSetDown={setDown}
@@ -1784,6 +1854,18 @@ export default function GameScreen() {
           onEdit={p => { setShowLog(false); setEditPlay(p); }}
           onUndo={() => { handleUndo(); setShowLog(false); }}
           onClose={() => setShowLog(false)}
+        />
+      )}
+
+      {/* Live Stats Panel */}
+      {showLiveStats && (
+        <LiveStatsPanel
+          summary={liveSummary}
+          rosterNameById={rosterNameById}
+          oppPlayerNameById={oppPlayerNameById}
+          programTeamId={program?.id ?? ""}
+          opponentTeamId={game?.opponent?.id ?? ""}
+          onClose={() => setShowLiveStats(false)}
         />
       )}
 

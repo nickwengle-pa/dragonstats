@@ -97,9 +97,12 @@ export function oppositeFieldDirection(direction: FieldDirection): FieldDirectio
   return direction === "left" ? "right" : "left";
 }
 
+/** Quarters 1-4 are regulation; 5/6/7 are OT1/OT2/OT3. */
+export const MAX_QUARTER = 7;
+
 export function normalizeQuarter(quarter: number | null | undefined): number {
   if (!quarter || quarter < 1) return 1;
-  return Math.min(Math.round(quarter), 5);
+  return Math.min(Math.round(quarter), MAX_QUARTER);
 }
 
 export function createDefaultPregameConfig(): PregameConfig {

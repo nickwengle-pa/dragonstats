@@ -28,6 +28,66 @@
   ::-webkit-scrollbar-thumb { background: #1c2433; border-radius: 4px; }
 }
 
+/* ── Print: coach-ready handout layout (browser Print → Save as PDF) ── */
+@media print {
+  html, body {
+    background: white !important;
+    color: black !important;
+    color-scheme: light !important;
+  }
+
+  /* Hide chrome — anything tagged no-print or interactive */
+  .no-print,
+  nav,
+  button {
+    display: none !important;
+  }
+
+  /* Let the content flow without dark backgrounds */
+  .screen,
+  .card {
+    background: white !important;
+    border-color: #ccc !important;
+    color: black !important;
+    box-shadow: none !important;
+    border-radius: 4px !important;
+  }
+
+  /* Surface utility colors → readable ink */
+  .text-surface-muted,
+  .text-slate-400,
+  .text-slate-500,
+  .text-slate-600 { color: #444 !important; }
+  .text-white { color: black !important; }
+
+  /* Tables: tighten + add borders for paper readability */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    page-break-inside: avoid;
+    font-size: 10pt;
+  }
+  th, td {
+    border-bottom: 1px solid #ddd;
+    padding: 4px 6px !important;
+    color: black !important;
+  }
+  th {
+    background: #f3f3f3 !important;
+    color: black !important;
+    text-align: left;
+  }
+
+  /* Page break hints between major sections */
+  .print-page-break { page-break-before: always; }
+  h1, h2, h3 { page-break-after: avoid; }
+
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+}
+
 @layer components {
   /* ── Buttons ── */
   .btn {
