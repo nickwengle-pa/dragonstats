@@ -25,6 +25,7 @@ interface Props {
   ourTimeoutsRemaining: number;
   theirTimeoutsRemaining: number;
   onTakeTimeout: (team: "us" | "them") => void;
+  onCorrectScore?: (team: "us" | "them") => void;
 }
 
 function downLabel(down: number) {
@@ -94,6 +95,7 @@ export default function Scoreboard({
   ourTimeoutsRemaining,
   theirTimeoutsRemaining,
   onTakeTimeout,
+  onCorrectScore,
 }: Props) {
   const effOppColor = oppColor ?? "#6b7280";
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
@@ -127,8 +129,10 @@ export default function Scoreboard({
               </div>
               <div className="flex items-center gap-2">
                 <span
-                  className="text-3xl font-display font-extrabold tabular-nums leading-none score-glow"
+                  className="text-3xl font-display font-extrabold tabular-nums leading-none score-glow cursor-pointer select-none"
                   style={{ color: primaryColor }}
+                  onClick={() => onCorrectScore?.("us")}
+                  title="Tap to correct score"
                 >
                   {state.ourScore}
                 </span>
@@ -192,8 +196,10 @@ export default function Scoreboard({
                   <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[7px] border-r-amber-400" />
                 )}
                 <span
-                  className="text-3xl font-display font-extrabold tabular-nums leading-none"
+                  className="text-3xl font-display font-extrabold tabular-nums leading-none cursor-pointer select-none"
                   style={{ color: effOppColor }}
+                  onClick={() => onCorrectScore?.("them")}
+                  title="Tap to correct score"
                 >
                   {state.theirScore}
                 </span>

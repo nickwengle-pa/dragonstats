@@ -123,6 +123,9 @@ export const PLAY_TYPES: PlayTypeDef[] = [
   // Other
   { id: "safety", label: "Safety", color: "red", category: "other", roles: ["tackler"] },
   { id: "penalty_only", label: "Penalty", color: "yellow", category: "other", roles: [] },
+  // Pre-snap quick actions (one-tap; bypass the PlayEntry modal in GameScreen)
+  { id: "false_start", label: "False Start", color: "yellow", category: "other", roles: [] },
+  { id: "encroachment", label: "Encroachment", color: "yellow", category: "other", roles: [] },
 ];
 
 export function findPlayTypeDef(typeId: string): PlayTypeDef | undefined {

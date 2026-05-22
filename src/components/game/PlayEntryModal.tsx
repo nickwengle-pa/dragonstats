@@ -84,12 +84,20 @@ function PlayerGrid({
   const filtered = useMemo(() => {
     if (!search) return roster;
     const q = search.toLowerCase();
-    return roster.filter(p =>
+    const isNumeric = /^\d+$/.test(search);
+    const matched = roster.filter(p =>
       String(p.jersey_number).includes(q) ||
       p.player.first_name.toLowerCase().includes(q) ||
       p.player.last_name.toLowerCase().includes(q) ||
       (p.position ?? "").toLowerCase().includes(q)
     );
+    if (!isNumeric) return matched;
+    // For numeric searches, surface exact jersey matches first.
+    return matched.sort((a, b) => {
+      const aExact = String(a.jersey_number) === search ? 0 : 1;
+      const bExact = String(b.jersey_number) === search ? 0 : 1;
+      return aExact - bExact;
+    });
   }, [roster, search]);
 
   return (
@@ -97,9 +105,17 @@ function PlayerGrid({
       <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{label}</div>
       <input
         type="text"
+        inputMode="numeric"
         placeholder="# or name..."
         value={search}
         onChange={e => onSearch(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter auto-selects when there's a clear single match
+          if (e.key === "Enter" && filtered.length === 1) {
+            e.preventDefault();
+            onSelect(filtered[0]);
+          }
+        }}
         className="input mb-2 text-sm"
         autoFocus
       />
@@ -141,11 +157,18 @@ function OpponentPlayerGrid({
   const filtered = useMemo(() => {
     if (!search) return players;
     const q = search.toLowerCase();
-    return players.filter(p =>
+    const isNumeric = /^\d+$/.test(search);
+    const matched = players.filter(p =>
       String(p.jersey_number).includes(q) ||
       p.name.toLowerCase().includes(q) ||
       (p.position ?? "").toLowerCase().includes(q)
     );
+    if (!isNumeric) return matched;
+    return matched.sort((a, b) => {
+      const aExact = String(a.jersey_number) === search ? 0 : 1;
+      const bExact = String(b.jersey_number) === search ? 0 : 1;
+      return aExact - bExact;
+    });
   }, [players, search]);
 
   // Check if search is a number that doesn't match any existing player

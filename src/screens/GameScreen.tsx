@@ -137,8 +137,22 @@ function parseClockText(clockText: unknown, fallback: number): number {
   return mins * 60 + secs;
 }
 
-function timeoutHalfForQuarter(quarter: number): 1 | 2 {
-  return normalizeQuarter(quarter) <= 2 ? 1 : 2;
+/**
+ * Returns the "timeout period" a quarter belongs to. NFHS:
+ *  - Regulation: 3 TOs per half (Q1+Q2 share, Q3+Q4 share)
+ *  - Overtime: 1 TO per OT period per team — each OT is its own bucket
+ *
+ * Buckets: 1 = first half, 2 = second half, 3 = OT1, 4 = OT2, 5 = OT3
+ */
+function timeoutHalfForQuarter(quarter: number): number {
+  const q = normalizeQuarter(quarter);
+  if (q <= 2) return 1;
+  if (q <= 4) return 2;
+  return q - 2; // OT1 → 3, OT2 → 4, OT3 → 5
+}
+
+function maxTimeoutsForQuarter(quarter: number): number {
+  return normalizeQuarter(quarter) <= 4 ? MAX_TIMEOUTS_PER_HALF : 1;
 }
 
 function getTimeoutTeam(play: PlayRecord): TimeoutTeam | null {
@@ -477,6 +491,10 @@ export default function GameScreen() {
   const [selectedPlayType, setSelectedPlayType] = useState<PlayTypeDef | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [showLiveStats, setShowLiveStats] = useState(false);
+  const [hurryUp, setHurryUp] = useState(false);
+  const [endOfPeriodPrompt, setEndOfPeriodPrompt] = useState<null | { kind: "quarter" | "halftime" | "endgame"; targetQuarter: number }>(null);
+  const lastEndPromptKey = useRef<string | null>(null);
+  const [scoreCorrectTeam, setScoreCorrectTeam] = useState<TimeoutTeam | null>(null);
   const [editPlay, setEditPlay] = useState<PlayRecord | null>(null);
   const [showPatGate, setShowPatGate] = useState(false);
   const [patGatePossession, setPatGatePossession] = useState<"us" | "them">("us");
@@ -578,7 +596,32 @@ export default function GameScreen() {
   useEffect(() => {
     quarterSnapshots.current = {};
     setDirectionFlipped(false);
+    lastEndPromptKey.current = null;
   }, [gameId]);
+
+  /* ── End-of-period auto-prompt ──
+     When the clock reaches 0:00 we surface a one-tap prompt to advance.
+     - Q1/Q3: advance to next quarter
+     - Q2: halftime (clears Q3 to fresh quarter)
+     - Q4+: end of game (or move into OT)
+     Only fires once per (quarter, "end") key to avoid retriggering on edits. */
+  useEffect(() => {
+    if (loading) return;
+    if (clock > 0) return;
+    if (plays.length === 0) return; // game hasn't started
+
+    const key = `${quarter}:end`;
+    if (lastEndPromptKey.current === key) return;
+    lastEndPromptKey.current = key;
+
+    if (quarter === 2) {
+      setEndOfPeriodPrompt({ kind: "halftime", targetQuarter: 3 });
+    } else if (quarter >= 4) {
+      setEndOfPeriodPrompt({ kind: "endgame", targetQuarter: Math.min(MAX_QUARTER, quarter + 1) });
+    } else {
+      setEndOfPeriodPrompt({ kind: "quarter", targetQuarter: quarter + 1 });
+    }
+  }, [clock, quarter, loading, plays.length]);
 
   const toBoardScore = useCallback((score: ScoreSnapshot) => {
     const isHome = game?.is_home ?? true;
@@ -826,9 +869,10 @@ export default function GameScreen() {
       if (team === "them") usedThem += 1;
     });
 
+    const cap = maxTimeoutsForQuarter(quarter);
     return {
-      ourRemaining: Math.max(0, MAX_TIMEOUTS_PER_HALF - usedUs),
-      theirRemaining: Math.max(0, MAX_TIMEOUTS_PER_HALF - usedThem),
+      ourRemaining: Math.max(0, cap - usedUs),
+      theirRemaining: Math.max(0, cap - usedThem),
     };
   }, [plays, quarter]);
 
@@ -873,8 +917,19 @@ export default function GameScreen() {
 
   const openPostPlayClockCapture = useCallback((capture: PendingClockCapture) => {
     setPendingClockCapture(capture);
-    setPostPlayClockMins(Math.floor(clock / 60));
-    setPostPlayClockSecs(clock % 60);
+    // Smart default: most prompts are stoppage events (TD/FG/safety/COP) where
+    // the clock did NOT run, so default to current. For in-bounds run/pass
+    // completions the operator overrides — but those don't trigger a prompt
+    // today anyway (no possession change). The previous default of `clock`
+    // was already correct for the stoppage case; keep it.
+    const stoppage = !!capture.play.isTouchdown
+      || capture.play.type === "fg"
+      || capture.play.type === "safety"
+      || capture.play.type === "spike"
+      || capture.before.possession !== capture.resolved?.afterSituation.possession;
+    const defaultSecs = stoppage ? clock : Math.max(0, clock - 6);
+    setPostPlayClockMins(Math.floor(defaultSecs / 60));
+    setPostPlayClockSecs(defaultSecs % 60);
     setShowPostPlayClockModal(true);
   }, [clock]);
 
@@ -1080,8 +1135,48 @@ export default function GameScreen() {
       setShowPregame(true);
       return;
     }
+    // Pre-snap penalties — one-tap submit, no modal.
+    if (pt.id === "false_start" || pt.id === "encroachment") {
+      void submitPreSnapPenalty(pt.id);
+      return;
+    }
     setSelectedPlayType(pt);
   };
+
+  /** Records a pre-snap penalty (false start / encroachment) directly as a
+   *  penalty_only play with 5 yards and replay-the-down enforcement. No play
+   *  happened, so no players need tagging. Mirrors what the manual entry
+   *  flow would produce. */
+  const submitPreSnapPenalty = useCallback(async (kind: "false_start" | "encroachment") => {
+    if (!gameId || !season || isSubmitting.current) return;
+    const penaltyLabel = kind === "false_start" ? "False Start" : "Encroachment";
+    const side: "offense" | "defense" = kind === "false_start" ? "offense" : "defense";
+    const penaltyType: PlayTypeDef = {
+      id: "penalty_only",
+      label: penaltyLabel,
+      color: "yellow",
+      category: "other",
+      roles: [],
+    };
+    await handlePlaySubmit({
+      playType: penaltyType,
+      tagged: [],
+      yards: 0,
+      isTouchdown: false,
+      isFirstDown: false,
+      isTouchback: false,
+      result: "",
+      penalty: penaltyLabel,
+      penaltyCategory: side,
+      penaltyEnforcement: "accepted",
+      flagYards: 5,
+      blockedKickType: null,
+      offensiveFormation: null,
+      defensiveFormation: null,
+      hashMark: null,
+      description: `${penaltyLabel} (pre-snap, 5 yds)`,
+    });
+  }, [gameId, season]);
 
   /* ── Handle play submission from modal ── */
   const handlePlaySubmit = async (data: PlaySubmitData) => {
@@ -1212,7 +1307,9 @@ export default function GameScreen() {
       queueSituationAdjustment(savedPlay.id, localPlay, before);
     } else {
       applySituation(nextSituation);
-      if (shouldPromptForClockCapture(localPlay, before, nextSituation)) {
+      // Hurry-up mode skips the clock-capture prompt — operator updates the
+      // clock manually between plays via the editor when they have a moment.
+      if (!hurryUp && shouldPromptForClockCapture(localPlay, before, nextSituation)) {
         openPostPlayClockCapture({
           play: localPlay,
           before,
@@ -1240,22 +1337,24 @@ export default function GameScreen() {
     }
   };
 
-  const handleRecordTimeout = useCallback(async () => {
+  const recordTimeoutAt = useCallback(async (team: TimeoutTeam, clockSecs: number) => {
     if (!gameId || !season || isSubmitting.current) return;
 
-    const remaining = timeoutTeam === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
+    const remaining = team === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
     if (remaining <= 0) {
       setShowTimeoutModal(false);
       return;
     }
 
+    setTimeoutTeam(team);
     isSubmitting.current = true;
 
     try {
-      const nextClock = Math.max(0, Math.min(gc.quarter_length_secs, (timeoutMins * 60) + timeoutSecs));
+      const nextClock = Math.max(0, Math.min(gc.quarter_length_secs, clockSecs));
+      const timeoutTeamLocal = team;
       const before: LiveSituationSnapshot = { possession, down, distance, ballOn };
       const scoreBefore: ScoreSnapshot = { us: ourScore, them: theirScore };
-      const timeoutLabel = timeoutTeam === "us"
+      const timeoutLabel = timeoutTeamLocal === "us"
         ? (program?.name ?? "Team")
         : (game?.opponent?.name ?? "Opponent");
       const previewPlay: PlayRecord = {
@@ -1287,7 +1386,7 @@ export default function GameScreen() {
           recorded_start_clock_seconds: nextClock,
           recorded_end_clock: fmtClock(nextClock),
           recorded_end_clock_seconds: nextClock,
-          timeout_team: timeoutTeam,
+          timeout_team: timeoutTeamLocal,
           timeout_label: timeoutLabel,
           timeout_remaining_after: Math.max(0, remaining - 1),
           next_situation_source: "timeout",
@@ -1341,13 +1440,12 @@ export default function GameScreen() {
 
       setShowTimeoutModal(false);
     } catch (err) {
-      console.error("Error in handleRecordTimeout:", err);
+      console.error("Error in recordTimeoutAt:", err);
     } finally {
       isSubmitting.current = false;
     }
   }, [
     ballOn,
-    clock,
     distance,
     down,
     gameId,
@@ -1358,15 +1456,81 @@ export default function GameScreen() {
     quarter,
     season,
     theirScore,
-    timeoutMins,
-    timeoutSecs,
     timeoutState.ourRemaining,
     timeoutState.theirRemaining,
-    timeoutTeam,
     buildStoredPlayData,
     game?.opponent?.name,
     program?.name,
   ]);
+
+  /** One-tap: records a timeout at the current clock. The modal is no longer
+   *  in the live-entry path — operators can still edit the play via PlayEdit
+   *  if the clock was wrong. */
+  const handleRecordTimeout = useCallback(async () => {
+    const secs = (timeoutMins * 60) + timeoutSecs;
+    await recordTimeoutAt(timeoutTeam, secs);
+  }, [recordTimeoutAt, timeoutTeam, timeoutMins, timeoutSecs]);
+
+  const quickTimeout = useCallback((team: TimeoutTeam) => {
+    void recordTimeoutAt(team, clock);
+  }, [recordTimeoutAt, clock]);
+
+  /** Apply an explicit score adjustment. Updates the DB game.score immediately
+   *  and records a "score_correction" play in the log so the operator can see
+   *  (and undo via the standard undo flow) what they changed. */
+  const correctScore = useCallback(async (team: TimeoutTeam, delta: number) => {
+    if (!gameId || delta === 0) return;
+    const nextOur = team === "us" ? Math.max(0, ourScore + delta) : ourScore;
+    const nextTheir = team === "them" ? Math.max(0, theirScore + delta) : theirScore;
+    const appliedDelta = team === "us" ? nextOur - ourScore : nextTheir - theirScore;
+    if (appliedDelta === 0) return;
+
+    setOurScore(nextOur);
+    setTheirScore(nextTheir);
+    await updateGameScore(gameId, nextOur, nextTheir);
+
+    // Record a synthetic play so it's visible in the log and reversible via Undo.
+    if (season) {
+      try {
+        await insertPlay({
+          game_id: gameId,
+          quarter,
+          clock: fmtClock(clock),
+          possession,
+          down,
+          distance,
+          yard_line: ballOn,
+          play_type: "score_correction",
+          play_data: {
+            season_id: season.id,
+            score_delta_team: team,
+            score_delta: appliedDelta,
+            score_after_us: nextOur,
+            score_after_them: nextTheir,
+            recorded_clock: fmtClock(clock),
+            recorded_clock_seconds: clock,
+            next_situation_source: "score_correction",
+            next_possession: possession,
+            next_down: down,
+            next_distance: distance,
+            next_yard_line: ballOn,
+          },
+          yards_gained: 0,
+          is_touchdown: false,
+          is_turnover: false,
+          is_penalty: false,
+          primary_player_id: null,
+          description: `Score correction: ${team === "us" ? "us" : "them"} ${appliedDelta > 0 ? "+" : ""}${appliedDelta}`,
+          end_yard_line: ballOn,
+          play_start_time: clock,
+          play_end_time: clock,
+        }, []);
+      } catch (err) {
+        console.warn("score_correction insert failed", err);
+      }
+    }
+    setScoreCorrectTeam(null);
+  }, [gameId, season, ourScore, theirScore, quarter, clock, possession, down, distance, ballOn]);
 
   const closePendingClockCapture = useCallback((showPatGateAfter = false) => {
     const patPossession = pendingClockCapture?.patGatePossession;
@@ -1664,6 +1828,15 @@ export default function GameScreen() {
       <div className="flex items-center gap-3 px-5 pt-4 pb-2">
         <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
         <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] flex-1 truncate">vs {oppName}</h1>
+        <button
+          onClick={() => setHurryUp((h) => !h)}
+          className={`btn-ghost px-2 py-1 text-[10px] font-display font-bold uppercase tracking-wider cursor-pointer ${
+            hurryUp ? "text-amber-400" : "text-surface-muted"
+          }`}
+          title={hurryUp ? "Hurry-up mode ON (skip clock prompt)" : "Hurry-up mode OFF"}
+        >
+          {hurryUp ? "Hurry" : "Reg"}
+        </button>
         <button onClick={() => setShowLiveStats(true)} className="btn-ghost p-1.5 cursor-pointer" title="Live Stats">
           <BarChart3 className="w-4 h-4 text-dragon-primary" />
         </button>
@@ -1703,7 +1876,8 @@ export default function GameScreen() {
           onEditBall={openBallEditor}
           ourTimeoutsRemaining={timeoutState.ourRemaining}
           theirTimeoutsRemaining={timeoutState.theirRemaining}
-          onTakeTimeout={openTimeoutModal}
+          onTakeTimeout={quickTimeout}
+          onCorrectScore={(team) => setScoreCorrectTeam(team)}
         />
 
         {/* Field */}
@@ -1867,6 +2041,107 @@ export default function GameScreen() {
           opponentTeamId={game?.opponent?.id ?? ""}
           onClose={() => setShowLiveStats(false)}
         />
+      )}
+
+      {/* Score correction sheet */}
+      {scoreCorrectTeam && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center">
+          <div className="bg-surface-bg w-full sm:w-[380px] rounded-t-2xl sm:rounded-2xl border border-surface-border shadow-2xl p-5 space-y-4">
+            <div>
+              <div className="text-xs font-bold text-surface-muted uppercase tracking-widest mb-1">
+                Correct score
+              </div>
+              <div className="text-base font-display font-extrabold uppercase tracking-wide">
+                {scoreCorrectTeam === "us" ? (program?.name ?? "Us") : (game?.opponent?.name ?? "Them")}
+                <span className="text-surface-muted ml-2">
+                  ({scoreCorrectTeam === "us" ? ourScore : theirScore})
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[1, 2, 3, 6].map((d) => (
+                <button
+                  key={`p${d}`}
+                  onClick={() => void correctScore(scoreCorrectTeam, d)}
+                  className="py-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-sm font-display font-extrabold cursor-pointer"
+                >
+                  +{d}
+                </button>
+              ))}
+              {[1, 2, 3, 6].map((d) => (
+                <button
+                  key={`m${d}`}
+                  onClick={() => void correctScore(scoreCorrectTeam, -d)}
+                  className="py-2.5 rounded-xl bg-red-500/15 text-red-400 border border-red-500/30 text-sm font-display font-extrabold cursor-pointer"
+                >
+                  −{d}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setScoreCorrectTeam(null)}
+              className="btn-secondary w-full text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* End-of-period auto-prompt */}
+      {endOfPeriodPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center">
+          <div className="bg-surface-bg w-full sm:w-[400px] rounded-t-2xl sm:rounded-2xl border border-surface-border shadow-2xl p-5 space-y-4">
+            <div>
+              <div className="text-xs font-bold text-surface-muted uppercase tracking-widest mb-1">
+                Clock at 0:00
+              </div>
+              <div className="text-lg font-display font-extrabold uppercase tracking-wide">
+                {endOfPeriodPrompt.kind === "halftime"
+                  ? "Halftime"
+                  : endOfPeriodPrompt.kind === "endgame"
+                    ? (quarter >= 4 && quarter < MAX_QUARTER ? "End of regulation — go to overtime?" : "End of game")
+                    : `End of Q${quarter}`}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setEndOfPeriodPrompt(null)}
+                className="btn-secondary text-sm"
+              >
+                Not yet
+              </button>
+              {endOfPeriodPrompt.kind === "endgame" && quarter === MAX_QUARTER ? (
+                <button
+                  onClick={() => { setShowEndGame(true); setEndOfPeriodPrompt(null); }}
+                  className="btn-primary text-sm"
+                >
+                  Finalize
+                </button>
+              ) : endOfPeriodPrompt.kind === "endgame" ? (
+                <button
+                  onClick={() => {
+                    changeQuarter(1);
+                    setEndOfPeriodPrompt(null);
+                  }}
+                  className="btn-primary text-sm"
+                >
+                  Start OT
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    changeQuarter(1);
+                    setEndOfPeriodPrompt(null);
+                  }}
+                  className="btn-primary text-sm"
+                >
+                  {endOfPeriodPrompt.kind === "halftime" ? "Start 2nd Half" : "Next Quarter"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Play Edit */}

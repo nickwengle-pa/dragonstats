@@ -480,6 +480,14 @@ export function deriveGameState(
       // Defensive 2pt return — credit the opposite side.
       if (play.possession === "us") state.theirScore += 2; else state.ourScore += 2;
     }
+    if (play.play_type === "score_correction") {
+      const team = pd?.score_delta_team;
+      const delta = Number(pd?.score_delta ?? 0);
+      if (delta !== 0 && (team === "us" || team === "them")) {
+        if (team === "us") state.ourScore = Math.max(0, state.ourScore + delta);
+        else state.theirScore = Math.max(0, state.theirScore + delta);
+      }
+    }
   }
 
   // Use last play to derive next situational state

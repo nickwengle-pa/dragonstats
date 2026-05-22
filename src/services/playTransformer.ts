@@ -775,6 +775,9 @@ function convertPlay(
     }
 
     case "timeout":
+    case "score_correction":
+      // Bookkeeping plays — the engine ignores them; score derivation handles
+      // the delta in gameService.deriveGameState.
       return null;
 
     default:
