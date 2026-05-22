@@ -9,6 +9,7 @@
 import {
   getPenaltyDefaultSide,
   getPenaltyEngineCode,
+  grantsAutoFirstDown,
   type PenaltySide,
 } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
@@ -215,6 +216,7 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
     team: penTeam,
     yards: enforcement === PenaltyEnforcement.Accepted ? (pd?.penalty_yards ?? 5) : 0,
     enforcement,
+    isAutoFirstDown: grantsAutoFirstDown(penaltyType, penCategory),
   }];
 }
 

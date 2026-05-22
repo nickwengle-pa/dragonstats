@@ -1,6 +1,8 @@
 import {
   type PenaltySide,
   isPenaltyOnOffense,
+  grantsAutoFirstDown,
+  getPenaltyDefaultSide,
   type PlayRecord,
 } from "@/components/game/types";
 import type { GameConfig } from "./programService";
@@ -343,19 +345,48 @@ export function advanceSituationAfterPlay(
       const isOffensePenalty = isPenaltyOnOffense(play.penalty, play.penaltyCategory);
 
       if (isOffensePenalty) {
+        // Offensive penalty: walk the ball back, replay the down.
+        // Half-the-distance to the goal applies when the penalty distance would
+        // push the offense behind their own goal line (i.e. into their own EZ).
+        const halfDistance = Math.max(1, Math.floor(before.ballOn / 2));
+        const appliedYards = Math.min(play.flagYards, halfDistance);
+        const newOffenseBallOn = Math.max(1, before.ballOn - appliedYards);
+        const distanceAdded = before.ballOn - newOffenseBallOn;
         return {
           possession,
           down: before.down,
-          distance: Math.min(99, before.distance + play.flagYards),
-          ballOn: Math.max(1, before.ballOn - play.flagYards),
+          distance: Math.min(99, before.distance + distanceAdded),
+          ballOn: newOffenseBallOn,
         };
       }
 
-      const penaltyBallOn = Math.min(98, before.ballOn + play.flagYards);
+      // Defensive penalty: advance the ball downfield, then evaluate first down.
+      // Half-the-distance applies when the penalty would push the ball past the
+      // opponent's goal line.
+      const yardsToGoal = 100 - before.ballOn;
+      const halfDistance = Math.max(1, Math.floor(yardsToGoal / 2));
+      const appliedYards = Math.min(play.flagYards, halfDistance);
+      const penaltyBallOn = Math.min(98, before.ballOn + appliedYards);
+      const resolvedSide = play.penaltyCategory ?? getPenaltyDefaultSide(play.penalty);
+      const autoFirst = grantsAutoFirstDown(play.penalty, resolvedSide);
+      const distanceConsumed = penaltyBallOn - before.ballOn;
+      const earnedFirstByYardage = distanceConsumed >= before.distance;
+
+      if (autoFirst || earnedFirstByYardage) {
+        return {
+          possession,
+          down: 1,
+          distance: Math.min(config.first_down_distance, 100 - penaltyBallOn),
+          ballOn: penaltyBallOn,
+        };
+      }
+
+      // Non-auto defensive penalty without enough yards for a fresh first down:
+      // replay the down at the new spot with the line-to-gain reduced.
       return {
         possession,
-        down: 1,
-        distance: Math.min(config.first_down_distance, 100 - penaltyBallOn),
+        down: before.down,
+        distance: Math.max(1, before.distance - distanceConsumed),
         ballOn: penaltyBallOn,
       };
     }

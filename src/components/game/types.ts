@@ -189,6 +189,26 @@ export function isPenaltyOnOffense(
   return resolvedSide === "offense";
 }
 
+/**
+ * Defensive penalties that grant an automatic first down regardless of yardage.
+ * NFHS rules: defensive holding (5 + auto 1st) and defensive pass interference
+ * (15 + auto 1st) are the most common; major facemask, roughing the passer, and
+ * unsportsmanlike on defense also carry auto-1st. The user's catalog covers the
+ * first two cleanly; the rest fall back to "no auto 1st" until explicitly added.
+ */
+export const AUTO_FIRST_DOWN_DEFENSIVE_PENALTIES = new Set([
+  "Holding-DEF",
+  "PI-DEF",
+]);
+
+export function grantsAutoFirstDown(
+  label: string | null | undefined,
+  side: PenaltySide | null,
+): boolean {
+  if (!label || side !== "defense") return false;
+  return AUTO_FIRST_DOWN_DEFENSIVE_PENALTIES.has(label);
+}
+
 export const OFFENSIVE_FORMATIONS = [
   "I-Form", "Pro-I", "Strong-I", "Shotgun", "Pistol", "Single Back",
   "Spread", "Trips", "Double Tight", "Wildcat", "Goal Line", "Ace",
