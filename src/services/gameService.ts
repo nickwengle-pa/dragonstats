@@ -98,58 +98,120 @@ export interface CurrentGameStateUpdate {
 
 /* ─────────────────────────────────────────────
    Insert a play + its tagged players
+   Offline-safe: writes to local IndexedDB cache first, attempts network,
+   queues for later if offline. Always returns the locally-constructed
+   PlayRow so callers see a consistent saved state.
    ───────────────────────────────────────────── */
+
+function genUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Minimal RFC4122 v4 fallback.
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+async function nextSequenceFor(gameId: string): Promise<number> {
+  // Prefer the local cache to compute sequence — survives offline.
+  try {
+    const { getCachedPlays } = await import("./offlineDb");
+    const cached = await getCachedPlays(gameId);
+    const maxLocal = cached.reduce((m, p) => Math.max(m, p.sequence ?? 0), 0);
+    if (maxLocal > 0) return maxLocal + 1;
+  } catch { /* fall through to network */ }
+
+  try {
+    const { count } = await supabase
+      .from("plays")
+      .select("*", { count: "exact", head: true })
+      .eq("game_id", gameId);
+    return (count ?? 0) + 1;
+  } catch {
+    return 1;
+  }
+}
 
 export async function insertPlay(
   play: PlayInsert,
   players: Omit<PlayPlayerInsert, "play_id">[]
 ): Promise<PlayRow | null> {
-  // 1) Get next sequence number for this game
-  const { count } = await supabase
-    .from("plays")
-    .select("*", { count: "exact", head: true })
-    .eq("game_id", play.game_id);
+  // Lazy-import to avoid pulling offlineDb into modules that don't need it.
+  const { cachePlay, enqueueInsert, isOfflineSupported } = await import("./offlineDb");
+  const { refreshSyncStatus } = await import("./syncWorker");
 
-  const sequence = (count ?? 0) + 1;
+  const playId = genUuid();
+  const sequence = await nextSequenceFor(play.game_id);
+  const now = new Date().toISOString();
 
-  // 2) Insert the play — strip undefined optional fields to avoid DB column errors
-  const insertData: Record<string, unknown> = { ...play, sequence };
+  // Build the row we want everywhere (cache, network, return value).
+  const insertData: Record<string, unknown> = { ...play, id: playId, sequence };
   for (const key of Object.keys(insertData)) {
     if (insertData[key] === undefined) delete insertData[key];
   }
 
-  const { data: playRow, error: playErr } = await supabase
-    .from("plays")
-    .insert(insertData)
-    .select()
-    .single();
+  const playerRows: PlayPlayerInsert[] = players.map((p) => ({
+    play_id: playId,
+    player_id: p.player_id,
+    role: p.role,
+    credit: p.credit ?? null,
+  }));
 
-  if (playErr || !playRow) {
-    console.error("Failed to insert play:", playErr, "Data:", insertData);
-    return null;
+  // 1) Cache locally with denormalized player rows so reads work offline.
+  if (isOfflineSupported()) {
+    const cachedShape: PlayWithPlayers = {
+      ...(insertData as unknown as PlayRow),
+      created_at: now,
+      play_players: playerRows.map((pp) => ({ ...pp, id: genUuid(), player: undefined })),
+    };
+    await cachePlay(cachedShape);
   }
 
-  // 3) Insert tagged players
-  if (players.length > 0) {
-    const rows: PlayPlayerInsert[] = players.map(p => ({
-      play_id: playRow.id,
-      player_id: p.player_id,
-      role: p.role,
-      credit: p.credit ?? null,
-    }));
+  // 2) Try the network. On success, return the server row; on failure or
+  //    offline, enqueue and return the local shape.
+  const goOnline = typeof navigator === "undefined" || navigator.onLine;
+  if (goOnline) {
+    try {
+      const { data: playRow, error: playErr } = await supabase
+        .from("plays")
+        .upsert(insertData, { onConflict: "id" })
+        .select()
+        .single();
 
-    const { error: ppErr } = await supabase
-      .from("play_players")
-      .insert(rows);
-
-    if (ppErr) {
-      console.error("Failed to insert play_players:", ppErr);
-      // Play is still saved — players just didn't attach.
-      // Could retry or flag for correction.
+      if (!playErr && playRow) {
+        if (playerRows.length > 0) {
+          // Replace any existing play_players for this id (idempotent retry).
+          await supabase.from("play_players").delete().eq("play_id", playId);
+          const { error: ppErr } = await supabase.from("play_players").insert(playerRows);
+          if (ppErr) {
+            console.warn("play_players insert failed; queueing for retry:", ppErr);
+            await enqueueInsert({ gameId: play.game_id, playId, play: insertData as unknown as PlayInsert, players: playerRows as unknown as Array<Record<string, unknown>> });
+          }
+        }
+        await refreshSyncStatus();
+        return playRow as PlayRow;
+      }
+      console.warn("insertPlay network failed, queueing:", playErr);
+    } catch (err) {
+      console.warn("insertPlay network threw, queueing:", err);
     }
   }
 
-  return playRow as PlayRow;
+  // 3) Queue for later sync.
+  await enqueueInsert({
+    gameId: play.game_id,
+    playId,
+    play: insertData as unknown as PlayInsert,
+    players: playerRows as unknown as Array<Record<string, unknown>>,
+  });
+  await refreshSyncStatus();
+
+  return {
+    ...(insertData as unknown as PlayRow),
+    created_at: now,
+  };
 }
 
 /* ─────────────────────────────────────────────
@@ -157,22 +219,30 @@ export async function insertPlay(
    Removes play_players first, then the play.
    ───────────────────────────────────────────── */
 
-export async function deletePlay(playId: string): Promise<boolean> {
-  // Delete junction rows first
-  await supabase
-    .from("play_players")
-    .delete()
-    .eq("play_id", playId);
+export async function deletePlay(playId: string, gameId?: string): Promise<boolean> {
+  const { deleteCachedPlay, enqueueDelete } = await import("./offlineDb");
+  const { refreshSyncStatus } = await import("./syncWorker");
 
-  const { error } = await supabase
-    .from("plays")
-    .delete()
-    .eq("id", playId);
+  // Always remove from local cache first so the UI updates immediately.
+  await deleteCachedPlay(playId);
 
-  if (error) {
-    console.error("Failed to delete play:", error);
-    return false;
+  const goOnline = typeof navigator === "undefined" || navigator.onLine;
+  if (goOnline) {
+    try {
+      await supabase.from("play_players").delete().eq("play_id", playId);
+      const { error } = await supabase.from("plays").delete().eq("id", playId);
+      if (!error) {
+        await refreshSyncStatus();
+        return true;
+      }
+      console.warn("deletePlay network failed, queueing:", error);
+    } catch (err) {
+      console.warn("deletePlay network threw, queueing:", err);
+    }
   }
+
+  await enqueueDelete({ gameId: gameId ?? "", playId });
+  await refreshSyncStatus();
   return true;
 }
 
@@ -189,24 +259,40 @@ export interface PlayWithPlayers extends PlayRow {
 }
 
 export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> {
-  const { data, error } = await supabase
-    .from("plays")
-    .select(`
-      *,
-      play_players (
-        *,
-        player:players ( first_name, last_name )
-      )
-    `)
-    .eq("game_id", gameId)
-    .order("sequence", { ascending: true });
+  const { cachePlays, getCachedPlays, isOfflineSupported } = await import("./offlineDb");
 
-  if (error) {
-    console.error("Failed to load plays:", error);
-    return [];
+  const goOnline = typeof navigator === "undefined" || navigator.onLine;
+  if (goOnline) {
+    try {
+      const { data, error } = await supabase
+        .from("plays")
+        .select(`
+          *,
+          play_players (
+            *,
+            player:players ( first_name, last_name )
+          )
+        `)
+        .eq("game_id", gameId)
+        .order("sequence", { ascending: true });
+
+      if (!error && data) {
+        const plays = data as PlayWithPlayers[];
+        // Refresh local cache so offline reads stay fresh.
+        if (isOfflineSupported()) await cachePlays(plays);
+        return plays;
+      }
+      console.warn("loadGamePlays network failed, falling back to cache:", error);
+    } catch (err) {
+      console.warn("loadGamePlays network threw, falling back to cache:", err);
+    }
   }
 
-  return (data ?? []) as PlayWithPlayers[];
+  // Offline or network failed — read from local cache.
+  if (isOfflineSupported()) {
+    return await getCachedPlays(gameId);
+  }
+  return [];
 }
 
 /* ─────────────────────────────────────────────
@@ -228,25 +314,65 @@ export async function updatePlay(
   },
   playDataPatch?: Record<string, unknown>
 ): Promise<boolean> {
+  const { updateCachedPlay, enqueueUpdate, isOfflineSupported, getCachedPlays } = await import("./offlineDb");
+  const { refreshSyncStatus } = await import("./syncWorker");
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updateObj: Record<string, any> = { ...fields };
 
+  // For the cache patch we need the merged play_data; compute it from cache
+  // (or from network if available) so the local view is consistent.
+  let mergedPlayData: Record<string, unknown> | undefined;
   if (playDataPatch) {
-    const { data } = await supabase
-      .from("plays")
-      .select("play_data")
-      .eq("id", playId)
-      .single();
-    if (data) {
-      updateObj.play_data = {
-        ...(data.play_data as Record<string, unknown>),
-        ...playDataPatch,
-      };
+    // Try cache first
+    if (isOfflineSupported()) {
+      try {
+        // Read cached play to find current play_data
+        const cached = await getCachedPlays((fields as { game_id?: string }).game_id ?? "");
+        const found = cached.find((p) => p.id === playId);
+        if (found?.play_data) {
+          mergedPlayData = { ...(found.play_data as Record<string, unknown>), ...playDataPatch };
+        }
+      } catch { /* ignore */ }
+    }
+    if (!mergedPlayData) {
+      try {
+        const { data } = await supabase
+          .from("plays")
+          .select("play_data")
+          .eq("id", playId)
+          .single();
+        if (data) {
+          mergedPlayData = {
+            ...(data.play_data as Record<string, unknown>),
+            ...playDataPatch,
+          };
+        }
+      } catch { /* offline */ }
+    }
+    if (mergedPlayData) updateObj.play_data = mergedPlayData;
+  }
+
+  // Apply to cache immediately.
+  await updateCachedPlay(playId, updateObj);
+
+  const goOnline = typeof navigator === "undefined" || navigator.onLine;
+  if (goOnline) {
+    try {
+      const { error } = await supabase.from("plays").update(updateObj).eq("id", playId);
+      if (!error) {
+        await refreshSyncStatus();
+        return true;
+      }
+      console.warn("updatePlay network failed, queueing:", error);
+    } catch (err) {
+      console.warn("updatePlay network threw, queueing:", err);
     }
   }
 
-  const { error } = await supabase.from("plays").update(updateObj).eq("id", playId);
-  return !error;
+  await enqueueUpdate({ gameId: "", playId, patch: updateObj, playData: mergedPlayData });
+  await refreshSyncStatus();
+  return true;
 }
 
 /* ─────────────────────────────────────────────
@@ -340,6 +466,9 @@ export async function updatePlaySituation(
   },
   playData?: Record<string, unknown>,
 ): Promise<boolean> {
+  const { updateCachedPlay, enqueueUpdate } = await import("./offlineDb");
+  const { refreshSyncStatus } = await import("./syncWorker");
+
   const updateObj: Record<string, unknown> = { ...fields };
   if (playData) {
     updateObj.play_data = playData;
@@ -351,16 +480,29 @@ export async function updatePlaySituation(
     }
   }
 
-  const { error } = await supabase
-    .from("plays")
-    .update(updateObj)
-    .eq("id", playId);
+  // Patch the cache so the offline UI shows the corrected situation.
+  await updateCachedPlay(playId, updateObj);
 
-  if (error) {
-    console.error("Failed to update play situation:", error);
-    return false;
+  const goOnline = typeof navigator === "undefined" || navigator.onLine;
+  if (goOnline) {
+    try {
+      const { error } = await supabase
+        .from("plays")
+        .update(updateObj)
+        .eq("id", playId);
+
+      if (!error) {
+        await refreshSyncStatus();
+        return true;
+      }
+      console.warn("updatePlaySituation network failed, queueing:", error);
+    } catch (err) {
+      console.warn("updatePlaySituation network threw, queueing:", err);
+    }
   }
 
+  await enqueueUpdate({ gameId: "", playId, patch: updateObj, playData });
+  await refreshSyncStatus();
   return true;
 }
 

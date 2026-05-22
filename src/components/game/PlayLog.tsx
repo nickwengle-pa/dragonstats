@@ -1,4 +1,4 @@
-import { X, Pencil, RotateCcw } from "lucide-react";
+import { X, Pencil, RotateCcw, CloudOff } from "lucide-react";
 import { fmtClock, quarterLabel, yardLabel, type PlayRecord } from "./types";
 
 interface Props {
@@ -6,6 +6,8 @@ interface Props {
   onEdit: (play: PlayRecord) => void;
   onUndo: () => void;
   onClose: () => void;
+  /** Play ids that are still in the sync queue (haven't pushed to server yet). */
+  pendingPlayIds?: Set<string>;
 }
 
 const PLAY_ICONS: Record<string, string> = {
@@ -42,7 +44,7 @@ const PLAY_ICON_COLORS: Record<string, string> = {
   timeout: "text-amber-300",
 };
 
-export default function PlayLog({ plays, onEdit, onUndo, onClose }: Props) {
+export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds }: Props) {
   return (
     <div className="sheet bg-black/80">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
@@ -100,6 +102,14 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose }: Props) {
                     </div>
                     {play.isTouchdown && <span className="text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider">TD</span>}
                     {play.penalty && <span className="text-[10px] font-display font-bold text-orange-400 uppercase tracking-wider">PEN</span>}
+                    {pendingPlayIds?.has(play.id) && (
+                      <span
+                        title="Not yet synced to server"
+                        className="text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1"
+                      >
+                        <CloudOff className="w-3 h-3" /> queue
+                      </span>
+                    )}
                   </div>
                   {play.type !== "timeout" && (
                     <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer">

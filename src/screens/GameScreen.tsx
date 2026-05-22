@@ -52,6 +52,9 @@ import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntry
 import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditModal";
 import PlayLog from "@/components/game/PlayLog";
 import LiveStatsPanel from "@/components/game/LiveStatsPanel";
+import SyncBadge from "@/components/game/SyncBadge";
+import { setupAutoDrain, drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
+import { getQueueForGame } from "@/services/offlineDb";
 import {
   type RosterPlayer,
   type OpponentPlayerRef,
@@ -444,6 +447,33 @@ export default function GameScreen() {
   }, [season, gameId, baseGc, program]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  /* ── Offline sync: auto-drain queue on online/visible, and try once at load
+     so any leftover offline plays from a prior session get pushed. */
+  useEffect(() => {
+    const teardown = setupAutoDrain(() => gameId ?? null);
+    if (gameId && navigator.onLine) {
+      void drainQueue(gameId);
+    }
+    return teardown;
+  }, [gameId]);
+
+  /* ── Track which plays are still pending in the queue (for per-row icons). */
+  const [pendingPlayIds, setPendingPlayIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!gameId) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const queue = await getQueueForGame(gameId);
+        if (cancelled) return;
+        setPendingPlayIds(new Set(queue.map((i) => i.playId)));
+      } catch { /* ignore */ }
+    };
+    void refresh();
+    const unsub = subscribeSyncStatus(() => { void refresh(); });
+    return () => { cancelled = true; unsub(); };
+  }, [gameId]);
 
   /* ── Realtime sync — listen for plays changes from other devices ──
      Requires the `plays` table to be in the supabase_realtime publication:
@@ -1617,7 +1647,7 @@ export default function GameScreen() {
   const handleUndo = async () => {
     if (plays.length === 0 || !gameId) return;
     const last = plays[plays.length - 1];
-    const deleted = await deletePlay(last.id);
+    const deleted = await deletePlay(last.id, gameId);
     if (!deleted) return;
 
     await recalcScoreAndState(plays.slice(0, -1));
@@ -1720,7 +1750,7 @@ export default function GameScreen() {
 
   /* ── Delete play from edit modal ── */
   const handleDeletePlay = async (playId: string) => {
-    const deleted = await deletePlay(playId);
+    const deleted = await deletePlay(playId, gameId);
     if (!deleted) return;
 
     const newPlays = plays.filter(p => p.id !== playId);
@@ -1828,6 +1858,7 @@ export default function GameScreen() {
       <div className="flex items-center gap-3 px-5 pt-4 pb-2">
         <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
         <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] flex-1 truncate">vs {oppName}</h1>
+        <SyncBadge gameId={gameId ?? null} />
         <button
           onClick={() => setHurryUp((h) => !h)}
           className={`btn-ghost px-2 py-1 text-[10px] font-display font-bold uppercase tracking-wider cursor-pointer ${
@@ -2028,6 +2059,7 @@ export default function GameScreen() {
           onEdit={p => { setShowLog(false); setEditPlay(p); }}
           onUndo={() => { handleUndo(); setShowLog(false); }}
           onClose={() => setShowLog(false)}
+          pendingPlayIds={pendingPlayIds}
         />
       )}
 
