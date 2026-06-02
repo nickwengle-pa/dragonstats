@@ -12,6 +12,7 @@ const ScheduleScreen = lazy(() => import("@/screens/ScheduleScreen"));
 const RosterScreen = lazy(() => import("@/screens/RosterScreen"));
 const GameScreen = lazy(() => import("@/screens/GameScreen"));
 const GameSummaryScreen = lazy(() => import("@/screens/GameSummaryScreen"));
+const PostGameReview = lazy(() => import("@/screens/PostGameReview"));
 const PlayerScreen = lazy(() => import("@/screens/PlayerScreen"));
 const SettingsScreen = lazy(() => import("@/screens/SettingsScreen"));
 const SeasonStatsScreen = lazy(() => import("@/screens/SeasonStatsScreen"));
@@ -69,6 +70,7 @@ function AppRoutes() {
         <Route path="/roster" element={<ProtectedRoute><RosterScreen /></ProtectedRoute>} />
         <Route path="/game/:gameId" element={<ProtectedRoute><GameScreen /></ProtectedRoute>} />
         <Route path="/game/:gameId/summary" element={<ProtectedRoute><GameSummaryScreen /></ProtectedRoute>} />
+        <Route path="/game/:gameId/review" element={<ProtectedRoute><PostGameReview /></ProtectedRoute>} />
         <Route path="/player/:playerId" element={<ProtectedRoute><PlayerScreen /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
         <Route path="/season-stats" element={<ProtectedRoute><SeasonStatsScreen /></ProtectedRoute>} />

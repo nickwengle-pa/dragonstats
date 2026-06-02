@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Share2 } from "lucide-react";
+import { ArrowLeft, Download, Share2, Film } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
@@ -283,6 +283,21 @@ export default function GameSummaryScreen() {
             <span className="text-sm font-bold text-red-400">Return to Game</span>
           </button>
         )}
+
+        {/* Film charting — every-play breakdown for film review / Hudl */}
+        <button
+          onClick={() => navigate(`/game/${gameId}/review`)}
+          className="w-full card card-hover p-4 flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
+        >
+          <div className="w-10 h-10 rounded-xl bg-dragon-primary/15 flex items-center justify-center shrink-0">
+            <Film className="w-5 h-5 text-dragon-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold">Film Chart — Every Play</div>
+            <div className="text-xs text-surface-muted">Chart hash, personnel, formation &amp; motion · export for Hudl</div>
+          </div>
+          <ArrowLeft className="w-4 h-4 text-surface-muted rotate-180 shrink-0" />
+        </button>
 
         {/* Loading / error */}
         {loading && (
