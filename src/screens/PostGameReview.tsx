@@ -1,9 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, X, Check, Film } from "lucide-react";
+import { ArrowLeft, Download, X, Check, Film, Pencil } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
-import { loadGamePlays, type PlayWithPlayers } from "@/services/gameService";
+import {
+  loadGamePlays,
+  updatePlayFull,
+  deletePlay,
+  type PlayWithPlayers,
+} from "@/services/gameService";
+import { opponentPlayerService } from "@/services/opponentService";
 import {
   loadGameCharting,
   saveCharting,
@@ -12,16 +18,22 @@ import {
   type PlayCharting,
   type PlayChartingDraft,
 } from "@/services/chartingService";
+import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditModal";
 import {
   findPlayTypeDef,
   yardLabel,
   quarterLabel,
   OFFENSIVE_FORMATIONS,
   DEFENSIVE_FORMATIONS,
+  type PlayRecord,
+  type RosterPlayer,
+  type OpponentPlayerRef,
+  type TaggedPlayer,
+  type BlockedKickType,
 } from "@/components/game/types";
 
 // ---------------------------------------------------------------------------
-// Per-play derivations (all read-only from the live `plays` row)
+// Per-play derivations (read from the live `plays` row)
 // ---------------------------------------------------------------------------
 
 type Unit = "O" | "D" | "K";
@@ -71,6 +83,69 @@ const UNIT_COLOR: Record<Unit, string> = {
   D: "#ef4444",
   K: "#a855f7",
 };
+
+// ---------------------------------------------------------------------------
+// DB row → PlayRecord (the shape PlayEditModal expects). Mirrors the converter
+// used by the live GameScreen so editing behaves identically.
+// ---------------------------------------------------------------------------
+
+function parseClockText(clockText: unknown, fallback: number): number {
+  if (typeof clockText !== "string") return fallback;
+  const [mins, secs] = clockText.split(":").map(Number);
+  if (Number.isNaN(mins) || Number.isNaN(secs)) return fallback;
+  return mins * 60 + secs;
+}
+
+function rowToPlayRecord(p: PlayWithPlayers): PlayRecord {
+  const pd = (p.play_data ?? {}) as Record<string, any>;
+  const tagged: TaggedPlayer[] = (p.play_players ?? []).map((pp: any) => ({
+    id: pp.player_id,
+    player_id: pp.player_id,
+    jersey_number: null,
+    name: pp.player ? `${pp.player.first_name} ${pp.player.last_name}` : "?",
+    role: pp.role,
+    credit: pp.credit ?? undefined,
+  }));
+  return {
+    id: p.id,
+    sequence: p.sequence,
+    quarter: p.quarter,
+    clock: parseClockText(p.clock, 0),
+    type: p.play_type,
+    yards: p.yards_gained,
+    result: pd.result ?? "",
+    penalty: pd.penalty_type ?? null,
+    flagYards: pd.penalty_yards ?? 0,
+    isTouchdown: p.is_touchdown,
+    firstDown: pd.is_first_down ?? false,
+    turnover: p.is_turnover,
+    isTouchback: !!pd.is_touchback,
+    penaltyCategory:
+      pd.play_category === "offense" || pd.play_category === "defense" ? pd.play_category : null,
+    penaltyEnforcement:
+      pd.penalty_enforcement === "declined" || pd.penalty_enforcement === "offset"
+        ? pd.penalty_enforcement
+        : "accepted",
+    blockedKickType: (
+      pd.blocked_kick_type === "field_goal" ||
+      pd.blocked_kick_type === "extra_point" ||
+      pd.blocked_kick_type === "punt" ||
+      pd.blocked_kick_type === "kickoff"
+    )
+      ? (pd.blocked_kick_type as BlockedKickType)
+      : null,
+    tagged,
+    ballOn: p.yard_line,
+    down: p.down,
+    distance: p.distance,
+    description: p.description,
+    possession: p.possession,
+    offensiveFormation: (p as any).offensive_formation ?? null,
+    defensiveFormation: (p as any).defensive_formation ?? null,
+    hashMark: (p as any).hash_mark ?? null,
+    playData: { ...pd },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // CSV export (one row per play, Hudl-breakdown friendly)
@@ -148,9 +223,6 @@ function emptyDraft(play: PlayWithPlayers, gameId: string, existing?: PlayCharti
   return {
     play_id: play.id,
     game_id: gameId,
-    // Prefill from any existing charting row, falling back to whatever the live
-    // entry already captured (hash / formations / tags) so the coach starts from
-    // the real data rather than a blank card.
     hash_mark: existing?.hash_mark ?? play.hash_mark ?? null,
     personnel: existing?.personnel ?? null,
     offensive_formation: existing?.offensive_formation ?? play.offensive_formation ?? null,
@@ -171,6 +243,7 @@ function ChartingSheet({
   onChange,
   onClose,
   onSave,
+  onEditPlay,
 }: {
   play: PlayWithPlayers;
   draft: PlayChartingDraft;
@@ -178,6 +251,7 @@ function ChartingSheet({
   onChange: (patch: Partial<PlayChartingDraft>) => void;
   onClose: () => void;
   onSave: () => void;
+  onEditPlay: () => void;
 }) {
   const personnelHint = describePersonnel(draft.personnel);
   const tagsText = (draft.tags ?? []).join(", ");
@@ -198,10 +272,19 @@ function ChartingSheet({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-4">
-          {/* ── Read-only: what was recorded live ── */}
+          {/* ── Recorded stats (editable — feeds official game & season stats) ── */}
           <div className="card p-4 bg-surface-raised">
-            <div className="text-[10px] font-bold text-surface-muted uppercase tracking-widest mb-2">
-              Recorded live
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] font-bold text-surface-muted uppercase tracking-widest">
+                Recorded stats
+              </div>
+              <button
+                onClick={onEditPlay}
+                className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-dragon-primary px-2 py-1 rounded-lg border border-dragon-primary/40 hover:bg-dragon-primary/10 transition-colors cursor-pointer"
+                title="Edit play — updates game & season stats"
+              >
+                <Pencil className="w-3 h-3" /> Edit
+              </button>
             </div>
             <div className="grid grid-cols-3 gap-y-2 gap-x-3 text-sm">
               <Field label="Unit" value={unitFor(play)} color={UNIT_COLOR[unitFor(play)]} />
@@ -401,7 +484,9 @@ function Flag({ text, cls }: { text: string; cls: string }) {
 // Main screen
 // ---------------------------------------------------------------------------
 
-interface GameInfo {
+interface GameMeta {
+  season_id: string | null;
+  opponent_id: string | null;
   opponent_name: string;
   game_date: string;
 }
@@ -413,58 +498,79 @@ export default function PostGameReview() {
 
   const [plays, setPlays] = useState<PlayWithPlayers[]>([]);
   const [charting, setCharting] = useState<Record<string, PlayCharting>>({});
-  const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
+  const [meta, setMeta] = useState<GameMeta | null>(null);
+  const [roster, setRoster] = useState<RosterPlayer[]>([]);
+  const [oppPlayers, setOppPlayers] = useState<OpponentPlayerRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Editing state
+  // Charting sheet state
   const [editingPlay, setEditingPlay] = useState<PlayWithPlayers | null>(null);
   const [draft, setDraft] = useState<PlayChartingDraft | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!gameId) return;
-    let cancelled = false;
+  // Play-data editor (reuses the live PlayEditModal)
+  const [editRecord, setEditRecord] = useState<PlayRecord | null>(null);
 
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [rawPlays, chart, gRes] = await Promise.all([
-          loadGamePlays(gameId),
-          loadGameCharting(gameId),
-          supabase
-            .from("games")
-            .select("game_date, opponent:opponents(name)")
-            .eq("id", gameId)
-            .single(),
-        ]);
+  const load = useCallback(async (): Promise<PlayWithPlayers[]> => {
+    if (!gameId) return [];
+    setLoading(true);
+    setError(null);
+    try {
+      const [rawPlays, chart, gRes] = await Promise.all([
+        loadGamePlays(gameId),
+        loadGameCharting(gameId),
+        supabase
+          .from("games")
+          .select("season_id, opponent_id, is_home, game_date, opponent:opponents(*)")
+          .eq("id", gameId)
+          .single(),
+      ]);
 
-        if (cancelled) return;
-        setPlays(rawPlays);
-        setCharting(chart);
-        const opp = gRes.data?.opponent as { name?: string } | null;
-        setGameInfo({
-          opponent_name: opp?.name ?? "Opponent",
-          game_date: gRes.data?.game_date ?? "",
-        });
-      } catch (e) {
-        if (!cancelled) setError("Failed to load plays");
-        console.error(e);
-      } finally {
-        if (!cancelled) setLoading(false);
+      setPlays(rawPlays);
+      setCharting(chart);
+
+      const g = gRes.data as any;
+      const opp = g?.opponent;
+      setMeta({
+        season_id: g?.season_id ?? null,
+        opponent_id: g?.opponent_id ?? null,
+        opponent_name: opp?.name ?? "Opponent",
+        game_date: g?.game_date ?? "",
+      });
+
+      // Roster + opponent players (needed by the play editor)
+      if (g?.season_id) {
+        const rRes = await supabase
+          .from("season_rosters")
+          .select("*, player:players(*)")
+          .eq("season_id", g.season_id)
+          .eq("is_active", true)
+          .order("jersey_number", { ascending: true, nullsFirst: false });
+        setRoster(rRes.data ?? []);
       }
-    })();
+      if (g?.opponent_id) {
+        setOppPlayers(await opponentPlayerService.getByOpponent(g.opponent_id));
+      }
 
-    return () => { cancelled = true; };
+      return rawPlays;
+    } catch (e) {
+      setError("Failed to load plays");
+      console.error(e);
+      return [];
+    } finally {
+      setLoading(false);
+    }
   }, [gameId]);
 
-  const openEditor = useCallback((play: PlayWithPlayers) => {
+  useEffect(() => { load(); }, [load]);
+
+  const openCharting = useCallback((play: PlayWithPlayers) => {
     setEditingPlay(play);
     setDraft(emptyDraft(play, gameId!, charting[play.id]));
   }, [gameId, charting]);
 
-  const handleSave = useCallback(async () => {
+  const handleSaveCharting = useCallback(async () => {
     if (!draft) return;
     setSaving(true);
     const saved = await saveCharting(draft);
@@ -478,6 +584,65 @@ export default function PostGameReview() {
     }
   }, [draft]);
 
+  // ── Edit the play's recorded stats (writes to `plays`; stats recompute) ──
+  const handleSavePlayEdit = useCallback(async (playId: string, result: PlayEditResult) => {
+    const original = plays.find((p) => p.id === playId);
+    const pd = (original?.play_data ?? {}) as Record<string, any>;
+
+    const ok = await updatePlayFull(
+      playId,
+      {
+        play_type: result.playType.id,
+        yards_gained: result.yards,
+        is_touchdown: result.isTouchdown,
+        is_turnover: ["int", "fumble"].includes(result.playType.id),
+        is_penalty: !!result.penalty,
+        primary_player_id: result.tagged.find((t) => !t.isOpponent)?.player_id ?? null,
+        description: result.description,
+        ...(result.offensiveFormation != null ? { offensive_formation: result.offensiveFormation } : {}),
+        ...(result.defensiveFormation != null ? { defensive_formation: result.defensiveFormation } : {}),
+        ...(result.hashMark != null ? { hash_mark: result.hashMark } : {}),
+        play_data: {
+          ...pd,
+          result: result.result || null,
+          is_first_down: result.isFirstDown,
+          is_touchback: result.isTouchback,
+          penalty_type: result.penalty,
+          play_category: result.penaltyCategory,
+          penalty_yards: result.flagYards,
+          blocked_kick_type: result.blockedKickType,
+          next_possession: null,
+          next_down: null,
+          next_distance: null,
+          next_yard_line: null,
+          next_situation_source:
+            result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
+        },
+      },
+      result.tagged
+        .filter((t) => !t.isOpponent)
+        .map((t) => ({ player_id: t.player_id, role: t.role, credit: t.credit ?? null })),
+    );
+
+    if (!ok) {
+      setError("Couldn't save the play edit — check your connection and try again.");
+      return;
+    }
+
+    setEditRecord(null);
+    const refreshed = await load();
+    setEditingPlay(refreshed.find((p) => p.id === playId) ?? null);
+  }, [plays, load]);
+
+  const handleDeletePlayEdit = useCallback(async (playId: string) => {
+    if (!window.confirm("Delete this play? Game and season stats will update to match.")) return;
+    await deletePlay(playId, gameId);
+    setEditRecord(null);
+    setEditingPlay(null);
+    setDraft(null);
+    await load();
+  }, [gameId, load]);
+
   const chartedCount = useMemo(
     () => plays.filter((p) => hasChartingDetail(charting[p.id])).length,
     [plays, charting],
@@ -485,11 +650,11 @@ export default function PostGameReview() {
 
   const handleExport = useCallback(() => {
     if (plays.length === 0) return;
-    const safeOpp = (gameInfo?.opponent_name || "opponent").replace(/[^a-z0-9-_]+/gi, "_");
-    const safeDate = (gameInfo?.game_date || "").slice(0, 10) || "game";
+    const safeOpp = (meta?.opponent_name || "opponent").replace(/[^a-z0-9-_]+/gi, "_");
+    const safeDate = (meta?.game_date || "").slice(0, 10) || "game";
     const abbr = program?.abbreviation ?? "DRAGON";
     exportChartingCsv(plays, charting, `${abbr}_film_chart_vs_${safeOpp}_${safeDate}.csv`);
-  }, [plays, charting, gameInfo, program]);
+  }, [plays, charting, meta, program]);
 
   return (
     <div className="screen safe-top safe-bottom">
@@ -500,8 +665,8 @@ export default function PostGameReview() {
         </button>
         <div className="flex-1">
           <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] leading-none">Film Chart</h1>
-          {gameInfo && (
-            <div className="text-[11px] text-surface-muted font-semibold mt-1">vs {gameInfo.opponent_name}</div>
+          {meta && (
+            <div className="text-[11px] text-surface-muted font-semibold mt-1">vs {meta.opponent_name}</div>
           )}
         </div>
         <button
@@ -568,7 +733,7 @@ export default function PostGameReview() {
                   return (
                     <tr
                       key={p.id}
-                      onClick={() => openEditor(p)}
+                      onClick={() => openCharting(p)}
                       className="border-b border-surface-border/40 cursor-pointer hover:bg-surface-cardHover active:bg-surface-cardHover"
                     >
                       <Td>
@@ -615,7 +780,7 @@ export default function PostGameReview() {
         {DEFENSIVE_FORMATIONS.map((f) => <option key={f} value={f} />)}
       </datalist>
 
-      {/* Edit sheet */}
+      {/* Charting sheet */}
       {editingPlay && draft && (
         <ChartingSheet
           play={editingPlay}
@@ -623,7 +788,25 @@ export default function PostGameReview() {
           saving={saving}
           onChange={(patch) => setDraft((d) => (d ? { ...d, ...patch } : d))}
           onClose={() => { setEditingPlay(null); setDraft(null); }}
-          onSave={handleSave}
+          onSave={handleSaveCharting}
+          onEditPlay={() => editingPlay && setEditRecord(rowToPlayRecord(editingPlay))}
+        />
+      )}
+
+      {/* Play-data editor (same component the live screen uses) */}
+      {editRecord && (
+        <PlayEditModal
+          play={editRecord}
+          roster={roster}
+          opponentPlayers={oppPlayers}
+          progName={program?.name ?? "Team"}
+          oppName={meta?.opponent_name ?? "Opponent"}
+          ballOnBefore={editRecord.ballOn}
+          downBefore={editRecord.down}
+          distanceBefore={editRecord.distance}
+          onSave={handleSavePlayEdit}
+          onDelete={handleDeletePlayEdit}
+          onClose={() => setEditRecord(null)}
         />
       )}
     </div>
