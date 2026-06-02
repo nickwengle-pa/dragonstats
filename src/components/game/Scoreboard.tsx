@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Trophy } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { fmtClock, quarterLabel, type GameState } from "./types";
 
 interface Props {
@@ -226,10 +226,10 @@ export default function Scoreboard({
 
           <button
             onClick={onEndGame}
-            className="p-1.5 text-amber-500/60 hover:text-amber-400 transition-colors shrink-0 cursor-pointer ml-1"
+            className="px-2 py-1 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 transition-colors shrink-0 cursor-pointer ml-1"
             title="End Game"
           >
-            <Trophy className="w-4 h-4" />
+            End Game
           </button>
         </div>
 
