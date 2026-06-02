@@ -11,6 +11,9 @@ Thumbs.db
 .claude/
 .codex/
 
+# Favicon design preview (regenerate with scripts/generate-favicon.cjs)
+scripts/favicon-preview.png
+
 # Keep the reusable graph artifacts, ignore the rest of graphify output
 graphify-out/*
 !graphify-out/graph.json

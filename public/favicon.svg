@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Dragon Stats">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="58%" r="72%">
+      <stop offset="0%" stop-color="#3d1418"/>
+      <stop offset="55%" stop-color="#140a0c"/>
+      <stop offset="100%" stop-color="#060507"/>
+    </radialGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fb6b6b"/>
+      <stop offset="55%" stop-color="#e0332f"/>
+      <stop offset="100%" stop-color="#7f1d1d"/>
+    </linearGradient>
+    <linearGradient id="gold" gradientUnits="userSpaceOnUse" x1="98" y1="420" x2="430" y2="124">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#fde047"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" rx="110" fill="url(#bg)"/>
+  <!-- gold chart axis (under the bars) -->
+  <line x1="98" y1="124" x2="98" y2="420" stroke="url(#gold)" stroke-width="16" stroke-linecap="round"/>
+  <line x1="98" y1="420" x2="430" y2="420" stroke="url(#gold)" stroke-width="16" stroke-linecap="round"/>
+  <!-- ascending stat bars (rounded top, flat base on the axis) -->
+  <g fill="url(#bar)">
+    <path d="M128 412 L128 310 Q128 296 142 296 L188 296 Q202 296 202 310 L202 412 Z"/>
+    <path d="M240 412 L240 246 Q240 232 254 232 L300 232 Q314 232 314 246 L314 412 Z"/>
+    <path d="M352 412 L352 166 Q352 152 366 152 L412 152 Q426 152 426 166 L426 412 Z"/>
+  </g>
+</svg>
