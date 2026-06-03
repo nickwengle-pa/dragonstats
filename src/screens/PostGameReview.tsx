@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import {
   loadGamePlays,
   updatePlayFull,
+  updatePlaySituation,
   deletePlay,
   type PlayWithPlayers,
 } from "@/services/gameService";
@@ -244,6 +245,10 @@ function ChartingSheet({
   onClose,
   onSave,
   onEditPlay,
+  sitDraft,
+  onSitChange,
+  onSaveSituation,
+  savingSit,
 }: {
   play: PlayWithPlayers;
   draft: PlayChartingDraft;
@@ -252,10 +257,20 @@ function ChartingSheet({
   onClose: () => void;
   onSave: () => void;
   onEditPlay: () => void;
+  sitDraft: SituationDraft | null;
+  onSitChange: (patch: Partial<SituationDraft>) => void;
+  onSaveSituation: () => void;
+  savingSit: boolean;
 }) {
   const personnelHint = describePersonnel(draft.personnel);
   const tagsText = (draft.tags ?? []).join(", ");
   const tagged = taggedSummary(play);
+  const [showSit, setShowSit] = useState(false);
+
+  // Ball-spot helpers (yard_line is 0–100; <=50 = own side, >50 = opponent side)
+  const ballSide: "own" | "opp" = sitDraft && sitDraft.yard_line > 50 ? "opp" : "own";
+  const ballYard = sitDraft ? (sitDraft.yard_line > 50 ? 100 - sitDraft.yard_line : sitDraft.yard_line) : 0;
+  const toYardLine = (side: "own" | "opp", yard: number) => (side === "opp" ? 100 - yard : yard);
 
   return (
     <div className="sheet bg-black/70" onClick={onClose}>
@@ -278,13 +293,26 @@ function ChartingSheet({
               <div className="text-[10px] font-bold text-surface-muted uppercase tracking-widest">
                 Recorded stats
               </div>
-              <button
-                onClick={onEditPlay}
-                className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-dragon-primary px-2 py-1 rounded-lg border border-dragon-primary/40 hover:bg-dragon-primary/10 transition-colors cursor-pointer"
-                title="Edit play — updates game & season stats"
-              >
-                <Pencil className="w-3 h-3" /> Edit
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setShowSit((s) => !s)}
+                  className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border transition-colors cursor-pointer ${
+                    showSit
+                      ? "text-amber-400 border-amber-500/50 bg-amber-500/10"
+                      : "text-amber-400 border-amber-500/40 hover:bg-amber-500/10"
+                  }`}
+                  title="Fix down & distance for this play"
+                >
+                  Down &amp; Dist
+                </button>
+                <button
+                  onClick={onEditPlay}
+                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-dragon-primary px-2 py-1 rounded-lg border border-dragon-primary/40 hover:bg-dragon-primary/10 transition-colors cursor-pointer"
+                  title="Edit play — updates game & season stats"
+                >
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-y-2 gap-x-3 text-sm">
               <Field label="Unit" value={unitFor(play)} color={UNIT_COLOR[unitFor(play)]} />
@@ -312,6 +340,108 @@ function ChartingSheet({
             )}
             {play.description && (
               <div className="text-xs text-slate-400 mt-3">{play.description}</div>
+            )}
+
+            {/* ── Quick Situation editor: down / distance / ball / possession ── */}
+            {showSit && sitDraft && (
+              <div className="mt-3 pt-3 border-t border-surface-border space-y-3">
+                <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">
+                  Fix down &amp; distance (this play only)
+                </div>
+
+                {/* Down */}
+                <div>
+                  <label className="label block mb-1.5">Down</label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => onSitChange({ down: d })}
+                        className={`flex-1 h-10 rounded-xl font-bold text-sm border transition-colors ${
+                          sitDraft.down === d
+                            ? "bg-amber-500 border-amber-500 text-black"
+                            : "bg-surface-bg border-surface-border text-neutral-400"
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Distance + Possession */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label block mb-1.5">Distance (to go)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={99}
+                      value={sitDraft.distance}
+                      onChange={(e) => onSitChange({ distance: Math.max(0, Math.min(99, Number(e.target.value) || 0)) })}
+                      className="input"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div>
+                    <label className="label block mb-1.5">Possession</label>
+                    <div className="flex gap-2">
+                      {(["us", "them"] as const).map((side) => (
+                        <button
+                          key={side}
+                          onClick={() => onSitChange({ possession: side })}
+                          className={`flex-1 h-12 rounded-xl font-bold text-sm border transition-colors ${
+                            sitDraft.possession === side
+                              ? "bg-amber-500 border-amber-500 text-black"
+                              : "bg-surface-bg border-surface-border text-neutral-400"
+                          }`}
+                        >
+                          {side === "us" ? "Us" : "Them"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ball spot */}
+                <div>
+                  <label className="label block mb-1.5">Ball on</label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-2">
+                      {(["own", "opp"] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => onSitChange({ yard_line: toYardLine(s, ballYard || 1) })}
+                          className={`px-3 h-12 rounded-xl font-bold text-xs uppercase border transition-colors ${
+                            ballSide === s
+                              ? "bg-amber-500 border-amber-500 text-black"
+                              : "bg-surface-bg border-surface-border text-neutral-400"
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={ballYard}
+                      onChange={(e) =>
+                        onSitChange({ yard_line: toYardLine(ballSide, Math.max(1, Math.min(50, Number(e.target.value) || 1))) })
+                      }
+                      className="input flex-1"
+                      inputMode="numeric"
+                    />
+                    <span className="text-xs font-bold text-surface-muted w-16 text-right">{yardLabel(sitDraft.yard_line)}</span>
+                  </div>
+                </div>
+
+                <button onClick={onSaveSituation} disabled={savingSit} className="btn-primary w-full gap-2">
+                  <Check className="w-4 h-4" />
+                  {savingSit ? "Saving…" : "Save down & distance"}
+                </button>
+              </div>
             )}
           </div>
 
@@ -491,6 +621,22 @@ interface GameMeta {
   game_date: string;
 }
 
+type SituationDraft = {
+  possession: "us" | "them";
+  down: number;
+  distance: number;
+  yard_line: number;
+};
+
+function situationFromPlay(p: PlayWithPlayers): SituationDraft {
+  return {
+    possession: p.possession,
+    down: p.down ?? 1,
+    distance: p.distance ?? 10,
+    yard_line: p.yard_line ?? 0,
+  };
+}
+
 export default function PostGameReview() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
@@ -508,6 +654,10 @@ export default function PostGameReview() {
   const [editingPlay, setEditingPlay] = useState<PlayWithPlayers | null>(null);
   const [draft, setDraft] = useState<PlayChartingDraft | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Quick situation editor (down / distance / ball / possession)
+  const [sitDraft, setSitDraft] = useState<SituationDraft | null>(null);
+  const [savingSit, setSavingSit] = useState(false);
 
   // Play-data editor (reuses the live PlayEditModal)
   const [editRecord, setEditRecord] = useState<PlayRecord | null>(null);
@@ -568,7 +718,29 @@ export default function PostGameReview() {
   const openCharting = useCallback((play: PlayWithPlayers) => {
     setEditingPlay(play);
     setDraft(emptyDraft(play, gameId!, charting[play.id]));
+    setSitDraft(situationFromPlay(play));
   }, [gameId, charting]);
+
+  // ── Save the play's situation (down/distance/ball/possession) — one play ──
+  const handleSaveSituation = useCallback(async () => {
+    if (!editingPlay || !sitDraft) return;
+    setSavingSit(true);
+    const ok = await updatePlaySituation(editingPlay.id, {
+      possession: sitDraft.possession,
+      down: sitDraft.down,
+      distance: sitDraft.distance,
+      yard_line: sitDraft.yard_line,
+    });
+    setSavingSit(false);
+    if (!ok) {
+      setError("Couldn't save the situation — check your connection and try again.");
+      return;
+    }
+    const refreshed = await load();
+    const row = refreshed.find((p) => p.id === editingPlay.id) ?? null;
+    setEditingPlay(row);
+    if (row) setSitDraft(situationFromPlay(row));
+  }, [editingPlay, sitDraft, load]);
 
   const handleSaveCharting = useCallback(async () => {
     if (!draft) return;
@@ -631,7 +803,9 @@ export default function PostGameReview() {
 
     setEditRecord(null);
     const refreshed = await load();
-    setEditingPlay(refreshed.find((p) => p.id === playId) ?? null);
+    const row = refreshed.find((p) => p.id === playId) ?? null;
+    setEditingPlay(row);
+    if (row) setSitDraft(situationFromPlay(row));
   }, [plays, load]);
 
   const handleDeletePlayEdit = useCallback(async (playId: string) => {
@@ -787,9 +961,13 @@ export default function PostGameReview() {
           draft={draft}
           saving={saving}
           onChange={(patch) => setDraft((d) => (d ? { ...d, ...patch } : d))}
-          onClose={() => { setEditingPlay(null); setDraft(null); }}
+          onClose={() => { setEditingPlay(null); setDraft(null); setSitDraft(null); }}
           onSave={handleSaveCharting}
           onEditPlay={() => editingPlay && setEditRecord(rowToPlayRecord(editingPlay))}
+          sitDraft={sitDraft}
+          onSitChange={(patch) => setSitDraft((d) => (d ? { ...d, ...patch } : d))}
+          onSaveSituation={handleSaveSituation}
+          savingSit={savingSit}
         />
       )}
 
