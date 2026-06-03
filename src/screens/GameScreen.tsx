@@ -773,10 +773,11 @@ export default function GameScreen() {
     const existingSource = typeof play.playData?.next_situation_source === "string"
       ? play.playData?.next_situation_source
       : null;
+    const isTurnoverPlay = play.type === "int" || (play.type === "fumble" && play.turnover !== false);
     const nextSituationSource = existingSource
       ?? (play.type === "timeout"
         ? "timeout"
-        : (play.penalty || play.type === "blocked_kick") ? "pending_review" : "auto");
+        : (play.penalty || play.type === "blocked_kick" || isTurnoverPlay) ? "pending_review" : "auto");
     const worksheetRow = buildWorksheetRow(play, before, after, scoreBefore, scoreAfter);
 
     return {
@@ -1216,7 +1217,9 @@ export default function GameScreen() {
     try {
     const before: LiveSituationSnapshot = { possession, down, distance, ballOn };
     const scoreBefore: ScoreSnapshot = { us: ourScore, them: theirScore };
-    const isTurnover = ["int", "fumble"].includes(data.playType.id);
+    // Interceptions always change possession; fumbles only when not recovered
+    // by the offense (the modal sends an explicit flag).
+    const isTurnover = data.turnover ?? ["int", "fumble"].includes(data.playType.id);
     const previewPlay: PlayRecord = {
       id: "pending",
       sequence: plays.length + 1,
@@ -1248,7 +1251,7 @@ export default function GameScreen() {
         recorded_start_clock: fmtClock(clock),
         recorded_start_clock_seconds: clock,
         ...(data.playData ?? {}),
-        next_situation_source: data.penalty || data.playType.id === "blocked_kick" ? "pending_review" : "auto",
+        next_situation_source: data.penalty || data.playType.id === "blocked_kick" || isTurnover ? "pending_review" : "auto",
       },
     };
     const liveReplay = liveSessionConfig ? replayLiveGame([...plays, previewPlay], liveSessionConfig) : null;
@@ -1332,8 +1335,11 @@ export default function GameScreen() {
     }
 
     // ── Game state advance ──
+    // Penalties, blocked kicks, and turnovers (INT / lost fumble) pop the
+    // "Adjust Next Situation" review so the spot/possession can be confirmed;
+    // everything else auto-advances.
     const nextSituation = resolution?.afterSituation ?? storedPreview.after;
-    if (data.penalty || data.playType.id === "blocked_kick") {
+    if (data.penalty || data.playType.id === "blocked_kick" || isTurnover) {
       queueSituationAdjustment(savedPlay.id, localPlay, before);
     } else {
       applySituation(nextSituation);
@@ -2405,12 +2411,7 @@ export default function GameScreen() {
                 ))}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-neutral-500 block mb-1">Ball On</label>
-                <input type="number" value={adjBallOn} onChange={e => setAdjBallOn(Number(e.target.value))}
-                  className="input text-center text-sm font-black" min={1} max={99} />
-              </div>
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] font-bold text-neutral-500 block mb-1">Down</label>
                 <input type="number" value={adjDown} onChange={e => setAdjDown(Number(e.target.value))}
@@ -2420,6 +2421,20 @@ export default function GameScreen() {
                 <label className="text-[10px] font-bold text-neutral-500 block mb-1">Distance</label>
                 <input type="number" value={adjDistance} onChange={e => setAdjDistance(Number(e.target.value))}
                   className="input text-center text-sm font-black" min={1} max={99} />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-neutral-500 block mb-1">Ball On</label>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAdjBallOn(Math.min(adjBallOn, 100 - adjBallOn))}
+                  className={`px-2.5 h-9 rounded-lg text-xs font-bold uppercase border transition-colors ${adjBallOn <= 50 ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-neutral-500"}`}>Own</button>
+                <button onClick={() => setAdjBallOn(Math.max(adjBallOn, 100 - adjBallOn))}
+                  className={`px-2.5 h-9 rounded-lg text-xs font-bold uppercase border transition-colors ${adjBallOn > 50 ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-neutral-500"}`}>Opp</button>
+                <input type="number" min={1} max={50}
+                  value={adjBallOn === 50 ? 50 : adjBallOn > 50 ? 100 - adjBallOn : adjBallOn}
+                  onChange={e => { const y = Math.max(1, Math.min(50, Number(e.target.value) || 1)); setAdjBallOn(adjBallOn > 50 ? 100 - y : y); }}
+                  className="input text-center text-sm font-black flex-1" />
+                <span className="text-xs font-bold text-neutral-500 w-16 text-right">{adjBallOn === 50 ? "50" : adjBallOn > 50 ? `OPP ${100 - adjBallOn}` : `OWN ${adjBallOn}`}</span>
               </div>
             </div>
             <button onClick={applySituationAdjustment} className="btn-primary w-full text-sm">Apply</button>

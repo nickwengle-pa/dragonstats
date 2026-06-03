@@ -41,6 +41,8 @@ interface AdvanceablePlay {
   flagYards: number;
   isTouchdown: boolean;
   firstDown: boolean;
+  /** For fumbles: whether possession actually changed. undefined/true = lost (turnover). */
+  turnover?: boolean;
   isTouchback?: boolean;
   blockedKickType?: string | null;
   nextPossession?: TeamSide;
@@ -396,10 +398,14 @@ export function advanceSituationAfterPlay(
     // enforcement === "declined" — fall through to normal play advancement.
   }
 
+  // A fumble counts as a change of possession unless explicitly recovered by
+  // the offense (turnover === false).
+  const fumbleLost = play.type === "fumble" && play.turnover !== false;
+
   if (play.isTouchdown) {
     const isReturnTd =
       play.type === "int" ||
-      play.type === "fumble" ||
+      fumbleLost ||
       play.type === "kickoff" ||
       play.type === "punt" ||
       play.type === "blocked_kick";
@@ -457,7 +463,14 @@ export function advanceSituationAfterPlay(
       possession: recoveredByKicker ? possession : oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
-      ballOn: play.isTouchback ? config.touchback_yard_line : flipFieldPosition(newBallOn),
+      // If the kicking team recovers, possession didn't change, so the ball
+      // stays in their frame (no field flip). Only flip when the receiving
+      // team gets it.
+      ballOn: play.isTouchback
+        ? config.touchback_yard_line
+        : recoveredByKicker
+          ? clampBallOn(newBallOn)
+          : flipFieldPosition(newBallOn),
     };
   }
 
@@ -485,7 +498,8 @@ export function advanceSituationAfterPlay(
     }
   }
 
-  if (play.type === "int" || play.type === "fumble") {
+  // Interception always flips; fumble flips only when it was lost.
+  if (play.type === "int" || fumbleLost) {
     return {
       possession: oppositeTeam(possession),
       down: 1,
@@ -498,7 +512,7 @@ export function advanceSituationAfterPlay(
     return {
       possession,
       down: 1,
-      distance: Math.min(config.first_down_distance, 100 - newBallOn),
+      distance: Math.max(1, Math.min(config.first_down_distance, 100 - newBallOn)),
       ballOn: newBallOn,
     };
   }
@@ -512,10 +526,12 @@ export function advanceSituationAfterPlay(
     };
   }
 
+  // Normal down-to-down: clamp distance to >= 1 and cap at yards-to-goal so it
+  // never shows "2nd & 0" or a distance past the goal line.
   return {
     possession,
     down: before.down + 1,
-    distance: before.distance - play.yards,
+    distance: Math.max(1, Math.min(before.distance - play.yards, 100 - newBallOn)),
     ballOn: newBallOn,
   };
 }

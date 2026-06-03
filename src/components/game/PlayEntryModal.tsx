@@ -39,6 +39,9 @@ export interface PlaySubmitData {
   isTouchdown: boolean;
   isFirstDown: boolean;
   isTouchback: boolean;
+  /** Whether possession changed. Defaults to play-type behavior; set explicitly
+   *  for fumbles (false = offense recovered, true = lost). */
+  turnover?: boolean;
   result: string; // "Good" | "No Good" | "Returned" | "Complete" | "Incomplete" | ""
   penalty: string | null;
   penaltyCategory: PenaltySide | null;
@@ -295,6 +298,8 @@ export default function PlayEntryModal({
   // Toggles
   const [isTD, setIsTD] = useState(false);
   const [isFirstDown, setIsFirstDown] = useState(false);
+  // Fumble recovery: false = lost (turnover, default), true = offense recovered.
+  const [fumbleRecoveredByUs, setFumbleRecoveredByUs] = useState(false);
   const [isTouchback, setIsTouchback] = useState(false);
   const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">("");
 
@@ -659,6 +664,7 @@ export default function PlayEntryModal({
       isTouchdown: scored,
       isFirstDown: earnedFirst,
       isTouchback,
+      turnover: playType.id === "fumble" ? !fumbleRecoveredByUs : playType.id === "int" ? true : undefined,
       result: finalResult,
       penalty,
       penaltyCategory,
@@ -1301,6 +1307,27 @@ export default function PlayEntryModal({
                     className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                       isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-slate-500"
                     }`}>1st Down</button>
+                </div>
+              )}
+
+              {/* Fumble recovery — drives possession */}
+              {playType.id === "fumble" && (
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setFumbleRecoveredByUs(false)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        !fumbleRecoveredByUs ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {gameState.possession === "us" ? oppName : progName} (turnover)
+                    </button>
+                    <button onClick={() => setFumbleRecoveredByUs(true)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        fumbleRecoveredByUs ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {gameState.possession === "us" ? progName : oppName} (kept)
+                    </button>
+                  </div>
                 </div>
               )}
 

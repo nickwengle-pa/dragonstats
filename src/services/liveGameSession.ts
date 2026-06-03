@@ -564,7 +564,19 @@ function applyScoreDelta(play: PlayRecord, before: LiveSessionScore): LiveSessio
   const next = { ...before };
 
   if (play.isTouchdown) {
-    if (play.possession === "us") next.us += 6;
+    // Return touchdowns (pick-six, fumble-six, kick/punt/blocked-kick returns)
+    // are scored by the team that did NOT have possession at the snap.
+    const fumbleLost = play.type === "fumble" && play.turnover !== false;
+    const isReturnTd =
+      play.type === "int" ||
+      fumbleLost ||
+      play.type === "kickoff" ||
+      play.type === "punt" ||
+      play.type === "blocked_kick";
+    const scoringSide: "us" | "them" = isReturnTd
+      ? (play.possession === "us" ? "them" : "us")
+      : play.possession;
+    if (scoringSide === "us") next.us += 6;
     else next.them += 6;
   }
   if (play.type === "pat" && play.result === "Good") {

@@ -605,7 +605,7 @@ export function deriveGameState(
     if (play.is_touchdown) {
       const isReturnTd =
         play.play_type === "int" ||
-        play.play_type === "fumble" ||
+        (play.play_type === "fumble" && play.is_turnover !== false) ||
         play.play_type === "kickoff" ||
         play.play_type === "punt" ||
         play.play_type === "blocked_kick";

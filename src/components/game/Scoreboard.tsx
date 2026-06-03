@@ -264,7 +264,7 @@ export default function Scoreboard({
                 -
               </button>
               <div className="flex-1 h-8 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-display font-extrabold text-amber-400 tabular-nums">
-                {state.distance}
+                {state.ballOn + state.distance >= 100 ? "Goal" : state.distance}
               </div>
               <button
                 onClick={() => onAdjustDistance(1)}
