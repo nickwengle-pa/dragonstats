@@ -19,6 +19,7 @@ interface QuickStats {
   totalGames: number;
   wins: number;
   losses: number;
+  ties: number;
   rosterCount: number;
   nextGame: { opponent_name: string; game_date: string; is_home: boolean } | null;
   liveGame: LiveGame | null;
@@ -63,7 +64,7 @@ export default function DashboardScreen() {
   const { signOut } = useAuth();
   const { program, season } = useProgramContext();
   const navigate = useNavigate();
-  const [stats, setStats] = useState<QuickStats>({ totalGames: 0, wins: 0, losses: 0, rosterCount: 0, nextGame: null, liveGame: null });
+  const [stats, setStats] = useState<QuickStats>({ totalGames: 0, wins: 0, losses: 0, ties: 0, rosterCount: 0, nextGame: null, liveGame: null });
 
   useEffect(() => {
     if (!season) return;
@@ -76,11 +77,12 @@ export default function DashboardScreen() {
       const completed = games.filter((g: any) => g.status === "completed");
       const wins = completed.filter((g: any) => g.our_score > g.opponent_score).length;
       const losses = completed.filter((g: any) => g.our_score < g.opponent_score).length;
+      const ties = completed.filter((g: any) => g.our_score === g.opponent_score).length;
       const nextGame = games.find((g: any) => g.status === "scheduled");
       const live = games.find((g: any) => g.status === "live");
       setStats({
         totalGames: games.length,
-        wins, losses,
+        wins, losses, ties,
         rosterCount: rosterRes.data?.length ?? 0,
         nextGame: nextGame ? {
           opponent_name: (nextGame as any).opponent?.name ?? "TBD",
@@ -101,8 +103,7 @@ export default function DashboardScreen() {
   const mascot = program?.mascot ?? "";
   const primaryColor = program?.primary_color ?? "#dc2626";
   const record = `${stats.wins}-${stats.losses}`;
-  const ties = stats.totalGames - stats.wins - stats.losses > 0
-    ? `-${stats.totalGames - stats.wins - stats.losses}` : "";
+  const ties = stats.ties > 0 ? `-${stats.ties}` : "";
 
   return (
     <div className="screen safe-top lg:max-w-tablet lg:mx-auto pb-20">
