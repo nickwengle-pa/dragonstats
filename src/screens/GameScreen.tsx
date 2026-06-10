@@ -1177,8 +1177,10 @@ export default function GameScreen() {
   /** Records a pre-snap penalty (false start / encroachment) directly as a
    *  penalty_only play with 5 yards and replay-the-down enforcement. No play
    *  happened, so no players need tagging. Mirrors what the manual entry
-   *  flow would produce. */
-  const submitPreSnapPenalty = useCallback(async (kind: "false_start" | "encroachment") => {
+   *  flow would produce.
+   *  NOTE: deliberately NOT memoized — a useCallback with narrow deps froze
+   *  the first render's game situation (possession/down/spot) into the play. */
+  const submitPreSnapPenalty = async (kind: "false_start" | "encroachment") => {
     if (!gameId || !season || isSubmitting.current) return;
     const penaltyLabel = kind === "false_start" ? "False Start" : "Encroachment";
     const side: "offense" | "defense" = kind === "false_start" ? "offense" : "defense";
@@ -1207,7 +1209,7 @@ export default function GameScreen() {
       hashMark: null,
       description: `${penaltyLabel} (pre-snap, 5 yds)`,
     });
-  }, [gameId, season]);
+  };
 
   /* ── Handle play submission from modal ── */
   const handlePlaySubmit = async (data: PlaySubmitData) => {
@@ -1243,6 +1245,9 @@ export default function GameScreen() {
       distance,
       description: data.description,
       possession,
+      // Onside recovered by the kicking team: keep possession (the situation
+      // engine reads nextPossession to decide flip vs. keep).
+      nextPossession: data.playType.id === "onside_kick" && data.onsideRecoveredByKicker ? possession : undefined,
       offensiveFormation: data.offensiveFormation,
       defensiveFormation: data.defensiveFormation,
       hashMark: data.hashMark,
@@ -1337,9 +1342,10 @@ export default function GameScreen() {
     // ── Game state advance ──
     // Penalties, blocked kicks, and turnovers (INT / lost fumble) pop the
     // "Adjust Next Situation" review so the spot/possession can be confirmed;
-    // everything else auto-advances.
+    // everything else auto-advances. TDs skip the review — the next situation
+    // is the mechanical PAT spot, and the PAT gate needs to fire.
     const nextSituation = resolution?.afterSituation ?? storedPreview.after;
-    if (data.penalty || data.playType.id === "blocked_kick" || isTurnover) {
+    if ((data.penalty || data.playType.id === "blocked_kick" || isTurnover) && !data.isTouchdown) {
       queueSituationAdjustment(savedPlay.id, localPlay, before);
     } else {
       applySituation(nextSituation);
@@ -1528,7 +1534,7 @@ export default function GameScreen() {
     // Record a synthetic play so it's visible in the log and reversible via Undo.
     if (season) {
       try {
-        await insertPlay({
+        const savedPlay = await insertPlay({
           game_id: gameId,
           quarter,
           clock: fmtClock(clock),
@@ -1561,6 +1567,40 @@ export default function GameScreen() {
           play_start_time: clock,
           play_end_time: clock,
         }, []);
+        // Mirror into local state so in-session recomputes (play edits,
+        // deletes) replay the correction instead of silently dropping it.
+        if (savedPlay) {
+          const localPlay: PlayRecord = {
+            id: savedPlay.id,
+            sequence: savedPlay.sequence,
+            quarter,
+            clock,
+            type: "score_correction",
+            yards: 0,
+            result: "",
+            penalty: null,
+            flagYards: 0,
+            isTouchdown: false,
+            firstDown: false,
+            turnover: false,
+            tagged: [],
+            ballOn,
+            down,
+            distance,
+            description: `Score correction: ${team === "us" ? "us" : "them"} ${appliedDelta > 0 ? "+" : ""}${appliedDelta}`,
+            possession,
+            nextPossession: possession,
+            nextDown: down,
+            nextDistance: distance,
+            nextBallOn: ballOn,
+            playData: {
+              score_delta_team: team,
+              score_delta: appliedDelta,
+              next_situation_source: "score_correction",
+            },
+          };
+          setPlays(prev => [...prev, localPlay]);
+        }
       } catch (err) {
         console.warn("score_correction insert failed", err);
       }

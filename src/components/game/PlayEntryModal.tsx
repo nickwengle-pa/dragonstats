@@ -42,6 +42,8 @@ export interface PlaySubmitData {
   /** Whether possession changed. Defaults to play-type behavior; set explicitly
    *  for fumbles (false = offense recovered, true = lost). */
   turnover?: boolean;
+  /** Onside kicks only: true when the kicking team recovered its own kick. */
+  onsideRecoveredByKicker?: boolean;
   result: string; // "Good" | "No Good" | "Returned" | "Complete" | "Incomplete" | ""
   penalty: string | null;
   penaltyCategory: PenaltySide | null;
@@ -300,6 +302,8 @@ export default function PlayEntryModal({
   const [isFirstDown, setIsFirstDown] = useState(false);
   // Fumble recovery: false = lost (turnover, default), true = offense recovered.
   const [fumbleRecoveredByUs, setFumbleRecoveredByUs] = useState(false);
+  // Onside kicks: true when the kicking team recovered its own kick.
+  const [onsideRecoveredByKicker, setOnsideRecoveredByKicker] = useState(false);
   const [isTouchback, setIsTouchback] = useState(false);
   const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">("");
 
@@ -452,19 +456,13 @@ export default function PlayEntryModal({
   const currentStep = steps[stepIdx] ?? "review";
 
   const canGoNext = (): boolean => {
-    if (currentStep === "players") {
-      return roles.length === 0 || roles.every((role) => tagged.some((player) => player.role === role));
-    }
-    if (currentStep === "kick_kicker") {
-      const kickerRole = (playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter";
-      return tagged.some(t => t.role === kickerRole);
-    }
-    if (currentStep === "kick_returner") {
-      return tagged.some(t => t.role === "returner");
-    }
     if (currentStep === "review" && penalty) {
       return !!penaltyCategory;
     }
+    // Player-tag steps are intentionally skippable: live entry must never
+    // hard-block on a missing tag (empty opponent roster, unforced fumble,
+    // unidentified returner). Stats fall back to generic attribution and the
+    // play can be re-tagged later from the log or Film Chart.
     return true;
   };
 
@@ -665,6 +663,7 @@ export default function PlayEntryModal({
       isFirstDown: earnedFirst,
       isTouchback,
       turnover: playType.id === "fumble" ? !fumbleRecoveredByUs : playType.id === "int" ? true : undefined,
+      onsideRecoveredByKicker: playType.id === "onside_kick" ? onsideRecoveredByKicker : undefined,
       result: finalResult,
       penalty,
       penaltyCategory,
@@ -696,12 +695,16 @@ export default function PlayEntryModal({
 
   /* ── Determine which roster to show for current role ── */
   const currentRole = roles[currentRoleIdx];
-  // When opponent has ball: offensive roles (rusher, passer, receiver, target, kicker, punter) use opponent roster
-  // When we have ball: only interceptor uses opponent roster
-  const OFFENSIVE_ROLES = new Set(["rusher", "passer", "receiver", "target", "kicker", "punter"]);
-  const showOpponentRoster = isTheirBall
-    ? OFFENSIVE_ROLES.has(currentRole) // Their offense = their players
-    : ["interceptor"].includes(currentRole); // Our offense, opponent interceptor
+  // Offensive roles belong to the team with the ball; defensive roles belong
+  // to the other team. Fumble recovery follows the "Recovered by" toggle.
+  const DEFENSIVE_ROLES = new Set([
+    "tackler", "assist", "sacker", "interceptor", "forced_fumble", "defender", "blocker",
+  ]);
+  const showOpponentRoster = currentRole === "fumble_recovery"
+    ? (fumbleRecoveredByUs ? isTheirBall : !isTheirBall) // kept = possessing team's player
+    : DEFENSIVE_ROLES.has(currentRole)
+      ? !isTheirBall // defense = the team WITHOUT the ball
+      : isTheirBall; // offense = the team WITH the ball
 
   return (
     <div className="sheet bg-black/60 backdrop-blur-sm">
@@ -883,7 +886,7 @@ export default function PlayEntryModal({
 
               {isTouchback && (
                 <div className="text-xs text-slate-500 text-center">
-                  Receiving team will start at their own 25 yard line.
+                  Receiving team will start at their own 20 yard line.
                 </div>
               )}
             </>
@@ -893,12 +896,34 @@ export default function PlayEntryModal({
           {currentStep === "kick_returner" && (
             <>
               <div className="text-xs text-slate-400 mb-1">
-                {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicked" : "Punted"} to {landingLabel} ({kickDistance} yds). Select the returner.
+                {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicked" : "Punted"} to {landingLabel} ({kickDistance} yds). Select the {playType.id === "onside_kick" ? "recoverer" : "returner"}.
               </div>
-              {isTheirBall ? (
+
+              {/* Onside: who came up with it — drives possession */}
+              {playType.id === "onside_kick" && (
+                <div className="mb-3">
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setOnsideRecoveredByKicker(false)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        !onsideRecoveredByKicker ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {isTheirBall ? progName : oppName} (receivers)
+                    </button>
+                    <button onClick={() => setOnsideRecoveredByKicker(true)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        onsideRecoveredByKicker ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {isTheirBall ? oppName : progName} (kickers)
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(playType.id === "onside_kick" && onsideRecoveredByKicker ? !isTheirBall : isTheirBall) ? (
                 <PlayerGrid
                   roster={roster}
-                  label={`Select returner (${progName})`}
+                  label={`Select ${playType.id === "onside_kick" ? "recoverer" : "returner"} (${progName})`}
                   onSelect={handleReturnerSelect}
                   selectedId={tagged.find(t => t.role === "returner")?.player_id ?? null}
                   search={returnerSearch}
@@ -907,7 +932,7 @@ export default function PlayEntryModal({
               ) : (
                 <OpponentPlayerGrid
                   players={localOppPlayers}
-                  label={`Select returner (${oppName})`}
+                  label={`Select ${playType.id === "onside_kick" ? "recoverer" : "returner"} (${oppName})`}
                   onSelect={handleReturnerSelectOpp}
                   selectedId={tagged.find(t => t.role === "returner")?.id ?? null}
                   search={returnerSearch}
