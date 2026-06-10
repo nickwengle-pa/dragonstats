@@ -251,6 +251,18 @@ export function moveToQuarter(
     if (quarter === 3) {
       situation = createSecondHalfSituation(pregame, config);
     }
+    // NFHS overtime: each possession starts 1st-and-goal at the opponent's
+    // 10-yard line. Possession carries over from the current selection — the
+    // OT coin toss decides who goes first, so the operator flips it on the
+    // scoreboard if needed.
+    if (quarter >= 5) {
+      situation = {
+        possession: situation.possession,
+        down: 1,
+        distance: 10,
+        ballOn: 90,
+      };
+    }
   }
 
   return {

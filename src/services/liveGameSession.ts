@@ -294,6 +294,27 @@ function toEnginePlay(
         context,
       } satisfies RushPlay & { context: PlayContext } as Play;
     }
+    case "scramble": {
+      // QB scramble — rushing yards credited to the passer, flagged for the
+      // engine's designed-pass-turned-run splits.
+      const rusher = firstTaggedPlayer(play, "passer")?.player_id
+        ?? firstTaggedPlayer(play, "rusher")?.player_id
+        ?? genericPlayerId(play, "rusher", config);
+      return {
+        type: PlayType.Rush,
+        rusher,
+        result: play.isTouchdown ? RushResult.Touchdown : RushResult.Normal,
+        yardsGained: play.yards,
+        isTouchdown: play.isTouchdown,
+        isQBScramble: true,
+        tackledBy: playersByRole(play, "tackler"),
+        assistedTackle: playersByRole(play, "assist"),
+        fumble: buildFumble(play, rusher, config),
+        penalties,
+        description: play.description || undefined,
+        context,
+      } satisfies RushPlay & { context: PlayContext } as Play;
+    }
     case "kneel": {
       const rusher = firstTaggedPlayer(play, "rusher")?.player_id ?? genericPlayerId(play, "rusher", config);
       return {
@@ -307,6 +328,35 @@ function toEnginePlay(
         description: play.description || undefined,
         context,
       } satisfies RushPlay & { context: PlayContext } as Play;
+    }
+    case "throwaway": {
+      const passer = firstTaggedPlayer(play, "passer")?.player_id ?? genericPlayerId(play, "passer", config);
+      return {
+        type: PlayType.Pass,
+        passer,
+        result: PassResult.ThrowAway,
+        yardsGained: 0,
+        isTouchdown: false,
+        penalties,
+        description: play.description || undefined,
+        context,
+      } satisfies PassPlay & { context: PlayContext } as Play;
+    }
+    case "drop": {
+      // Drop = incomplete pass with a target; drop credit derives downstream.
+      const passer = firstTaggedPlayer(play, "passer")?.player_id ?? genericPlayerId(play, "passer", config);
+      const target = firstTaggedPlayer(play, "target")?.player_id ?? firstTaggedPlayer(play, "receiver")?.player_id;
+      return {
+        type: PlayType.Pass,
+        passer,
+        result: PassResult.Incomplete,
+        target,
+        yardsGained: 0,
+        isTouchdown: false,
+        penalties,
+        description: play.description || "Drop",
+        context,
+      } satisfies PassPlay & { context: PlayContext } as Play;
     }
     case "spike": {
       const passer = firstTaggedPlayer(play, "passer")?.player_id ?? genericPlayerId(play, "passer", config);
@@ -431,6 +481,36 @@ function toEnginePlay(
         tackledBy: playersByRole(play, "tackler"),
         penalties,
         description: play.description || undefined,
+        context,
+      } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
+    }
+    case "onside_kick": {
+      const recoverer = firstTaggedPlayer(play, "recoverer")?.player_id ?? firstTaggedPlayer(play, "returner")?.player_id;
+      return {
+        type: PlayType.Kickoff,
+        kicker: firstTaggedPlayer(play, "kicker")?.player_id,
+        returner: recoverer,
+        result: SpecialTeamsResult.Normal,
+        returnYards: recoverer ? play.yards : undefined,
+        isOnsideKick: true,
+        isTouchdown: play.isTouchdown,
+        tackledBy: playersByRole(play, "tackler"),
+        penalties,
+        description: play.description || "Onside kick",
+        context,
+      } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
+    }
+    case "fair_catch": {
+      return {
+        type: PlayType.Punt,
+        punter: firstTaggedPlayer(play, "punter")?.player_id ?? firstTaggedPlayer(play, "kicker")?.player_id,
+        returner: firstTaggedPlayer(play, "returner")?.player_id,
+        result: SpecialTeamsResult.FairCatch,
+        returnYards: 0,
+        isFairCatch: true,
+        isTouchdown: false,
+        penalties,
+        description: play.description || "Fair catch",
         context,
       } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
     }
@@ -594,6 +674,22 @@ function applyScoreDelta(play: PlayRecord, before: LiveSessionScore): LiveSessio
   if (play.type === "safety") {
     if (play.possession === "us") next.them += 2;
     else next.us += 2;
+  }
+  // Defensive conversion return ("Returned" PAT/2pt): defense scores 2.
+  if ((play.type === "pat" || play.type === "two_pt") && play.result === "Returned") {
+    if (play.possession === "us") next.them += 2;
+    else next.us += 2;
+  }
+  // Manual score corrections are recorded as plays — without this, any replay
+  // (edit/delete recompute, resume) silently drops the operator's fix.
+  if (play.type === "score_correction") {
+    const pd = (play.playData ?? {}) as Record<string, unknown>;
+    const team = pd.score_delta_team;
+    const delta = Number(pd.score_delta ?? 0);
+    if (delta !== 0 && (team === "us" || team === "them")) {
+      if (team === "us") next.us = Math.max(0, next.us + delta);
+      else next.them = Math.max(0, next.them + delta);
+    }
   }
 
   return next;

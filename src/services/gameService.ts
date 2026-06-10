@@ -648,6 +648,7 @@ export function deriveGameState(
   }) ?? advanceSituationAfterPlay({
     type: last.play_type,
     yards: last.yards_gained,
+    turnover: last.is_turnover,
     result: typeof playData.result === "string" ? playData.result : "",
     penalty: typeof playData.penalty_type === "string" ? playData.penalty_type : null,
     penaltyCategory: playData.play_category === "offense" || playData.play_category === "defense"

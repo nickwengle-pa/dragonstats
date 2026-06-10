@@ -857,9 +857,9 @@ export default function GameScreen() {
     let rushAtt = 0, rushYds = 0, passAtt = 0, passComp = 0, passYds = 0, firstDowns = 0, tos = 0, pens = 0;
     plays.forEach(p => {
       if (p.possession === "us") {
-        if (p.type === "rush") { rushAtt++; rushYds += p.yards; }
+        if (p.type === "rush" || p.type === "scramble") { rushAtt++; rushYds += p.yards; }
         if (p.type === "pass_comp") { passAtt++; passComp++; passYds += p.yards; }
-        if (p.type === "pass_inc") passAtt++;
+        if (["pass_inc", "throwaway", "drop", "spike", "int"].includes(p.type)) passAtt++;
         if (p.firstDown) firstDowns++;
         if (p.turnover) tos++;
       }
