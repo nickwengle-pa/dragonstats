@@ -6,17 +6,40 @@ import { ProgramProvider, useProgramContext } from "@/hooks/useProgramContext";
 // Eagerly loaded (small, always needed)
 import LoginScreen from "@/screens/LoginScreen";
 
+/** React.lazy with a one-shot recovery reload.
+ *  After a deploy, an already-open tab references old hashed chunk files that
+ *  no longer exist on the server — the dynamic import rejects and the screen
+ *  renders nothing ("black screen on first navigation"). One reload fetches
+ *  the fresh index.html + chunks; the sessionStorage flag prevents a loop. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyWithReload(load: () => Promise<{ default: React.ComponentType<any> }>) {
+  return lazy(() =>
+    load()
+      .then((mod) => {
+        sessionStorage.removeItem("chunk-reload");
+        return mod;
+      })
+      .catch((err) => {
+        if (!sessionStorage.getItem("chunk-reload")) {
+          sessionStorage.setItem("chunk-reload", "1");
+          window.location.reload();
+        }
+        throw err;
+      }),
+  );
+}
+
 // Lazy-loaded screens
-const DashboardScreen = lazy(() => import("@/screens/DashboardScreen"));
-const ScheduleScreen = lazy(() => import("@/screens/ScheduleScreen"));
-const RosterScreen = lazy(() => import("@/screens/RosterScreen"));
-const GameScreen = lazy(() => import("@/screens/GameScreen"));
-const GameSummaryScreen = lazy(() => import("@/screens/GameSummaryScreen"));
-const PostGameReview = lazy(() => import("@/screens/PostGameReview"));
-const PlayerScreen = lazy(() => import("@/screens/PlayerScreen"));
-const SettingsScreen = lazy(() => import("@/screens/SettingsScreen"));
-const SeasonStatsScreen = lazy(() => import("@/screens/SeasonStatsScreen"));
-const GameSettingsScreen = lazy(() => import("@/screens/GameSettingsScreen"));
+const DashboardScreen = lazyWithReload(() => import("@/screens/DashboardScreen"));
+const ScheduleScreen = lazyWithReload(() => import("@/screens/ScheduleScreen"));
+const RosterScreen = lazyWithReload(() => import("@/screens/RosterScreen"));
+const GameScreen = lazyWithReload(() => import("@/screens/GameScreen"));
+const GameSummaryScreen = lazyWithReload(() => import("@/screens/GameSummaryScreen"));
+const PostGameReview = lazyWithReload(() => import("@/screens/PostGameReview"));
+const PlayerScreen = lazyWithReload(() => import("@/screens/PlayerScreen"));
+const SettingsScreen = lazyWithReload(() => import("@/screens/SettingsScreen"));
+const SeasonStatsScreen = lazyWithReload(() => import("@/screens/SeasonStatsScreen"));
+const GameSettingsScreen = lazyWithReload(() => import("@/screens/GameSettingsScreen"));
 
 function LoadingFallback() {
   return (
