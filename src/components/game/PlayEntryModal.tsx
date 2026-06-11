@@ -61,6 +61,20 @@ type Step = "players" | "yards" | "formations" | "defense" | "review"
   | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards" | "kick_tacklers";
 type FieldTeam = "program" | "opponent";
 
+/** Roles that belong to the team WITHOUT the ball. */
+const DEFENSIVE_ROLES = new Set([
+  "tackler", "assist", "sacker", "interceptor", "forced_fumble", "defender", "blocker",
+]);
+
+/** Catch-all opponent placeholder — collects stats when no jersey was caught.
+ *  Not a real roster row; persisted per-play via play_data.opp_tagged. */
+const OPP_TEAM_PLAYER: OpponentPlayerRef = {
+  id: "opp_team",
+  name: "TEAM",
+  jersey_number: null,
+  position: null,
+};
+
 function defaultBlockedKickType(gameState: GameState): BlockedKickType {
   if (gameState.ballOn >= 95) return "extra_point";
   if (gameState.down === 4 && gameState.ballOn >= 60) return "field_goal";
@@ -192,6 +206,18 @@ function OpponentPlayerGrid({
         className="input mb-2 text-sm"
       />
       <div className="grid grid-cols-5 gap-1.5 max-h-40 overflow-y-auto">
+        {/* Catch-all TEAM tile — always available so stats never go untracked */}
+        <button
+          onClick={() => onSelect(OPP_TEAM_PLAYER)}
+          className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 ${
+            selectedId === OPP_TEAM_PLAYER.id
+              ? "border-red-500 bg-red-500/10 text-red-400"
+              : "border-dashed border-surface-border bg-surface-bg text-slate-400 active:bg-surface-hover"
+          }`}
+        >
+          <span className="text-base font-black">★</span>
+          <span className="text-[8px] font-bold text-slate-500 truncate w-full text-center">TEAM</span>
+        </button>
         {filtered.map(p => (
           <button
             key={p.id}
@@ -208,7 +234,7 @@ function OpponentPlayerGrid({
         ))}
         {filtered.length === 0 && !canQuickAdd && (
           <div className="col-span-5 text-xs text-slate-600 text-center py-4">
-            No opponent players found. Type a jersey # to quick-add.
+            Tap TEAM, or type a jersey # to quick-add a player.
           </div>
         )}
       </div>
@@ -614,6 +640,36 @@ export default function PlayEntryModal({
 
   const handleSubmit = () => {
     const allTagged = [...tagged, ...tacklers];
+
+    // ── Auto-fill skipped OPPONENT-side roles with the TEAM placeholder ──
+    // Our own skipped roles stay untagged (coach should attribute real
+    // players); opponent stats always land somewhere visible.
+    const roleUsesOppRoster = (role: string): boolean => {
+      if (role === "fumble_recovery") return fumbleRecoveredByUs ? isTheirBall : !isTheirBall;
+      if (role === "returner") {
+        return playType.id === "onside_kick" && onsideRecoveredByKicker ? isTheirBall : !isTheirBall;
+      }
+      if (DEFENSIVE_ROLES.has(role)) return !isTheirBall;
+      return isTheirBall; // offensive roles (incl. kicker/punter)
+    };
+    const rolesToFill = isKickPlay
+      ? [
+          playType.id === "punt" || playType.id === "fair_catch" ? "punter" : "kicker",
+          ...(isTouchback ? [] : ["returner"]),
+        ]
+      : roles;
+    for (const role of rolesToFill) {
+      if (!allTagged.some(t => t.role === role) && roleUsesOppRoster(role)) {
+        allTagged.push({
+          id: OPP_TEAM_PLAYER.id,
+          player_id: OPP_TEAM_PLAYER.id,
+          jersey_number: null,
+          name: OPP_TEAM_PLAYER.name,
+          role,
+          isOpponent: true,
+        });
+      }
+    }
     const passResult = playType.id === "pass_comp" ? "Complete" : playType.id === "pass_inc" ? "Incomplete" : "";
     const finalResult = result || passResult;
 
@@ -697,9 +753,6 @@ export default function PlayEntryModal({
   const currentRole = roles[currentRoleIdx];
   // Offensive roles belong to the team with the ball; defensive roles belong
   // to the other team. Fumble recovery follows the "Recovered by" toggle.
-  const DEFENSIVE_ROLES = new Set([
-    "tackler", "assist", "sacker", "interceptor", "forced_fumble", "defender", "blocker",
-  ]);
   const showOpponentRoster = currentRole === "fumble_recovery"
     ? (fumbleRecoveredByUs ? isTheirBall : !isTheirBall) // kept = possessing team's player
     : DEFENSIVE_ROLES.has(currentRole)

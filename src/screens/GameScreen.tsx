@@ -353,14 +353,26 @@ export default function GameScreen() {
           || pd.blocked_kick_type === "punt"
           || pd.blocked_kick_type === "kickoff"
         ) ? pd.blocked_kick_type as BlockedKickType : null,
-        tagged: p.play_players.map((pp: any) => ({
-          id: pp.player_id,
-          player_id: pp.player_id,
-          jersey_number: null,
-          name: pp.player ? `${pp.player.first_name} ${pp.player.last_name}` : "?",
-          role: pp.role,
-          credit: pp.credit ?? undefined,
-        })),
+        tagged: [
+          ...p.play_players.map((pp: any) => ({
+            id: pp.player_id,
+            player_id: pp.player_id,
+            jersey_number: null,
+            name: pp.player ? `${pp.player.first_name} ${pp.player.last_name}` : "?",
+            role: pp.role,
+            credit: pp.credit ?? undefined,
+          })),
+          // Opponent tags are persisted in play_data (no FK row possible).
+          ...((Array.isArray(pd.opp_tagged) ? pd.opp_tagged : []) as any[]).map((t: any) => ({
+            id: String(t.id ?? "opp_team"),
+            player_id: String(t.id ?? "opp_team"),
+            jersey_number: t.jersey_number ?? null,
+            name: String(t.name ?? "TEAM"),
+            role: String(t.role ?? ""),
+            credit: t.credit ?? undefined,
+            isOpponent: true,
+          })),
+        ],
         ballOn: p.yard_line,
         down: p.down,
         distance: p.distance,
@@ -793,6 +805,17 @@ export default function GameScreen() {
         penalty_enforcement: play.penaltyEnforcement ?? (play.penalty ? "accepted" : null),
         penalty_yards: play.flagYards,
         blocked_kick_type: play.blockedKickType ?? null,
+        // Opponent tags can't live in play_players (FK to our players table),
+        // so persist them here for reload/recompute and post-game review.
+        opp_tagged: play.tagged
+          .filter((tag) => tag.isOpponent)
+          .map((tag) => ({
+            id: tag.player_id,
+            name: tag.name,
+            jersey_number: tag.jersey_number,
+            role: tag.role,
+            credit: tag.credit ?? null,
+          })),
         next_possession: after.possession,
         next_down: after.down,
         next_distance: after.distance,

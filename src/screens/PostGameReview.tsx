@@ -99,14 +99,26 @@ function parseClockText(clockText: unknown, fallback: number): number {
 
 function rowToPlayRecord(p: PlayWithPlayers): PlayRecord {
   const pd = (p.play_data ?? {}) as Record<string, any>;
-  const tagged: TaggedPlayer[] = (p.play_players ?? []).map((pp: any) => ({
-    id: pp.player_id,
-    player_id: pp.player_id,
-    jersey_number: null,
-    name: pp.player ? `${pp.player.first_name} ${pp.player.last_name}` : "?",
-    role: pp.role,
-    credit: pp.credit ?? undefined,
-  }));
+  const tagged: TaggedPlayer[] = [
+    ...(p.play_players ?? []).map((pp: any) => ({
+      id: pp.player_id,
+      player_id: pp.player_id,
+      jersey_number: null,
+      name: pp.player ? `${pp.player.first_name} ${pp.player.last_name}` : "?",
+      role: pp.role,
+      credit: pp.credit ?? undefined,
+    })),
+    // Opponent tags live in play_data (they have no play_players FK row).
+    ...((Array.isArray(pd.opp_tagged) ? pd.opp_tagged : []) as any[]).map((t: any) => ({
+      id: String(t.id ?? "opp_team"),
+      player_id: String(t.id ?? "opp_team"),
+      jersey_number: t.jersey_number ?? null,
+      name: String(t.name ?? "TEAM"),
+      role: String(t.role ?? ""),
+      credit: t.credit ?? undefined,
+      isOpponent: true,
+    })),
+  ];
   return {
     id: p.id,
     sequence: p.sequence,
