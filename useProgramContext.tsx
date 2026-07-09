@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import type { Program } from "@/services/programService";
@@ -31,16 +31,22 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   const [program, setProgram] = useState<Program | null>(null);
   const [season, setSeason] = useState<Season | null>(null);
   const [loading, setLoading] = useState(true);
+  // Once a program has loaded, background refreshes (auth event echoes,
+  // manual refresh()) must not flip `loading` back to true — that swaps the
+  // route content for a spinner and unmounts live screens mid-game, wiping
+  // any play entry in progress.
+  const hasLoadedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!user) {
       setProgram(null);
       setSeason(null);
+      hasLoadedRef.current = false;
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
 
     // Get program
     const { data: prog } = await supabase
@@ -49,7 +55,12 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       .eq("owner_id", user.id)
       .maybeSingle();
 
-    setProgram(prog);
+    // Keep object identity stable when the row hasn't changed — screens key
+    // data-loading effects on these objects, and a fresh-but-identical object
+    // forces them to reload (and reset live game state) for nothing.
+    setProgram(prev =>
+      prev && prog && JSON.stringify(prev) === JSON.stringify(prog) ? prev : prog
+    );
 
     // Get active season
     if (prog) {
@@ -60,11 +71,14 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
         .eq("is_active", true)
         .maybeSingle();
 
-      setSeason(activeSeason);
+      setSeason(prev =>
+        prev && activeSeason && JSON.stringify(prev) === JSON.stringify(activeSeason) ? prev : activeSeason
+      );
     } else {
       setSeason(null);
     }
 
+    hasLoadedRef.current = true;
     setLoading(false);
   }, [user]);
 

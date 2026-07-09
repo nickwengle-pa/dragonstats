@@ -21,10 +21,25 @@ export function useAuth() {
       setState({ user: session?.user ?? null, session, loading: false });
     });
 
-    // Listen for auth changes
+    // Listen for auth changes.
+    // Supabase re-emits events on tab focus and token refresh with a NEW user
+    // object each time. Downstream effects key on the user's identity, so a
+    // fresh object for the same signed-in user causes context refreshes that
+    // unmount live screens (wiping in-progress play entry). Keep the previous
+    // user reference whenever the underlying user hasn't actually changed.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setState({ user: session?.user ?? null, session, loading: false });
+        setState(prev => {
+          const nextUser = session?.user ?? null;
+          const sameUser = prev.user?.id === nextUser?.id;
+          const sameToken = prev.session?.access_token === session?.access_token;
+          if (!prev.loading && sameUser && sameToken) return prev;
+          return {
+            user: sameUser && prev.user ? prev.user : nextUser,
+            session,
+            loading: false,
+          };
+        });
       }
     );
 

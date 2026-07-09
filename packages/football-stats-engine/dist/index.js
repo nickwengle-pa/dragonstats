@@ -69,6 +69,7 @@ export { TeamCalculator } from "./calculators/team";
 // Penalty system
 export { PenaltyCalculator } from "./calculators/penalty";
 export { PENALTY_CATALOG, lookupPenalty, getPenaltyYards, isAutoFirstDown, getAllPenaltyCodes, getPenaltiesByCategory, EnforcementSpot, PenaltyCategory, } from "./calculators/penalty-catalog";
+export { isPlayNullifiedByPenalty, } from "./calculators/penalty";
 // Game state manager
 export { GameStateManager, GamePhase, ClockState, StoppageReason, CoinTossChoice, PossessionReason, GameEventType, getRuleSet, NFL_RULES, COLLEGE_RULES, HIGH_SCHOOL_RULES, } from "./game-state";
 // Utilities

@@ -168,6 +168,7 @@ export interface PassPlay {
     penalties?: PenaltyEvent[];
     tackledBy?: string[];
     assistedTackle?: string[];
+    defendedBy?: string[];
     forcedOutOfBounds?: boolean;
     description?: string;
 }

@@ -338,7 +338,8 @@ export default function PlayEntryModal({
   const [penaltyCategory, setPenaltyCategory] = useState<PenaltySide | null>(null);
   const [penaltyEnforcement, setPenaltyEnforcement] = useState<PenaltyEnforcement>("accepted");
   const [flagYards, setFlagYards] = useState(5);
-  const [showPenalties, setShowPenalties] = useState(false);
+  // Standalone penalty plays exist to record a flag — open the picker up front.
+  const [showPenalties, setShowPenalties] = useState(playType.id === "penalty_only");
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(() => defaultBlockedKickType(gameState));
 
   // Formations
@@ -359,6 +360,16 @@ export default function PlayEntryModal({
   const [kickedToYard, setKickedToYard] = useState(5); // receiving team's yard line where ball lands
   const [kickedToRaw, setKickedToRaw] = useState("");
   const [returnToYardLine, setReturnToYardLine] = useState(20);
+
+  // Default the return spot to wherever the kick was caught (a 0-yard return),
+  // matching the INT flow. A hardcoded default let a rushed operator silently
+  // record backwards returns (caught at the 35, "returned to" the 20 = -15).
+  useEffect(() => {
+    if (!isKickPlay) return;
+    setReturnToYardLine(kickedToYard);
+    setReturnToTeam(receivingFieldSide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kickedToYard]);
   const receivingFieldSide: FieldTeam = gameState.possession === "us" ? "opponent" : "program";
   const [returnToTeam, setReturnToTeam] = useState<FieldTeam>(receivingFieldSide);
   const [returnToRaw, setReturnToRaw] = useState("");
@@ -473,7 +484,9 @@ export default function PlayEntryModal({
     steps.push("review");
   } else {
     if (roles.length > 0) steps.push("players");
-    if (needsYards || needsResult) steps.push("yards");
+    // penalty_only carries no yardage, but the yards step hosts the penalty
+    // picker — without it the standalone PENALTY action records a blank flag.
+    if (needsYards || needsResult || playType.id === "penalty_only") steps.push("yards");
     steps.push("formations");
     steps.push("review");
   }
@@ -836,7 +849,7 @@ export default function PlayEntryModal({
                           ? "bg-dragon-primary text-white"
                           : tp ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-surface-bg text-slate-500"
                       }`}>
-                      {role}{tp ? `: #${tp.jersey_number}` : ""}
+                      {role}{tp ? `: ${tp.jersey_number != null ? `#${tp.jersey_number}` : tp.name}` : ""}
                     </button>
                   );
                 })}
@@ -1427,22 +1440,26 @@ export default function PlayEntryModal({
               </button>
 
               {showPenalties && (
+                <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
+                  {PENALTIES.map(p => (
+                    <button key={p} onClick={() => {
+                      setPenalty(p);
+                      setPenaltyCategory(getPenaltyDefaultSide(p));
+                      setFlagYards(PENALTY_DEFAULT_YARDS[p] ?? 5);
+                      setShowPenalties(false);
+                    }}
+                      className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-all duration-200 ${
+                        penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-slate-400"
+                      }`}>{p}</button>
+                  ))}
+                </div>
+              )}
+
+              {/* Side/enforcement/yards stay visible once a penalty is picked —
+                  hiding them behind the collapsed picker made decline/offset
+                  effectively undiscoverable during live entry. */}
+              {penalty && (
                 <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
-                    {PENALTIES.map(p => (
-                      <button key={p} onClick={() => {
-                        setPenalty(p);
-                        setPenaltyCategory(getPenaltyDefaultSide(p));
-                        setFlagYards(PENALTY_DEFAULT_YARDS[p] ?? 5);
-                        setShowPenalties(false);
-                      }}
-                        className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-all duration-200 ${
-                          penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-slate-400"
-                        }`}>{p}</button>
-                    ))}
-                  </div>
-                  {penalty && (
-                    <div className="space-y-2">
                       <div>
                         <span className="text-xs text-slate-500 block mb-1">Flag On</span>
                         <div className="grid grid-cols-2 gap-2">
@@ -1488,8 +1505,6 @@ export default function PlayEntryModal({
                           disabled={penaltyEnforcement !== "accepted"} />
                         <button onClick={() => { setPenalty(null); setPenaltyCategory(null); setFlagYards(5); setPenaltyEnforcement("accepted"); }} className="text-xs text-red-400 ml-auto">Clear</button>
                       </div>
-                    </div>
-                  )}
                 </div>
               )}
             </>

@@ -333,6 +333,9 @@ function convertPlay(
       const passer = firstPlayerByRole(play, "passer")
         ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
       const target = firstPlayerByRole(play, "target") ?? firstPlayerByRole(play, "receiver");
+      // Derived credit: a defender/tackler tagged on an incompletion is a
+      // pass breakup, not a tackle — nobody got tackled on an incomplete pass.
+      const breakups = [...playersByRole(play, "defender"), ...playersByRole(play, "tackler")];
       return {
         type: PlayType.Pass,
         passer,
@@ -340,6 +343,7 @@ function convertPlay(
         target,
         yardsGained: 0,
         isTouchdown: false,
+        defendedBy: breakups.length > 0 ? breakups : undefined,
         penalties,
         description: play.description ?? undefined,
         context,

@@ -251,6 +251,7 @@ export declare class GameStateManager {
     private secondHalfKickoffReceiver;
     constructor(level?: RuleLevel, customRules?: Partial<RuleSet>);
     setTeams(home: TeamId, away: TeamId): void;
+    /** Configure opening and second-half kickoff receivers directly. */
     configureKickoffReceivers(openingKickoffReceiver: string, secondHalfKickoffReceiver?: string, coinTossWinner?: string, coinTossChoice?: CoinTossChoice): void;
     recordCoinToss(winner: string, choice: CoinTossChoice): void;
     processPlay(play: Play): {

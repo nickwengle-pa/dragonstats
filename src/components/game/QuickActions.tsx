@@ -43,7 +43,9 @@ const CATEGORY_LABELS: Record<string, string> = {
 const PHASE_CATEGORIES: Record<PhaseFilter, Set<string>> = {
   all: new Set(["run", "pass", "scoring", "kicking", "turnover", "other"]),
   offense: new Set(["run", "pass", "other"]),
-  defense: new Set(["turnover", "other"]),
+  // Recording the opponent's runs and passes IS the defensive operator's job —
+  // hiding those categories forced a filter tap before nearly every play.
+  defense: new Set(["run", "pass", "turnover", "other"]),
   special: new Set(["kicking", "scoring"]),
 };
 
@@ -70,9 +72,12 @@ export default function QuickActions({
     }
   }, [suggestedPhase, manualOverride]);
 
+  // A manual filter choice sticks until possession changes (a genuinely new
+  // context). Resetting on every suggestion change wiped the operator's pick
+  // after each recorded play.
   useEffect(() => {
     setManualOverride(false);
-  }, [suggestedPhase]);
+  }, [possession]);
 
   const grouped = PLAY_TYPES.reduce<Record<string, PlayTypeDef[]>>((acc, pt) => {
     (acc[pt.category] ??= []).push(pt);

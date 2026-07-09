@@ -3,6 +3,7 @@
 // ============================================================================
 import { PassResult, } from "../types";
 import { initReceivingStats, isPassPlay, isRedZone, isThirdDown, isFirstDown, safeDivide, round, } from "../utils";
+import { isPlayNullifiedByPenalty } from "./penalty";
 export class ReceivingCalculator {
     constructor(config, resolveName) {
         this.config = config;
@@ -12,6 +13,9 @@ export class ReceivingCalculator {
     }
     process(play) {
         if (!isPassPlay(play))
+            return;
+        // Play wiped out by an accepted penalty: nothing counts.
+        if (isPlayNullifiedByPenalty(play))
             return;
         const p = play;
         // Skip sacks, scrambles, throw-aways, spikes (no receiver involved)

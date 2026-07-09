@@ -278,9 +278,11 @@ export class GameStateManager {
         this.homeTeam = home;
         this.awayTeam = away;
     }
+    /** Configure opening and second-half kickoff receivers directly. */
     configureKickoffReceivers(openingKickoffReceiver, secondHalfKickoffReceiver, coinTossWinner, coinTossChoice) {
         this.openingKickoffReceiver = openingKickoffReceiver;
-        this.secondHalfKickoffReceiver = secondHalfKickoffReceiver ?? (openingKickoffReceiver === this.homeTeam.id ? this.awayTeam.id : this.homeTeam.id);
+        this.secondHalfKickoffReceiver = secondHalfKickoffReceiver
+            ?? (openingKickoffReceiver === this.homeTeam.id ? this.awayTeam.id : this.homeTeam.id);
         if (coinTossWinner) {
             this.coinTossWinner = coinTossWinner;
         }
@@ -758,14 +760,6 @@ export class GameStateManager {
         }
         if (p.fumble && p.fumble.recoveryTeam && p.fumble.recoveryTeam !== play.context.possessionTeam) {
             this.possession = p.fumble.recoveryTeam;
-            return true;
-        }
-        if ((play.type === PlayType.Kickoff || play.type === PlayType.FreeKick) && p.result !== SpecialTeamsResult.Block) {
-            if (p.fumble && p.fumble.recoveryTeam) {
-                this.possession = p.fumble.recoveryTeam;
-                return p.fumble.recoveryTeam !== play.context.possessionTeam;
-            }
-            this.possession = this.possession === this.homeTeam.id ? this.awayTeam.id : this.homeTeam.id;
             return true;
         }
         if (play.type === PlayType.Punt && p.result !== SpecialTeamsResult.Block) {

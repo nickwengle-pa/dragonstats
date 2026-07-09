@@ -3,6 +3,7 @@
 // ============================================================================
 import { PlayType, PassResult, KickResult, DriveResult, } from "../types";
 import { initTeamStats, isPassPlay, isRushPlay, isSpecialTeamsPlay, isRedZone, isThirdDown, isFourthDown, isFirstDown, isGoalToGo, safeDivide, clockToSeconds, secondsToClock, round, } from "../utils";
+import { isPlayNullifiedByPenalty } from "./penalty";
 export class TeamCalculator {
     constructor(config, homeTeamId, awayTeamId, homeTeamName, awayTeamName) {
         this.config = config;
@@ -43,6 +44,12 @@ export class TeamCalculator {
                     penTeamStat.penaltyYards += pen.yards;
                 }
             }
+            return;
+        }
+        // Play wiped out by an accepted penalty: no attempt/yardage credit,
+        // but the penalty itself still counts against the flagged team.
+        if (isPlayNullifiedByPenalty(play)) {
+            this.processPenaltiesOnPlay(play);
             return;
         }
         // --- PASS PLAYS ---

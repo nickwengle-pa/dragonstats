@@ -26,6 +26,8 @@ interface Props {
   theirTimeoutsRemaining: number;
   onTakeTimeout: (team: "us" | "them") => void;
   onCorrectScore?: (team: "us" | "them") => void;
+  /** Manual possession correction — tapping the possession chip flips it. */
+  onFlipPossession?: () => void;
 }
 
 function downLabel(down: number) {
@@ -96,6 +98,7 @@ export default function Scoreboard({
   theirTimeoutsRemaining,
   onTakeTimeout,
   onCorrectScore,
+  onFlipPossession,
 }: Props) {
   const effOppColor = oppColor ?? "#6b7280";
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
@@ -178,12 +181,14 @@ export default function Scoreboard({
             >
               {fmtClock(state.clock)}
             </button>
-            <div
-              className="text-[8px] font-display font-bold uppercase tracking-[0.18em]"
+            <button
+              onClick={onFlipPossession}
+              className="text-[8px] font-display font-bold uppercase tracking-[0.18em] cursor-pointer"
               style={{ color: state.possession === "us" ? primaryColor : effOppColor }}
+              title="Tap to flip possession (manual correction)"
             >
               {possessionLabel}
-            </div>
+            </button>
           </div>
 
           <div className="flex-1 flex items-center justify-end gap-2.5 min-w-0">

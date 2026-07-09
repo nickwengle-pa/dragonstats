@@ -1,5 +1,17 @@
 import { Play, Down, EngineConfig, PlayerPenaltyStats, TeamPenaltyStats } from "../types";
 import { RuleLevel } from "../game-state";
+/**
+ * Whether an accepted penalty on this play nullifies the play result.
+ *
+ * Statistics convention (NFHS/NCAA): a scrimmage play wiped out by an
+ * accepted live-ball foul is "no play" — no attempt, no yardage, no TD,
+ * no first down. Dead-ball and tack-on fouls (replayDown = false, e.g. a
+ * late hit after the runner is down) leave the play result standing.
+ *
+ * Unknown penalty codes default to nullifying: accepting a flag almost
+ * always means the offended team preferred the walk-off to the result.
+ */
+export declare function isPlayNullifiedByPenalty(play: Play): boolean;
 export interface EnforcementResult {
     /** Accepted yardage (after half-the-distance) */
     actualYards: number;
