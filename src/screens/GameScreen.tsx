@@ -62,11 +62,24 @@ import {
   type PlayTypeDef,
   type GameState,
   type BlockedKickType,
+  type TaggedPlayer,
   findPlayTypeDef,
   QUARTER_LABELS,
   fmtClock,
   quarterLabel,
 } from "@/components/game/types";
+
+/** Roles worth remembering between plays — the same kicker/QB/back/return man
+ *  usually repeats, so the entry modal pre-fills them (sticky defaults).
+ *  Defensive roles are deliberately excluded: tacklers change every play. */
+const STICKY_ROLES = ["rusher", "passer", "receiver", "target", "kicker", "punter", "returner"] as const;
+const STICKY_ROLE_SET = new Set<string>(STICKY_ROLES);
+/** The returner belongs to the receiving (non-possessing) team; every other
+ *  sticky role belongs to the team with the ball. */
+function stickySide(role: string, possession: "us" | "them"): "us" | "them" {
+  if (role === "returner") return possession === "us" ? "them" : "us";
+  return possession;
+}
 
 interface LiveSituationSnapshot {
   possession: "us" | "them";
@@ -541,6 +554,21 @@ export default function GameScreen() {
   useEffect(() => {
     knownPlayIds.current = new Set(plays.map((p) => p.id));
   }, [plays]);
+
+  // Sticky player defaults, keyed `${role}:${side}`, persisted per game so a
+  // mid-game reload keeps them. Bumping stickyVersion re-resolves the prefill
+  // map after each recorded play.
+  const stickyPlayers = useRef<Record<string, TaggedPlayer>>({});
+  const [stickyVersion, setStickyVersion] = useState(0);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`ds:sticky-players:${gameId}`);
+      stickyPlayers.current = raw ? (JSON.parse(raw) as Record<string, TaggedPlayer>) : {};
+    } catch {
+      stickyPlayers.current = {};
+    }
+    setStickyVersion((v) => v + 1);
+  }, [gameId]);
   const isSubmitting = useRef(false);
 
   /* ── Modal state ── */
@@ -917,6 +945,19 @@ export default function GameScreen() {
     () => formatTeamYardLabel(ballOn, possession, progAbbr, oppAbbr),
     [ballOn, oppAbbr, possession, progAbbr],
   );
+  // Sticky defaults resolved for the current possession — what the entry
+  // modal pre-tags when it opens.
+  const prefillTags = useMemo(() => {
+    const out: Record<string, TaggedPlayer> = {};
+    for (const role of STICKY_ROLES) {
+      const tp = stickyPlayers.current[`${role}:${stickySide(role, possession)}`];
+      if (tp) out[role] = tp;
+    }
+    return out;
+    // stickyVersion invalidates after each recorded play / game switch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [possession, stickyVersion]);
+
   const suggestedPhase = useMemo(() => {
     const isKickState = ballOn === gc.kickoff_yard_line || ballOn === gc.safety_kick_yard_line;
     const isConversionState = ballOn === 100 - gc.pat_distance && distance <= gc.pat_distance;
@@ -1376,6 +1417,20 @@ export default function GameScreen() {
 
     // Mark game live on first play
     if (plays.length === 0) await updateGameScore(gameId, ourScore, theirScore, "live");
+
+    // ── Sticky defaults: remember who filled each reusable role ──
+    let stickyChanged = false;
+    for (const tag of data.tagged) {
+      if (!STICKY_ROLE_SET.has(tag.role)) continue;
+      stickyPlayers.current[`${tag.role}:${stickySide(tag.role, possession)}`] = tag;
+      stickyChanged = true;
+    }
+    if (stickyChanged) {
+      try {
+        localStorage.setItem(`ds:sticky-players:${gameId}`, JSON.stringify(stickyPlayers.current));
+      } catch { /* storage full/blocked — sticky defaults just won't survive reload */ }
+      setStickyVersion((v) => v + 1);
+    }
 
     // ── Scoring ──
     const nextScore = resolution?.scoreAfter ?? storedPreview.scoreAfter;
@@ -2131,6 +2186,7 @@ export default function GameScreen() {
           opponentPlayers={oppPlayers}
           progName={progName}
           oppName={oppName}
+          prefillTags={prefillTags}
           onSubmit={handlePlaySubmit}
           onClose={() => setSelectedPlayType(null)}
           onAddOpponentPlayer={async (player) => {

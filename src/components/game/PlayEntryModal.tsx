@@ -28,6 +28,10 @@ interface Props {
   onSubmit: (data: PlaySubmitData) => void;
   onClose: () => void;
   onAddOpponentPlayer?: (player: OpponentPlayerRef) => void;
+  /** Sticky defaults: last player tagged per role (side-resolved by the
+   *  parent). Pre-tagged on open so repeat personnel costs zero taps —
+   *  tapping a different player replaces the pre-fill. */
+  prefillTags?: Record<string, TaggedPlayer>;
 }
 
 export type PenaltyEnforcement = "accepted" | "declined" | "offset";
@@ -256,13 +260,27 @@ function OpponentPlayerGrid({
 
 export default function PlayEntryModal({
   playType, gameState, roster, opponentPlayers, progName, oppName, onSubmit, onClose, onAddOpponentPlayer,
+  prefillTags,
 }: Props) {
   // Local copy of opponent players (can grow via quick-add)
   const [localOppPlayers, setLocalOppPlayers] = useState<OpponentPlayerRef[]>(opponentPlayers);
 
-  // Tagged players for this play
-  const [tagged, setTagged] = useState<TaggedPlayer[]>([]);
-  const [currentRoleIdx, setCurrentRoleIdx] = useState(0);
+  // Sticky defaults don't apply to kneels: the "rusher" on a kneel is the QB,
+  // not whoever carried last.
+  const activePrefill = playType.id === "kneel" ? undefined : prefillTags;
+
+  // Tagged players for this play — seeded with sticky defaults for this
+  // play type's roles (same kicker/QB/back as last time).
+  const [tagged, setTagged] = useState<TaggedPlayer[]>(() =>
+    playType.roles
+      .map((role) => (activePrefill?.[role] ? { ...activePrefill[role], role } : null))
+      .filter((tp): tp is TaggedPlayer => tp !== null)
+  );
+  // Start on the first role that still needs a tap.
+  const [currentRoleIdx, setCurrentRoleIdx] = useState(() => {
+    const idx = playType.roles.findIndex((role) => !activePrefill?.[role]);
+    return idx === -1 ? 0 : idx;
+  });
   const [searches, setSearches] = useState<Record<string, string>>({});
 
   // Yards — yard-line picker
@@ -491,7 +509,21 @@ export default function PlayEntryModal({
     steps.push("review");
   }
 
-  const [stepIdx, setStepIdx] = useState(0);
+  // Sticky pre-fills can cover a whole step: when every player role arrived
+  // pre-tagged, open directly on the next step (yards/result — or the kick
+  // location when the kicker is remembered). The players step stays one BACK
+  // tap away, and the review step still shows attribution before recording.
+  const [stepIdx, setStepIdx] = useState(() => {
+    if (steps[0] === "players" && playType.roles.length > 0
+        && playType.roles.every((role) => activePrefill?.[role])) {
+      return 1;
+    }
+    if (steps[0] === "kick_kicker") {
+      const kickerRole = (playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter";
+      if (activePrefill?.[kickerRole]) return 1;
+    }
+    return 0;
+  });
   const currentStep = steps[stepIdx] ?? "review";
 
   const canGoNext = (): boolean => {
