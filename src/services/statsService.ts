@@ -312,6 +312,42 @@ export interface PlayerGameLine {
   returns: GameSummary["returns"][string] | null;
 }
 
+/** One season's worth of game lines for a player (career view). */
+export interface PlayerSeasonBlock {
+  seasonId: string;
+  year: number;
+  level: string | null;
+  lines: PlayerGameLine[];
+}
+
+/**
+ * Career stats: every season this player was rostered for the program,
+ * oldest first, each with its per-game stat lines.
+ */
+export async function computePlayerCareerStats(
+  playerId: string,
+  program: ProgramInfo,
+): Promise<PlayerSeasonBlock[]> {
+  const { data: rosterRows, error } = await supabase
+    .from("season_rosters")
+    .select("season:seasons(id, year, level, program_id)")
+    .eq("player_id", playerId);
+
+  if (error || !rosterRows) return [];
+
+  const seasons = rosterRows
+    .map((r: any) => r.season)
+    .filter((s: any) => s && s.program_id === program.id)
+    .sort((a: any, b: any) => a.year - b.year);
+
+  const blocks: PlayerSeasonBlock[] = [];
+  for (const s of seasons) {
+    const lines = await computePlayerSeasonStats(playerId, s.id, program);
+    blocks.push({ seasonId: s.id, year: s.year, level: s.level ?? null, lines });
+  }
+  return blocks;
+}
+
 /**
  * Load all completed games for a season and extract one player's stats from each.
  */
