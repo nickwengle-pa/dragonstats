@@ -15,6 +15,26 @@ export interface Season {
   end_date: string | null;
 }
 
+/** Level choices for season pickers, and the labels they render as. */
+export const SEASON_LEVELS = [
+  { value: "varsity", label: "Varsity" },
+  { value: "jv", label: "JV" },
+  { value: "freshman", label: "Freshman" },
+];
+
+export function formatLevel(level: string) {
+  return SEASON_LEVELS.find((entry) => entry.value === level)?.label ?? level;
+}
+
+export function buildSeasonName(year: number, level: string) {
+  return `${year} ${formatLevel(level)}`;
+}
+
+/** Display name for a season — its custom name, else "2026 Varsity". */
+export function formatSeasonName(season: Pick<Season, "year" | "level" | "name">) {
+  return season.name?.trim() || buildSeasonName(season.year, season.level);
+}
+
 export interface CreateSeasonInput {
   program_id: string;
   year: number;

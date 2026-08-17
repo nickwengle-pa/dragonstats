@@ -17,29 +17,21 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { TabBar } from "@/screens/DashboardScreen";
+import DangerZone from "@/components/settings/DangerZone";
 import { supabase } from "@/lib/supabase";
-import { coachService, seasonService, type Coach, type Season } from "@/services/seasonService";
+import {
+  SEASON_LEVELS as LEVEL_OPTIONS,
+  buildSeasonName,
+  coachService,
+  formatLevel,
+  formatSeasonName,
+  seasonService,
+  type Coach,
+  type Season,
+} from "@/services/seasonService";
 
 interface Props {
   firstTime?: boolean;
-}
-
-const LEVEL_OPTIONS = [
-  { value: "varsity", label: "Varsity" },
-  { value: "jv", label: "JV" },
-  { value: "freshman", label: "Freshman" },
-];
-
-function formatLevel(level: string) {
-  return LEVEL_OPTIONS.find((entry) => entry.value === level)?.label ?? level;
-}
-
-function buildSeasonName(year: number, level: string) {
-  return `${year} ${formatLevel(level)}`;
-}
-
-function formatSeasonName(season: Pick<Season, "year" | "level" | "name">) {
-  return season.name?.trim() || buildSeasonName(season.year, season.level);
 }
 
 function ColorField({
@@ -819,6 +811,15 @@ export default function SettingsScreen({ firstTime = false }: Props) {
         <button onClick={handleSave} disabled={!name || !abbrev || saving} className="btn-primary w-full">
           {saved ? "Saved!" : saving ? "Saving..." : firstTime ? "Create Program" : "Save Changes"}
         </button>
+
+        {program && !firstTime && (
+          <DangerZone
+            programId={program.id}
+            season={season}
+            seasons={seasons}
+            onChanged={refresh}
+          />
+        )}
       </div>
       {!firstTime && <TabBar />}
     </div>

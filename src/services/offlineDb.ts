@@ -176,6 +176,10 @@ export interface EnqueueUpdateParams {
   playId: string;
   patch: Record<string, unknown>;
   playData?: Record<string, unknown>;
+  /** Full replacement set of play_players rows. Only supply this when the edit
+   *  actually re-tagged players — omitting it leaves existing tags untouched,
+   *  while an empty array explicitly clears them. */
+  players?: Array<Record<string, unknown>>;
 }
 
 export async function enqueueUpdate(p: EnqueueUpdateParams): Promise<SyncQueueItem> {
@@ -184,7 +188,7 @@ export async function enqueueUpdate(p: EnqueueUpdateParams): Promise<SyncQueueIt
     op: "update",
     gameId: p.gameId,
     playId: p.playId,
-    payload: { patch: p.patch, playData: p.playData },
+    payload: { patch: p.patch, playData: p.playData, players: p.players },
     status: "pending",
     attempts: 0,
     createdAt: Date.now(),
@@ -270,6 +274,47 @@ export async function clearQueueForGame(gameId: string): Promise<void> {
   const tx = db.transaction("sync_queue", "readwrite");
   const items = await tx.store.index("by-game").getAll(gameId);
   await Promise.all(items.map((i) => tx.store.delete(i.id)));
+  await tx.done;
+}
+
+/* ── purge helpers ───────────────────────────────────────────────────── */
+
+/**
+ * Drop every cached play AND every queued op for one game.
+ *
+ * Call this whenever a game is deleted server-side. Clearing the queue is the
+ * important half: a leftover pending insert would otherwise replay against a
+ * game that no longer exists and resurrect orphaned rows.
+ */
+export async function clearGameCache(gameId: string): Promise<void> {
+  if (!isOfflineSupported()) return;
+  const db = await getDb();
+  const tx = db.transaction(["plays_cache", "sync_queue"], "readwrite");
+  const playsStore = tx.objectStore("plays_cache");
+  const queueStore = tx.objectStore("sync_queue");
+
+  const [plays, queued] = await Promise.all([
+    playsStore.index("by-game").getAll(gameId),
+    queueStore.index("by-game").getAll(gameId),
+  ]);
+
+  await Promise.all([
+    ...plays.map((p) => playsStore.delete(p.id)),
+    ...queued.map((i) => queueStore.delete(i.id)),
+  ]);
+  await tx.done;
+}
+
+/** Wipe every offline store on this device. Destructive — unsynced work is lost. */
+export async function clearAllOfflineData(): Promise<void> {
+  if (!isOfflineSupported()) return;
+  const db = await getDb();
+  const tx = db.transaction(["plays_cache", "sync_queue", "meta"], "readwrite");
+  await Promise.all([
+    tx.objectStore("plays_cache").clear(),
+    tx.objectStore("sync_queue").clear(),
+    tx.objectStore("meta").clear(),
+  ]);
   await tx.done;
 }
 

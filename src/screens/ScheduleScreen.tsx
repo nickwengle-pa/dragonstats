@@ -13,6 +13,7 @@ import {
   type OpponentPlayer,
 } from "@/services/opponentService";
 import { parseMaxPrepsRoster, parseCSVRoster, type ParsedPlayer } from "@/utils/rosterImport";
+import { deleteGame } from "@/services/dangerZone";
 
 /* ─── Types ─── */
 
@@ -546,6 +547,11 @@ export default function ScheduleScreen() {
   const [showAddGame, setShowAddGame] = useState(false);
   const [oppModal, setOppModal] = useState<{ open: boolean; editing: Opponent | null }>({ open: false, editing: null });
 
+  // Inline delete confirmation. playCount is null until the count comes back.
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; playCount: number | null } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
   const loadData = useCallback(async () => {
     if (!season || !program) return;
     setLoading(true);
@@ -559,6 +565,36 @@ export default function ScheduleScreen() {
   }, [season, program]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  /** Open the confirm bar, then fill in the play count so the warning is concrete. */
+  const askDeleteGame = async (game: GameRow) => {
+    setDeleteError("");
+    setDeleteTarget({ id: game.id, playCount: null });
+
+    const { count } = await supabase
+      .from("plays")
+      .select("id", { count: "exact", head: true })
+      .eq("game_id", game.id);
+
+    setDeleteTarget(prev => (prev?.id === game.id ? { ...prev, playCount: count ?? 0 } : prev));
+  };
+
+  const confirmDeleteGame = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError("");
+
+    const result = await deleteGame(deleteTarget.id);
+
+    setDeleting(false);
+    if (!result.ok) {
+      setDeleteError(result.error ?? "Could not delete the game.");
+      return;
+    }
+
+    setDeleteTarget(null);
+    setGames(prev => prev.filter(g => g.id !== deleteTarget.id));
+  };
 
   const formatDate = (d: string) => {
     const date = new Date(d);
@@ -630,56 +666,103 @@ export default function ScheduleScreen() {
         ) : (
           <div className="space-y-2">
             {games.map(game => (
-              <button key={game.id}
-                onClick={() => navigate(game.status === "completed" ? `/game/${game.id}/summary` : `/game/${game.id}`)}
-                className="card w-full p-4 text-left active:scale-[0.98] transition-transform"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-neutral-500">{formatDate(game.game_date)}</span>
-                  {getStatusBadge(game)}
-                </div>
-                <div className="flex items-center gap-3">
-                  {game.opponent.logo_url ? (
-                    <img src={game.opponent.logo_url} alt={game.opponent.name} className="w-8 h-8 object-contain rounded-lg shrink-0" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
-                      style={{ backgroundColor: game.opponent.primary_color + "30", color: game.opponent.primary_color }}>
-                      {(game.opponent.abbreviation ?? game.opponent.name.substring(0, 3)).toUpperCase()}
+              <div key={game.id} className="card w-full">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(game.status === "completed" ? `/game/${game.id}/summary` : `/game/${game.id}`)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(game.status === "completed" ? `/game/${game.id}/summary` : `/game/${game.id}`);
+                    }
+                  }}
+                  className="w-full p-4 text-left cursor-pointer active:scale-[0.98] transition-transform"
+                >
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <span className="text-xs font-bold text-neutral-500">{formatDate(game.game_date)}</span>
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(game)}
+                      <button
+                        onClick={e => { e.stopPropagation(); askDeleteGame(game); }}
+                        className="text-neutral-700 hover:text-red-400 transition-colors p-1 -m-1"
+                        title="Delete game"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  )}
-                  <div className="flex-1">
-                    <div className="font-bold text-sm" style={{ color: game.opponent.primary_color }}>
-                      {getSiteLabel(game)} {game.opponent.name}
-                    </div>
-                    {game.location && (
-                      <div className="text-xs text-neutral-600 flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3" /> {game.location}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {game.opponent.logo_url ? (
+                      <img src={game.opponent.logo_url} alt={game.opponent.name} className="w-8 h-8 object-contain rounded-lg shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
+                        style={{ backgroundColor: game.opponent.primary_color + "30", color: game.opponent.primary_color }}>
+                        {(game.opponent.abbreviation ?? game.opponent.name.substring(0, 3)).toUpperCase()}
                       </div>
                     )}
-                  </div>
-                  {game.status === "completed" ? (
-                    <div className="text-right">
-                      <div className="font-black text-sm">
-                        {game.our_score} – {game.opponent_score}
+                    <div className="flex-1">
+                      <div className="font-bold text-sm" style={{ color: game.opponent.primary_color }}>
+                        {getSiteLabel(game)} {game.opponent.name}
                       </div>
-                      <div className="text-[10px] font-bold" style={{
-                        color: game.our_score > game.opponent_score ? "#22c55e" :
-                          game.our_score < game.opponent_score ? "#ef4444" : "#a3a3a3"
-                      }}>
-                        {game.our_score > game.opponent_score ? "W" : game.our_score < game.opponent_score ? "L" : "T"}
-                      </div>
+                      {game.location && (
+                        <div className="text-xs text-neutral-600 flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3" /> {game.location}
+                        </div>
+                      )}
                     </div>
-                  ) : game.status === "live" ? (
-                    <Play className="w-5 h-5 text-dragon-primary" />
-                  ) : (
-                    <span className="text-xs text-neutral-600 font-semibold">
-                      {game.kickoff_time
-                        ? game.kickoff_time
-                        : new Date(game.game_date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                    </span>
-                  )}
+                    {game.status === "completed" ? (
+                      <div className="text-right">
+                        <div className="font-black text-sm">
+                          {game.our_score} – {game.opponent_score}
+                        </div>
+                        <div className="text-[10px] font-bold" style={{
+                          color: game.our_score > game.opponent_score ? "#22c55e" :
+                            game.our_score < game.opponent_score ? "#ef4444" : "#a3a3a3"
+                        }}>
+                          {game.our_score > game.opponent_score ? "W" : game.our_score < game.opponent_score ? "L" : "T"}
+                        </div>
+                      </div>
+                    ) : game.status === "live" ? (
+                      <Play className="w-5 h-5 text-dragon-primary" />
+                    ) : (
+                      <span className="text-xs text-neutral-600 font-semibold">
+                        {game.kickoff_time
+                          ? game.kickoff_time
+                          : new Date(game.game_date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </button>
+
+                {deleteTarget?.id === game.id && (
+                  <div className="mx-4 mb-4 p-3 rounded-xl bg-red-950/25 border border-red-900/40">
+                    <p className="text-xs text-neutral-300 leading-relaxed">
+                      Delete this game{deleteTarget.playCount === null
+                        ? ""
+                        : ` and its ${deleteTarget.playCount} recorded play${deleteTarget.playCount === 1 ? "" : "s"}`}?
+                      {" "}This cannot be undone.
+                    </p>
+                    {deleteError && <p className="text-xs text-red-400 mt-1.5">{deleteError}</p>}
+                    <div className="flex gap-2 mt-2.5">
+                      <button
+                        onClick={confirmDeleteGame}
+                        disabled={deleting}
+                        className="btn-primary text-xs px-3 py-1 h-9 disabled:opacity-40"
+                      >
+                        {deleting ? "Deleting..." : "Delete Game"}
+                      </button>
+                      <button
+                        onClick={() => { setDeleteTarget(null); setDeleteError(""); }}
+                        disabled={deleting}
+                        className="btn-ghost text-xs px-3 py-1 h-9"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
