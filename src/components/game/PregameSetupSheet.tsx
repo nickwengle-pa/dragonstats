@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import {
+  DEFAULT_CHARTING,
+  type ChartingPrefs,
   createDefaultPregameConfig,
   deriveOpeningKickoffReceiver,
   getSecondHalfKickoffReceiver,
@@ -13,11 +15,47 @@ import {
 
 interface Props {
   initialValue?: PregameConfig | null;
+  /** What this crew is charting live. Both default on. */
+  initialCharting?: ChartingPrefs | null;
   progName: string;
   oppName: string;
   onClose: () => void;
-  onSave: (pregame: PregameConfig) => Promise<void> | void;
+  onSave: (pregame: PregameConfig, charting: ChartingPrefs) => Promise<void> | void;
   saving?: boolean;
+}
+
+/** On/off row for a charting option. */
+function SwitchRow({
+  label, hint, value, onChange,
+}: {
+  label: string;
+  hint: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+        value
+          ? "border-dragon-primary/50 bg-dragon-primary/10"
+          : "border-surface-border bg-surface-bg"
+      }`}
+    >
+      <div className="flex-1 min-w-0">
+        <div className={`text-xs font-bold ${value ? "text-dragon-primary" : "text-neutral-400"}`}>{label}</div>
+        <div className="text-[10px] text-neutral-500 mt-0.5">{hint}</div>
+      </div>
+      <span
+        className={`shrink-0 w-10 h-6 rounded-full flex items-center px-0.5 transition-colors ${
+          value ? "bg-dragon-primary justify-end" : "bg-surface-border justify-start"
+        }`}
+      >
+        <span className="w-5 h-5 rounded-full bg-white block" />
+      </span>
+    </button>
+  );
 }
 
 function teamLabel(team: TeamSide, progName: string, oppName: string): string {
@@ -63,6 +101,7 @@ function ToggleRow<T extends string>({
 
 export default function PregameSetupSheet({
   initialValue,
+  initialCharting,
   progName,
   oppName,
   onClose,
@@ -70,10 +109,15 @@ export default function PregameSetupSheet({
   saving = false,
 }: Props) {
   const [form, setForm] = useState<PregameConfig>(initialValue ?? createDefaultPregameConfig());
+  const [charting, setCharting] = useState<ChartingPrefs>(initialCharting ?? DEFAULT_CHARTING);
 
   useEffect(() => {
     setForm(initialValue ?? createDefaultPregameConfig());
   }, [initialValue]);
+
+  useEffect(() => {
+    setCharting(initialCharting ?? DEFAULT_CHARTING);
+  }, [initialCharting]);
 
   const openingReceiverLocked = form.tossChoice === "receive" || form.tossChoice === "kick";
   const openingReceiver = useMemo(
@@ -89,7 +133,7 @@ export default function PregameSetupSheet({
     onSave({
       ...form,
       openingKickoffReceiver: openingReceiver,
-    });
+    }, charting);
   };
 
   return (
@@ -173,6 +217,24 @@ export default function PregameSetupSheet({
             onChange={(value) => setForm((prev) => ({ ...prev, openingKickoffReceiver: value }))}
             disabled={openingReceiverLocked}
           />
+
+          <div className="space-y-2">
+            <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest">
+              Charting This Game
+            </div>
+            <SwitchRow
+              label="Track formations"
+              hint="Adds a formation + hash step to every play. Turn off for a thin crew — Film Chart can still add it later."
+              value={charting.formations}
+              onChange={(value) => setCharting((prev) => ({ ...prev, formations: value }))}
+            />
+            <SwitchRow
+              label="Track tacklers"
+              hint="Adds a tackler step (solo 1.0 / assist 0.5). Turn off to record faster."
+              value={charting.tacklers}
+              onChange={(value) => setCharting((prev) => ({ ...prev, tacklers: value }))}
+            />
+          </div>
 
           <div className="card p-3 space-y-1.5">
             <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest">Summary</div>

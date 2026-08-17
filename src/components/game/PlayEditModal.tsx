@@ -615,7 +615,7 @@ export default function PlayEditModal({
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-500">Penalty yards:</span>
                         <input type="number" value={flagYards} onChange={e => setFlagYards(Number(e.target.value))}
-                          className="input w-16 text-center text-sm" />
+                          className="input w-20 text-center text-sm" />
                         <button onClick={() => { setPenalty(null); setPenaltyCategory(null); setFlagYards(5); }} className="text-xs text-red-400 ml-auto">Clear</button>
                       </div>
                     </div>

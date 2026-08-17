@@ -16,6 +16,17 @@ interface Props {
   oppLogoUrl?: string | null;
   oppColor: string;
   onFlipDirection?: () => void;
+  /** When set, the playing surface becomes tappable and reports the display
+   *  position (0–100, left→right on screen) that was tapped. */
+  onPickSpot?: (displayPosition: number) => void;
+  /** Shorter field, for use inside the play-entry sheet. */
+  compact?: boolean;
+}
+
+/** Inverse of toWidgetPercent — widget-relative click → 0–100 field position. */
+function fromWidgetPercent(widgetPercent: number) {
+  const raw = ((widgetPercent - PLAYING_FIELD_START_PCT) * 100) / PLAYING_FIELD_WIDTH_PCT;
+  return Math.max(0, Math.min(100, raw));
 }
 
 const YARD_NUMBERS = [10, 20, 30, 40, 50, 40, 30, 20, 10];
@@ -47,6 +58,8 @@ export default function FieldVisualizer({
   oppLogoUrl,
   oppColor,
   onFlipDirection,
+  onPickSpot,
+  compact = false,
 }: Props) {
   const theirEndZoneSide = ourEndZoneSide === "left" ? "right" : "left";
   const ourEndZoneStyle = ourEndZoneSide === "left" ? { left: 0 } : { right: 0 };
@@ -68,7 +81,7 @@ export default function FieldVisualizer({
       style={{ background: "linear-gradient(180deg, #111820, #0d1117)" }}
     >
       <div
-        className="relative w-full h-32 rounded-xl overflow-hidden"
+        className={`relative w-full ${compact ? "h-24" : "h-32"} rounded-xl overflow-hidden`}
         style={{
           background: "linear-gradient(180deg, rgba(34, 94, 45, 0.98), rgba(19, 78, 36, 1))",
           boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
@@ -221,6 +234,29 @@ export default function FieldVisualizer({
         >
           {ballOn > 50 ? 100 - ballOn : ballOn}
         </div>
+
+        {/* Tap-to-spot overlay. Sits above the field art but below the ball
+            marker and the flip button so neither gets swallowed. Covers only
+            the playing surface — the end zones aren't valid spots. */}
+        {onPickSpot && (
+          <div
+            className="absolute top-0 bottom-0 z-[25] cursor-crosshair"
+            style={{
+              left: `${PLAYING_FIELD_START_PCT}%`,
+              width: `${PLAYING_FIELD_WIDTH_PCT}%`,
+            }}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (rect.width === 0) return;
+              const localPct = ((event.clientX - rect.left) / rect.width) * 100;
+              // localPct is already relative to the playing surface, so map it
+              // back through the widget frame fromWidgetPercent expects.
+              const widgetPct =
+                PLAYING_FIELD_START_PCT + (localPct * PLAYING_FIELD_WIDTH_PCT) / 100;
+              onPickSpot(Math.round(fromWidgetPercent(widgetPct)));
+            }}
+          />
+        )}
 
         {onFlipDirection && (
           <button

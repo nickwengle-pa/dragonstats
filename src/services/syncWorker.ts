@@ -99,13 +99,26 @@ async function pushItem(item: SyncQueueItem): Promise<boolean> {
     }
 
     if (item.op === "update") {
-      const { patch, playData } = item.payload;
+      const { patch, playData, players } = item.payload;
       const update: Record<string, unknown> = { ...patch };
       if (playData !== undefined) update.play_data = playData;
       const { error } = await supabase.from("plays").update(update).eq("id", item.playId);
       if (error) {
         await markFailed(item.id, error.message);
         return false;
+      }
+      // A full play edit can re-tag who was involved, so the queued update
+      // carries the replacement roster. Absent `players` this was a
+      // situation-only patch and existing tags must survive untouched.
+      if (Array.isArray(players)) {
+        await supabase.from("play_players").delete().eq("play_id", item.playId);
+        if (players.length > 0) {
+          const { error: ppErr } = await supabase.from("play_players").insert(players);
+          if (ppErr) {
+            await markFailed(item.id, ppErr.message);
+            return false;
+          }
+        }
       }
       await markSynced(item.id);
       return true;

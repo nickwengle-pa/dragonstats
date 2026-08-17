@@ -133,6 +133,23 @@
            text-white px-4 font-body font-medium placeholder:text-neutral-600
            focus:outline-none focus:border-dragon-primary/60 transition-colors;
   }
+
+  /* Number fields in the entry modals are narrow by necessity (they sit beside
+     steppers and side toggles). The browser's spinner arrows plus .input's
+     px-4 left barely any room for the digits, so two-digit values clipped.
+     Drop the spinners — every one of these has +/- buttons or chips beside it
+     already — and tighten the padding so the full value always fits. */
+  .input[type="number"] {
+    @apply px-2 text-center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .input[type="number"]::-webkit-outer-spin-button,
+  .input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
   .label {
     @apply text-[11px] font-display font-bold text-surface-muted uppercase tracking-widest;
   }

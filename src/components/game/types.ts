@@ -31,6 +31,51 @@ export interface TaggedPlayer {
   role: string;
   credit?: number;
   isOpponent?: boolean;
+  /** Our side, but no roster row — an unrostered jersey seen during live entry.
+   *  Stats accrue under the number until a coach resolves it from Roster. */
+  isPending?: boolean;
+}
+
+/* ─────────────────────────────────────────────
+   Pending (unrostered) players
+   ─────────────────────────────────────────────
+   A jersey number recorded during a game with nobody rostered under it. These
+   have no `players` row, so they cannot go in `play_players` (FK) — they ride
+   in play_data.pending_tagged, exactly like opponent tags do. Resolution
+   (merge / promote / discard) happens on the Roster screen after the game. */
+
+export const PENDING_ID_PREFIX = "pending_";
+
+/** Stable per-jersey id so the same unknown #42 aggregates across plays. */
+export function makePendingId(jersey: number): string {
+  return `${PENDING_ID_PREFIX}${jersey}`;
+}
+
+export function isPendingId(id: string | null | undefined): boolean {
+  return typeof id === "string" && id.startsWith(PENDING_ID_PREFIX);
+}
+
+/** Jersey number back out of a pending id, or null if it isn't one. */
+export function pendingJerseyFromId(id: string): number | null {
+  if (!isPendingId(id)) return null;
+  const n = Number(id.slice(PENDING_ID_PREFIX.length));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Display name for a pending tag — "#42" reads better than a fake name. */
+export function pendingDisplayName(jersey: number | null): string {
+  return jersey != null ? `#${jersey}` : "#?";
+}
+
+/**
+ * True only for tags backed by a real `players` row, i.e. the ones that can
+ * become play_players rows. Opponent tags and pending tags both fail this.
+ *
+ * Every play_players write must filter through this — a pending tag reaching
+ * that insert would violate the foreign key and fail the whole save.
+ */
+export function isRosterTag(tag: Pick<TaggedPlayer, "isOpponent" | "isPending">): boolean {
+  return !tag.isOpponent && !tag.isPending;
 }
 
 export type PenaltySide = "offense" | "defense";
@@ -131,6 +176,22 @@ export const PLAY_TYPES: PlayTypeDef[] = [
 export function findPlayTypeDef(typeId: string): PlayTypeDef | undefined {
   return PLAY_TYPES.find(p => p.id === typeId);
 }
+
+/**
+ * Roles where the same player recurs snap after snap, so the last selection is
+ * carried into the next play to save taps during live entry.
+ *
+ * Deliberately excluded: receiver, tackler, interceptor, forced_fumble,
+ * fumble_recovery, sacker, blocker. Those change nearly every snap, and a
+ * pre-filled wrong name is worse than an empty one — it mis-credits stats
+ * silently, which is exactly what this app exists to get right.
+ *
+ * Carried-over tags are always shown as such in the entry modal so they read as
+ * a suggestion, never as a confirmed pick.
+ */
+export const STICKY_ROLES = new Set([
+  "passer", "rusher", "kicker", "punter", "returner",
+]);
 
 export const PENALTIES = [
   "Offsides", "False Start", "Holding-OFF", "Holding-DEF",

@@ -8,6 +8,8 @@ import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { parseCSVRoster, parseMaxPrepsRoster, type ParsedPlayer } from "@/utils/rosterImport";
+import PendingPlayersSheet from "@/components/roster/PendingPlayersSheet";
+import { loadPendingPlayers, type PendingPlayerSummary } from "@/services/pendingPlayerService";
 
 /* ─── Types ─── */
 
@@ -308,6 +310,8 @@ export default function RosterScreen() {
   const [showImport, setShowImport] = useState(false);
   const [editingEntry, setEditingEntry] = useState<RosterPlayer | null>(null);
   const [importing, setImporting] = useState(false);
+  const [pending, setPending] = useState<PendingPlayerSummary[]>([]);
+  const [showPending, setShowPending] = useState(false);
 
   const loadRoster = useCallback(async () => {
     if (!season) return;
@@ -322,7 +326,18 @@ export default function RosterScreen() {
     setLoading(false);
   }, [season]);
 
+  /* Recomputed from the plays every time rather than cached — deleting a game
+     removes its pending tags via cascade, and a stale count would linger. */
+  const loadPending = useCallback(async () => {
+    if (!season) {
+      setPending([]);
+      return;
+    }
+    setPending(await loadPendingPlayers(season.id));
+  }, [season]);
+
   useEffect(() => { loadRoster(); }, [loadRoster]);
+  useEffect(() => { loadPending(); }, [loadPending]);
 
   /* ── Add single player ── */
   const handleSave = async (data: {
@@ -446,6 +461,27 @@ export default function RosterScreen() {
         </div>
       )}
 
+      {/* Jerseys recorded during a game with nobody rostered under them. */}
+      {pending.length > 0 && (
+        <div className="px-5 pb-3">
+          <button
+            onClick={() => setShowPending(true)}
+            className="w-full flex items-center gap-3 p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-left active:bg-amber-500/15 transition-colors"
+          >
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-amber-400">
+                {pending.length} unresolved player{pending.length === 1 ? "" : "s"}
+              </div>
+              <div className="text-[11px] text-amber-400/70 truncate">
+                {pending.map((p) => (p.jersey != null ? `#${p.jersey}` : "#?")).join(", ")} recorded without a roster spot
+              </div>
+            </div>
+            <span className="text-[11px] font-bold text-amber-400 shrink-0">Resolve</span>
+          </button>
+        </div>
+      )}
+
       {/* Roster list */}
       <div className="flex-1 px-5 overflow-y-auto pb-4">
         {loading ? (
@@ -530,6 +566,19 @@ export default function RosterScreen() {
           onClose={() => setShowImport(false)}
           onImport={handleBulkImport}
           seasonYear={season?.year}
+        />
+      )}
+      {showPending && season && program && (
+        <PendingPlayersSheet
+          seasonId={season.id}
+          programId={program.id}
+          pending={pending}
+          roster={roster}
+          onClose={() => setShowPending(false)}
+          onResolved={async () => {
+            // A merge or promote can add a roster spot, so reload both.
+            await Promise.all([loadRoster(), loadPending()]);
+          }}
         />
       )}
       <TabBar />

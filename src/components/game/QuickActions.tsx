@@ -9,6 +9,20 @@ interface Props {
   progName: string;
   oppName: string;
   suggestedPhase?: PhaseFilter;
+  /** Current down — drives which buttons get the oversized hit target. */
+  down?: number;
+}
+
+/**
+ * The plays you're overwhelmingly most likely to tap, given the down. These
+ * render double-width and taller so they can be hit without looking down at
+ * the tablet — the whole point of live entry is keeping your eyes on the field.
+ *
+ * 1st–3rd: run and the two pass outcomes. 4th: punt and field goal.
+ */
+function primaryPlayIds(down: number | undefined): Set<string> {
+  if (down === 4) return new Set(["punt", "fg"]);
+  return new Set(["rush", "pass_comp", "pass_inc"]);
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -40,10 +54,25 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+/**
+ * Which play groups each tab shows.
+ *
+ * OFF and DEF cover the same scrimmage plays on purpose — a snap produces the
+ * same set of outcomes whichever sideline you're on. An interception is a pass
+ * play by OUR offense, and a run by THEIR offense is still a run you record.
+ * The two tabs differ in ORDER, not contents: the category sort below leads
+ * with turnovers and kicks when the opponent has the ball.
+ *
+ * Previously OFF omitted "turnover" (no way to record an INT while we had the
+ * ball) and DEF omitted "run"/"pass" (no way to record their snaps) — both
+ * forced a detour through the All tab mid-drive.
+ */
+const SCRIMMAGE_CATEGORIES = ["run", "pass", "turnover", "other"];
+
 const PHASE_CATEGORIES: Record<PhaseFilter, Set<string>> = {
   all: new Set(["run", "pass", "scoring", "kicking", "turnover", "other"]),
-  offense: new Set(["run", "pass", "other"]),
-  defense: new Set(["turnover", "other"]),
+  offense: new Set(SCRIMMAGE_CATEGORIES),
+  defense: new Set(SCRIMMAGE_CATEGORIES),
   special: new Set(["kicking", "scoring"]),
 };
 
@@ -60,6 +89,7 @@ export default function QuickActions({
   progName,
   oppName,
   suggestedPhase,
+  down,
 }: Props) {
   const [phase, setPhase] = useState<PhaseFilter>(suggestedPhase ?? "all");
   const [manualOverride, setManualOverride] = useState(false);
@@ -84,12 +114,16 @@ export default function QuickActions({
     .filter((category) => allowedCategories.has(category))
     .sort((a, b) => {
       if (possession === "them") {
+        // Their snaps are still mostly runs and passes, so those lead. This
+        // used to open with kicking/turnover, which made sense when the DEF
+        // tab ONLY held turnovers — now that run/pass are here, leading with
+        // the rare stuff would bury the common one.
         const defensePriority: Record<string, number> = {
-          kicking: 0,
-          turnover: 1,
-          other: 2,
-          run: 3,
-          pass: 4,
+          run: 0,
+          pass: 1,
+          turnover: 2,
+          kicking: 3,
+          other: 4,
           scoring: 5,
         };
         return (defensePriority[a] ?? 99) - (defensePriority[b] ?? 99);
@@ -99,6 +133,7 @@ export default function QuickActions({
     });
 
   const possessionLabel = possession === "us" ? `${progName} possession` : `${oppName} possession`;
+  const primaries = primaryPlayIds(down);
 
   return (
     <div className="space-y-3">
@@ -130,17 +165,22 @@ export default function QuickActions({
             {CATEGORY_LABELS[category] ?? category}
           </div>
           <div className="grid grid-cols-4 gap-1.5">
-            {grouped[category].map((playType) => (
-              <button
-                key={playType.id}
-                onClick={() => onSelect(playType)}
-                className={`py-2.5 px-1 rounded-xl text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${
-                  COLOR_MAP[playType.color] ?? COLOR_MAP.neutral
-                }`}
-              >
-                {playType.label}
-              </button>
-            ))}
+            {grouped[category].map((playType) => {
+              const isPrimary = primaries.has(playType.id);
+              return (
+                <button
+                  key={playType.id}
+                  onClick={() => onSelect(playType)}
+                  className={`px-1 rounded-xl font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${
+                    isPrimary
+                      ? "col-span-2 py-5 text-sm ring-1 ring-inset ring-white/10"
+                      : "py-2.5 text-[11px]"
+                  } ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
+                >
+                  {playType.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       ))}

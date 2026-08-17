@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { X, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
 import {
   type BlockedKickType,
@@ -11,12 +11,19 @@ import {
   BLOCKED_KICK_TYPES,
   PENALTIES,
   PENALTY_DEFAULT_YARDS,
+  STICKY_ROLES,
   OFFENSIVE_FORMATIONS,
   DEFENSIVE_FORMATIONS,
   getPenaltyDefaultSide,
+  makePendingId,
+  pendingDisplayName,
   yardLabel,
   buildDescription,
 } from "./types";
+import FieldVisualizer from "./FieldVisualizer";
+import YardReel from "./YardReel";
+import { advanceSituationAfterPlay } from "@/services/gameFlow";
+import { DEFAULT_GAME_CONFIG, type GameConfig } from "@/services/programService";
 
 interface Props {
   playType: PlayTypeDef;
@@ -25,6 +32,27 @@ interface Props {
   opponentPlayers: OpponentPlayerRef[];
   progName: string;
   oppName: string;
+  /** Rules config, so the penalty preview matches what actually gets recorded. */
+  gameConfig?: GameConfig;
+  /** Last player used per role, keyed "<role>:us" / "<role>:opp". Used to
+   *  pre-fill recurring roles (QB, RB, kicker...) on the next play. */
+  lastPlayerByRole?: Record<string, TaggedPlayer>;
+  /** Team colors — the modal tints itself to whichever team you're working on,
+   *  so a glance tells you whose players you're tagging. */
+  progColor?: string;
+  oppColor?: string;
+  progAbbr?: string;
+  oppAbbr?: string;
+  progLogoUrl?: string | null;
+  oppLogoUrl?: string | null;
+  /** Which end zone is ours on screen, and which way the offense is driving.
+   *  Needed to render a field the same way round as the main screen. */
+  ourEndZoneSide?: "left" | "right";
+  offenseDirection?: "left" | "right";
+  /** Per-game charting prefs — skip these steps when the crew isn't tracking
+   *  them live. Film Chart can still fill them in afterwards. */
+  trackFormations?: boolean;
+  trackTacklers?: boolean;
   onSubmit: (data: PlaySubmitData) => void;
   onClose: () => void;
   onAddOpponentPlayer?: (player: OpponentPlayerRef) => void;
@@ -55,16 +83,63 @@ export interface PlaySubmitData {
   hashMark: string | null;
   description: string;
   playData?: Record<string, unknown>;
+  /** Manual next-situation override — set when the recorder spots the ball
+   *  themselves instead of trusting the computed penalty enforcement. */
+  nextSituation?: { ballOn: number; down: number; distance: number } | null;
 }
 
-type Step = "players" | "yards" | "formations" | "defense" | "review"
-  | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards" | "kick_tacklers";
+type Step = "players" | "yards" | "penalty" | "formations" | "defense" | "review"
+  | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards";
 type FieldTeam = "program" | "opponent";
+type KickOutcome = "returned" | "fair_catch" | "downed" | "out_of_bounds" | "touchback";
+
+const KICK_OUTCOMES: Array<{ value: KickOutcome; label: string }> = [
+  { value: "returned", label: "Returned" },
+  { value: "fair_catch", label: "Fair Catch" },
+  { value: "downed", label: "Downed" },
+  { value: "out_of_bounds", label: "Out of Bounds" },
+  { value: "touchback", label: "Touchback" },
+];
 
 /** Roles that belong to the team WITHOUT the ball. */
 const DEFENSIVE_ROLES = new Set([
   "tackler", "assist", "sacker", "interceptor", "forced_fumble", "defender", "blocker",
 ]);
+
+/**
+ * Which roster a role is picked from: true = the opponent's.
+ *
+ * Single source of truth — this rule used to be written out three separate
+ * times (player step, carry-forward seed, submit auto-fill) and they disagreed
+ * about `returner`, which pre-filled one of OUR players as the returner on our
+ * own punt.
+ *
+ * The subtle ones:
+ *   returner        — the team WITHOUT the ball fields the kick, so it's the
+ *                     opposite of possession. Reverses only when the kicking
+ *                     team recovers its own onside kick.
+ *   fumble_recovery — whoever ends up with it; follows the "recovered by" flag.
+ */
+function roleUsesOpponentRoster(
+  role: string,
+  isTheirBall: boolean,
+  opts: {
+    playTypeId?: string;
+    fumbleRecoveredByUs?: boolean;
+    onsideRecoveredByKicker?: boolean;
+  } = {},
+): boolean {
+  if (role === "fumble_recovery") {
+    return opts.fumbleRecoveredByUs ? isTheirBall : !isTheirBall;
+  }
+  if (role === "returner" || role === "recoverer") {
+    return opts.playTypeId === "onside_kick" && opts.onsideRecoveredByKicker
+      ? isTheirBall
+      : !isTheirBall;
+  }
+  if (DEFENSIVE_ROLES.has(role)) return !isTheirBall;
+  return isTheirBall; // offensive roles, incl. kicker/punter
+}
 
 /** Catch-all opponent placeholder — collects stats when no jersey was caught.
  *  Not a real roster row; persisted per-play via play_data.opp_tagged. */
@@ -89,9 +164,55 @@ function teamTag(name: string): string {
   return parts.map((part) => part[0]).join("").slice(0, 3).toUpperCase();
 }
 
+/**
+ * Type a jersey number, get the player — no second tap.
+ *
+ * Only fires when the number can't be the start of a longer one on the same
+ * roster. With 8 and 88 both dressed, typing "8" is genuinely ambiguous and
+ * auto-picking #8 would make #88 unreachable by typing; typing "88" or "28" is
+ * certain, so it selects immediately.
+ *
+ * The ref guard stops a re-select when you tab back to a role whose search box
+ * still holds the number you already used, which would otherwise stomp a
+ * correction you just made by hand.
+ */
+function useJerseyAutoSelect<T>(
+  search: string,
+  candidates: Array<{ jersey: number | null; item: T }>,
+  onSelect: (item: T) => void,
+  /** Skip entirely when the role is already filled. Without this, stepping
+   *  BACK to the players step remounts the grid, the ref guard resets, and the
+   *  effect re-fires and shoves you forward again — making it impossible to
+   *  return and change a pick. */
+  alreadyTagged: boolean,
+) {
+  const handled = useRef<string | null>(null);
+  const selectRef = useRef(onSelect);
+  selectRef.current = onSelect;
+
+  useEffect(() => {
+    if (alreadyTagged) return;
+    if (!/^\d+$/.test(search)) return;
+    if (handled.current === search) return;
+
+    const exact = candidates.filter(c => c.jersey != null && String(c.jersey) === search);
+    if (exact.length !== 1) return;
+
+    const couldBePrefix = candidates.some(c =>
+      c.jersey != null && String(c.jersey) !== search && String(c.jersey).startsWith(search));
+    if (couldBePrefix) return;
+
+    handled.current = search;
+    selectRef.current(exact[0].item);
+    // candidates is rebuilt each render; keying on `search` is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, alreadyTagged]);
+}
+
 /* ── Player selector grid (our roster) ── */
 function PlayerGrid({
-  roster, label, onSelect, selectedId, search, onSearch,
+  roster, label, onSelect, selectedId, search, onSearch, accentColor,
+  onSelectPending, selectedPendingId, selectionIsCarried,
 }: {
   roster: RosterPlayer[];
   label: string;
@@ -99,7 +220,23 @@ function PlayerGrid({
   selectedId: string | null;
   search: string;
   onSearch: (v: string) => void;
+  /** Team color for the label and the selected chip. */
+  accentColor?: string;
+  /** Tag an unrostered jersey. Absent on grids where that isn't allowed. */
+  onSelectPending?: (jersey: number) => void;
+  /** Pending id currently tagged for this role, if any. */
+  selectedPendingId?: string | null;
+  /** The selection was carried from the last play, not picked here — render it
+   *  amber so it reads as a suggestion awaiting confirmation. */
+  selectionIsCarried?: boolean;
 }) {
+  useJerseyAutoSelect(
+    search,
+    roster.map(p => ({ jersey: p.jersey_number, item: p })),
+    onSelect,
+    selectedId != null || selectedPendingId != null,
+  );
+
   const filtered = useMemo(() => {
     if (!search) return roster;
     const q = search.toLowerCase();
@@ -119,9 +256,22 @@ function PlayerGrid({
     });
   }, [roster, search]);
 
+  /** A numeric search nobody on the roster wears — offer it as pending. */
+  const pendingJersey = useMemo(() => {
+    if (!/^\d+$/.test(search)) return null;
+    const n = Number(search);
+    if (!Number.isFinite(n) || n < 0 || n > 99) return null;
+    return roster.some(p => p.jersey_number === n) ? null : n;
+  }, [roster, search]);
+
   return (
     <div>
-      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{label}</div>
+      <div
+        className="text-xs font-bold uppercase tracking-wider mb-2"
+        style={{ color: accentColor ?? undefined }}
+      >
+        {label}
+      </div>
       <input
         type="text"
         inputMode="numeric"
@@ -129,25 +279,54 @@ function PlayerGrid({
         value={search}
         onChange={e => onSearch(e.target.value)}
         onKeyDown={(e) => {
-          // Enter auto-selects when there's a clear single match
-          if (e.key === "Enter" && filtered.length === 1) {
+          if (e.key !== "Enter") return;
+          // Prefer an exact jersey match — with 8 and 88 both dressed, typing
+          // "8" leaves two results but the intent is unambiguous on Enter.
+          const exact = roster.find(p => String(p.jersey_number) === search);
+          const pick = exact ?? (filtered.length === 1 ? filtered[0] : null);
+          if (pick) {
             e.preventDefault();
-            onSelect(filtered[0]);
+            onSelect(pick);
+            return;
+          }
+          // Nobody rostered under that number — Enter takes the pending tile.
+          if (pendingJersey != null && onSelectPending) {
+            e.preventDefault();
+            onSelectPending(pendingJersey);
           }
         }}
         className="input mb-2 text-sm"
         autoFocus
       />
       <div className="grid grid-cols-5 gap-1.5 max-h-56 overflow-y-auto">
+        {/* Unrostered jersey. Amber + dashed matches the carried-tag styling:
+            amber always means "not a confirmed pick". Never auto-selected —
+            a typo must not silently invent a player. */}
+        {pendingJersey != null && onSelectPending && (
+          <button
+            onClick={() => onSelectPending(pendingJersey)}
+            className="flex flex-col items-center py-2 rounded-xl border-2 border-dashed transition-all duration-200 border-amber-500/50 bg-amber-500/5 text-amber-400 active:bg-amber-500/15"
+            style={selectedPendingId === makePendingId(pendingJersey)
+              ? { borderStyle: "solid", backgroundColor: "rgba(245,158,11,0.18)" }
+              : undefined}
+          >
+            <span className="text-base font-black tabular-nums">{pendingJersey}</span>
+            <span className="text-[8px] font-bold truncate w-full text-center">unrostered</span>
+            <span className="text-[7px] font-bold text-amber-500/70">?</span>
+          </button>
+        )}
         {filtered.map(p => (
           <button
             key={p.player_id}
             onClick={() => onSelect(p)}
-            className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 ${
-              selectedId === p.player_id
-                ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
-                : "border-transparent bg-surface-bg text-slate-400 active:bg-surface-hover"
+            className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 bg-surface-bg text-slate-400 active:bg-surface-hover ${
+              selectedId === p.player_id && selectionIsCarried
+                ? "border-dashed border-amber-500/60 bg-amber-500/10 text-amber-400"
+                : "border-transparent"
             }`}
+            style={selectedId === p.player_id && !selectionIsCarried && accentColor
+              ? { borderColor: accentColor, backgroundColor: `${accentColor}1a`, color: accentColor }
+              : undefined}
           >
             <span className="text-base font-black tabular-nums">{p.jersey_number ?? "—"}</span>
             <span className="text-[8px] font-bold text-slate-500 truncate w-full text-center">
@@ -163,7 +342,7 @@ function PlayerGrid({
 
 /* ── Opponent player selector with quick-add ── */
 function OpponentPlayerGrid({
-  players, label, onSelect, selectedId, search, onSearch, onQuickAdd,
+  players, label, onSelect, selectedId, search, onSearch, onQuickAdd, accentColor,
 }: {
   players: OpponentPlayerRef[];
   label: string;
@@ -172,7 +351,16 @@ function OpponentPlayerGrid({
   search: string;
   onSearch: (v: string) => void;
   onQuickAdd?: (jersey: number) => void;
+  /** Opponent's color for the label and the selected chip. */
+  accentColor?: string;
 }) {
+  useJerseyAutoSelect(
+    search,
+    players.map(p => ({ jersey: p.jersey_number, item: p })),
+    onSelect,
+    selectedId != null,
+  );
+
   const filtered = useMemo(() => {
     if (!search) return players;
     const q = search.toLowerCase();
@@ -197,7 +385,12 @@ function OpponentPlayerGrid({
 
   return (
     <div>
-      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{label}</div>
+      <div
+        className="text-xs font-bold uppercase tracking-wider mb-2"
+        style={{ color: accentColor ?? undefined }}
+      >
+        {label}
+      </div>
       <input
         type="text"
         placeholder="# or name..."
@@ -209,11 +402,10 @@ function OpponentPlayerGrid({
         {/* Catch-all TEAM tile — always available so stats never go untracked */}
         <button
           onClick={() => onSelect(OPP_TEAM_PLAYER)}
-          className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 ${
-            selectedId === OPP_TEAM_PLAYER.id
-              ? "border-red-500 bg-red-500/10 text-red-400"
-              : "border-dashed border-surface-border bg-surface-bg text-slate-400 active:bg-surface-hover"
-          }`}
+          className="flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 border-dashed border-surface-border bg-surface-bg text-slate-400 active:bg-surface-hover"
+          style={selectedId === OPP_TEAM_PLAYER.id && accentColor
+            ? { borderStyle: "solid", borderColor: accentColor, backgroundColor: `${accentColor}1a`, color: accentColor }
+            : undefined}
         >
           <span className="text-base font-black">★</span>
           <span className="text-[8px] font-bold text-slate-500 truncate w-full text-center">TEAM</span>
@@ -222,11 +414,10 @@ function OpponentPlayerGrid({
           <button
             key={p.id}
             onClick={() => onSelect(p)}
-            className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 ${
-              selectedId === p.id
-                ? "border-red-500 bg-red-500/10 text-red-400"
-                : "border-transparent bg-surface-bg text-slate-400 active:bg-surface-hover"
-            }`}
+            className="flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 border-transparent bg-surface-bg text-slate-400 active:bg-surface-hover"
+            style={selectedId === p.id && accentColor
+              ? { borderColor: accentColor, backgroundColor: `${accentColor}1a`, color: accentColor }
+              : undefined}
           >
             <span className="text-base font-black tabular-nums">{p.jersey_number ?? "—"}</span>
             <span className="text-[8px] font-bold text-slate-500 truncate w-full text-center">{p.name}</span>
@@ -255,13 +446,53 @@ function OpponentPlayerGrid({
    ═══════════════════════════════════════════════ */
 
 export default function PlayEntryModal({
-  playType, gameState, roster, opponentPlayers, progName, oppName, onSubmit, onClose, onAddOpponentPlayer,
+  playType, gameState, roster, opponentPlayers, progName, oppName,
+  gameConfig = DEFAULT_GAME_CONFIG, lastPlayerByRole,
+  progColor = "#dc2626", oppColor = "#6b7280", progAbbr, oppAbbr,
+  progLogoUrl, oppLogoUrl, ourEndZoneSide = "left", offenseDirection = "right",
+  trackFormations = true, trackTacklers = true,
+  onSubmit, onClose, onAddOpponentPlayer,
 }: Props) {
   // Local copy of opponent players (can grow via quick-add)
   const [localOppPlayers, setLocalOppPlayers] = useState<OpponentPlayerRef[]>(opponentPlayers);
 
+  /* ── Carry recurring players forward ──────────────────────────────────────
+     Same QB, same RB, same kicker, play after play. Rather than re-picking
+     every snap, sticky roles open pre-tagged with whoever filled them last.
+     Keyed by side as well as role, so their QB never lands in our passer slot
+     after a change of possession. Only STICKY_ROLES qualify — see types.ts. */
+  const seedFromLastPlay = (): { tags: TaggedPlayer[]; roles: Set<string> } => {
+    const tags: TaggedPlayer[] = [];
+    const carried = new Set<string>();
+    if (!lastPlayerByRole) return { tags, roles: carried };
+
+    const theirBall = gameState.possession === "them";
+    const activeRoles = playType.id === "two_pt" ? [] : playType.roles;
+
+    for (const role of activeRoles) {
+      if (!STICKY_ROLES.has(role)) continue;
+      // Seeds assume the un-reversed case (no onside recovery yet, fumble not
+      // yet marked recovered) — both are decided later in the flow.
+      const usesOpp = roleUsesOpponentRoster(role, theirBall, { playTypeId: playType.id });
+      const remembered = lastPlayerByRole[`${role}:${usesOpp ? "opp" : "us"}`];
+      // The TEAM placeholder is a fallback, not a real pick — never carry it.
+      if (!remembered || remembered.player_id === OPP_TEAM_PLAYER.id) continue;
+      tags.push({ ...remembered, role });
+      carried.add(role);
+    }
+    return { tags, roles: carried };
+  };
+
+  const seeded = useMemo(seedFromLastPlay, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Tagged players for this play
-  const [tagged, setTagged] = useState<TaggedPlayer[]>([]);
+  const [tagged, setTagged] = useState<TaggedPlayer[]>(seeded.tags);
+  // Roles filled from the previous play rather than picked here — rendered
+  // differently so a stale carry-over can't masquerade as a confirmed pick.
+  const [carriedRoles, setCarriedRoles] = useState<Set<string>>(seeded.roles);
+  // Always open on the first role, even when it's already carried over. The
+  // carried pick shows highlighted so it can be eyeballed and changed — a
+  // wrong passer that was never displayed is worse than one extra Next tap.
   const [currentRoleIdx, setCurrentRoleIdx] = useState(0);
   const [searches, setSearches] = useState<Record<string, string>>({});
 
@@ -284,25 +515,6 @@ export default function PlayEntryModal({
   const [totalYardsRaw, setTotalYardsRaw] = useState("");
 
   // Helper: adjust yard line and flip side when crossing 50
-  const adjustYardLine = (
-    currentYL: number,
-    delta: number,
-    currentSide: "our" | "opp",
-    setYL: (v: number) => void,
-    setSide: (v: "our" | "opp") => void,
-  ) => {
-    const newYL = currentYL + delta;
-    if (newYL > 50) {
-      setSide(currentSide === "our" ? "opp" : "our");
-      setYL(Math.min(50, 100 - newYL));
-    } else if (newYL < 1) {
-      setSide(currentSide === "our" ? "opp" : "our");
-      setYL(Math.max(1, Math.abs(newYL) + 1));
-    } else {
-      setYL(newYL);
-    }
-  };
-
   const adjustFieldTeamYardLine = (
     currentYL: number,
     delta: number,
@@ -330,7 +542,14 @@ export default function PlayEntryModal({
   const [fumbleRecoveredByUs, setFumbleRecoveredByUs] = useState(false);
   // Onside kicks: true when the kicking team recovered its own kick.
   const [onsideRecoveredByKicker, setOnsideRecoveredByKicker] = useState(false);
-  const [isTouchback, setIsTouchback] = useState(false);
+  /* ── How the kick ended ───────────────────────────────────────────────────
+     Only "returned" involves an actual return. The rest all spot the ball at
+     the landing point with zero return yards; they differ in who's credited
+     and how the play reads. Touchback is the exception — the receiving team
+     starts at their own 20 regardless of where it came down. */
+  const [kickOutcome, setKickOutcome] = useState<KickOutcome>("returned");
+  const isTouchback = kickOutcome === "touchback";
+  const wasReturned = kickOutcome === "returned";
   const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">("");
 
   // Penalty
@@ -338,6 +557,17 @@ export default function PlayEntryModal({
   const [penaltyCategory, setPenaltyCategory] = useState<PenaltySide | null>(null);
   const [penaltyEnforcement, setPenaltyEnforcement] = useState<PenaltyEnforcement>("accepted");
   const [flagYards, setFlagYards] = useState(5);
+  // Raw text mirror so the yards box can be cleared and retyped without the
+  // controlled value snapping back to 0 on every keystroke.
+  const [flagYardsRaw, setFlagYardsRaw] = useState("5");
+  // Manual spot: when the officials' spot doesn't match the computed
+  // enforcement, the recorder's eyes win over the math.
+  const [overrideSpot, setOverrideSpot] = useState(false);
+  const [spotSide, setSpotSide] = useState<"our" | "opp">("our");
+  const [spotYardLine, setSpotYardLine] = useState(25);
+  const [spotYardRaw, setSpotYardRaw] = useState("25");
+  const [spotDown, setSpotDown] = useState(1);
+  const [spotDistance, setSpotDistance] = useState(10);
   const [showPenalties, setShowPenalties] = useState(false);
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(() => defaultBlockedKickType(gameState));
 
@@ -362,6 +592,10 @@ export default function PlayEntryModal({
   const receivingFieldSide: FieldTeam = gameState.possession === "us" ? "opponent" : "program";
   const [returnToTeam, setReturnToTeam] = useState<FieldTeam>(receivingFieldSide);
   const [returnToRaw, setReturnToRaw] = useState("");
+  // Alternate entry: type the distance instead of the spot. Same numbers, just
+  // whichever one you actually saw — a "42-yard punt" or "caught at the 12".
+  const [kickDistanceRaw, setKickDistanceRaw] = useState("");
+  const [returnYardsRaw, setReturnYardsRaw] = useState("");
   const [kickerSearch, setKickerSearch] = useState("");
   const [returnerSearch, setReturnerSearch] = useState("");
   const isInterception = playType.id === "int";
@@ -384,10 +618,8 @@ export default function PlayEntryModal({
   const initialIntCatchSpot = toFieldSpot(Math.max(1, Math.min(99, gameState.ballOn + 10)));
   const [intCaughtTeam, setIntCaughtTeam] = useState<FieldTeam>(initialIntCatchSpot.side);
   const [intCaughtYardLine, setIntCaughtYardLine] = useState(initialIntCatchSpot.yardLine);
-  const [intCaughtRaw, setIntCaughtRaw] = useState(String(initialIntCatchSpot.yardLine));
   const [intReturnTeam, setIntReturnTeam] = useState<FieldTeam>(initialIntCatchSpot.side);
   const [intReturnYardLine, setIntReturnYardLine] = useState(initialIntCatchSpot.yardLine);
-  const [intReturnRaw, setIntReturnRaw] = useState(String(initialIntCatchSpot.yardLine));
 
   // Step management
   const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">("pass");
@@ -413,6 +645,37 @@ export default function PlayEntryModal({
   const kickStartLabel = formatFieldSpot(gameState.ballOn, gameState.possession);
   const landingLabel = kickedToYard === 0 ? `${fieldTeamTag(receivingFieldSide)} EZ` : `${fieldTeamTag(receivingFieldSide)} ${kickedToYard}`;
   const kickDistance = isKickPlay ? Math.max(0, (100 - kickedToYard) - gameState.ballOn) : 0;
+
+  /** Inverse of kickDistance: given a distance, where did the ball come down? */
+  const setKickedToYardFromDistance = (distance: number) => {
+    const landingYard = 100 - gameState.ballOn - distance;
+    setKickedToYard(Math.max(0, Math.min(50, landingYard)));
+  };
+
+  /** Inverse of the return-yards readout: given return yardage, what's the spot?
+   *  receiverYard counts up from the receiving team's goal line, so a return
+   *  past midfield flips which team's side of the field the spot is on. */
+  const setReturnSpotFromYards = (returnYards: number) => {
+    const receiverYard = Math.max(0, Math.min(100, kickedToYard + returnYards));
+    const kickingFieldSideLocal: FieldTeam = receivingFieldSide === "program" ? "opponent" : "program";
+    if (receiverYard <= 50) {
+      setReturnToTeam(receivingFieldSide);
+      setReturnToYardLine(Math.max(1, receiverYard));
+    } else {
+      setReturnToTeam(kickingFieldSideLocal);
+      setReturnToYardLine(Math.max(1, 100 - receiverYard));
+    }
+  };
+  const isPenaltyOnly = playType.id === "penalty_only";
+
+  /* ── Who makes the tackle ────────────────────────────────────────────────
+     On a scrimmage play the tackler is on the team WITHOUT the ball. On a kick
+     it's the reverse: the kicking team has possession going in, and they're the
+     ones bringing the returner down. */
+  const tacklersAreOurs = isKickPlay ? !isTheirBall : isTheirBall;
+  /* A tackle needs a ball carrier to bring down — these plays never have one. */
+  const canHaveTackle = !["pass_inc", "throwaway", "drop", "spike", "penalty_only", "pat", "fg"]
+    .includes(playType.id);
   const needsYards = !["pass_inc", "throwaway", "drop", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt", "onside_kick", "fair_catch"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
   const needsTouchback = false; // handled in kick-specific flow now
@@ -461,20 +724,46 @@ export default function PlayEntryModal({
     setTotalYardsRaw(String(yards));
   }, [needsYards, yards]);
 
+  /* A return starts where the ball was caught, not at some fixed yard line.
+     Seeding the return spot to the landing spot means a no-gain return is zero
+     taps, and any actual return is a nudge from the right starting point.
+     Re-seeds if the catch spot is changed on the way back through. */
+  useEffect(() => {
+    if (!isKickPlay) return;
+    setReturnToTeam(receivingFieldSide);
+    setReturnToYardLine(Math.max(1, Math.min(50, kickedToYard)));
+    setReturnToRaw("");
+    setReturnYardsRaw("");
+  }, [isKickPlay, kickedToYard, receivingFieldSide]);
+
   const steps: Step[] = [];
   if (isKickPlay) {
     // Kickoff/Punt specific flow
     steps.push("kick_kicker");
     steps.push("kick_location");
-    if (!isTouchback) {
+    // Downed / out of bounds / touchback: nobody fielded it, so there's no
+    // returner to tag. A fair catch DOES have a receiver worth crediting, but
+    // by definition no return yards.
+    if (kickOutcome === "returned" || kickOutcome === "fair_catch") {
       steps.push("kick_returner");
-      steps.push("kick_return_yards");
     }
+    if (wasReturned) {
+      steps.push("kick_return_yards");
+      if (trackTacklers) steps.push("defense"); // who brought the returner down
+    }
+    steps.push("review");
+  } else if (isPenaltyOnly) {
+    // Penalty-only (incl. pre-snap flags): no snap happened, so there are no
+    // players to tag, no yards gained, and no formation worth charting. The
+    // penalty picker is the whole play — it used to live inside the "yards"
+    // step, which this play type skips, leaving nothing to fill in.
+    steps.push("penalty");
     steps.push("review");
   } else {
     if (roles.length > 0) steps.push("players");
     if (needsYards || needsResult) steps.push("yards");
-    steps.push("formations");
+    if (canHaveTackle && trackTacklers) steps.push("defense");
+    if (trackFormations) steps.push("formations");
     steps.push("review");
   }
 
@@ -482,6 +771,11 @@ export default function PlayEntryModal({
   const currentStep = steps[stepIdx] ?? "review";
 
   const canGoNext = (): boolean => {
+    // A penalty-only play with no flag chosen is meaningless — this is the one
+    // step worth hard-blocking on, since there's nothing else to record.
+    if (currentStep === "penalty") {
+      return !!penalty && !!penaltyCategory;
+    }
     if (currentStep === "review" && penalty) {
       return !!penaltyCategory;
     }
@@ -507,6 +801,41 @@ export default function PlayEntryModal({
       role,
     };
     setTagged(prev => [...prev.filter(t => t.role !== role), tp]);
+    // An explicit pick supersedes the carry-over for this role.
+    setCarriedRoles(prev => {
+      if (!prev.has(role)) return prev;
+      const next = new Set(prev);
+      next.delete(role);
+      return next;
+    });
+    if (currentRoleIdx < roles.length - 1) {
+      setCurrentRoleIdx(i => i + 1);
+    } else {
+      goNext();
+    }
+  };
+
+  /** Tag an unrostered jersey for the current role. Same rhythm as picking a
+   *  rostered player — it advances the step exactly the same way. */
+  const handlePendingSelect = (jersey: number) => {
+    const role = roles[currentRoleIdx];
+    if (!role) return;
+    const id = makePendingId(jersey);
+    const tp: TaggedPlayer = {
+      id,
+      player_id: id,
+      jersey_number: jersey,
+      name: pendingDisplayName(jersey),
+      role,
+      isPending: true,
+    };
+    setTagged(prev => [...prev.filter(t => t.role !== role), tp]);
+    setCarriedRoles(prev => {
+      if (!prev.has(role)) return prev;
+      const next = new Set(prev);
+      next.delete(role);
+      return next;
+    });
     if (currentRoleIdx < roles.length - 1) {
       setCurrentRoleIdx(i => i + 1);
     } else {
@@ -526,6 +855,13 @@ export default function PlayEntryModal({
       isOpponent: true,
     };
     setTagged(prev => [...prev.filter(t => t.role !== role), tp]);
+    // An explicit pick supersedes the carry-over for this role.
+    setCarriedRoles(prev => {
+      if (!prev.has(role)) return prev;
+      const next = new Set(prev);
+      next.delete(role);
+      return next;
+    });
     if (currentRoleIdx < roles.length - 1) {
       setCurrentRoleIdx(i => i + 1);
     } else {
@@ -549,11 +885,15 @@ export default function PlayEntryModal({
   };
 
   const handleAddTackler = (p: RosterPlayer) => {
-    if (tacklers.length >= 3) return;
     if (tacklers.some(t => t.player_id === p.player_id)) {
-      setTacklers(prev => prev.filter(t => t.player_id !== p.player_id));
+      // De-selecting: if that leaves exactly one tackler, it's a solo again.
+      setTacklers(prev => {
+        const next = prev.filter(t => t.player_id !== p.player_id);
+        return next.length === 1 ? next.map(t => ({ ...t, credit: 1 })) : next;
+      });
       return;
     }
+    if (tacklers.length >= 3) return;
     const credit = tacklers.length === 0 ? 1 : 0.5;
     const tp: TaggedPlayer = {
       id: p.player_id,
@@ -574,11 +914,15 @@ export default function PlayEntryModal({
   };
 
   const handleAddOpponentTackler = (p: OpponentPlayerRef) => {
-    if (tacklers.length >= 3) return;
     if (tacklers.some(t => t.id === p.id)) {
-      setTacklers(prev => prev.filter(t => t.id !== p.id));
+      // De-selecting: if that leaves exactly one tackler, it's a solo again.
+      setTacklers(prev => {
+        const next = prev.filter(t => t.id !== p.id);
+        return next.length === 1 ? next.map(t => ({ ...t, credit: 1 })) : next;
+      });
       return;
     }
+    if (tacklers.length >= 3) return;
     const credit = tacklers.length === 0 ? 1 : 0.5;
     const tp: TaggedPlayer = {
       id: p.id,
@@ -644,14 +988,12 @@ export default function PlayEntryModal({
     // ── Auto-fill skipped OPPONENT-side roles with the TEAM placeholder ──
     // Our own skipped roles stay untagged (coach should attribute real
     // players); opponent stats always land somewhere visible.
-    const roleUsesOppRoster = (role: string): boolean => {
-      if (role === "fumble_recovery") return fumbleRecoveredByUs ? isTheirBall : !isTheirBall;
-      if (role === "returner") {
-        return playType.id === "onside_kick" && onsideRecoveredByKicker ? isTheirBall : !isTheirBall;
-      }
-      if (DEFENSIVE_ROLES.has(role)) return !isTheirBall;
-      return isTheirBall; // offensive roles (incl. kicker/punter)
-    };
+    const roleUsesOppRoster = (role: string): boolean =>
+      roleUsesOpponentRoster(role, isTheirBall, {
+        playTypeId: playType.id,
+        fumbleRecoveredByUs,
+        onsideRecoveredByKicker,
+      });
     const rolesToFill = isKickPlay
       ? [
           playType.id === "punt" || playType.id === "fair_catch" ? "punter" : "kicker",
@@ -677,14 +1019,16 @@ export default function PlayEntryModal({
     let playYards: number;
     // Compute return yards from yard-line picker for kick plays
     let computedReturnYards = 0;
-    if (isKickPlay && !isTouchback) {
+    // Only an actual return moves the ball off the landing spot. Fair catch,
+    // downed, out of bounds and touchback are all zero-return by definition.
+    if (isKickPlay && wasReturned) {
       const isReceiverSide = returnToTeam === receivingFieldSide;
       const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
       computedReturnYards = receiverYard - kickedToYard;
     }
 
     if (isKickPlay) {
-      playYards = isTouchback ? kickDistance : kickDistance - computedReturnYards;
+      playYards = kickDistance - computedReturnYards;
     } else if (isInterception && interceptionReturnBallOn != null) {
       playYards = interceptionNetYards;
     } else if (isTD) {
@@ -702,7 +1046,7 @@ export default function PlayEntryModal({
     const desc = buildDescription(playType, allTagged, playYards, scored, penalty, finalResult, isKickPlay ? {
       kickDistance,
       kickedToYard,
-      returnYards: isTouchback ? 0 : computedReturnYards,
+      returnYards: computedReturnYards,
       isTouchback,
       landingLabel,
     } : undefined, isInterception ? {
@@ -730,6 +1074,9 @@ export default function PlayEntryModal({
       defensiveFormation: defFormation,
       hashMark,
       description: desc,
+      nextSituation: overrideSpot && penalty
+        ? { ballOn: overrideBallOn, down: spotDown, distance: spotDistance }
+        : null,
       playData: isInterception ? {
         interception_spot: {
           field_side: intCaughtTeam,
@@ -745,6 +1092,8 @@ export default function PlayEntryModal({
         },
         interception_return_yards: interceptionReturnYards,
         interception_net_yards: playYards,
+      } : isKickPlay ? {
+        kick_outcome: kickOutcome,
       } : undefined,
     });
   };
@@ -753,11 +1102,239 @@ export default function PlayEntryModal({
   const currentRole = roles[currentRoleIdx];
   // Offensive roles belong to the team with the ball; defensive roles belong
   // to the other team. Fumble recovery follows the "Recovered by" toggle.
-  const showOpponentRoster = currentRole === "fumble_recovery"
-    ? (fumbleRecoveredByUs ? isTheirBall : !isTheirBall) // kept = possessing team's player
-    : DEFENSIVE_ROLES.has(currentRole)
-      ? !isTheirBall // defense = the team WITHOUT the ball
-      : isTheirBall; // offense = the team WITH the ball
+  const showOpponentRoster = roleUsesOpponentRoster(currentRole, isTheirBall, {
+    playTypeId: playType.id,
+    fumbleRecoveredByUs,
+    onsideRecoveredByKicker,
+  });
+
+  // Identity of whichever team's roster is on screen right now.
+  const activeTeamColor = showOpponentRoster ? oppColor : progColor;
+  const activeTeamName = showOpponentRoster ? oppName : progName;
+  const activeTeamTag = showOpponentRoster ? oppTag : progTag;
+  const activeTeamLogo = showOpponentRoster ? oppLogoUrl : progLogoUrl;
+  // The offense owns the ball-spot field, so it's tinted to whoever has it.
+  const offenseColor = isTheirBall ? oppColor : progColor;
+  // An interception belongs to the defense — they caught it and they're
+  // returning it — so those reels wear the defending team's color.
+  const defenseColor = isTheirBall ? progColor : oppColor;
+
+  /* ── Field spot picking ───────────────────────────────────────────────────
+     ballOn is possession-relative (0 = offense's own goal). The field draws
+     left→right on screen, so the mapping is a straight flip when the offense
+     drives left. It's an involution, so the same expression converts both
+     directions — matching toDisplayFieldPosition on the main screen. */
+  const toFieldDisplay = (ballOn: number) =>
+    offenseDirection === "right" ? ballOn : 100 - ballOn;
+
+  /** Currently-selected spot, back in possession-relative terms. */
+  const resultBallOn = gameState.possession === "us"
+    ? (resultSide === "our" ? resultYardLine : 100 - resultYardLine)
+    : (resultSide === "our" ? 100 - resultYardLine : resultYardLine);
+
+  /* Order the half-of-field buttons to match the field drawn above them: the
+     team whose end zone is on the left gets the left button. A fixed
+     "us then them" order reads backwards half the time, since the sides swap
+     by quarter. */
+  const spotSideOrder: Array<"our" | "opp"> =
+    ourEndZoneSide === "left" ? ["our", "opp"] : ["opp", "our"];
+
+  /** Same idea for the program/opponent pickers on the kick-return and
+   *  interception steps. */
+  const fieldSideOrder: FieldTeam[] =
+    ourEndZoneSide === "left" ? ["program", "opponent"] : ["opponent", "program"];
+
+  /** Single writer for the spot, so the field tap, the reel, and the typed box
+   *  all land in the same side/yard-line/raw-text state. */
+  const applySpotBallOn = (ballOn: number) => {
+    setResultFromTotalYards(ballOn - gameState.ballOn);
+  };
+
+  /** Field taps arrive as a screen position; the reel already speaks ballOn. */
+  const handleFieldPick = (displayPosition: number) => {
+    applySpotBallOn(toFieldDisplay(displayPosition)); // involution
+  };
+
+  /* ── Where the ball ends up after this flag ───────────────────────────────
+     Runs the exact same enforcement the recorder would otherwise get after
+     submitting (advanceSituationAfterPlay — half-the-distance, auto first
+     downs, replay-the-down), so the preview can't drift from the result. */
+  const penaltyProjection = useMemo(() => {
+    if (!penalty) return null;
+    return advanceSituationAfterPlay(
+      {
+        type: playType.id,
+        yards: 0,
+        result: "",
+        penalty,
+        penaltyCategory,
+        penaltyEnforcement,
+        flagYards,
+        isTouchdown: false,
+        firstDown: false,
+      },
+      {
+        possession: gameState.possession,
+        down: gameState.down,
+        distance: gameState.distance,
+        ballOn: gameState.ballOn,
+      },
+      gameConfig,
+    );
+  }, [penalty, penaltyCategory, penaltyEnforcement, flagYards, playType.id, gameState, gameConfig]);
+
+  /** Program-relative spot (side + 1–50) → possession-relative ballOn (0–100). */
+  const spotToBallOn = (side: "our" | "opp", yardLine: number) => {
+    const programBallOn = side === "our" ? yardLine : 100 - yardLine;
+    return gameState.possession === "us" ? programBallOn : 100 - programBallOn;
+  };
+
+  /** Inverse of spotToBallOn — seeds the manual picker from the projection. */
+  const seedSpotFromBallOn = (ballOn: number) => {
+    const programBallOn = gameState.possession === "us" ? ballOn : 100 - ballOn;
+    const side: "our" | "opp" = programBallOn <= 50 ? "our" : "opp";
+    const yardLine = programBallOn <= 50 ? programBallOn : 100 - programBallOn;
+    const clamped = Math.max(1, Math.min(50, yardLine));
+    setSpotSide(side);
+    setSpotYardLine(clamped);
+    setSpotYardRaw(String(clamped));
+  };
+
+  const overrideBallOn = spotToBallOn(spotSide, spotYardLine);
+
+  const selectPenalty = (label: string) => {
+    setPenalty(label);
+    setPenaltyCategory(getPenaltyDefaultSide(label));
+    setFlagYards(PENALTY_DEFAULT_YARDS[label] ?? 5);
+    setFlagYardsRaw(String(PENALTY_DEFAULT_YARDS[label] ?? 5));
+  };
+
+  const clearPenalty = () => {
+    setPenalty(null);
+    setPenaltyCategory(null);
+    setFlagYards(5);
+    setFlagYardsRaw("5");
+    setPenaltyEnforcement("accepted");
+  };
+
+  /* ── Penalty picker ──────────────────────────────────────────────────────
+     Shared by the "yards" step (a flag on a normal play) and the dedicated
+     "penalty" step (penalty-only, where this IS the play). Each penalty shows
+     its standard NFHS yardage so you don't have to remember them mid-drive;
+     the yardage is a starting point, not a lock — override it by tapping a
+     chip or typing the number. */
+  const penaltyPicker = (
+    <div className="space-y-3">
+      <div>
+        <span className="text-xs text-slate-500 block mb-1.5">Penalty · standard yards</span>
+        <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto">
+          {PENALTIES.map(p => (
+            <button key={p} onClick={() => selectPenalty(p)}
+              className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-all duration-200 flex items-center justify-between gap-1 ${
+                penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-slate-400"
+              }`}>
+              <span className="truncate">{p}</span>
+              <span className={`shrink-0 tabular-nums ${penalty === p ? "text-orange-300/80" : "text-slate-600"}`}>
+                {PENALTY_DEFAULT_YARDS[p] ?? 5}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {penalty && (
+        <div className="space-y-3">
+          <div>
+            <span className="text-xs text-slate-500 block mb-1">Flag On</span>
+            <div className="grid grid-cols-2 gap-2">
+              {(["offense", "defense"] as const).map((side) => (
+                <button
+                  key={side}
+                  onClick={() => setPenaltyCategory(side)}
+                  className={`py-2.5 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
+                    penaltyCategory === side
+                      ? "border-orange-500 bg-orange-500/15 text-orange-400"
+                      : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}
+                >
+                  {side}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-xs text-slate-500 block mb-1">Enforcement</span>
+            <div className="grid grid-cols-3 gap-2">
+              {(["accepted", "declined", "offset"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setPenaltyEnforcement(mode)}
+                  className={`py-2 rounded-xl text-[11px] font-bold border-2 capitalize transition-all duration-200 ${
+                    penaltyEnforcement === mode
+                      ? mode === "accepted" ? "border-orange-500 bg-orange-500/15 text-orange-400"
+                        : mode === "declined" ? "border-slate-500 bg-slate-500/15 text-slate-300"
+                        : "border-yellow-500 bg-yellow-500/15 text-yellow-300"
+                      : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-xs text-slate-500 block mb-1">
+              Penalty Yards
+              {penaltyEnforcement !== "accepted" && (
+                <span className="text-slate-600"> — not enforced ({penaltyEnforcement})</span>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              {[5, 10, 15].map(y => (
+                <button
+                  key={y}
+                  onClick={() => { setFlagYards(y); setFlagYardsRaw(String(y)); }}
+                  disabled={penaltyEnforcement !== "accepted"}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 disabled:opacity-30 ${
+                    flagYards === y
+                      ? "border-orange-500 bg-orange-500/15 text-orange-400"
+                      : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={99}
+                value={flagYardsRaw}
+                onChange={e => {
+                  const raw = e.target.value;
+                  setFlagYardsRaw(raw);
+                  // Allow an empty box mid-typing; only commit real numbers.
+                  if (raw === "") return;
+                  const n = Number(raw);
+                  if (!Number.isNaN(n)) setFlagYards(Math.max(0, Math.min(99, n)));
+                }}
+                onBlur={() => setFlagYardsRaw(String(flagYards))}
+                disabled={penaltyEnforcement !== "accepted"}
+                className="input w-20 text-center text-sm font-bold"
+                placeholder="yds"
+              />
+            </div>
+          </div>
+
+          <button onClick={clearPenalty} className="text-xs text-red-400 font-bold">
+            Clear penalty
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="sheet bg-black/60 backdrop-blur-sm">
@@ -774,11 +1351,11 @@ export default function PlayEntryModal({
             <div className="text-[10px] text-slate-500">
               Step {stepIdx + 1} of {steps.length}: {
                 ({
-                  players: "Players", yards: "Yards", formations: "Formations",
-                  defense: "Defense", review: "Review",
+                  players: "Players", yards: "Yards", penalty: "Penalty",
+                  formations: "Formations", defense: "Tacklers", review: "Review",
                   kick_kicker: (playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicker" : "Punter",
                   kick_location: "Kick Location", kick_returner: "Returner",
-                  kick_return_yards: "Return To", kick_tacklers: "Tacklers",
+                  kick_return_yards: "Return To",
                 } as Record<string, string>)[currentStep] ?? currentStep
               }
               {isTheirBall && currentStep === "players" && (
@@ -825,42 +1402,112 @@ export default function PlayEntryModal({
                 </div>
               )}
 
-              {/* Role tabs */}
+              {/* Role tabs — amber = carried over from the last play, green = picked here */}
               <div className="flex gap-1.5 flex-wrap">
                 {roles.map((role, i) => {
                   const tp = tagged.find(t => t.role === role);
+                  // Amber = not a confirmed pick, whether that's a carry-over
+                  // from the last play or an unrostered jersey.
+                  const unconfirmed = carriedRoles.has(role) || !!tp?.isPending;
                   return (
                     <button key={role} onClick={() => setCurrentRoleIdx(i)}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all duration-200 cursor-pointer ${
                         currentRoleIdx === i
-                          ? "bg-dragon-primary text-white"
-                          : tp ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-surface-bg text-slate-500"
-                      }`}>
-                      {role}{tp ? `: #${tp.jersey_number}` : ""}
+                          ? "text-white"
+                          : tp
+                            ? unconfirmed
+                              ? "bg-amber-500/15 text-amber-400 border border-amber-500/40"
+                              : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : "bg-surface-bg text-slate-500"
+                      }`}
+                      style={currentRoleIdx === i ? { backgroundColor: activeTeamColor } : undefined}>
+                      {role}{tp ? `: #${tp.jersey_number}${tp.isPending ? "?" : ""}` : ""}
                     </button>
                   );
                 })}
+              </div>
+
+              {carriedRoles.size > 0 && (
+                <div className="flex items-center justify-between gap-2 text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
+                  <span className="text-amber-400/90">
+                    Carried from last play:{" "}
+                    <span className="font-bold">
+                      {roles
+                        .filter(r => carriedRoles.has(r))
+                        .map(r => {
+                          const tp = tagged.find(t => t.role === r);
+                          return `${r} #${tp?.jersey_number ?? "?"}${tp?.isPending ? "?" : ""}`;
+                        })
+                        .join(", ")}
+                    </span>
+                    {carriedRoles.has(currentRole) && (
+                      <span className="text-amber-400/60"> — Next to keep, or tap another</span>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setTagged(prev => prev.filter(t => !carriedRoles.has(t.role)));
+                      setCarriedRoles(new Set());
+                      setCurrentRoleIdx(0);
+                    }}
+                    className="text-amber-400 font-bold shrink-0 underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
+              {/* Whose players am I looking at? Team color + logo answers it
+                  without reading, which matters when the rosters look alike. */}
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+                style={{
+                  borderColor: `${activeTeamColor}66`,
+                  background: `linear-gradient(90deg, ${activeTeamColor}22, transparent)`,
+                }}
+              >
+                {activeTeamLogo ? (
+                  <img src={activeTeamLogo} alt="" className="w-6 h-6 object-contain rounded" />
+                ) : (
+                  <span
+                    className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-black text-white"
+                    style={{ backgroundColor: activeTeamColor }}
+                  >
+                    {activeTeamTag}
+                  </span>
+                )}
+                <span className="text-sm font-display font-black uppercase tracking-wide" style={{ color: activeTeamColor }}>
+                  {activeTeamName}
+                </span>
+                <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  {currentRole}
+                </span>
               </div>
 
               {/* Show opponent or our roster */}
               {showOpponentRoster ? (
                 <OpponentPlayerGrid
                   players={localOppPlayers}
-                  label={`Select ${currentRole} (opponent)`}
+                  label={`Select ${currentRole} — ${oppName}`}
                   onSelect={handleOpponentSelect}
                   selectedId={tagged.find(t => t.role === currentRole)?.id ?? null}
                   search={searches[currentRole] ?? ""}
                   onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
                   onQuickAdd={handleQuickAddOpponent}
+                  accentColor={oppColor}
                 />
               ) : (
                 <PlayerGrid
                   roster={roster}
-                  label={`Select ${currentRole}`}
+                  label={`Select ${currentRole} — ${progName}`}
                   onSelect={handlePlayerSelect}
                   selectedId={tagged.find(t => t.role === currentRole)?.player_id ?? null}
                   search={searches[currentRole] ?? ""}
                   onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
+                  accentColor={progColor}
+                  onSelectPending={handlePendingSelect}
+                  selectedPendingId={tagged.find(t => t.role === currentRole && t.isPending)?.player_id ?? null}
+                  selectionIsCarried={carriedRoles.has(currentRole)}
                 />
               )}
             </>
@@ -904,7 +1551,9 @@ export default function PlayEntryModal({
                     <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(50, y + n)))}
                       className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
                   ))}
-                  <div className="w-20 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-purple-400">
+                  {/* Holds a full label like "OPP 30", not just digits, so it
+                      needs more room than the plain yard-line readouts. */}
+                  <div className="min-w-[5.5rem] px-2 h-10 shrink-0 rounded-lg bg-surface-bg flex items-center justify-center text-base font-black tabular-nums text-purple-400 whitespace-nowrap">
                     {landingLabel}
                   </div>
                   {[1, 5, 10].map(n => (
@@ -912,19 +1561,40 @@ export default function PlayEntryModal({
                       className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
                   ))}
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[10px] text-slate-500">Or type:</span>
-                  <input
-                    type="number" inputMode="numeric" min={0} max={50}
-                    placeholder="e.g. 5"
-                    value={kickedToRaw}
-                    onChange={e => {
-                      setKickedToRaw(e.target.value);
-                      const n = parseInt(e.target.value, 10);
-                      if (!isNaN(n)) setKickedToYard(Math.max(0, Math.min(50, n)));
-                    }}
-                    className="input w-20 text-center text-sm font-black"
-                  />
+                {/* Type whichever number you actually caught — each derives the other. */}
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block mb-1">Caught at (yd line)</span>
+                    <input
+                      type="number" inputMode="numeric" min={0} max={50}
+                      placeholder="e.g. 5"
+                      value={kickedToRaw}
+                      onChange={e => {
+                        setKickedToRaw(e.target.value);
+                        setKickDistanceRaw("");
+                        const n = parseInt(e.target.value, 10);
+                        if (!isNaN(n)) setKickedToYard(Math.max(0, Math.min(50, n)));
+                      }}
+                      className="input w-full text-center text-sm font-black"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block mb-1">
+                      Or {(playType.id === "kickoff" || playType.id === "onside_kick") ? "kick" : "punt"} distance
+                    </span>
+                    <input
+                      type="number" inputMode="numeric" min={0} max={100}
+                      placeholder="e.g. 42"
+                      value={kickDistanceRaw}
+                      onChange={e => {
+                        setKickDistanceRaw(e.target.value);
+                        setKickedToRaw("");
+                        const n = parseInt(e.target.value, 10);
+                        if (!isNaN(n)) setKickedToYardFromDistance(Math.max(0, Math.min(100, n)));
+                      }}
+                      className="input w-full text-center text-sm font-black"
+                    />
+                  </div>
                 </div>
                 <div className="text-xs text-slate-500 mt-2">
                   {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{kickDistance} yards</span>
@@ -932,16 +1602,36 @@ export default function PlayEntryModal({
                 </div>
               </div>
 
-              <button onClick={() => { setIsTouchback(t => !t); }}
-                className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                  isTouchback ? "border-sky-500 bg-sky-500/20 text-sky-400" : "border-surface-border bg-surface-bg text-slate-500"
-                }`}>Touchback</button>
-
-              {isTouchback && (
-                <div className="text-xs text-slate-500 text-center">
-                  Receiving team will start at their own 20 yard line.
+              <div>
+                <label className="label block mb-1.5">What happened to it?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {KICK_OUTCOMES.map((outcome) => (
+                    <button
+                      key={outcome.value}
+                      onClick={() => setKickOutcome(outcome.value)}
+                      className={`py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                        outcome.value === "out_of_bounds" ? "col-span-2" : ""
+                      } ${
+                        kickOutcome === outcome.value
+                          ? outcome.value === "touchback"
+                            ? "border-sky-500 bg-sky-500/20 text-sky-400"
+                            : "border-purple-500 bg-purple-500/20 text-purple-400"
+                          : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}
+                    >
+                      {outcome.label}
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
+
+              <div className="text-xs text-slate-500 text-center">
+                {kickOutcome === "returned" && "You'll pick the returner and where they got to."}
+                {kickOutcome === "fair_catch" && `Ball spotted at ${landingLabel}. No return yards — you'll still tag who signaled.`}
+                {kickOutcome === "downed" && `Downed by the kicking team. Ball spotted at ${landingLabel}.`}
+                {kickOutcome === "out_of_bounds" && `Out of bounds at ${landingLabel}. No return.`}
+                {kickOutcome === "touchback" && "Receiving team will start at their own 20 yard line."}
+              </div>
             </>
           )}
 
@@ -1004,7 +1694,7 @@ export default function PlayEntryModal({
 
                 {/* Side selector */}
                 <div className="flex gap-1.5 mb-3">
-                  {(["program", "opponent"] as const).map((side) => (
+                  {fieldSideOrder.map((side) => (
                     <button
                       key={side}
                       onClick={() => setReturnToTeam(side)}
@@ -1025,7 +1715,7 @@ export default function PlayEntryModal({
                     <button key={n} onClick={() => adjustFieldTeamYardLine(returnToYardLine, n, returnToTeam, setReturnToYardLine, setReturnToTeam)}
                       className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
                   ))}
-                  <div className="w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-emerald-400">
+                  <div className="w-16 h-10 shrink-0 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-emerald-400">
                     {returnToYardLine}
                   </div>
                   {[1, 5, 10].map(n => (
@@ -1033,19 +1723,39 @@ export default function PlayEntryModal({
                       className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
                   ))}
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[10px] text-slate-500">Or type:</span>
-                  <input
-                    type="number" inputMode="numeric" min={1} max={50}
-                    placeholder="e.g. 30"
-                    value={returnToRaw}
-                    onChange={e => {
-                      setReturnToRaw(e.target.value);
-                      const n = parseInt(e.target.value, 10);
-                      if (!isNaN(n)) setReturnToYardLine(Math.max(1, Math.min(50, n)));
-                    }}
-                    className="input w-20 text-center text-sm font-black"
-                  />
+                {/* Same idea as the kick spot: enter the yard line you saw, or
+                    the return yardage — whichever you're sure of. */}
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block mb-1">Returned to (yd line)</span>
+                    <input
+                      type="number" inputMode="numeric" min={1} max={50}
+                      placeholder="e.g. 30"
+                      value={returnToRaw}
+                      onChange={e => {
+                        setReturnToRaw(e.target.value);
+                        setReturnYardsRaw("");
+                        const n = parseInt(e.target.value, 10);
+                        if (!isNaN(n)) setReturnToYardLine(Math.max(1, Math.min(50, n)));
+                      }}
+                      className="input w-full text-center text-sm font-black"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block mb-1">Or return yards</span>
+                    <input
+                      type="number" inputMode="numeric" min={0} max={100}
+                      placeholder="e.g. 18"
+                      value={returnYardsRaw}
+                      onChange={e => {
+                        setReturnYardsRaw(e.target.value);
+                        setReturnToRaw("");
+                        const n = parseInt(e.target.value, 10);
+                        if (!isNaN(n)) setReturnSpotFromYards(Math.max(0, Math.min(100, n)));
+                      }}
+                      className="input w-full text-center text-sm font-black"
+                    />
+                  </div>
                 </div>
                 <div className="text-xs text-slate-500 mt-3">
                   {(() => {
@@ -1069,39 +1779,6 @@ export default function PlayEntryModal({
           )}
 
           {/* ── KICK STEP: Tacklers (optional) ── */}
-          {currentStep === "kick_tacklers" && (
-            <>
-              <div className="text-xs text-slate-400 mb-1">
-                Optional: Select tackler(s) from {progName}. 1 player = 1.0 credit, 2+ = 0.5 each.
-              </div>
-              {tacklers.length > 0 && (
-                <div className="flex gap-2 flex-wrap mb-2">
-                  {tacklers.map(t => (
-                    <span key={t.player_id} className="flex items-center gap-1 text-xs bg-red-900/30 text-red-400 px-2 py-1 rounded-lg">
-                      #{t.jersey_number} {t.name.split(" ")[1]}
-                      <span className="text-[10px] text-red-500">({t.credit})</span>
-                      <button onClick={() => setTacklers(prev => {
-                        const next = prev.filter(x => x.player_id !== t.player_id);
-                        if (next.length === 1) return next.map(x => ({ ...x, credit: 1 }));
-                        return next;
-                      })} className="ml-0.5 text-red-500"><X className="w-3 h-3" /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <PlayerGrid
-                roster={roster}
-                label="Select tackler(s)"
-                onSelect={p => handleAddTackler(p)}
-                selectedId={null}
-                search={tacklerSearch}
-                onSearch={setTacklerSearch}
-              />
-              <div className="text-[10px] text-slate-600 text-center mt-2">
-                Skip this step if not tracking tacklers.
-              </div>
-            </>
-          )}
 
           {/* ── STEP: Yards / Result ── */}
           {currentStep === "yards" && (
@@ -1134,7 +1811,7 @@ export default function PlayEntryModal({
                       <div>
                         <label className="label block mb-2">Intercepted At</label>
                         <div className="flex gap-1.5 mb-3">
-                          {(["program", "opponent"] as const).map((side) => (
+                          {fieldSideOrder.map((side) => (
                             <button
                               key={side}
                               onClick={() => setIntCaughtTeam(side)}
@@ -1148,53 +1825,24 @@ export default function PlayEntryModal({
                             </button>
                           ))}
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          {[-10, -5, -1].map((n) => (
-                            <button
-                              key={`int-caught-${n}`}
-                              onClick={() => adjustFieldTeamYardLine(intCaughtYardLine, n, intCaughtTeam, setIntCaughtYardLine, setIntCaughtTeam)}
-                              className="btn-ghost flex-1 h-10 text-sm font-bold"
-                            >
-                              {n}
-                            </button>
-                          ))}
-                          <div className="w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-red-300">
-                            {intCaughtYardLine}
-                          </div>
-                          {[1, 5, 10].map((n) => (
-                            <button
-                              key={`int-caught+${n}`}
-                              onClick={() => adjustFieldTeamYardLine(intCaughtYardLine, n, intCaughtTeam, setIntCaughtYardLine, setIntCaughtTeam)}
-                              className="btn-ghost flex-1 h-10 text-sm font-bold"
-                            >
-                              +{n}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[10px] text-slate-500">Or type:</span>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            min={1}
-                            max={50}
-                            placeholder="e.g. 35"
-                            value={intCaughtRaw}
-                            onChange={(e) => {
-                              setIntCaughtRaw(e.target.value);
-                              const n = parseInt(e.target.value, 10);
-                              if (!isNaN(n)) setIntCaughtYardLine(Math.max(1, Math.min(50, n)));
-                            }}
-                            className="input w-20 text-center text-sm font-black"
-                          />
-                        </div>
+                        <YardReel
+                          value={toOffensePerspectiveBallOn(intCaughtTeam, intCaughtYardLine)}
+                          onChange={(ballOn) => {
+                            const spot = toFieldSpot(ballOn);
+                            setIntCaughtTeam(spot.side);
+                            setIntCaughtYardLine(spot.yardLine);
+                          }}
+                          offenseDirection={offenseDirection}
+                          accentColor={defenseColor}
+                          formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                        />
                       </div>
 
                       <div>
                         <label className="label block mb-2">Returned To</label>
                         {!isTD && (
                           <div className="flex gap-1.5 mb-3">
-                            {(["program", "opponent"] as const).map((side) => (
+                            {fieldSideOrder.map((side) => (
                               <button
                                 key={side}
                                 onClick={() => setIntReturnTeam(side)}
@@ -1214,48 +1862,17 @@ export default function PlayEntryModal({
                             {fieldTeamTag(gameState.possession === "us" ? "program" : "opponent")} EZ
                           </div>
                         ) : (
-                          <>
-                            <div className="flex items-center gap-1.5">
-                              {[-10, -5, -1].map((n) => (
-                                <button
-                                  key={`int-return-${n}`}
-                                  onClick={() => adjustFieldTeamYardLine(intReturnYardLine, n, intReturnTeam, setIntReturnYardLine, setIntReturnTeam)}
-                                  className="btn-ghost flex-1 h-10 text-sm font-bold"
-                                >
-                                  {n}
-                                </button>
-                              ))}
-                              <div className="w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-emerald-300">
-                                {intReturnYardLine}
-                              </div>
-                              {[1, 5, 10].map((n) => (
-                                <button
-                                  key={`int-return+${n}`}
-                                  onClick={() => adjustFieldTeamYardLine(intReturnYardLine, n, intReturnTeam, setIntReturnYardLine, setIntReturnTeam)}
-                                  className="btn-ghost flex-1 h-10 text-sm font-bold"
-                                >
-                                  +{n}
-                                </button>
-                              ))}
-                            </div>
-                            <div className="flex items-center gap-2 mt-2">
-                              <span className="text-[10px] text-slate-500">Or type:</span>
-                              <input
-                                type="number"
-                                inputMode="numeric"
-                                min={1}
-                                max={50}
-                                placeholder="e.g. 35"
-                                value={intReturnRaw}
-                                onChange={(e) => {
-                                  setIntReturnRaw(e.target.value);
-                                  const n = parseInt(e.target.value, 10);
-                                  if (!isNaN(n)) setIntReturnYardLine(Math.max(1, Math.min(50, n)));
-                                }}
-                                className="input w-20 text-center text-sm font-black"
-                              />
-                            </div>
-                          </>
+                          <YardReel
+                            value={toOffensePerspectiveBallOn(intReturnTeam, intReturnYardLine)}
+                            onChange={(ballOn) => {
+                              const spot = toFieldSpot(ballOn);
+                              setIntReturnTeam(spot.side);
+                              setIntReturnYardLine(spot.yardLine);
+                            }}
+                            offenseDirection={offenseDirection}
+                            accentColor={defenseColor}
+                            formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                          />
                         )}
                       </div>
 
@@ -1281,35 +1898,60 @@ export default function PlayEntryModal({
                     <>
                       <label className="label block mb-2">Ball Spotted At</label>
 
+                      {/* Tap the field to drop the ball where you saw it. The
+                          orientation matches the main screen so the mental map
+                          carries over; the LOS ghost shows where it started. */}
+                      <div className="mb-3">
+                        <FieldVisualizer
+                          compact
+                          ballOn={resultBallOn}
+                          ballPosition={toFieldDisplay(resultBallOn)}
+                          firstDownPosition={toFieldDisplay(
+                            Math.min(gameState.ballOn + gameState.distance, 100),
+                          )}
+                          possession={gameState.possession}
+                          ourEndZoneSide={ourEndZoneSide}
+                          primaryColor={progColor}
+                          oppColor={oppColor}
+                          progName={progName}
+                          oppName={oppName}
+                          progAbbr={progTag}
+                          oppAbbr={oppTag}
+                          progLogoUrl={progLogoUrl}
+                          oppLogoUrl={oppLogoUrl}
+                          onPickSpot={handleFieldPick}
+                        />
+                        <div className="text-[10px] text-slate-600 text-center mt-1">
+                          Tap the field to set the spot · started at {yardLabel(gameState.ballOn)}
+                        </div>
+                      </div>
+
                       <div className="flex gap-1.5 mb-3">
-                        {(["our", "opp"] as const).map(side => (
+                        {spotSideOrder.map(side => (
                         <button
                           key={side}
                           onClick={() => setResultSide(side)}
-                            className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
-                              resultSide === side
-                                ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                                : "border-surface-border bg-surface-bg text-slate-500"
-                            }`}
+                            className="flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer border-surface-border bg-surface-bg text-slate-500"
+                            style={resultSide === side
+                              ? {
+                                  borderColor: offenseColor,
+                                  backgroundColor: `${offenseColor}33`,
+                                  color: offenseColor,
+                                }
+                              : undefined}
                         >
                             {perspectiveSideLabel(side)}
                           </button>
                         ))}
                       </div>
 
-                      <div className="flex items-center gap-1.5">
-                        {[-10, -5, -1].map(n => (
-                          <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
-                            className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
-                        ))}
-                        <div className={`w-14 h-10 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums ${
-                          yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : "text-slate-300"
-                        }`}>{resultYardLine}</div>
-                        {[1, 5, 10].map(n => (
-                          <button key={n} onClick={() => adjustYardLine(resultYardLine, n, resultSide, setResultYardLine, setResultSide)}
-                            className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
-                        ))}
-                      </div>
+                      <YardReel
+                        value={resultBallOn}
+                        onChange={applySpotBallOn}
+                        offenseDirection={offenseDirection}
+                        accentColor={offenseColor}
+                        formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                      />
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] text-slate-500">Or type:</span>
                         <input
@@ -1409,14 +2051,6 @@ export default function PlayEntryModal({
                 </div>
               )}
 
-              {/* Touchback */}
-              {needsTouchback && (
-                <button onClick={() => setIsTouchback(t => !t)}
-                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                    isTouchback ? "border-sky-500 bg-sky-500/20 text-sky-400" : "border-surface-border bg-surface-bg text-slate-500"
-                  }`}>Touchback</button>
-              )}
-
               {/* Penalty */}
               <button onClick={() => setShowPenalties(s => !s)}
                 className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
@@ -1426,67 +2060,140 @@ export default function PlayEntryModal({
                 {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
               </button>
 
-              {showPenalties && (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
-                    {PENALTIES.map(p => (
-                      <button key={p} onClick={() => {
-                        setPenalty(p);
-                        setPenaltyCategory(getPenaltyDefaultSide(p));
-                        setFlagYards(PENALTY_DEFAULT_YARDS[p] ?? 5);
-                        setShowPenalties(false);
-                      }}
-                        className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-all duration-200 ${
-                          penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-slate-400"
-                        }`}>{p}</button>
-                    ))}
+              {showPenalties && penaltyPicker}
+            </>
+          )}
+
+          {/* ── STEP: Penalty (penalty-only plays — this IS the play) ── */}
+          {currentStep === "penalty" && (
+            <>
+              <div className="text-sm font-bold text-slate-300">
+                What was the flag?
+              </div>
+              <div className="text-[11px] text-slate-600 -mt-1">
+                No snap counted, so there's nothing to tag or chart — just the flag.
+              </div>
+              {penaltyPicker}
+
+              {/* ── Resulting spot ── */}
+              {penalty && penaltyProjection && (
+                <div className="card p-3 space-y-3 border border-surface-border">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500">Ball spotted at</span>
+                    <span className="text-xs text-slate-600">
+                      was {formatFieldSpot(gameState.ballOn, gameState.possession)}
+                    </span>
                   </div>
-                  {penalty && (
-                    <div className="space-y-2">
+
+                  <div className="text-center">
+                    <div className="text-2xl font-black tabular-nums text-emerald-400">
+                      {formatFieldSpot(
+                        overrideSpot ? overrideBallOn : penaltyProjection.ballOn,
+                        gameState.possession,
+                      )}
+                    </div>
+                    <div className="text-xs font-bold text-slate-400 mt-0.5">
+                      {overrideSpot ? spotDown : penaltyProjection.down}
+                      {" & "}
+                      {overrideSpot ? spotDistance : penaltyProjection.distance}
+                      {penaltyProjection.possession !== gameState.possession && (
+                        <span className="text-orange-400"> · possession changes</span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-600 mt-1">
+                      {overrideSpot ? "Your spot — overrides the computed enforcement" : "Computed from the penalty"}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const next = !overrideSpot;
+                      if (next) {
+                        // Seed from the computed result so a small correction
+                        // is a nudge, not a re-entry.
+                        seedSpotFromBallOn(penaltyProjection.ballOn);
+                        setSpotDown(penaltyProjection.down);
+                        setSpotDistance(penaltyProjection.distance);
+                      }
+                      setOverrideSpot(next);
+                    }}
+                    className={`w-full py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 ${
+                      overrideSpot
+                        ? "border-amber-500 bg-amber-500/15 text-amber-400"
+                        : "border-surface-border bg-surface-bg text-slate-500"
+                    }`}
+                  >
+                    {overrideSpot ? "Using my spot" : "Set the spot myself"}
+                  </button>
+
+                  {overrideSpot && (
+                    <div className="space-y-3 pt-1">
                       <div>
-                        <span className="text-xs text-slate-500 block mb-1">Flag On</span>
-                        <div className="grid grid-cols-2 gap-2">
-                          {(["offense", "defense"] as const).map((side) => (
+                        <span className="text-xs text-slate-500 block mb-1">Ball on</span>
+                        <div className="flex items-center gap-2">
+                          {(["our", "opp"] as const).map(s => (
                             <button
-                              key={side}
-                              onClick={() => setPenaltyCategory(side)}
-                              className={`py-2 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
-                                penaltyCategory === side
-                                  ? "border-orange-500 bg-orange-500/15 text-orange-400"
+                              key={s}
+                              onClick={() => setSpotSide(s)}
+                              className={`px-3 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 ${
+                                spotSide === s
+                                  ? "border-amber-500 bg-amber-500/15 text-amber-400"
                                   : "border-surface-border bg-surface-bg text-slate-500"
                               }`}
                             >
-                              {side}
+                              {perspectiveSideTag(s)}
                             </button>
                           ))}
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={50}
+                            value={spotYardRaw}
+                            onChange={e => {
+                              const raw = e.target.value;
+                              setSpotYardRaw(raw);
+                              if (raw === "") return;
+                              const n = Number(raw);
+                              if (!Number.isNaN(n)) setSpotYardLine(Math.max(1, Math.min(50, n)));
+                            }}
+                            onBlur={() => setSpotYardRaw(String(spotYardLine))}
+                            className="input flex-1 text-center text-sm font-bold"
+                          />
                         </div>
                       </div>
-                      <div>
-                        <span className="text-xs text-slate-500 block mb-1">Enforcement</span>
-                        <div className="grid grid-cols-3 gap-2">
-                          {(["accepted", "declined", "offset"] as const).map((mode) => (
-                            <button
-                              key={mode}
-                              onClick={() => setPenaltyEnforcement(mode)}
-                              className={`py-2 rounded-xl text-[11px] font-bold border-2 capitalize transition-all duration-200 ${
-                                penaltyEnforcement === mode
-                                  ? mode === "accepted" ? "border-orange-500 bg-orange-500/15 text-orange-400"
-                                    : mode === "declined" ? "border-slate-500 bg-slate-500/15 text-slate-300"
-                                    : "border-yellow-500 bg-yellow-500/15 text-yellow-300"
-                                  : "border-surface-border bg-surface-bg text-slate-500"
-                              }`}
-                            >
-                              {mode}
-                            </button>
-                          ))}
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-xs text-slate-500 block mb-1">Down</span>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4].map(d => (
+                              <button
+                                key={d}
+                                onClick={() => setSpotDown(d)}
+                                className={`flex-1 py-2 rounded-lg text-xs font-black border-2 transition-all duration-200 ${
+                                  spotDown === d
+                                    ? "border-amber-500 bg-amber-500/15 text-amber-400"
+                                    : "border-surface-border bg-surface-bg text-slate-500"
+                                }`}
+                              >
+                                {d}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-500">Penalty yards:</span>
-                        <input type="number" value={flagYards} onChange={e => setFlagYards(Number(e.target.value))}
-                          className="input w-16 text-center text-sm"
-                          disabled={penaltyEnforcement !== "accepted"} />
-                        <button onClick={() => { setPenalty(null); setPenaltyCategory(null); setFlagYards(5); setPenaltyEnforcement("accepted"); }} className="text-xs text-red-400 ml-auto">Clear</button>
+                        <div>
+                          <span className="text-xs text-slate-500 block mb-1">To go</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={99}
+                            value={spotDistance}
+                            onChange={e => setSpotDistance(Math.max(1, Math.min(99, Number(e.target.value) || 1)))}
+                            className="input w-full text-center text-sm font-bold"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1541,10 +2248,8 @@ export default function PlayEntryModal({
           {currentStep === "defense" && (
             <>
               <div className="text-xs text-slate-400 mb-1">
-                {isTheirBall
-                  ? `Select up to 3 tacklers from ${progName}. 1 player = 1.0 credit, 2+ = 0.5 each.`
-                  : `Select up to 3 ${oppName} tacklers. 1 player = 1.0 credit, 2+ = 0.5 each.`
-                }
+                Select up to 3 tacklers from {tacklersAreOurs ? progName : oppName}.
+                {" "}1 player = solo (1.0), 2+ = assist (0.5 each).
               </div>
               {tacklers.length > 0 && (
                 <div className="flex gap-2 flex-wrap mb-2">
@@ -1564,7 +2269,7 @@ export default function PlayEntryModal({
                   ))}
                 </div>
               )}
-              {isTheirBall ? (
+              {tacklersAreOurs ? (
                 <PlayerGrid
                   roster={roster}
                   label={`Select tackler(s) from ${progName}`}
@@ -1575,7 +2280,7 @@ export default function PlayEntryModal({
                 />
               ) : (
                 <OpponentPlayerGrid
-                  players={opponentPlayers}
+                  players={localOppPlayers}
                   label={`Select ${oppName} tackler(s)`}
                   onSelect={p => handleAddOpponentTackler(p)}
                   selectedId={null}
@@ -1670,6 +2375,14 @@ export default function PlayEntryModal({
                     </div>
                     {!isTouchback && (
                       <div className="flex justify-between">
+                        <span className="text-slate-500">Outcome</span>
+                        <span className="font-bold text-purple-400">
+                          {KICK_OUTCOMES.find(o => o.value === kickOutcome)?.label}
+                        </span>
+                      </div>
+                    )}
+                    {wasReturned && (
+                      <div className="flex justify-between">
                         <span className="text-slate-500">Returned To</span>
                         <span className="font-bold text-emerald-400">
                           {(() => {
@@ -1699,10 +2412,44 @@ export default function PlayEntryModal({
                   </div>
                 )}
                 {penalty && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Penalty</span>
-                    <span className="font-bold text-orange-400">{penalty} ({flagYards} yds)</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Penalty</span>
+                      <span className="font-bold text-orange-400">
+                        {penalty}
+                        {penaltyEnforcement === "accepted" ? ` (${flagYards} yds)` : ""}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Flag On</span>
+                      <span className={`font-bold capitalize ${penaltyCategory ? "text-orange-400" : "text-red-400"}`}>
+                        {penaltyCategory ?? "Pick offense or defense"}
+                      </span>
+                    </div>
+                    {penaltyEnforcement !== "accepted" && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Enforcement</span>
+                        <span className="font-bold capitalize text-slate-300">{penaltyEnforcement}</span>
+                      </div>
+                    )}
+                    {penaltyProjection && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">
+                          Next Spot{overrideSpot ? " (yours)" : ""}
+                        </span>
+                        <span className={`font-bold ${overrideSpot ? "text-amber-400" : "text-emerald-400"}`}>
+                          {formatFieldSpot(
+                            overrideSpot ? overrideBallOn : penaltyProjection.ballOn,
+                            gameState.possession,
+                          )}
+                          {" · "}
+                          {overrideSpot ? spotDown : penaltyProjection.down}
+                          {" & "}
+                          {overrideSpot ? spotDistance : penaltyProjection.distance}
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
                 {offFormation && (
                   <div className="flex justify-between">

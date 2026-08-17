@@ -401,52 +401,80 @@ export async function updatePlayFull(
     hash_mark?: string | null;
     play_data?: Record<string, unknown>;
   },
-  players: { player_id: string; role: string; credit?: number | null }[]
+  players: { player_id: string; role: string; credit?: number | null }[],
+  gameId?: string,
 ): Promise<boolean> {
-  // 1) Update the play row — strip undefined/null optional fields to avoid missing-column errors
+  const { updateCachedPlay, enqueueUpdate } = await import("./offlineDb");
+  const { refreshSyncStatus } = await import("./syncWorker");
+
+  // Strip undefined optional fields to avoid missing-column errors.
   const cleanFields: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
     if (v !== undefined) cleanFields[k] = v;
   }
-  const { error: updateErr } = await supabase
-    .from("plays")
-    .update(cleanFields)
-    .eq("id", playId);
 
-  if (updateErr) {
-    console.error("Failed to update play:", updateErr);
-    return false;
-  }
+  const rows: PlayPlayerInsert[] = players.map((p) => ({
+    play_id: playId,
+    player_id: p.player_id,
+    role: p.role,
+    credit: p.credit ?? null,
+  }));
 
-  // 2) Delete all existing play_players for this play
-  const { error: deleteErr } = await supabase
-    .from("play_players")
-    .delete()
-    .eq("play_id", playId);
+  // Patch the local cache first so the corrected play reads back correctly
+  // even with no network — same order insertPlay and deletePlay use.
+  await updateCachedPlay(playId, {
+    ...cleanFields,
+    play_players: rows.map((r) => ({ ...r, id: genUuid(), player: undefined })),
+  } as unknown as Partial<PlayWithPlayers>);
 
-  if (deleteErr) {
-    console.error("Failed to delete play_players:", deleteErr);
-    return false;
-  }
+  const goOnline = typeof navigator === "undefined" || navigator.onLine;
+  if (goOnline) {
+    try {
+      const { error: updateErr } = await supabase
+        .from("plays")
+        .update(cleanFields)
+        .eq("id", playId);
 
-  // 3) Insert new play_players rows
-  if (players.length > 0) {
-    const rows: PlayPlayerInsert[] = players.map((p) => ({
-      play_id: playId,
-      player_id: p.player_id,
-      role: p.role,
-      credit: p.credit ?? null,
-    }));
+      if (!updateErr) {
+        // Replace the tag set wholesale — an edit can add, remove, or re-role
+        // players, so a partial merge would leave stale credit behind.
+        const { error: deleteErr } = await supabase
+          .from("play_players")
+          .delete()
+          .eq("play_id", playId);
 
-    const { error: insertErr } = await supabase
-      .from("play_players")
-      .insert(rows);
-
-    if (insertErr) {
-      console.error("Failed to insert play_players:", insertErr);
-      return false;
+        if (!deleteErr) {
+          if (rows.length === 0) {
+            await refreshSyncStatus();
+            return true;
+          }
+          const { error: insertErr } = await supabase.from("play_players").insert(rows);
+          if (!insertErr) {
+            await refreshSyncStatus();
+            return true;
+          }
+          console.warn("updatePlayFull play_players insert failed, queueing:", insertErr);
+        } else {
+          console.warn("updatePlayFull play_players delete failed, queueing:", deleteErr);
+        }
+      } else {
+        console.warn("updatePlayFull network failed, queueing:", updateErr);
+      }
+    } catch (err) {
+      console.warn("updatePlayFull threw, queueing:", err);
     }
   }
+
+  // Offline, or the write failed partway: queue it. The edit is already in the
+  // local cache, so the UI stays correct and the sync badge shows it pending.
+  // Previously this path returned false and the edit was silently discarded.
+  await enqueueUpdate({
+    gameId: gameId ?? "",
+    playId,
+    patch: cleanFields,
+    players: rows as unknown as Array<Record<string, unknown>>,
+  });
+  await refreshSyncStatus();
 
   return true;
 }

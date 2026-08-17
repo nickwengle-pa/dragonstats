@@ -22,6 +22,10 @@ import {
 import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditModal";
 import {
   findPlayTypeDef,
+  isRosterTag,
+  makePendingId,
+  pendingDisplayName,
+  pendingJerseyFromId,
   yardLabel,
   quarterLabel,
   OFFENSIVE_FORMATIONS,
@@ -118,6 +122,20 @@ function rowToPlayRecord(p: PlayWithPlayers): PlayRecord {
       credit: t.credit ?? undefined,
       isOpponent: true,
     })),
+    // Unrostered jerseys from live entry — same storage reason as opponents.
+    ...((Array.isArray(pd.pending_tagged) ? pd.pending_tagged : []) as any[]).map((t: any) => {
+      const jersey = t.jersey_number ?? pendingJerseyFromId(String(t.id ?? ""));
+      const id = String(t.id ?? makePendingId(jersey ?? 0));
+      return {
+        id,
+        player_id: id,
+        jersey_number: jersey ?? null,
+        name: pendingDisplayName(jersey ?? null),
+        role: String(t.role ?? ""),
+        credit: t.credit ?? undefined,
+        isPending: true,
+      };
+    }),
   ];
   return {
     id: p.id,
@@ -781,7 +799,7 @@ export default function PostGameReview() {
         is_touchdown: result.isTouchdown,
         is_turnover: ["int", "fumble"].includes(result.playType.id),
         is_penalty: !!result.penalty,
-        primary_player_id: result.tagged.find((t) => !t.isOpponent)?.player_id ?? null,
+        primary_player_id: result.tagged.find(isRosterTag)?.player_id ?? null,
         description: result.description,
         ...(result.offensiveFormation != null ? { offensive_formation: result.offensiveFormation } : {}),
         ...(result.defensiveFormation != null ? { defensive_formation: result.defensiveFormation } : {}),
@@ -801,11 +819,22 @@ export default function PostGameReview() {
           next_yard_line: null,
           next_situation_source:
             result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
+          // Rewritten from the edit result rather than inherited from `pd`,
+          // so removing a pending tag in the editor actually removes it.
+          pending_tagged: result.tagged
+            .filter((t) => t.isPending)
+            .map((t) => ({
+              id: t.player_id,
+              jersey_number: t.jersey_number,
+              role: t.role,
+              credit: t.credit ?? null,
+            })),
         },
       },
       result.tagged
-        .filter((t) => !t.isOpponent)
+        .filter(isRosterTag)
         .map((t) => ({ player_id: t.player_id, role: t.role, credit: t.credit ?? null })),
+      gameId,
     );
 
     if (!ok) {
@@ -904,7 +933,8 @@ export default function PostGameReview() {
                   <Th className="w-14">Ball</Th>
                   <Th className="w-12">Hash</Th>
                   <Th className="w-10">Pers</Th>
-                  <Th className="w-20">Form</Th>
+                  <Th className="w-20">Off Form</Th>
+                  <Th className="w-20">Def Form</Th>
                   <Th>Play</Th>
                   <Th className="w-8">R/P</Th>
                   <Th className="w-10 text-right">Gn</Th>
@@ -939,6 +969,7 @@ export default function PostGameReview() {
                       <Td className="capitalize">{c?.hash_mark ?? p.hash_mark ?? "—"}</Td>
                       <Td className="font-mono">{c?.personnel ?? "—"}</Td>
                       <Td className="truncate max-w-[80px]">{c?.offensive_formation ?? p.offensive_formation ?? "—"}</Td>
+                      <Td className="truncate max-w-[80px]">{c?.defensive_formation ?? p.defensive_formation ?? "—"}</Td>
                       <Td className="text-slate-300 truncate max-w-[180px]">{p.description ?? typeLabel(p)}</Td>
                       <Td className="font-bold">{runPassFor(p)}</Td>
                       <Td className="text-right font-mono font-bold">{gainLabel(p)}</Td>

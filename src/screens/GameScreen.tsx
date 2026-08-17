@@ -23,8 +23,10 @@ import {
   createKickoffSituation,
   createDefaultPregameConfig,
   createInitialSituation,
+  getChartingPrefs,
   getOffenseDriveDirection,
   getOurEndZoneSideForQuarter,
+  type ChartingPrefs,
   getOurDriveDirectionForQuarter,
   getPregameConfig,
   moveToQuarter,
@@ -53,6 +55,7 @@ import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditMo
 import PlayLog from "@/components/game/PlayLog";
 import LiveStatsPanel from "@/components/game/LiveStatsPanel";
 import SyncBadge from "@/components/game/SyncBadge";
+import ClockInput from "@/components/game/ClockInput";
 import { setupAutoDrain, drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
 import { getQueueForGame } from "@/services/offlineDb";
 import {
@@ -62,6 +65,11 @@ import {
   type PlayTypeDef,
   type GameState,
   type BlockedKickType,
+  type TaggedPlayer,
+  isRosterTag,
+  makePendingId,
+  pendingDisplayName,
+  pendingJerseyFromId,
   findPlayTypeDef,
   QUARTER_LABELS,
   fmtClock,
@@ -176,16 +184,38 @@ function getStoredEndClock(play: Pick<PlayRecord, "clock" | "playData">): number
   return readStoredClock(play, "recorded_end_clock_seconds");
 }
 
+/**
+ * Plays after which the game clock is stopped and the operator can read a real
+ * number off the scoreboard. Prompting on exactly these keeps the recorded
+ * clock honest without interrupting between ordinary in-bounds snaps.
+ *
+ * NFHS clock stops: incomplete pass, out of bounds, any score, change of
+ * possession, penalty, and every kick.
+ */
+const CLOCK_STOPPING_PLAY_TYPES = new Set([
+  // Kicks — the clock stops on the change of possession that follows.
+  "punt", "kickoff", "onside_kick", "fair_catch", "blocked_kick",
+  // Incompletions stop the clock.
+  "pass_inc", "throwaway", "drop", "spike",
+  // Scoring plays and conversions.
+  "fg", "pat", "two_pt", "safety",
+  // Turnovers.
+  "int", "fumble",
+  // A flag stops the clock while it's marked off.
+  "penalty_only",
+]);
+
 function shouldPromptForClockCapture(
-  play: Pick<PlayRecord, "type" | "result" | "isTouchdown">,
+  play: Pick<PlayRecord, "type" | "result" | "isTouchdown" | "penalty">,
   before: LiveSituationSnapshot,
   after: LiveSituationSnapshot,
 ): boolean {
+  // The timeout flow captures its own clock, so prompting again would double up.
   if (play.type === "timeout") return false;
   if (play.isTouchdown) return true;
-  if (play.type === "fg" && play.result === "Good") return true;
-  if (play.type === "safety") return true;
-  if (play.type === "spike") return true;
+  if (CLOCK_STOPPING_PLAY_TYPES.has(play.type)) return true;
+  // A flag on any play stops the clock too.
+  if (play.penalty) return true;
   return after.possession !== before.possession;
 }
 
@@ -372,6 +402,19 @@ export default function GameScreen() {
             credit: t.credit ?? undefined,
             isOpponent: true,
           })),
+          // Unrostered jerseys on our side — same storage reason as above.
+          ...((Array.isArray(pd.pending_tagged) ? pd.pending_tagged : []) as any[]).map((t: any) => {
+            const jersey = t.jersey_number ?? pendingJerseyFromId(String(t.id ?? ""));
+            return {
+              id: String(t.id ?? makePendingId(jersey ?? 0)),
+              player_id: String(t.id ?? makePendingId(jersey ?? 0)),
+              jersey_number: jersey ?? null,
+              name: pendingDisplayName(jersey ?? null),
+              role: String(t.role ?? ""),
+              credit: t.credit ?? undefined,
+              isPending: true,
+            };
+          }),
         ],
         ballOn: p.yard_line,
         down: p.down,
@@ -564,10 +607,38 @@ export default function GameScreen() {
   const [adjDown, setAdjDown] = useState(1);
   const [adjDistance, setAdjDistance] = useState(10);
   const [adjPossession, setAdjPossession] = useState<"us" | "them">("us");
+  const [adjClockMins, setAdjClockMins] = useState(12);
+  const [adjClockSecs, setAdjClockSecs] = useState(0);
 
   /* ── Derived state ── */
   const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
   const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
+
+  /* ── Last player per role, for pre-filling the next play's entry ──────────
+     Derived from the play log rather than stored separately, so it survives a
+     reload and can never drift from what was actually recorded. Keyed by side
+     too — their QB must not pre-fill our passer slot after a turnover. */
+  const lastPlayerByRole = useMemo(() => {
+    // Tags rebuilt from the DB carry jersey_number: null — the number lives on
+    // season_rosters, not the play_players join — so re-attach it from the
+    // roster or the carried tag renders as "#null".
+    const jerseyByPlayerId = new Map<string, number | null>();
+    for (const entry of roster) jerseyByPlayerId.set(entry.player_id, entry.jersey_number);
+    for (const opp of oppPlayers) jerseyByPlayerId.set(opp.id, opp.jersey_number);
+
+    const map: Record<string, TaggedPlayer> = {};
+    for (const play of plays) {
+      for (const tag of play.tagged ?? []) {
+        // Pending tags carry their own jersey and keep their own slot, so the
+        // same unrostered back carries forward like any other player.
+        map[`${tag.role}:${tag.isOpponent ? "opp" : "us"}`] = {
+          ...tag,
+          jersey_number: tag.jersey_number ?? jerseyByPlayerId.get(tag.player_id) ?? null,
+        };
+      }
+    }
+    return map;
+  }, [plays, roster, oppPlayers]);
 
   /* ── Live engine summary (re-derives per play change) ── */
   const liveSummary = useMemo(() => {
@@ -591,8 +662,16 @@ export default function GameScreen() {
       map[r.player_id] = name;
       map[r.id] = name;
     }
+    // Pending jerseys have no roster row, so name them from the tags
+    // themselves — otherwise live stats show a raw "pending_42" id.
+    for (const play of plays) {
+      for (const tag of play.tagged ?? []) {
+        if (!tag.isPending) continue;
+        map[tag.player_id] = `${pendingDisplayName(tag.jersey_number)} ?`;
+      }
+    }
     return map;
-  }, [roster]);
+  }, [roster, plays]);
 
   const oppPlayerNameById = useMemo<Record<string, string>>(() => {
     const map: Record<string, string> = {};
@@ -627,6 +706,20 @@ export default function GameScreen() {
       return directionFlipped ? oppositeFieldDirection(side) : side;
     },
     [directionFlipped, quarter, pregame],
+  );
+  /** Which optional detail this crew is charting live. Drives which steps the
+   *  play-entry modal shows; Film Chart is unaffected. */
+  const charting = useMemo(() => getChartingPrefs(game), [game]);
+  // Screen-space drive direction for the entry modal's field + yard reel.
+  // MUST honor the manual flip toggle like ourEndZoneSide does — passing the
+  // raw drive direction while the end zones are flipped renders the modal
+  // mirrored, so dragging "downfield" counts the wrong way.
+  const offenseDisplayDirection = useMemo(
+    () => {
+      const direction = getOffenseDriveDirection(possession, quarter, pregame);
+      return directionFlipped ? oppositeFieldDirection(direction) : direction;
+    },
+    [directionFlipped, possession, quarter, pregame],
   );
 
   useEffect(() => {
@@ -775,12 +868,25 @@ export default function GameScreen() {
     const endClockSeconds = getStoredEndClock(play);
     const afterClockSeconds = endClockSeconds ?? play.clock;
     const autoAfter = advanceSituationAfterPlay(play, before, gc);
-    const after: LiveSituationSnapshot = resolved?.afterSituation ?? {
+    const baseAfter: LiveSituationSnapshot = resolved?.afterSituation ?? {
       possession: play.nextPossession ?? autoAfter.possession,
       down: play.nextDown ?? autoAfter.down,
       distance: play.nextDistance ?? autoAfter.distance,
       ballOn: play.nextBallOn ?? autoAfter.ballOn,
     };
+    // A manual override is the recorder stating what the officials actually
+    // did, so it outranks both the engine replay and the computed enforcement.
+    // Without this, the engine's afterSituation silently wins and the spot the
+    // user typed is discarded.
+    const isManualOverride = play.playData?.next_situation_source === "manual_override";
+    const after: LiveSituationSnapshot = isManualOverride
+      ? {
+          possession: play.nextPossession ?? baseAfter.possession,
+          down: play.nextDown ?? baseAfter.down,
+          distance: play.nextDistance ?? baseAfter.distance,
+          ballOn: play.nextBallOn ?? baseAfter.ballOn,
+        }
+      : baseAfter;
     const scoreAfter = resolved?.scoreAfter ?? applyScoreDelta(play, scoreBefore);
     const existingSource = typeof play.playData?.next_situation_source === "string"
       ? play.playData?.next_situation_source
@@ -812,6 +918,17 @@ export default function GameScreen() {
           .map((tag) => ({
             id: tag.player_id,
             name: tag.name,
+            jersey_number: tag.jersey_number,
+            role: tag.role,
+            credit: tag.credit ?? null,
+          })),
+        // Unrostered jerseys on our side. Same reason as opp_tagged — no
+        // players row means no play_players FK — so they live here until a
+        // coach resolves them from the Roster screen.
+        pending_tagged: play.tagged
+          .filter((tag) => tag.isPending)
+          .map((tag) => ({
+            id: tag.player_id,
             jersey_number: tag.jersey_number,
             role: tag.role,
             credit: tag.credit ?? null,
@@ -907,8 +1024,11 @@ export default function GameScreen() {
     const isKickState = ballOn === gc.kickoff_yard_line || ballOn === gc.safety_kick_yard_line;
     const isConversionState = ballOn === 100 - gc.pat_distance && distance <= gc.pat_distance;
     if (isKickState || isConversionState) return "special" as const;
+    // 4th down is a special-teams decision far more often than not, so open on
+    // ST. The phase tabs stay tappable — one tap gets back to OFF for a go-for-it.
+    if (down === 4) return "special" as const;
     return possession === "us" ? "offense" as const : "defense" as const;
-  }, [ballOn, distance, gc.kickoff_yard_line, gc.pat_distance, gc.safety_kick_yard_line, possession]);
+  }, [ballOn, distance, down, gc.kickoff_yard_line, gc.pat_distance, gc.safety_kick_yard_line, possession]);
   const timeoutState = useMemo(() => {
     const activeHalf = timeoutHalfForQuarter(quarter);
     let usedUs = 0;
@@ -1042,8 +1162,12 @@ export default function GameScreen() {
     setAdjBallOn(suggested.ballOn);
     setAdjDown(suggested.down);
     setAdjDistance(suggested.distance);
+    // These are all clock-stopping events, so the running clock is the right
+    // starting point — the operator corrects it against the scoreboard.
+    setAdjClockMins(Math.floor(clock / 60));
+    setAdjClockSecs(clock % 60);
     setShowSituationAdj(true);
-  }, [gc]);
+  }, [clock, gc]);
 
   const recalcScoreAndState = useCallback(async (allPlays: PlayRecord[]) => {
     const rebuilt = rebuildPlaySituations(allPlays, pregame, gc);
@@ -1092,6 +1216,8 @@ export default function GameScreen() {
   const applySituationAdjustment = useCallback(async () => {
     if (!pendingSituationPlayId) return;
 
+    const adjustedClock = Math.max(0, Math.min(gc.quarter_length_secs, (adjClockMins * 60) + adjClockSecs));
+
     const updatedPlays = plays.map((play) => (
       play.id === pendingSituationPlayId
         ? {
@@ -1103,6 +1229,11 @@ export default function GameScreen() {
             playData: {
               ...(play.playData ?? {}),
               next_situation_source: "manual_override",
+              // Same keys the post-play clock prompt writes, so the play log
+              // and the film chart read the end-of-play clock identically
+              // whichever sheet captured it.
+              recorded_end_clock: fmtClock(adjustedClock),
+              recorded_end_clock_seconds: adjustedClock,
             },
           }
         : play
@@ -1111,15 +1242,17 @@ export default function GameScreen() {
     setShowSituationAdj(false);
     setPendingSituationPlayId(null);
     await recalcScoreAndState(updatedPlays);
-  }, [adjBallOn, adjDistance, adjDown, adjPossession, pendingSituationPlayId, plays, recalcScoreAndState]);
+    setClock(adjustedClock);
+  }, [adjBallOn, adjClockMins, adjClockSecs, adjDistance, adjDown, adjPossession, gc.quarter_length_secs, pendingSituationPlayId, plays, recalcScoreAndState]);
 
-  const handleSavePregame = useCallback(async (nextPregame: PregameConfig) => {
+  const handleSavePregame = useCallback(async (nextPregame: PregameConfig, nextCharting: ChartingPrefs) => {
     if (!gameId || !game) return;
 
     setSavingPregame(true);
     const updates = buildPregameGameUpdate(
       (game.rules_config as Record<string, unknown> | null) ?? {},
       nextPregame,
+      nextCharting,
     );
 
     const { data, error } = await supabase
@@ -1271,6 +1404,10 @@ export default function GameScreen() {
       // Onside recovered by the kicking team: keep possession (the situation
       // engine reads nextPossession to decide flip vs. keep).
       nextPossession: data.playType.id === "onside_kick" && data.onsideRecoveredByKicker ? possession : undefined,
+      // Penalty spot the recorder set by hand — wins over computed enforcement.
+      nextDown: data.nextSituation?.down,
+      nextDistance: data.nextSituation?.distance,
+      nextBallOn: data.nextSituation?.ballOn,
       offensiveFormation: data.offensiveFormation,
       defensiveFormation: data.defensiveFormation,
       hashMark: data.hashMark,
@@ -1279,7 +1416,9 @@ export default function GameScreen() {
         recorded_start_clock: fmtClock(clock),
         recorded_start_clock_seconds: clock,
         ...(data.playData ?? {}),
-        next_situation_source: data.penalty || data.playType.id === "blocked_kick" || isTurnover ? "pending_review" : "auto",
+        next_situation_source: data.nextSituation
+          ? "manual_override"
+          : data.penalty || data.playType.id === "blocked_kick" || isTurnover ? "pending_review" : "auto",
       },
     };
     const liveReplay = liveSessionConfig ? replayLiveGame([...plays, previewPlay], liveSessionConfig) : null;
@@ -1309,7 +1448,7 @@ export default function GameScreen() {
       is_touchdown: data.isTouchdown,
       is_turnover: isTurnover,
       is_penalty: !!data.penalty,
-      primary_player_id: data.tagged.find((tag) => !tag.isOpponent)?.player_id ?? null,
+      primary_player_id: data.tagged.find(isRosterTag)?.player_id ?? null,
       description: data.description,
       end_yard_line: storedPreview.after.ballOn,
       play_start_time: clock,
@@ -1320,7 +1459,7 @@ export default function GameScreen() {
       ...(data.hashMark ? { hash_mark: data.hashMark } : {}),
     };
 
-    const playerInserts = data.tagged.filter((tag) => !tag.isOpponent).map(t => ({
+    const playerInserts = data.tagged.filter(isRosterTag).map(t => ({
       player_id: t.player_id,
       role: t.role,
       credit: t.credit ?? null,
@@ -1536,10 +1675,6 @@ export default function GameScreen() {
     await recordTimeoutAt(timeoutTeam, secs);
   }, [recordTimeoutAt, timeoutTeam, timeoutMins, timeoutSecs]);
 
-  const quickTimeout = useCallback((team: TimeoutTeam) => {
-    void recordTimeoutAt(team, clock);
-  }, [recordTimeoutAt, clock]);
-
   /** Apply an explicit score adjustment. Updates the DB game.score immediately
    *  and records a "score_correction" play in the log so the operator can see
    *  (and undo via the standard undo flow) what they changed. */
@@ -1735,7 +1870,7 @@ export default function GameScreen() {
       is_touchdown: result.isTouchdown,
       is_turnover: ["int", "fumble"].includes(result.playType.id),
       is_penalty: !!result.penalty,
-      primary_player_id: result.tagged.find((tag) => !tag.isOpponent)?.player_id ?? null,
+      primary_player_id: result.tagged.find(isRosterTag)?.player_id ?? null,
       description: result.description,
       ...(result.offensiveFormation != null ? { offensive_formation: result.offensiveFormation } : {}),
       ...(result.defensiveFormation != null ? { defensive_formation: result.defensiveFormation } : {}),
@@ -1755,12 +1890,15 @@ export default function GameScreen() {
         next_yard_line: null,
         next_situation_source: result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
       },
-    }, result.tagged.filter((tag) => !tag.isOpponent).map(t => ({
+    }, result.tagged.filter(isRosterTag).map(t => ({
       player_id: t.player_id,
       role: t.role,
       credit: t.credit ?? null,
-    })));
-    if (!ok) return;
+    })), gameId);
+    if (!ok) {
+      window.alert("Couldn't save that edit. It stays open so you can retry — check the sync badge.");
+      return;
+    }
 
     // Update local play record
     const updatedPlay: PlayRecord = {
@@ -1976,7 +2114,7 @@ export default function GameScreen() {
           onEditBall={openBallEditor}
           ourTimeoutsRemaining={timeoutState.ourRemaining}
           theirTimeoutsRemaining={timeoutState.theirRemaining}
-          onTakeTimeout={quickTimeout}
+          onTakeTimeout={openTimeoutModal}
           onCorrectScore={(team) => setScoreCorrectTeam(team)}
         />
 
@@ -2022,6 +2160,7 @@ export default function GameScreen() {
             progName={progName}
             oppName={oppName}
             suggestedPhase={suggestedPhase}
+            down={down}
           />
         </div>
 
@@ -2085,6 +2224,7 @@ export default function GameScreen() {
       {showPregame && (
         <PregameSetupSheet
           initialValue={pregame ?? createDefaultPregameConfig()}
+          initialCharting={charting}
           progName={progName}
           oppName={oppName}
           onClose={() => setShowPregame(false)}
@@ -2102,6 +2242,18 @@ export default function GameScreen() {
           opponentPlayers={oppPlayers}
           progName={progName}
           oppName={oppName}
+          gameConfig={gc}
+          lastPlayerByRole={lastPlayerByRole}
+          progColor={primaryColor}
+          oppColor={oppColor}
+          progAbbr={progAbbr}
+          oppAbbr={oppAbbr}
+          progLogoUrl={progLogoUrl}
+          oppLogoUrl={oppLogoUrl}
+          ourEndZoneSide={ourEndZoneSide}
+          offenseDirection={offenseDisplayDirection}
+          trackFormations={charting.formations}
+          trackTacklers={charting.tacklers}
           onSubmit={handlePlaySubmit}
           onClose={() => setSelectedPlayType(null)}
           onAddOpponentPlayer={async (player) => {
@@ -2287,13 +2439,12 @@ export default function GameScreen() {
         <div className="sheet bg-black/80">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
             <h2 className="text-sm font-black text-center">Set Clock</h2>
-            <div className="flex items-center justify-center gap-2">
-              <input type="number" min={0} max={15} value={clockMins} onChange={e => setClockMins(Number(e.target.value))}
-                className="input w-16 text-center text-xl font-black" />
-              <span className="text-xl font-black">:</span>
-              <input type="number" min={0} max={59} value={clockSecs} onChange={e => setClockSecs(Number(e.target.value))}
-                className="input w-16 text-center text-xl font-black" />
-            </div>
+            <ClockInput
+              seconds={clockMins * 60 + clockSecs}
+              maxSeconds={gc.quarter_length_secs}
+              autoFocus
+              onChange={(total) => { setClockMins(Math.floor(total / 60)); setClockSecs(total % 60); }}
+            />
             <button onClick={() => { setClock(clockMins * 60 + clockSecs); setShowClockEditor(false); }}
               className="btn-primary w-full text-sm">Set</button>
             <button onClick={() => setShowClockEditor(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
@@ -2308,25 +2459,15 @@ export default function GameScreen() {
             <div className="text-xs text-neutral-500 text-center">
               Enter the game clock {pendingClockCapture.reason}
             </div>
-            <div className="flex items-center justify-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={Math.floor(gc.quarter_length_secs / 60)}
-                value={postPlayClockMins}
-                onChange={e => setPostPlayClockMins(Math.max(0, Number(e.target.value) || 0))}
-                className="input w-16 text-center text-xl font-black"
-              />
-              <span className="text-xl font-black">:</span>
-              <input
-                type="number"
-                min={0}
-                max={59}
-                value={postPlayClockSecs}
-                onChange={e => setPostPlayClockSecs(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
-                className="input w-16 text-center text-xl font-black"
-              />
-            </div>
+            <ClockInput
+              seconds={postPlayClockMins * 60 + postPlayClockSecs}
+              maxSeconds={gc.quarter_length_secs}
+              autoFocus
+              onChange={(total) => {
+                setPostPlayClockMins(Math.floor(total / 60));
+                setPostPlayClockSecs(total % 60);
+              }}
+            />
             <button onClick={handleRecordPostPlayClock} className="btn-primary w-full text-sm">Save Clock</button>
             <button onClick={() => closePendingClockCapture(true)} className="w-full text-xs text-neutral-500 font-bold py-1">Skip For Now</button>
           </div>
@@ -2340,25 +2481,15 @@ export default function GameScreen() {
             <div className="text-xs text-neutral-500 text-center">
               {timeoutTeam === "us" ? progName : oppName} timeout in {quarterLabel(quarter)}
             </div>
-            <div className="flex items-center justify-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={Math.floor(gc.quarter_length_secs / 60)}
-                value={timeoutMins}
-                onChange={e => setTimeoutMins(Math.max(0, Number(e.target.value) || 0))}
-                className="input w-16 text-center text-xl font-black"
-              />
-              <span className="text-xl font-black">:</span>
-              <input
-                type="number"
-                min={0}
-                max={59}
-                value={timeoutSecs}
-                onChange={e => setTimeoutSecs(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
-                className="input w-16 text-center text-xl font-black"
-              />
-            </div>
+            <ClockInput
+              seconds={timeoutMins * 60 + timeoutSecs}
+              maxSeconds={gc.quarter_length_secs}
+              autoFocus
+              onChange={(total) => {
+                setTimeoutMins(Math.floor(total / 60));
+                setTimeoutSecs(total % 60);
+              }}
+            />
             <button onClick={handleRecordTimeout} className="btn-primary w-full text-sm">Record Timeout</button>
             <button onClick={() => setShowTimeoutModal(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
           </div>
@@ -2499,6 +2630,20 @@ export default function GameScreen() {
                   className="input text-center text-sm font-black flex-1" />
                 <span className="text-xs font-bold text-neutral-500 w-16 text-right">{adjBallOn === 50 ? "50" : adjBallOn > 50 ? `OPP ${100 - adjBallOn}` : `OWN ${adjBallOn}`}</span>
               </div>
+            </div>
+            {/* Turnovers and penalties land here instead of the post-play clock
+                prompt, so the clock is captured in this sheet rather than
+                stacking a second modal on top of it. */}
+            <div>
+              <label className="text-[10px] font-bold text-neutral-500 block mb-1">Clock After</label>
+              <ClockInput
+                seconds={adjClockMins * 60 + adjClockSecs}
+                maxSeconds={gc.quarter_length_secs}
+                onChange={(total) => {
+                  setAdjClockMins(Math.floor(total / 60));
+                  setAdjClockSecs(total % 60);
+                }}
+              />
             </div>
             <button onClick={applySituationAdjustment} className="btn-primary w-full text-sm">Apply</button>
           </div>

@@ -165,9 +165,30 @@ export function getPregameConfig(game: GameRulesCarrier | null | undefined): Pre
   });
 }
 
+/**
+ * Which optional detail this game's crew is charting live. Both default ON so
+ * existing games behave exactly as before. Turning one off only removes the
+ * live-entry step — Film Chart and the play editor can still fill it in later.
+ */
+export interface ChartingPrefs {
+  formations: boolean;
+  tacklers: boolean;
+}
+
+export const DEFAULT_CHARTING: ChartingPrefs = { formations: true, tacklers: true };
+
+export function getChartingPrefs(game: GameRulesCarrier | null | undefined): ChartingPrefs {
+  const charting = asRecord(asRecord(game?.rules_config)?.charting);
+  return {
+    formations: typeof charting?.formations === "boolean" ? charting.formations : true,
+    tacklers: typeof charting?.tacklers === "boolean" ? charting.tacklers : true,
+  };
+}
+
 export function buildPregameGameUpdate(
   rulesConfig: Record<string, unknown> | null | undefined,
   pregame: PregameConfig,
+  charting?: ChartingPrefs,
 ): {
   rules_config: Record<string, unknown>;
   direction: FieldDirection;
@@ -180,6 +201,9 @@ export function buildPregameGameUpdate(
     openingKickoffReceiver: pregame.openingKickoffReceiver,
     ourDriveDirectionQ1: pregame.ourDriveDirectionQ1,
   };
+  if (charting) {
+    nextRules.charting = { formations: charting.formations, tacklers: charting.tacklers };
+  }
 
   return {
     rules_config: nextRules,
