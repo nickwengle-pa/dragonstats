@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import plDragon from "@/assets/pl-dragon.png";
 
 export default function LoginScreen() {
   const { signIn, signUp } = useAuth();
@@ -47,13 +48,13 @@ export default function LoginScreen() {
       <div className="w-full max-w-sm relative z-10">
         {/* Logo */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-6"
-            style={{
-              background: "linear-gradient(135deg, #dc2626, #991b1b)",
-              boxShadow: "0 0 40px rgba(220, 38, 38, 0.25)",
-            }}>
-            <span className="text-3xl font-display font-black text-white italic tracking-wider">DS</span>
-          </div>
+          <img
+            src={plDragon}
+            alt="PL Dragons"
+            className="w-28 h-28 mx-auto mb-4 object-contain select-none pointer-events-none"
+            style={{ filter: "drop-shadow(0 0 32px rgba(220, 38, 38, 0.35))" }}
+            draggable={false}
+          />
           <h1 className="text-4xl font-display font-extrabold tracking-[0.15em] uppercase">
             Dragon Stats
           </h1>
