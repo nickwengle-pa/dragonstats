@@ -542,7 +542,15 @@ export default function GameScreen() {
       .on(
         "postgres_changes" as any,
         { event: "*", schema: "public", table: "plays", filter: `game_id=eq.${gameId}` },
-        () => {
+        (payload: { eventType?: string; new?: { id?: string }; old?: { id?: string } }) => {
+          // Skip echoes of this device's own writes — refetching on our own
+          // INSERT reloads live state from the (lagging) games row right after
+          // every play, desyncing the situation panel mid-drive.
+          const eventType = payload?.eventType;
+          const newId = payload?.new?.id;
+          const oldId = payload?.old?.id;
+          if (eventType === "INSERT" && newId && knownPlayIds.current.has(newId)) return;
+          if (eventType === "DELETE" && oldId && !knownPlayIds.current.has(oldId)) return;
           // Coalesce bursts (e.g. an UPDATE followed by linked INSERTs) into
           // one refetch — and skip while we're mid-submit on this device.
           if (isSubmitting.current) return;
@@ -570,6 +578,13 @@ export default function GameScreen() {
 
   /* ── Plays ── */
   const [plays, setPlays] = useState<PlayRecord[]>([]);
+  // Ids of plays this client already has locally — used to ignore realtime
+  // echoes of our own writes (see the game-plays channel subscription).
+  const knownPlayIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    knownPlayIds.current = new Set(plays.map((p) => p.id));
+  }, [plays]);
+
   const isSubmitting = useRef(false);
 
   /* ── Modal state ── */
@@ -1065,6 +1080,13 @@ export default function GameScreen() {
     setBallOn((current) => Math.max(1, Math.min(99, current + delta)));
   }, []);
 
+  const flipPossession = useCallback(() => {
+    setPossession((current) => (current === "us" ? "them" : "us"));
+    // ballOn is measured from the possessing team's goal line, so flipping
+    // possession must mirror the spot to keep the same physical location.
+    setBallOn((current) => Math.max(1, Math.min(99, 100 - current)));
+  }, []);
+
   const openBallEditor = useCallback(() => {
     const nextSide = getFieldSideForSpot(ballOn, possession);
     const nextYard = ballOn <= 50 ? ballOn : 100 - ballOn;
@@ -1373,6 +1395,10 @@ export default function GameScreen() {
     isSubmitting.current = true;
 
     try {
+    // Recording any play supersedes a pending conversion prompt. Left open,
+    // a stale prompt's Skip would re-apply the post-TD kickoff situation and
+    // corrupt live state. (TD plays re-open the gate at the end of this submit.)
+    setShowPatGate(false);
     const before: LiveSituationSnapshot = { possession, down, distance, ballOn };
     const scoreBefore: ScoreSnapshot = { us: ourScore, them: theirScore };
     // Interceptions always change possession; fumbles only when not recovered
@@ -2040,7 +2066,10 @@ export default function GameScreen() {
 
   /* ── Render ── */
 
-  if (loading) {
+  // Only gate on the FIRST load. Re-running loadData (context refresh, manual
+  // reload) must not swap the live screen for a spinner — that unmounts the
+  // play-entry modal and wipes whatever the operator was entering.
+  if (loading && !game) {
     return (
       <div className="screen safe-top safe-bottom">
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
@@ -2116,6 +2145,7 @@ export default function GameScreen() {
           theirTimeoutsRemaining={timeoutState.theirRemaining}
           onTakeTimeout={openTimeoutModal}
           onCorrectScore={(team) => setScoreCorrectTeam(team)}
+          onFlipPossession={flipPossession}
         />
 
         {/* Field */}

@@ -56,6 +56,10 @@ interface Props {
   onSubmit: (data: PlaySubmitData) => void;
   onClose: () => void;
   onAddOpponentPlayer?: (player: OpponentPlayerRef) => void;
+  /** Sticky defaults: last player tagged per role (side-resolved by the
+   *  parent). Pre-tagged on open so repeat personnel costs zero taps —
+   *  tapping a different player replaces the pre-fill. */
+  prefillTags?: Record<string, TaggedPlayer>;
 }
 
 export type PenaltyEnforcement = "accepted" | "declined" | "offset";
@@ -467,7 +471,11 @@ export default function PlayEntryModal({
     if (!lastPlayerByRole) return { tags, roles: carried };
 
     const theirBall = gameState.possession === "them";
-    const activeRoles = playType.id === "two_pt" ? [] : playType.roles;
+    // Kneels are never sticky: the "rusher" on a kneel is the QB, not whoever
+    // carried last. Two-point tries pick their own personnel too.
+    const activeRoles = playType.id === "two_pt" || playType.id === "kneel"
+      ? []
+      : playType.roles;
 
     for (const role of activeRoles) {
       if (!STICKY_ROLES.has(role)) continue;
@@ -568,6 +576,8 @@ export default function PlayEntryModal({
   const [spotYardRaw, setSpotYardRaw] = useState("25");
   const [spotDown, setSpotDown] = useState(1);
   const [spotDistance, setSpotDistance] = useState(10);
+  // Penalty-only plays get their own dedicated step now, so this toggle only
+  // governs the optional flag on a normal play.
   const [showPenalties, setShowPenalties] = useState(false);
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(() => defaultBlockedKickType(gameState));
 
@@ -589,6 +599,16 @@ export default function PlayEntryModal({
   const [kickedToYard, setKickedToYard] = useState(5); // receiving team's yard line where ball lands
   const [kickedToRaw, setKickedToRaw] = useState("");
   const [returnToYardLine, setReturnToYardLine] = useState(20);
+
+  // Default the return spot to wherever the kick was caught (a 0-yard return),
+  // matching the INT flow. A hardcoded default let a rushed operator silently
+  // record backwards returns (caught at the 35, "returned to" the 20 = -15).
+  useEffect(() => {
+    if (!isKickPlay) return;
+    setReturnToYardLine(kickedToYard);
+    setReturnToTeam(receivingFieldSide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kickedToYard]);
   const receivingFieldSide: FieldTeam = gameState.possession === "us" ? "opponent" : "program";
   const [returnToTeam, setReturnToTeam] = useState<FieldTeam>(receivingFieldSide);
   const [returnToRaw, setReturnToRaw] = useState("");
@@ -767,6 +787,11 @@ export default function PlayEntryModal({
     steps.push("review");
   }
 
+  // Always open on the first step, even when every role arrived pre-tagged.
+  // An earlier revision skipped straight past the players step in that case;
+  // it saved a tap but meant a carried-over passer could be submitted without
+  // ever being displayed. Carried picks are shown in amber instead, so they're
+  // one glance to verify and one tap to change.
   const [stepIdx, setStepIdx] = useState(0);
   const currentStep = steps[stepIdx] ?? "review";
 
@@ -1421,7 +1446,9 @@ export default function PlayEntryModal({
                             : "bg-surface-bg text-slate-500"
                       }`}
                       style={currentRoleIdx === i ? { backgroundColor: activeTeamColor } : undefined}>
-                      {role}{tp ? `: #${tp.jersey_number}${tp.isPending ? "?" : ""}` : ""}
+                      {/* Fall back to the name when there's no jersey, rather
+                          than rendering "#null". */}
+                      {role}{tp ? `: ${tp.jersey_number != null ? `#${tp.jersey_number}` : tp.name}${tp.isPending ? "?" : ""}` : ""}
                     </button>
                   );
                 })}
@@ -2060,6 +2087,9 @@ export default function PlayEntryModal({
                 {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
               </button>
 
+              {/* The shared picker keeps side/enforcement/yards visible once a
+                  penalty is chosen — collapsing them made decline and offset
+                  effectively undiscoverable during live entry. */}
               {showPenalties && penaltyPicker}
             </>
           )}

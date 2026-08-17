@@ -71,6 +71,9 @@ const SCRIMMAGE_CATEGORIES = ["run", "pass", "turnover", "other"];
 
 const PHASE_CATEGORIES: Record<PhaseFilter, Set<string>> = {
   all: new Set(["run", "pass", "scoring", "kicking", "turnover", "other"]),
+  // Recording the opponent's runs and passes IS the defensive operator's job,
+  // and an interception is a pass play by OUR offense — so both tabs carry the
+  // full scrimmage set and differ only in the order below.
   offense: new Set(SCRIMMAGE_CATEGORIES),
   defense: new Set(SCRIMMAGE_CATEGORIES),
   special: new Set(["kicking", "scoring"]),
@@ -100,9 +103,12 @@ export default function QuickActions({
     }
   }, [suggestedPhase, manualOverride]);
 
+  // A manual filter choice sticks until possession changes (a genuinely new
+  // context). Resetting on every suggestion change wiped the operator's pick
+  // after each recorded play.
   useEffect(() => {
     setManualOverride(false);
-  }, [suggestedPhase]);
+  }, [possession]);
 
   const grouped = PLAY_TYPES.reduce<Record<string, PlayTypeDef[]>>((acc, pt) => {
     (acc[pt.category] ??= []).push(pt);

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
-import { computePlayerSeasonStats, type PlayerGameLine } from "@/services/statsService";
+import { computePlayerSeasonStats, computePlayerCareerStats, type PlayerGameLine, type PlayerSeasonBlock } from "@/services/statsService";
 import { exportPlayerSeasonCsv } from "@/services/csvExport";
 import type { PassingStats, RushingStats, ReceivingStats, DefensiveStats } from "football-stats-engine";
 
@@ -311,6 +311,94 @@ function SituationalSection({ lines }: { lines: PlayerGameLine[] }) {
   );
 }
 
+/* ── Career (year-to-year) ── */
+
+interface CareerRow {
+  label: string;
+  gp: number;
+  cmp: number; att: number; paYds: number; paTd: number; paInt: number;
+  car: number; ruYds: number; ruTd: number;
+  rec: number; reYds: number; reTd: number;
+  tkl: number; tfl: number; sck: number; dInt: number;
+}
+
+function careerRowFromLines(label: string, lines: PlayerGameLine[]): CareerRow {
+  return {
+    label,
+    gp: lines.filter(l => l.passing || l.rushing || l.receiving || l.defense || l.kicking || l.returns).length,
+    cmp: sumField<PassingStats>(lines, "passing", "completions"),
+    att: sumField<PassingStats>(lines, "passing", "attempts"),
+    paYds: sumField<PassingStats>(lines, "passing", "yards"),
+    paTd: sumField<PassingStats>(lines, "passing", "touchdowns"),
+    paInt: sumField<PassingStats>(lines, "passing", "interceptions"),
+    car: sumField<RushingStats>(lines, "rushing", "carries"),
+    ruYds: sumField<RushingStats>(lines, "rushing", "yards"),
+    ruTd: sumField<RushingStats>(lines, "rushing", "touchdowns"),
+    rec: sumField<ReceivingStats>(lines, "receiving", "receptions"),
+    reYds: sumField<ReceivingStats>(lines, "receiving", "yards"),
+    reTd: sumField<ReceivingStats>(lines, "receiving", "touchdowns"),
+    tkl: sumField<DefensiveStats>(lines, "defense", "totalTackles"),
+    tfl: sumField<DefensiveStats>(lines, "defense", "tacklesForLoss"),
+    sck: sumField<DefensiveStats>(lines, "defense", "sacks"),
+    dInt: sumField<DefensiveStats>(lines, "defense", "interceptions"),
+  };
+}
+
+function CareerSection({ blocks }: { blocks: PlayerSeasonBlock[] }) {
+  const withGames = blocks.filter(b => b.lines.length > 0);
+  if (withGames.length === 0) return null;
+
+  const rows = withGames.map(b => careerRowFromLines(String(b.year), b.lines));
+  const total = careerRowFromLines("Career", withGames.flatMap(b => b.lines));
+  const showPass = total.att > 0;
+  const showRush = total.car > 0;
+  const showRec = total.rec > 0;
+  const showDef = total.tkl + total.sck + total.dInt > 0;
+
+  const cell = "px-2 py-1.5 text-right tabular-nums whitespace-nowrap";
+  const head = "px-2 py-1.5 text-right text-[9px] text-slate-500 font-bold uppercase whitespace-nowrap";
+
+  return (
+    <div className="card p-5">
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Career</div>
+      <div className="overflow-x-auto -mx-1">
+        <table className="text-xs w-full min-w-max">
+          <thead>
+            <tr className="border-b border-surface-border">
+              <th className="px-2 py-1.5 text-left text-[9px] text-slate-500 font-bold uppercase">Year</th>
+              <th className={head}>GP</th>
+              {showPass && <><th className={head}>C/A</th><th className={head}>Pa Yds</th><th className={head}>Pa TD</th><th className={head}>INT</th></>}
+              {showRush && <><th className={head}>Car</th><th className={head}>Ru Yds</th><th className={head}>Ru TD</th></>}
+              {showRec && <><th className={head}>Rec</th><th className={head}>Re Yds</th><th className={head}>Re TD</th></>}
+              {showDef && <><th className={head}>Tkl</th><th className={head}>TFL</th><th className={head}>Sck</th><th className={head}>INT</th></>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.label} className="border-b border-surface-border/50">
+                <td className="px-2 py-1.5 font-bold">{r.label}</td>
+                <td className={cell}>{r.gp}</td>
+                {showPass && <><td className={cell}>{r.cmp}/{r.att}</td><td className={cell}>{fmt(r.paYds)}</td><td className={cell}>{fmt(r.paTd)}</td><td className={cell}>{fmt(r.paInt)}</td></>}
+                {showRush && <><td className={cell}>{fmt(r.car)}</td><td className={cell}>{fmt(r.ruYds)}</td><td className={cell}>{fmt(r.ruTd)}</td></>}
+                {showRec && <><td className={cell}>{fmt(r.rec)}</td><td className={cell}>{fmt(r.reYds)}</td><td className={cell}>{fmt(r.reTd)}</td></>}
+                {showDef && <><td className={cell}>{fmt(r.tkl)}</td><td className={cell}>{fmt(r.tfl)}</td><td className={cell}>{fmt(r.sck)}</td><td className={cell}>{fmt(r.dInt)}</td></>}
+              </tr>
+            ))}
+            <tr className="font-black text-dragon-primary">
+              <td className="px-2 py-1.5 uppercase">{total.label}</td>
+              <td className={cell}>{total.gp}</td>
+              {showPass && <><td className={cell}>{total.cmp}/{total.att}</td><td className={cell}>{fmt(total.paYds)}</td><td className={cell}>{fmt(total.paTd)}</td><td className={cell}>{fmt(total.paInt)}</td></>}
+              {showRush && <><td className={cell}>{fmt(total.car)}</td><td className={cell}>{fmt(total.ruYds)}</td><td className={cell}>{fmt(total.ruTd)}</td></>}
+              {showRec && <><td className={cell}>{fmt(total.rec)}</td><td className={cell}>{fmt(total.reYds)}</td><td className={cell}>{fmt(total.reTd)}</td></>}
+              {showDef && <><td className={cell}>{fmt(total.tkl)}</td><td className={cell}>{fmt(total.tfl)}</td><td className={cell}>{fmt(total.sck)}</td><td className={cell}>{fmt(total.dInt)}</td></>}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 interface PlayerInfo {
   first_name: string;
   last_name: string;
@@ -329,6 +417,7 @@ export default function PlayerScreen() {
   const [player, setPlayer] = useState<PlayerInfo | null>(null);
   const [lines, setLines] = useState<PlayerGameLine[]>([]);
   const [loading, setLoading] = useState(true);
+  const [career, setCareer] = useState<PlayerSeasonBlock[]>([]);
 
   useEffect(() => {
     if (!playerId || !program || !season) return;
@@ -371,6 +460,15 @@ export default function PlayerScreen() {
       if (cancelled) return;
       setLines(result);
       setLoading(false);
+
+      // Career (all seasons) loads after the current season — it can span
+      // several years of games, so it fills in without blocking the page.
+      const careerBlocks = await computePlayerCareerStats(playerId, {
+        id: program.id,
+        name: program.name,
+        abbreviation: program.abbreviation,
+      });
+      if (!cancelled) setCareer(careerBlocks);
     })();
 
     return () => { cancelled = true; };
@@ -453,6 +551,9 @@ export default function PlayerScreen() {
             <SituationalSection lines={lines} />
           </>
         )}
+
+        {/* Career — one row per season, plus totals */}
+        {!loading && <CareerSection blocks={career} />}
       </div>
     </div>
   );

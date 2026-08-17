@@ -3,6 +3,7 @@
 // ============================================================================
 import { PassResult, } from "../types";
 import { initRushingStats, isRushPlay, isPassPlay, isRedZone, isThirdDown, isFirstDown, directionBucket, safeDivide, } from "../utils";
+import { isPlayNullifiedByPenalty } from "./penalty";
 export class RushingCalculator {
     constructor(config, resolveName) {
         this.config = config;
@@ -10,6 +11,9 @@ export class RushingCalculator {
         this.stats = new Map();
     }
     process(play) {
+        // Play wiped out by an accepted penalty: nothing counts.
+        if (isPlayNullifiedByPenalty(play))
+            return;
         // Standard rush plays
         if (isRushPlay(play)) {
             const p = play;

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import type { Program } from "@/services/programService";
@@ -46,6 +46,13 @@ export function useProgramContext() {
   return useContext(ProgramContext);
 }
 
+/** Keep the previous object reference when a refetch returned identical data.
+ *  Screens key data-loading effects on these objects; a fresh-but-identical
+ *  object forces them to reload (and reset live game state) for nothing. */
+function keepIfEqual<T>(prev: T | null, next: T | null): T | null {
+  return prev && next && JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
 function deriveBranding(program: Program | null): Branding {
   if (!program) return DEFAULT_BRANDING;
   return {
@@ -63,6 +70,10 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   const [season, setSeasonState] = useState<Season | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loading, setLoading] = useState(true);
+  // Once a program has loaded, background refreshes (auth event echoes,
+  // manual refresh()) must not flip `loading` back to true — that swaps the
+  // route content for a spinner and unmounts live screens mid-game.
+  const hasLoadedRef = useRef(false);
 
   const applyActiveSeason = useCallback((programSeasons: Season[], activeSeasonId: string | null) => {
     const nextSeasons = programSeasons.map((entry) => ({
@@ -71,7 +82,8 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     }));
 
     setSeasons(nextSeasons);
-    setSeasonState(nextSeasons.find((entry) => entry.id === activeSeasonId) ?? null);
+    const nextActive = nextSeasons.find((entry) => entry.id === activeSeasonId) ?? null;
+    setSeasonState((prev) => keepIfEqual(prev, nextActive));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -79,11 +91,12 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       setProgram(null);
       setSeasonState(null);
       setSeasons([]);
+      hasLoadedRef.current = false;
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
 
     // Get program
     const { data: prog } = await supabase
@@ -92,7 +105,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       .eq("owner_id", user.id)
       .maybeSingle();
 
-    setProgram(prog);
+    setProgram((prev) => keepIfEqual(prev, prog));
 
     if (prog) {
       const programSeasons = await seasonService.getByProgram(prog.id);
@@ -105,11 +118,11 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
           applyActiveSeason(programSeasons, canonicalSeason.id);
         } else {
           setSeasons(programSeasons);
-          setSeasonState(canonicalSeason);
+          setSeasonState((prev) => keepIfEqual(prev, canonicalSeason));
         }
       } else if (activeSeasons.length === 1) {
         setSeasons(programSeasons);
-        setSeasonState(activeSeasons[0]);
+        setSeasonState((prev) => keepIfEqual(prev, activeSeasons[0]));
       } else if (programSeasons.length > 0) {
         const fallbackSeason = programSeasons[0];
         const updated = await seasonService.activate(prog.id, fallbackSeason.id);
@@ -128,6 +141,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       setSeasonState(null);
     }
 
+    hasLoadedRef.current = true;
     setLoading(false);
   }, [applyActiveSeason, user]);
 

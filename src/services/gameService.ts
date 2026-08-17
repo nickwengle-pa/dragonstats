@@ -810,10 +810,21 @@ export function calcDefenseStats(
   };
 
   for (const play of plays) {
-    const tacklers = play.play_players.filter(p => p.role === "tackler");
+    const allTacklerTags = play.play_players.filter(p => p.role === "tackler");
     const assists  = play.play_players.filter(p => p.role === "assist");
+    // Derived credit: a tackler tagged on an incompletion is a pass breakup,
+    // not a tackle — nobody got tackled on an incomplete pass.
+    const isIncompletion = ["pass_inc", "drop"].includes(play.play_type);
+    if (isIncompletion) {
+      for (const t of allTacklerTags) get(t.player_id).pbus += 1;
+    }
+    const tacklers = isIncompletion ? [] : allTacklerTags;
     const isAssisted = tacklers.length > 0 && assists.length > 0;
-    const isTfl = ["tfl", "sack"].includes(play.play_type);
+    // TFL is derived from play context, not a special play type: any tackle
+    // on a scrimmage play that lost yardage is a tackle for loss.
+    const lostYards = (play.yards_gained ?? 0) < 0;
+    const isTfl = ["tfl", "sack"].includes(play.play_type)
+      || (["rush", "pass_comp"].includes(play.play_type) && lostYards);
     const assistCredit = tackleCredit === "full" ? 1 : 0.5;
 
     // Tacklers
@@ -841,7 +852,19 @@ export function calcDefenseStats(
     // Role-based credits
     for (const pp of play.play_players) {
       const s = get(pp.player_id);
-      if (pp.role === "sacker")          s.sacks           += 1;
+      if (pp.role === "sacker") {
+        s.sacks += 1;
+        // NFHS scoring: a sack is also a solo tackle and a TFL. Live entry
+        // tags only the sacker role, so derive the rest — unless the same
+        // player is also tagged tackler/assist on this play (already counted).
+        const alsoTagged = tacklers.some(t => t.player_id === pp.player_id)
+          || assists.some(a => a.player_id === pp.player_id);
+        if (!alsoTagged) {
+          s.soloTackles += 1;
+          s.totalTackles += 1;
+          s.tfl += 1;
+        }
+      }
       if (pp.role === "interceptor")     s.ints            += 1;
       if (pp.role === "fumble_recovery") s.fumbleRecoveries += 1;
       if (pp.role === "forced_fumble")   s.forcedFumbles   += 1;

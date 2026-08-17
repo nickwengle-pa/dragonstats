@@ -1,0 +1,309 @@
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { ArrowLeft, Printer } from "lucide-react";
+import { useProgramContext } from "@/hooks/useProgramContext";
+import { supabase } from "@/lib/supabase";
+import { computeGameStats } from "@/services/statsService";
+import type {
+  GameSummary, PassingStats, RushingStats, ReceivingStats, DefensiveStats, KickingStats,
+} from "football-stats-engine";
+
+/* ═══════════════════════════════════════════════
+   BOX SCORE — compact, print-ready game report
+   (TurboStats-style: line score, team stats,
+   individual stat lines)
+   ═══════════════════════════════════════════════ */
+
+interface GameInfo {
+  our_score: number;
+  opponent_score: number;
+  is_home: boolean;
+  status: string;
+  opponent_name: string;
+  opponent_abbrev: string | null;
+  game_date: string;
+}
+
+interface RosterEntry { jersey: number | null; name: string }
+
+function fmt(n: number | undefined | null): string {
+  if (n === undefined || n === null) return "0";
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function shortName(full: string): string {
+  const parts = full.trim().split(/\s+/);
+  if (parts.length < 2) return full;
+  return `${parts[0][0]}.${parts.slice(1).join(" ")}`;
+}
+
+/** "#22 M.Webb" when the jersey is known, otherwise "M.Webb". */
+function playerLabel(id: string, name: string, roster: Map<string, RosterEntry>) {
+  const jersey = roster.get(id)?.jersey;
+  return jersey != null ? `#${jersey} ${shortName(name)}` : shortName(name);
+}
+
+/** Sort stat records for display: our roster only, biggest line first. */
+function ourLines<T extends { playerName: string }>(
+  records: Record<string, T>,
+  rosterIds: Set<string>,
+  sortBy: (s: T) => number,
+  include: (s: T) => boolean,
+): Array<[string, T]> {
+  return Object.entries(records)
+    .filter(([id, s]) => rosterIds.has(id) && include(s))
+    .sort((a, b) => sortBy(b[1]) - sortBy(a[1]));
+}
+
+const QUARTER_COLS = ["1", "2", "3", "4"];
+
+export default function BoxScoreScreen() {
+  const { gameId } = useParams<{ gameId: string }>();
+  const navigate = useNavigate();
+  const { program, season } = useProgramContext();
+
+  const [summary, setSummary] = useState<GameSummary | null>(null);
+  const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
+  const [roster, setRoster] = useState<Map<string, RosterEntry>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!gameId || !program || !season) return;
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      const [{ data: gData }, { data: rData }, result] = await Promise.all([
+        supabase
+          .from("games")
+          .select("our_score, opponent_score, is_home, status, game_date, opponent:opponents(name, abbreviation)")
+          .eq("id", gameId)
+          .single(),
+        supabase
+          .from("season_rosters")
+          .select("player_id, jersey_number, player:players(first_name, last_name, preferred_name)")
+          .eq("season_id", season.id),
+        computeGameStats(gameId, {
+          id: program.id,
+          name: program.name,
+          abbreviation: program.abbreviation,
+          game_config: program.game_config,
+        }),
+      ]);
+      if (cancelled) return;
+
+      if (gData) {
+        const opp = gData.opponent as any;
+        setGameInfo({
+          our_score: gData.our_score,
+          opponent_score: gData.opponent_score,
+          is_home: gData.is_home,
+          status: gData.status,
+          opponent_name: opp?.name ?? "Opponent",
+          opponent_abbrev: opp?.abbreviation ?? null,
+          game_date: gData.game_date,
+        });
+      }
+      const map = new Map<string, RosterEntry>();
+      for (const r of rData ?? []) {
+        const p = (r as any).player;
+        map.set((r as any).player_id, {
+          jersey: (r as any).jersey_number,
+          name: `${p?.preferred_name || p?.first_name || ""} ${p?.last_name || ""}`.trim(),
+        });
+      }
+      setRoster(map);
+      setSummary(result);
+      setLoading(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [gameId, program, season]);
+
+  const rosterIds = useMemo(() => new Set(roster.keys()), [roster]);
+
+  // Our team vs theirs, engine-side
+  const ourStats = summary && program
+    ? (summary.homeTeamStats.teamId === program.id ? summary.homeTeamStats : summary.awayTeamStats)
+    : null;
+  const theirStats = summary
+    ? (ourStats === summary.homeTeamStats ? summary.awayTeamStats : summary.homeTeamStats)
+    : null;
+
+  // Line score: points per quarter per team, from scoring plays.
+  const lineScore = useMemo(() => {
+    const us: Record<number, number> = {};
+    const them: Record<number, number> = {};
+    let hasOT = false;
+    for (const sp of summary?.scoringPlays ?? []) {
+      const q = Number(sp.quarter);
+      if (q > 4) hasOT = true;
+      const bucket = program && sp.team === program.id ? us : them;
+      bucket[q] = (bucket[q] ?? 0) + sp.pointsScored;
+    }
+    return { us, them, hasOT };
+  }, [summary, program]);
+
+  const quarterCols = lineScore.hasOT ? [...QUARTER_COLS, "OT"] : QUARTER_COLS;
+  const qPoints = (bucket: Record<number, number>, col: string, idx: number) =>
+    col === "OT"
+      ? Object.entries(bucket).filter(([q]) => Number(q) > 4).reduce((s, [, v]) => s + v, 0)
+      : bucket[idx + 1] ?? 0;
+
+  // Individual lines
+  const passing = summary ? ourLines<PassingStats>(summary.passing, rosterIds, s => s.yards, s => s.attempts > 0) : [];
+  const rushing = summary ? ourLines<RushingStats>(summary.rushing, rosterIds, s => s.yards, s => s.carries > 0) : [];
+  const receiving = summary ? ourLines<ReceivingStats>(summary.receiving, rosterIds, s => s.yards, s => s.receptions > 0) : [];
+  const defense = summary ? ourLines<DefensiveStats>(summary.defense, rosterIds,
+    s => s.totalTackles * 10 + s.sacks + s.interceptions,
+    s => s.totalTackles > 0 || s.sacks > 0 || s.interceptions > 0 || s.passesDefended > 0 || s.forcedFumbles > 0) : [];
+  const kicking = summary ? ourLines<KickingStats>(summary.kicking, rosterIds,
+    s => s.totalPoints,
+    s => s.fieldGoalAttempts > 0 || s.extraPointAttempts > 0) : [];
+
+  const progAbbr = program?.abbreviation ?? "US";
+  const oppAbbr = gameInfo?.opponent_abbrev ?? "OPP";
+  const dateLabel = gameInfo?.game_date
+    ? new Date(gameInfo.game_date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
+    : "";
+
+  const statRow = (label: string, us: string, them: string) => (
+    <tr key={label} className="border-b border-surface-border/40 print:border-neutral-300">
+      <td className="py-1 pr-2 text-slate-400 print:text-neutral-600">{label}</td>
+      <td className="py-1 px-2 text-right font-bold tabular-nums">{us}</td>
+      <td className="py-1 pl-2 text-right font-bold tabular-nums">{them}</td>
+    </tr>
+  );
+
+  const section = (title: string, rows: string[]) =>
+    rows.length > 0 && (
+      <div key={title}>
+        <div className="text-[10px] font-black uppercase tracking-wider text-dragon-primary print:text-black mt-3 mb-1">{title}</div>
+        {rows.map((r, i) => (
+          <div key={i} className="text-xs leading-5 print:text-[11px]">{r}</div>
+        ))}
+      </div>
+    );
+
+  return (
+    <div className="screen safe-top safe-bottom print:bg-white print:text-black">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-2 print:hidden">
+        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-2 cursor-pointer">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Box Score</h1>
+        <button onClick={() => window.print()} className="btn-ghost p-2 cursor-pointer" title="Print / Save as PDF" disabled={!summary}>
+          <Printer className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="mx-5 mt-1 mb-4 accent-line print:hidden" />
+
+      <div className="flex-1 px-5 overflow-y-auto pb-8 print:overflow-visible print:px-0">
+        {loading && <div className="card p-8 text-center text-slate-500 animate-pulse">Building box score...</div>}
+
+        {!loading && summary && gameInfo && (
+          <div className="card p-5 space-y-1 print:border-0 print:shadow-none print:bg-white">
+            {/* Header */}
+            <div className="text-center mb-2">
+              <div className="text-sm font-display font-extrabold uppercase tracking-wide">
+                {gameInfo.is_home
+                  ? `${gameInfo.opponent_name} at ${program?.name}`
+                  : `${program?.name} at ${gameInfo.opponent_name}`}
+              </div>
+              <div className="text-[11px] text-slate-500 print:text-neutral-600">
+                {dateLabel}{gameInfo.status === "live" ? " · IN PROGRESS" : " · FINAL"}
+              </div>
+            </div>
+
+            {/* Line score */}
+            <table className="w-full text-sm mb-2">
+              <thead>
+                <tr className="text-[10px] text-slate-500 print:text-neutral-600 uppercase">
+                  <th className="text-left py-1 font-bold">Team</th>
+                  {quarterCols.map(c => <th key={c} className="text-right py-1 w-9 font-bold">{c}</th>)}
+                  <th className="text-right py-1 w-10 font-black">F</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                <tr className="border-t border-surface-border/40 print:border-neutral-300">
+                  <td className="py-1 font-bold">{progAbbr}</td>
+                  {quarterCols.map((c, i) => <td key={c} className="text-right py-1">{qPoints(lineScore.us, c, i)}</td>)}
+                  <td className="text-right py-1 font-black">{gameInfo.our_score}</td>
+                </tr>
+                <tr className="border-t border-surface-border/40 print:border-neutral-300">
+                  <td className="py-1 font-bold">{oppAbbr}</td>
+                  {quarterCols.map((c, i) => <td key={c} className="text-right py-1">{qPoints(lineScore.them, c, i)}</td>)}
+                  <td className="text-right py-1 font-black">{gameInfo.opponent_score}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Scoring plays */}
+            {summary.scoringPlays.length > 0 && (
+              <div className="mb-2">
+                <div className="text-[10px] font-black uppercase tracking-wider text-dragon-primary print:text-black mb-1">Scoring</div>
+                {summary.scoringPlays.map((sp, i) => (
+                  <div key={i} className="text-[11px] leading-5 text-slate-300 print:text-black">
+                    <span className="text-slate-500 print:text-neutral-600">Q{Number(sp.quarter)} {sp.gameClock}</span>
+                    {" — "}{sp.description}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Team stats */}
+            <div className="text-[10px] font-black uppercase tracking-wider text-dragon-primary print:text-black mb-1">Team Stats</div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[10px] text-slate-500 print:text-neutral-600 uppercase border-b border-surface-border print:border-neutral-400">
+                  <th className="text-left py-1"></th>
+                  <th className="text-right py-1 px-2">{progAbbr}</th>
+                  <th className="text-right py-1 pl-2">{oppAbbr}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {statRow("First Downs", fmt(ourStats?.firstDowns), fmt(theirStats?.firstDowns))}
+                {statRow("Rushes–Yards", `${fmt(ourStats?.rushAttempts)}–${fmt(ourStats?.rushingYards)}`, `${fmt(theirStats?.rushAttempts)}–${fmt(theirStats?.rushingYards)}`)}
+                {statRow("Comp–Att–Int", `${fmt(ourStats?.passCompletions)}–${fmt(ourStats?.passAttempts)}–${fmt(ourStats?.interceptionsThrown)}`, `${fmt(theirStats?.passCompletions)}–${fmt(theirStats?.passAttempts)}–${fmt(theirStats?.interceptionsThrown)}`)}
+                {statRow("Passing Yards", fmt(ourStats?.passingYards), fmt(theirStats?.passingYards))}
+                {statRow("Total Yards", fmt(ourStats?.totalYards), fmt(theirStats?.totalYards))}
+                {statRow("3rd Down", `${fmt(ourStats?.thirdDownConversions)}/${fmt(ourStats?.thirdDownAttempts)}`, `${fmt(theirStats?.thirdDownConversions)}/${fmt(theirStats?.thirdDownAttempts)}`)}
+                {statRow("Turnovers", fmt(ourStats?.turnovers), fmt(theirStats?.turnovers))}
+                {statRow("Penalties", `${fmt(ourStats?.penalties)}–${fmt(ourStats?.penaltyYards)}`, `${fmt(theirStats?.penalties)}–${fmt(theirStats?.penaltyYards)}`)}
+                {statRow("Time of Poss.", ourStats?.timeOfPossession ?? "—", theirStats?.timeOfPossession ?? "—")}
+              </tbody>
+            </table>
+
+            {/* Individual stats */}
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 print:text-neutral-600 mt-3">
+              Individual — {program?.name}
+            </div>
+            {section("Passing", passing.map(([id, s]) =>
+              `${playerLabel(id, s.playerName, roster)} ${s.completions}-${s.attempts}-${s.interceptions}, ${fmt(s.yards)} yds${s.touchdowns ? `, ${s.touchdowns} TD` : ""}`))}
+            {section("Rushing", rushing.map(([id, s]) =>
+              `${playerLabel(id, s.playerName, roster)} ${s.carries}-${s.yards < 0 ? `(${fmt(s.yards)})` : fmt(s.yards)}${s.touchdowns ? `, ${s.touchdowns} TD` : ""}${s.longRush ? ` (long ${s.longRush})` : ""}`))}
+            {section("Receiving", receiving.map(([id, s]) =>
+              `${playerLabel(id, s.playerName, roster)} ${s.receptions}-${fmt(s.yards)}${s.touchdowns ? `, ${s.touchdowns} TD` : ""}`))}
+            {section("Defense", defense.map(([id, s]) => {
+              const bits: string[] = [];
+              if (s.totalTackles) bits.push(`${fmt(s.totalTackles)} tkl`);
+              if (s.tacklesForLoss) bits.push(`${fmt(s.tacklesForLoss)} TFL`);
+              if (s.sacks) bits.push(`${fmt(s.sacks)} sck`);
+              if (s.interceptions) bits.push(`${s.interceptions} INT`);
+              if (s.passesDefended) bits.push(`${s.passesDefended} PBU`);
+              if (s.forcedFumbles) bits.push(`${s.forcedFumbles} FF`);
+              if (s.fumbleRecoveries) bits.push(`${s.fumbleRecoveries} FR`);
+              return `${playerLabel(id, s.playerName, roster)} ${bits.join(", ")}`;
+            }))}
+            {section("Kicking", kicking.map(([id, s]) =>
+              `${playerLabel(id, s.playerName, roster)} XP ${s.extraPointMade}/${s.extraPointAttempts}, FG ${s.fieldGoalMade}/${s.fieldGoalAttempts}, ${s.totalPoints} pts`))}
+          </div>
+        )}
+
+        {!loading && !summary && (
+          <div className="card p-8 text-center text-slate-500 text-sm">No plays recorded for this game yet.</div>
+        )}
+      </div>
+    </div>
+  );
+}

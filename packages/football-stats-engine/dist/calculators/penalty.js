@@ -14,6 +14,33 @@ import { PlayType, PenaltyEnforcement, Quarter, Down, } from "../types";
 import { lookupPenalty, PenaltyCategory, EnforcementSpot, isAutoFirstDown as catalogAutoFirstDown, getPenaltyYards, } from "./penalty-catalog";
 import { isRedZone, isThirdDown } from "../utils";
 // ---------------------------------------------------------------------------
+// NULLIFICATION
+// ---------------------------------------------------------------------------
+/**
+ * Whether an accepted penalty on this play nullifies the play result.
+ *
+ * Statistics convention (NFHS/NCAA): a scrimmage play wiped out by an
+ * accepted live-ball foul is "no play" — no attempt, no yardage, no TD,
+ * no first down. Dead-ball and tack-on fouls (replayDown = false, e.g. a
+ * late hit after the runner is down) leave the play result standing.
+ *
+ * Unknown penalty codes default to nullifying: accepting a flag almost
+ * always means the offended team preferred the walk-off to the result.
+ */
+export function isPlayNullifiedByPenalty(play) {
+    if (play.type !== PlayType.Pass && play.type !== PlayType.Rush)
+        return false;
+    const p = play;
+    if (!p.penalties || p.penalties.length === 0)
+        return false;
+    return p.penalties.some((pen) => {
+        if (pen.enforcement !== PenaltyEnforcement.Accepted)
+            return false;
+        const def = lookupPenalty(pen.penaltyType);
+        return def ? def.replayDown : true;
+    });
+}
+// ---------------------------------------------------------------------------
 // PENALTY CALCULATOR
 // ---------------------------------------------------------------------------
 export class PenaltyCalculator {

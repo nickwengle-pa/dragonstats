@@ -3,6 +3,7 @@
 // ============================================================================
 import { PassResult, } from "../types";
 import { initPassingStats, isPassPlay, isRedZone, isThirdDown, isFirstDown, calculatePasserRating, calculateAdjustedYPA, safeDivide, round, } from "../utils";
+import { isPlayNullifiedByPenalty } from "./penalty";
 export class PassingCalculator {
     constructor(config, resolveName) {
         this.config = config;
@@ -12,6 +13,9 @@ export class PassingCalculator {
     }
     process(play) {
         if (!isPassPlay(play))
+            return;
+        // Play wiped out by an accepted penalty: nothing counts.
+        if (isPlayNullifiedByPenalty(play))
             return;
         const p = play;
         const passerId = p.passer;
