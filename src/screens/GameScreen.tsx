@@ -389,6 +389,19 @@ export default function GameScreen() {
     setGame(gameData);
     setRoster(rosterRes.data ?? []);
 
+    /* A play still sitting in the sync queue is read back from the local
+       cache, where its play_players rows were written without the joined
+       `player` record — that join is the server's, and the server has not
+       seen the play yet. Without a fallback every tag on an unsynced play
+       renders as "?", which reads exactly like the app lost who made it. */
+    const rosterNames = new Map<string, string>();
+    for (const entry of (rosterRes.data ?? []) as any[]) {
+      const player = entry?.player;
+      if (entry?.player_id && player) {
+        rosterNames.set(entry.player_id, `${player.first_name} ${player.last_name}`);
+      }
+    }
+
     // Load opponent players
     if (gameData?.opponent_id) {
       const opp = await opponentPlayerService.getByOpponent(gameData.opponent_id);
@@ -434,7 +447,9 @@ export default function GameScreen() {
             id: pp.player_id,
             player_id: pp.player_id,
             jersey_number: null,
-            name: pp.player ? `${pp.player.first_name} ${pp.player.last_name}` : "?",
+            name: pp.player
+              ? `${pp.player.first_name} ${pp.player.last_name}`
+              : rosterNames.get(pp.player_id) ?? "?",
             role: pp.role,
             credit: pp.credit ?? undefined,
           })),
@@ -757,6 +772,10 @@ export default function GameScreen() {
   }, [oppPlayers]);
   const quarterSnapshots = useRef<Partial<Record<number, { clock: number; situation: LiveSituationSnapshot }>>>({});
   const [directionFlipped, setDirectionFlipped] = useState(() => readFieldFlip(gameId));
+  /** Phone only: the scoreboard's correction strip, opened from the spot in
+   *  the possession band. Lives here because the readout and the control are
+   *  in different components. */
+  const [showAdjust, setShowAdjust] = useState(false);
   const ballDisplayPosition = useMemo(
     () => {
       const displayPosition = toDisplayFieldPosition(ballOn, possession, quarter, pregame);
@@ -2241,6 +2260,7 @@ export default function GameScreen() {
           canNextQuarter={quarter < MAX_QUARTER}
           onEditClock={() => { setClockMins(Math.floor(clock / 60)); setClockSecs(clock % 60); setShowClockEditor(true); }}
           onEndGame={() => setShowEndGame(true)}
+          showAdjust={showAdjust}
           onSetDown={setDown}
           onAdjustDistance={adjustDistance}
           onAdjustBall={adjustBall}
@@ -2336,6 +2356,8 @@ export default function GameScreen() {
             oppName={oppName}
             suggestedPhase={suggestedPhase}
             spotLabel={currentBallLabel}
+            onToggleAdjust={() => setShowAdjust(v => !v)}
+            adjustOpen={showAdjust}
             down={down}
             distance={distance}
             ballOn={ballOn}

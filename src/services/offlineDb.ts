@@ -235,6 +235,36 @@ export async function getQueueForGame(gameId: string): Promise<SyncQueueItem[]> 
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
+/**
+ * Which plays for this game still have unpushed work, split by intent.
+ *
+ * A server read is not the whole truth while the queue is non-empty: the
+ * server has not seen a queued insert, still holds the pre-edit row for a
+ * queued update, and still holds a row that was deleted offline. Callers
+ * merging a server list with local state need to know which ids to override,
+ * and in which direction. See `loadGamePlays`.
+ */
+export async function getQueuedPlayIds(
+  gameId: string,
+): Promise<{ upserts: Set<string>; deletes: Set<string> }> {
+  const upserts = new Set<string>();
+  const deletes = new Set<string>();
+  if (!isOfflineSupported()) return { upserts, deletes };
+
+  // Oldest first, so a delete queued after an edit wins — and an insert queued
+  // after a delete (same id re-added) wins right back.
+  for (const item of await getQueueForGame(gameId)) {
+    if (item.op === "delete") {
+      deletes.add(item.playId);
+      upserts.delete(item.playId);
+    } else {
+      upserts.add(item.playId);
+      deletes.delete(item.playId);
+    }
+  }
+  return { upserts, deletes };
+}
+
 /** Count pending/syncing items across all games. */
 export async function getPendingCount(): Promise<number> {
   if (!isOfflineSupported()) return 0;
@@ -269,6 +299,38 @@ export async function markFailed(queueId: string, error: string): Promise<void> 
   item.status = "failed";
   item.lastError = error;
   await db.put("sync_queue", item);
+}
+
+/**
+ * A push that failed for a reason retrying can fix — the network was down.
+ *
+ * Returns the item to `pending` and refunds the attempt `markSyncing` spent.
+ * Without the refund a long dead spot burns through the five-attempt cap in a
+ * couple of minutes, `getQueueForGame` stops returning the item, and the play
+ * never syncs again even once service is back.
+ */
+export async function markRetryable(queueId: string, error: string): Promise<void> {
+  if (!isOfflineSupported()) return;
+  const db = await getDb();
+  const item = await db.get("sync_queue", queueId);
+  if (!item) return;
+  item.status = "pending";
+  item.lastError = error;
+  item.attempts = Math.max(0, item.attempts - 1);
+  await db.put("sync_queue", item);
+}
+
+/**
+ * Items the drain has given up on — rejected five times for a reason the
+ * network can't explain. They are still on disk, but no drain will retry them,
+ * so nothing else will ever tell the operator these plays are not on the
+ * server. The badge has to.
+ */
+export async function getStuckCount(): Promise<number> {
+  if (!isOfflineSupported()) return 0;
+  const db = await getDb();
+  const failed = await db.getAllFromIndex("sync_queue", "by-status", "failed");
+  return failed.filter((i) => i.attempts >= 5).length;
 }
 
 /** Manual reset: clears all queue items for a game. Use sparingly — destructive. */

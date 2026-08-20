@@ -16,6 +16,11 @@ interface Props {
   /** Preformatted spot, e.g. "PM 25". Passed in rather than derived so the
    *  band and the scoreboard can never disagree about where the ball is. */
   spotLabel?: string;
+  /** Phone only: opens the correction strip on the scoreboard. Hung off the
+   *  spot rather than given its own row, because a row to reveal a row spends
+   *  half of what it saves. */
+  onToggleAdjust?: () => void;
+  adjustOpen?: boolean;
   /** Ball spot (0-100, offense driving toward 100) — lets the fast path swap
    *  to conversion attempts near the goal line. */
   ballOn?: number;
@@ -146,6 +151,8 @@ export default function QuickActions({
   down,
   distance,
   spotLabel,
+  onToggleAdjust,
+  adjustOpen,
   ballOn,
   progColor = "#dc2626",
   oppColor = "#6b7280",
@@ -221,32 +228,40 @@ export default function QuickActions({
             to be readable at arm's length, so it gets the only display size on
             the card. Everything else here is chrome around it. Whose ball it
             is stays small - the color already says that louder than text can. */}
-        <div className="flex items-end gap-2 mb-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: offenseColor, boxShadow: `0 0 8px ${offenseColor}` }}
-              />
-              <span
-                className="text-[10px] font-display font-bold uppercase tracking-[0.18em] truncate opacity-90"
-                style={{ color: offenseColor }}
-              >
-                {offenseName}
-              </span>
-            </div>
-            {down != null && distance != null && (
-              <div className="text-2xl leading-none font-display font-black tabular-nums text-white mt-1">
-                {ordinalDown(down)}
-                <span className="opacity-40 mx-1">&amp;</span>
-                {distance}
-              </div>
-            )}
-          </div>
-          {spotLabel && (
-            <span className="text-sm font-display font-bold tabular-nums text-white/55 shrink-0 pb-0.5">
-              {spotLabel}
+        <div className="flex items-baseline gap-2 mb-2">
+          <span
+            className="w-2 h-2 rounded-full shrink-0 self-center"
+            style={{ backgroundColor: offenseColor, boxShadow: `0 0 8px ${offenseColor}` }}
+          />
+          <span
+            className="text-[10px] font-display font-bold uppercase tracking-[0.18em] truncate opacity-90 min-w-0"
+            style={{ color: offenseColor }}
+          >
+            {offenseName}
+          </span>
+          {down != null && distance != null && (
+            <span className="ml-auto text-lg leading-none font-display font-black tabular-nums text-white shrink-0">
+              {ordinalDown(down)}
+              <span className="opacity-40 mx-0.5">&amp;</span>
+              {distance}
             </span>
+          )}
+          {spotLabel && (
+            onToggleAdjust ? (
+              <button
+                onClick={onToggleAdjust}
+                className={`text-[11px] font-display font-bold tabular-nums shrink-0 underline decoration-dotted underline-offset-4 cursor-pointer ${
+                  adjustOpen ? "text-amber-400 decoration-amber-400/60" : "text-white/50 decoration-white/25"
+                }`}
+                title="Correct the down, distance or spot"
+              >
+                {spotLabel}
+              </button>
+            ) : (
+              <span className="text-[11px] font-display font-bold tabular-nums text-white/50 shrink-0">
+                {spotLabel}
+              </span>
+            )
           )}
         </div>
 

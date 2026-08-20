@@ -286,8 +286,44 @@ export interface PlayWithPlayers extends PlayRow {
   })[];
 }
 
+/**
+ * Overlay the sync queue on top of a server play list.
+ *
+ * The local cache is authoritative for any play with unpushed work: a queued
+ * insert is missing from the server entirely, a queued update means the server
+ * row is the pre-edit version, and a queued delete means the server row should
+ * already be gone. Everything else comes from the server.
+ */
+async function mergeQueuedPlays(
+  gameId: string,
+  serverPlays: PlayWithPlayers[],
+  upserts: Set<string>,
+  deletes: Set<string>,
+): Promise<PlayWithPlayers[]> {
+  const { getCachedPlays } = await import("./offlineDb");
+  const cachedById = new Map((await getCachedPlays(gameId)).map((p) => [p.id, p]));
+
+  const merged: PlayWithPlayers[] = [];
+  const seen = new Set<string>();
+  for (const play of serverPlays) {
+    if (deletes.has(play.id)) continue;
+    merged.push((upserts.has(play.id) && cachedById.get(play.id)) || play);
+    seen.add(play.id);
+  }
+  // Queued inserts the server has not accepted yet — the plays that used to
+  // disappear from the log the moment the tablet got a bar of service back.
+  for (const id of upserts) {
+    if (seen.has(id)) continue;
+    const local = cachedById.get(id);
+    if (local) merged.push(local);
+  }
+
+  return merged.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+}
+
 export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> {
-  const { cachePlays, getCachedPlays, isOfflineSupported } = await import("./offlineDb");
+  const { cachePlays, getCachedPlays, getQueuedPlayIds, isOfflineSupported } =
+    await import("./offlineDb");
 
   const goOnline = typeof navigator === "undefined" || navigator.onLine;
   if (goOnline) {
@@ -305,10 +341,20 @@ export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> 
         .order("sequence", { ascending: true });
 
       if (!error && data) {
-        const plays = data as PlayWithPlayers[];
-        // Refresh local cache so offline reads stay fresh.
-        if (isOfflineSupported()) await cachePlays(plays);
-        return plays;
+        const serverPlays = data as PlayWithPlayers[];
+        if (!isOfflineSupported()) return serverPlays;
+
+        const { upserts, deletes } = await getQueuedPlayIds(gameId);
+
+        // Refresh local cache so offline reads stay fresh — but skip any play
+        // with unpushed work, or the stale server copy clobbers the newer
+        // local one and the edit is lost the moment the queue drains.
+        await cachePlays(
+          serverPlays.filter((p) => !upserts.has(p.id) && !deletes.has(p.id)),
+        );
+
+        if (upserts.size === 0 && deletes.size === 0) return serverPlays;
+        return await mergeQueuedPlays(gameId, serverPlays, upserts, deletes);
       }
       console.warn("loadGamePlays network failed, falling back to cache:", error);
     } catch (err) {

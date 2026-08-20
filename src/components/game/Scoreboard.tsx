@@ -18,6 +18,9 @@ interface Props {
   canNextQuarter: boolean;
   onEditClock: () => void;
   onEndGame: () => void;
+  /** Phone only: whether the correction strip is open. Driven from the
+   *  possession band's spot, so the control costs no height of its own. */
+  showAdjust?: boolean;
   onSetDown: (down: number) => void;
   onAdjustDistance: (delta: number) => void;
   onAdjustBall: (delta: number) => void;
@@ -73,6 +76,16 @@ function TimeoutButtons({
   );
 }
 
+/**
+ * The correction strip is collapsed on a phone.
+ *
+ * Down, distance and the spot are READ from the possession band a few rows
+ * down; this row exists to CORRECT them, and a correction is rare next to the
+ * number of plays entered. Holding 46px of a 926px screen open all game for it
+ * cost two rows of play buttons and pushed the rest below the fold.
+ *
+ * Tablets keep it open - there is room, and it is where the hands already are.
+ */
 export default function Scoreboard({
   state,
   progName,
@@ -90,6 +103,7 @@ export default function Scoreboard({
   canNextQuarter,
   onEditClock,
   onEndGame,
+  showAdjust = false,
   onSetDown,
   onAdjustDistance,
   onAdjustBall,
@@ -102,6 +116,7 @@ export default function Scoreboard({
 }: Props) {
   const effOppColor = oppColor ?? "#6b7280";
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
+
 
   return (
     <div
@@ -251,7 +266,7 @@ export default function Scoreboard({
             tighten so all three fit one row (~104 + 96 + 120 + 12 = 332).
             Every change here is a <phone> lg:<original> pair, so at 1024px and
             up this renders exactly as it did. */}
-        <div className="mt-2 lg:mt-3 flex flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2">
+        <div className={`${showAdjust ? "flex" : "hidden"} lg:flex mt-2 lg:mt-3 flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2`}>
           <div className="flex-1 min-w-[104px] lg:min-w-[116px] rounded-xl border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
             <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Down</div>
             <div className="mt-0 lg:mt-1 grid grid-cols-4 gap-0.5 lg:gap-1">
