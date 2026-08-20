@@ -2089,16 +2089,39 @@ export default function GameScreen() {
   const progLogoUrl = program?.logo_url ?? null;
   const oppLogoUrl = game?.opponent?.logo_url ?? null;
 
+  /** Rendered twice — pinned at lg, in the scroller on phones — so the two
+   *  copies can't drift. `extra` carries the display class for each. */
+  const quickStatsStrip = (extra: string) => (
+    <div className={`grid-cols-5 gap-1.5 ${extra}`}>
+      {[
+        { label: "RUSH", val: `${stats.rushAtt}/${stats.rushYds}` },
+        { label: "PASS", val: `${stats.passComp}-${stats.passAtt}/${stats.passYds}` },
+        { label: "1ST", val: stats.firstDowns },
+        { label: "TO", val: stats.tos },
+        { label: "PEN", val: stats.pens },
+      ].map(s => (
+        <div key={s.label} className="card p-1.5 text-center">
+          <div className="stat-label text-[8px]">{s.label}</div>
+          {/* "12-20/145" overflows a fifth of a 375px screen at text-xs. */}
+          <div className="text-[10px] lg:text-xs font-display font-extrabold tabular-nums">{s.val}</div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="screen safe-top safe-bottom h-dvh overflow-hidden">
+    // Phone landscape can't afford a pinned block — header plus scoreboard plus
+    // field already exceed the viewport, which collapses the play area to zero
+    // and strands every button. There, drop the lock and let the page scroll.
+    <div className="screen safe-top safe-bottom h-dvh overflow-hidden max-lg:landscape:h-auto max-lg:landscape:overflow-visible">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 pt-4 pb-2 shrink-0">
+      <div className="flex items-center gap-1.5 lg:gap-3 px-3 lg:px-5 pt-4 pb-2 shrink-0">
         <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
         <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] flex-1 truncate">vs {oppName}</h1>
         <SyncBadge gameId={gameId ?? null} />
         <button
           onClick={() => setHurryUp((h) => !h)}
-          className={`btn-ghost px-2 py-1 text-[10px] font-display font-bold uppercase tracking-wider cursor-pointer ${
+          className={`btn-ghost px-1.5 lg:px-2 py-1 text-[10px] font-display font-bold uppercase tracking-wider cursor-pointer ${
             hurryUp ? "text-amber-400" : "text-surface-muted"
           }`}
           title={hurryUp ? "Hurry-up mode ON (skip clock prompt)" : "Hurry-up mode OFF"}
@@ -2108,19 +2131,23 @@ export default function GameScreen() {
         <button onClick={() => setShowLiveStats(true)} className="btn-ghost p-1.5 cursor-pointer" title="Live Stats">
           <BarChart3 className="w-4 h-4 text-dragon-primary" />
         </button>
-        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer" title="Full Summary">
+        {/* The scroller carries its own summary link on phone, where this row
+            has eight items and no room to spare. */}
+        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="hidden lg:flex btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer" title="Full Summary">
           Summary
         </button>
-        <button onClick={() => setShowLog(true)} className="btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
+        <button onClick={() => setShowLog(true)} className="btn-ghost px-1.5 lg:px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
           {plays.length} plays
         </button>
-        <button onClick={() => setShowPregame(true)} className="btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
+        <button onClick={() => setShowPregame(true)} className="btn-ghost px-1.5 lg:px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
           Pregame
         </button>
       </div>
 
-      {/* Pinned: scoreboard, field, and quick stats never scroll away. */}
-      <div className="shrink-0 px-5 pb-3 space-y-3">
+      {/* Pinned: scoreboard and field never scroll away. The stats strip is
+          pinned too on tablets, but on a phone it moves into the scroller —
+          the pinned block was leaving barely two rows of play buttons. */}
+      <div className="shrink-0 px-3 lg:px-5 pb-2 lg:pb-3 space-y-2 lg:space-y-3">
         {/* Scoreboard */}
         <Scoreboard
           state={gameState}
@@ -2168,28 +2195,19 @@ export default function GameScreen() {
           onFlipDirection={() => setDirectionFlipped((current) => !current)}
         />
 
-        {/* Quick stats */}
-        <div className="grid grid-cols-5 gap-1.5">
-          {[
-            { label: "RUSH", val: `${stats.rushAtt}/${stats.rushYds}` },
-            { label: "PASS", val: `${stats.passComp}-${stats.passAtt}/${stats.passYds}` },
-            { label: "1ST", val: stats.firstDowns },
-            { label: "TO", val: stats.tos },
-            { label: "PEN", val: stats.pens },
-          ].map(s => (
-            <div key={s.label} className="card p-1.5 text-center">
-              <div className="stat-label text-[8px]">{s.label}</div>
-              <div className="text-xs font-display font-extrabold tabular-nums">{s.val}</div>
-            </div>
-          ))}
-        </div>
+        {/* Quick stats — pinned on tablets only; see the scroller copy below. */}
+        {quickStatsStrip("hidden lg:grid")}
       </div>
 
       {/* Below the pinned block: play selection and the drive summary. On a
           tablet in landscape they sit side by side and scroll independently;
           on narrower screens they stack in one scroller as before. */}
-      <div className="flex-1 min-h-0 px-5 pb-4 flex flex-col gap-3 overflow-y-auto
+      <div className="flex-1 min-h-0 px-3 lg:px-5 pb-4 flex flex-col gap-3 overflow-y-auto
                       lg:flex-row lg:gap-4 lg:overflow-hidden">
+
+        {/* Phone copy of the quick stats: on screen at first paint, gone after
+            one flick, instead of permanently costing the play area. */}
+        {quickStatsStrip("grid lg:hidden shrink-0")}
 
         {/* Left column: play selection. */}
         <div className="lg:flex-1 min-h-0 lg:overflow-y-auto space-y-3">
@@ -2230,7 +2248,10 @@ export default function GameScreen() {
                 </button>
               </div>
             </div>
-            <div className="space-y-1 max-h-[22rem] overflow-y-auto pr-1 lg:max-h-none lg:overflow-visible lg:pr-0">
+            {/* One scroller, not two. Capping this list made it its own scroll
+                region inside the page scroller, and on iOS a flick over the
+                list moves the list while the page stays put. */}
+            <div className="space-y-1">
               {plays.slice().reverse().map(play => {
                 // Which unit was on the field, from OUR sideline: a play with
                 // us in possession is our offense, otherwise our defense.
@@ -2303,6 +2324,14 @@ export default function GameScreen() {
             View Game Summary
           </button>
         )}
+
+        {/* End Game lives on the scoreboard at lg, but that row has no width to
+            spare on a phone. Outside the plays conditional above: a game can be
+            ended before anything is recorded. */}
+        <button onClick={() => setShowEndGame(true)}
+          className="lg:hidden w-full text-center py-2 text-[11px] font-display font-bold text-amber-400 uppercase tracking-wider cursor-pointer">
+          End Game
+        </button>
         </div>
       </div>
 

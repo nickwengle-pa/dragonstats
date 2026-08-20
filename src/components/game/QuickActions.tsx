@@ -289,7 +289,9 @@ export default function QuickActions({
                   <button
                     key={playType.id}
                     onClick={() => onSelect(playType)}
-                    className={`px-1 py-2.5 rounded-xl text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
+                    // A quarter of a 375px row is ~62px; "ENCROACHMENT" needs
+                    // the smaller type and tighter padding to sit inside it.
+                    className={`px-0.5 lg:px-1 py-2.5 rounded-xl text-[10px] lg:text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
                   >
                     {playType.label}
                   </button>

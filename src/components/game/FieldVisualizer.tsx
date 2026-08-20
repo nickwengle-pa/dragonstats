@@ -81,7 +81,9 @@ export default function FieldVisualizer({
       style={{ background: "linear-gradient(180deg, #111820, #0d1117)" }}
     >
       <div
-        className={`relative w-full ${compact ? "h-24" : "h-32"} rounded-xl overflow-hidden`}
+        // Short field below lg: the pinned block has to give the play buttons
+        // room on a phone, and 32 units of field is the cheapest 32 to find.
+        className={`relative w-full ${compact ? "h-24" : "h-24 lg:h-32"} rounded-xl overflow-hidden`}
         style={{
           background: "linear-gradient(180deg, rgba(34, 94, 45, 0.98), rgba(19, 78, 36, 1))",
           boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",

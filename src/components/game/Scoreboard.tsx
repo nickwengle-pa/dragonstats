@@ -48,7 +48,7 @@ function TimeoutButtons({
   onTakeTimeout: (team: "us" | "them") => void;
 }) {
   return (
-    <div className={`mt-1 flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
+    <div className={`mt-1 flex items-center gap-0.5 lg:gap-1 ${align === "right" ? "justify-end" : ""}`}>
       <span className="text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">TO</span>
       {[0, 1, 2].map((slot) => {
         const available = slot < remaining;
@@ -57,7 +57,7 @@ function TimeoutButtons({
             key={`${team}-${slot}`}
             onClick={() => onTakeTimeout(team)}
             disabled={!available}
-            className={`h-3.5 w-3.5 rounded-full border transition-colors ${
+            className={`h-3 w-3 lg:h-3.5 lg:w-3.5 rounded-full border transition-colors ${
               available ? "cursor-pointer" : "cursor-default"
             }`}
             style={{
@@ -115,7 +115,7 @@ export default function Scoreboard({
 
       <div className="px-3 py-3" style={{ background: "linear-gradient(180deg, #111820, #0d1117)" }}>
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2.5 min-w-0">
+          <div className="flex-1 flex items-center gap-1.5 lg:gap-2.5 min-w-0">
             {progLogoUrl ? (
               <img src={progLogoUrl} alt={progName} className="w-9 h-9 object-contain rounded-lg shrink-0" />
             ) : (
@@ -152,7 +152,7 @@ export default function Scoreboard({
             </div>
           </div>
 
-          <div className="flex flex-col items-center gap-1 px-1.5 shrink-0">
+          <div className="flex flex-col items-center gap-1 px-0.5 lg:px-1.5 shrink-0">
             <div className="flex items-center gap-1">
               <button
                 onClick={onPreviousQuarter}
@@ -191,7 +191,7 @@ export default function Scoreboard({
             </button>
           </div>
 
-          <div className="flex-1 flex items-center justify-end gap-2.5 min-w-0">
+          <div className="flex-1 flex items-center justify-end gap-1.5 lg:gap-2.5 min-w-0">
             <div className="min-w-0 text-right">
               <div className="text-[9px] font-display font-bold text-surface-muted uppercase tracking-widest truncate">
                 {oppName}
@@ -231,7 +231,7 @@ export default function Scoreboard({
 
           <button
             onClick={onEndGame}
-            className="px-2 py-1 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 transition-colors shrink-0 cursor-pointer ml-1"
+            className="hidden lg:block px-2 py-1 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 transition-colors shrink-0 cursor-pointer ml-1"
             title="End Game"
           >
             End Game
