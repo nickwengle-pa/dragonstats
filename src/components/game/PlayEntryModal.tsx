@@ -99,7 +99,8 @@ export interface PlaySubmitData {
 }
 
 type Step = "players" | "yards" | "penalty" | "formations" | "defense" | "review"
-  | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards";
+  | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards"
+  | "fumble_return";
 type FieldTeam = "program" | "opponent";
 type KickOutcome = "returned" | "fair_catch" | "downed" | "out_of_bounds" | "touchback";
 
@@ -702,6 +703,8 @@ export default function PlayEntryModal({
    */
   const [hasFumble, setHasFumble] = useState(false);
   const [fumbleReturnRaw, setFumbleReturnRaw] = useState("");
+  const [recoverySearch, setRecoverySearch] = useState("");
+  const [recoveryTacklerSearch, setRecoveryTacklerSearch] = useState("");
   const fumbleReturnYards = (() => {
     const n = parseInt(fumbleReturnRaw, 10);
     return Number.isFinite(n) ? n : 0;
@@ -845,7 +848,9 @@ export default function PlayEntryModal({
       : twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
     // Who knocked it out and who came up with it, appended so the base play's
     // own roles are still asked for first.
-    if (canHaveFumble && hasFumble) return [...base, "forced_fumble", "fumble_recovery"];
+    // Only who forced it belongs with the play's own players. Who recovered it
+    // is asked on the recovery step, next to the return it produced.
+    if (canHaveFumble && hasFumble) return [...base, "forced_fumble"];
     return base;
   }, [playType, twoPointStyle, blockedKickType, canHaveFumble, hasFumble]);
   const isTheirBall = gameState.possession === "them";
@@ -962,6 +967,22 @@ export default function PlayEntryModal({
     return targetBallOn - gameState.ballOn;
   })();
 
+  /* Where the ball was when it came loose: the play's own result. A sack
+     fumble comes loose behind the line, so the return starts there and not at
+     the snap. */
+  const fumbleSpotBallOn = Math.max(0, Math.min(100, gameState.ballOn + yards));
+  /* A defence that recovers runs the OTHER way, so its return counts down in
+     the offense's frame. Recovered by the offense and it counts up. Without
+     this a 20-yard return by the defence would push the ball 20 yards toward
+     the goal the offense was already attacking. */
+  const fumbleReturnDirection = fumbleRecoveredByUs ? 1 : -1;
+  const fumbleReturnBallOn = Math.max(0, Math.min(100,
+    fumbleSpotBallOn + fumbleReturnDirection * fumbleReturnYards));
+  const setFumbleReturnFromBallOn = (ballOn: number) => {
+    const gained = fumbleReturnDirection * (ballOn - fumbleSpotBallOn);
+    setFumbleReturnRaw(String(Math.round(gained)));
+  };
+
   const setResultFromTotalYards = (totalYards: number) => {
     const rawTarget = gameState.ballOn + totalYards;
     /* Reaching the goal line IS the touchdown, and the spot pair below cannot
@@ -1037,6 +1058,10 @@ export default function PlayEntryModal({
     if (roles.length > 0) steps.push("players");
     if (needsYards || needsResult) steps.push("yards");
     if (canHaveTackle && trackTacklers) steps.push("defense");
+    // After the tackle: who came up with it, how far he carried it, and who
+    // stopped him. Its own step because a recovery return is its own play
+    // within the play, with its own spot and its own tackler.
+    if (canHaveFumble && hasFumble) steps.push("fumble_return");
     if (trackFormations) steps.push("formations");
     steps.push("review");
   }
@@ -1257,6 +1282,36 @@ export default function PlayEntryModal({
     if (byKicking === blockedRecoveredByKicking) return;
     setBlockedRecoveredByKicking(byKicking);
     setTagged(prev => prev.filter(t => t.role !== "recoverer"));
+  };
+
+  /** Which side ended up with the ball. The recoverer and the man who stops
+   *  him are on opposite teams, so both pickers key off this one answer. */
+  const recoveryUsesOpponentRoster = roleUsesOpponentRoster("fumble_recovery", isTheirBall, {
+    playTypeId: playType.id,
+    fumbleRecoveredByUs,
+    onsideRecoveredByKicker,
+    blockedRecoveredByKicking,
+  });
+
+  const tagRole = (role: string, p: RosterPlayer) => {
+    setTagged(prev => [...prev.filter(t => t.role !== role), {
+      id: p.player_id,
+      player_id: p.player_id,
+      jersey_number: p.jersey_number,
+      name: `${p.player.first_name} ${p.player.last_name}`,
+      role,
+    }]);
+  };
+
+  const tagRoleOpp = (role: string, p: OpponentPlayerRef) => {
+    setTagged(prev => [...prev.filter(t => t.role !== role), {
+      id: p.id,
+      player_id: p.id,
+      jersey_number: p.jersey_number,
+      name: p.name,
+      role,
+      isOpponent: true,
+    }]);
   };
 
   /* ── Quick-add opponent player by jersey number ── */
@@ -1840,6 +1895,25 @@ export default function PlayEntryModal({
                 </div>
               )}
 
+              {/* Fumble as a modifier, on the PLAYERS step because that is
+                  where the roles it adds are collected. It sat on the yards
+                  step first, which runs after this one, so turning it on
+                  appended forced_fumble and fumble_recovery to a step already
+                  behind you and nobody was ever asked who forced it or who
+                  came up with it. Next walks the new roles from here. */}
+              {canHaveFumble && (
+                <button
+                  onClick={() => setHasFumble(f => !f)}
+                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer mb-1 ${
+                    hasFumble
+                      ? "border-orange-500 bg-orange-500/20 text-orange-400"
+                      : "border-dashed border-surface-border bg-surface-bg text-slate-500"
+                  }`}
+                >
+                  {hasFumble ? "Fumble on this play" : "+ Fumble"}
+                </button>
+              )}
+
               {/* Role tabs — amber = carried over from the last play, green = picked here */}
               <div className="flex gap-1.5 flex-wrap">
                 {roles.map((role, i) => {
@@ -2187,6 +2261,111 @@ export default function PlayEntryModal({
                   onQuickAdd={handleQuickAddOpponent}
                 />
               )}
+            </>
+          )}
+
+          {/* -- FUMBLE STEP: recovery, return, and who stopped it -- */}
+          {currentStep === "fumble_return" && (
+            <>
+              <div className="text-xs text-slate-400 mb-1">
+                {fumbleRecoveredByUs
+                  ? `${isTheirBall ? oppName : progName} kept it.`
+                  : `${isTheirBall ? progName : oppName} recovered it.`}
+                {" "}Who came up with it, how far he carried it, and who stopped him.
+              </div>
+
+              {recoveryUsesOpponentRoster ? (
+                <OpponentPlayerGrid
+                  players={localOppPlayers}
+                  label={`Recovered by (${oppName})`}
+                  onSelect={(pl) => tagRoleOpp("fumble_recovery", pl)}
+                  selectedId={tagged.find(t => t.role === "fumble_recovery")?.id ?? null}
+                  search={recoverySearch}
+                  onSearch={setRecoverySearch}
+                  onQuickAdd={handleQuickAddOpponent}
+                  accentColor={oppColor}
+                />
+              ) : (
+                <PlayerGrid
+                  roster={roster}
+                  label={`Recovered by (${progName})`}
+                  onSelect={(pl) => tagRole("fumble_recovery", pl)}
+                  selectedId={tagged.find(t => t.role === "fumble_recovery")?.player_id ?? null}
+                  search={recoverySearch}
+                  onSearch={setRecoverySearch}
+                />
+              )}
+
+              {/* Same spot picking the yards step uses, because a recovery
+                  return is a spot on the field like any other. */}
+              <div className="mt-3">
+                <label className="label block mb-2">Returned To</label>
+                <FieldVisualizer
+                  compact
+                  ballOn={fumbleReturnBallOn}
+                  ballPosition={toFieldDisplay(fumbleReturnBallOn)}
+                  firstDownPosition={toFieldDisplay(gameState.ballOn)}
+                  possession={gameState.possession}
+                  ourEndZoneSide={ourEndZoneSide}
+                  primaryColor={progColor}
+                  oppColor={oppColor}
+                  progName={progName}
+                  oppName={oppName}
+                  progAbbr={progTag}
+                  oppAbbr={oppTag}
+                  progLogoUrl={progLogoUrl}
+                  oppLogoUrl={oppLogoUrl}
+                  onPickSpot={(displayPosition) => setFumbleReturnFromBallOn(toFieldDisplay(displayPosition))}
+                />
+                <div className="text-[10px] text-slate-600 text-center mt-1">
+                  Tap the field, drag the ruler, or type the yards
+                </div>
+              </div>
+
+              <YardReel
+                value={fumbleReturnBallOn}
+                onChange={setFumbleReturnFromBallOn}
+                offenseDirection={offenseDirection}
+                accentColor="#fb923c"
+                formatSpot={(b) => formatFieldSpot(b, gameState.possession)}
+              />
+
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[10px] text-slate-500">Return yards:</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={fumbleReturnRaw}
+                  onChange={e => setFumbleReturnRaw(e.target.value)}
+                  className="input w-24 text-center text-sm font-black"
+                />
+                <span className="text-[10px] text-slate-600">by the recoverer</span>
+              </div>
+
+              <div className="mt-3">
+                {recoveryUsesOpponentRoster ? (
+                  <PlayerGrid
+                    roster={roster}
+                    label={`Stopped by (${progName})`}
+                    onSelect={(pl) => tagRole("recovery_tackler", pl)}
+                    selectedId={tagged.find(t => t.role === "recovery_tackler")?.player_id ?? null}
+                    search={recoveryTacklerSearch}
+                    onSearch={setRecoveryTacklerSearch}
+                  />
+                ) : (
+                  <OpponentPlayerGrid
+                    players={localOppPlayers}
+                    label={`Stopped by (${oppName})`}
+                    onSelect={(pl) => tagRoleOpp("recovery_tackler", pl)}
+                    selectedId={tagged.find(t => t.role === "recovery_tackler")?.id ?? null}
+                    search={recoveryTacklerSearch}
+                    onSearch={setRecoveryTacklerSearch}
+                    onQuickAdd={handleQuickAddOpponent}
+                    accentColor={oppColor}
+                  />
+                )}
+              </div>
             </>
           )}
 
@@ -2616,22 +2795,6 @@ export default function PlayEntryModal({
                 </div>
               )}
 
-              {/* Fumble as a modifier. Turning it on appends the forced-fumble
-                  and recovery roles to this play rather than replacing it, so a
-                  sack stays a sack and still changes possession. */}
-              {canHaveFumble && (
-                <button
-                  onClick={() => setHasFumble(f => !f)}
-                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                    hasFumble
-                      ? "border-orange-500 bg-orange-500/20 text-orange-400"
-                      : "border-dashed border-surface-border bg-surface-bg text-slate-500"
-                  }`}
-                >
-                  {hasFumble ? "Fumble on this play" : "+ Fumble"}
-                </button>
-              )}
-
               {/* Fumble recovery — drives possession */}
               {isFumblePlay && (
                 <div>
@@ -2922,7 +3085,7 @@ export default function PlayEntryModal({
               {tacklersAreOurs ? (
                 <PlayerGrid
                   roster={roster}
-                  label={`Select tackler(s) from ${progName}`}
+                  label={`Select ${playType.id === "sack" ? "sacker" : "tackler"}(s) from ${progName}`}
                   onSelect={p => handleAddTackler(p)}
                   selectedId={null}
                   search={tacklerSearch}
