@@ -1151,6 +1151,20 @@ export default function PlayEntryModal({
     }
   };
 
+  /**
+   * Change which side recovered the blocked kick.
+   *
+   * Any recoverer already tagged came off the other team's roster, so the tag
+   * has to go with the flip — keeping it would credit the recovery to a player
+   * who isn't on the recovering team. Same reasoning the fumble flow needs;
+   * this one is easier to hit because the block is discovered mid-flow.
+   */
+  const changeBlockedRecoveredBy = (byKicking: boolean) => {
+    if (byKicking === blockedRecoveredByKicking) return;
+    setBlockedRecoveredByKicking(byKicking);
+    setTagged(prev => prev.filter(t => t.role !== "recoverer"));
+  };
+
   /* ── Quick-add opponent player by jersey number ── */
   /**
    * The id has to be `opp_{position}_{jersey}`, and it has to be stable.
@@ -1698,6 +1712,33 @@ export default function PlayEntryModal({
                         {style}
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Blocked kick recovery.
+                  Above the role chips on purpose: it decides which roster the
+                  `recoverer` role picks from, so it has to be answered BEFORE
+                  that pick. It lived on the yards step first, which comes
+                  after — you chose a recoverer from the defending team's
+                  roster and only then got asked who recovered, with no way to
+                  reach your own players. */}
+              {playType.id === "blocked_kick" && (
+                <div className="mb-1">
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => changeBlockedRecoveredBy(false)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        !blockedRecoveredByKicking ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {gameState.possession === "us" ? oppName : progName}
+                    </button>
+                    <button onClick={() => changeBlockedRecoveredBy(true)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        blockedRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {gameState.possession === "us" ? progName : oppName} (kicking team)
+                    </button>
                   </div>
                 </div>
               )}
@@ -2386,28 +2427,6 @@ export default function PlayEntryModal({
                     className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                       isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-slate-500"
                     }`}>1st Down</button>
-                </div>
-              )}
-
-              {/* Blocked kick recovery — a live ball either side can fall on,
-                  and it decides which roster the recoverer comes from. */}
-              {playType.id === "blocked_kick" && (
-                <div>
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setBlockedRecoveredByKicking(false)}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        !blockedRecoveredByKicking ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {gameState.possession === "us" ? oppName : progName}
-                    </button>
-                    <button onClick={() => setBlockedRecoveredByKicking(true)}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        blockedRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {gameState.possession === "us" ? progName : oppName} (kicking team)
-                    </button>
-                  </div>
                 </div>
               )}
 
