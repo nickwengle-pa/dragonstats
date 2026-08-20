@@ -566,6 +566,27 @@ export default function PlayEntryModal({
   trackFormations = true, trackTacklers = true,
   onSubmit, onClose, onAddOpponentPlayer,
 }: Props) {
+  /**
+   * The play type can change mid-flow.
+   *
+   * A field goal that gets blocked IS a blocked_kick, and it has to be one by
+   * the time it's written: four separate paths key next_situation_source off
+   * the type, and a blocked kick must land as "pending_review" instead of
+   * letting the engine compute a possession and spot it cannot know. Swapping
+   * the result alone would record the block while quietly auto-computing a
+   * confidently wrong next situation.
+   *
+   * MUST stay at the top of the component. `playType` used to be a destructured
+   * prop, readable from the first line; as a const it has a temporal dead zone,
+   * and the state initialisers below (seedFromLastPlay among them) read it
+   * during the first render. Declared any lower, those reads throw
+   * "Cannot access before initialization" and the modal never opens — and
+   * TypeScript cannot catch it, because the reads sit inside callback bodies
+   * it has no way to order.
+   */
+  const [playTypeOverride, setPlayTypeOverride] = useState<PlayTypeDef | null>(null);
+  const playType = playTypeOverride ?? chosenPlayType;
+
   // Local copy of opponent players (can grow via quick-add)
   const [localOppPlayers, setLocalOppPlayers] = useState<OpponentPlayerRef[]>(opponentPlayers);
 
@@ -688,18 +709,6 @@ export default function PlayEntryModal({
   // Penalty-only plays get their own dedicated step now, so this toggle only
   // governs the optional flag on a normal play.
   const [showPenalties, setShowPenalties] = useState(false);
-  /**
-   * The play type can change mid-flow.
-   *
-   * A field goal that gets blocked IS a blocked_kick, and it has to be one by
-   * the time it's written: four separate paths key next_situation_source off
-   * the type, and a blocked kick must land as "pending_review" instead of
-   * letting the engine compute a possession and spot it cannot know. Swapping
-   * the result alone would record the block while quietly auto-computing a
-   * confidently wrong next situation.
-   */
-  const [playTypeOverride, setPlayTypeOverride] = useState<PlayTypeDef | null>(null);
-  const playType = playTypeOverride ?? chosenPlayType;
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(() => defaultBlockedKickType(gameState));
   /** Who fell on the blocked kick. Drives which roster `recoverer` picks from. */
   const [blockedRecoveredByKicking, setBlockedRecoveredByKicking] = useState(false);
