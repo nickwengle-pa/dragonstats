@@ -239,11 +239,16 @@ function buildFumble(play: PlayWithPlayers, ballCarrier: string, ctx: TransformC
   if (!recoverer && !forcer) return undefined;
 
   const possTeamId = play.possession === "us" ? ctx.programTeamId : otherTeam(ctx.programTeamId, ctx);
+  // recoveryYards has been on FumbleEvent all along with nothing filling it,
+  // so a scoop-and-return credited the recoverer no yardage at all.
+  const returnYards = Number((play.play_data as Record<string, any>)?.fumble_return_yards);
+
   return {
     fumbledBy: ballCarrier,
     forcedBy: forcer,
     recoveredBy: recoverer,
     recoveryTeam: play.is_turnover ? otherTeam(possTeamId, ctx) : possTeamId,
+    recoveryYards: Number.isFinite(returnYards) ? returnYards : undefined,
   };
 }
 

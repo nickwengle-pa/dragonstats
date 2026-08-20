@@ -77,6 +77,9 @@ export interface PlaySubmitData {
   /** Whether possession changed. Defaults to play-type behavior; set explicitly
    *  for fumbles (false = offense recovered, true = lost). */
   turnover?: boolean;
+  /** Yards the recoverer carried it after a fumble. The engine's FumbleEvent
+   *  has always had a recoveryYards field; nothing ever filled it. */
+  fumbleReturnYards?: number;
   /** Onside kicks only: true when the kicking team recovered its own kick. */
   onsideRecoveredByKicker?: boolean;
   result: string; // "Good" | "No Good" | "Returned" | "Complete" | "Incomplete" | ""
@@ -698,6 +701,11 @@ export default function PlayEntryModal({
    * state is replayed from the play list.
    */
   const [hasFumble, setHasFumble] = useState(false);
+  const [fumbleReturnRaw, setFumbleReturnRaw] = useState("");
+  const fumbleReturnYards = (() => {
+    const n = parseInt(fumbleReturnRaw, 10);
+    return Number.isFinite(n) ? n : 0;
+  })();
   // Onside kicks: true when the kicking team recovered its own kick.
   const [onsideRecoveredByKicker, setOnsideRecoveredByKicker] = useState(false);
   /* ── How the kick ended ───────────────────────────────────────────────────
@@ -1464,6 +1472,7 @@ export default function PlayEntryModal({
       // The flag, not the play type, is what says the ball changed hands — a
       // sack-fumble is a sack that was lost.
       turnover: isFumblePlay ? !fumbleRecoveredByUs : playType.id === "int" ? true : undefined,
+      fumbleReturnYards: isFumblePlay ? fumbleReturnYards : undefined,
       onsideRecoveredByKicker: playType.id === "onside_kick" ? onsideRecoveredByKicker : undefined,
       result: finalResult,
       penalty,
@@ -2640,6 +2649,21 @@ export default function PlayEntryModal({
                       }`}>
                       {gameState.possession === "us" ? progName : oppName} (kept)
                     </button>
+                  </div>
+                  {/* How far the recoverer carried it. Separate from the play's
+                      own yardage: a sack is -7 to the QB whether or not the
+                      recovery was returned 20 yards afterwards. */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-[10px] text-slate-500">Return yards:</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={fumbleReturnRaw}
+                      onChange={e => setFumbleReturnRaw(e.target.value)}
+                      className="input w-24 text-center text-sm font-black"
+                    />
+                    <span className="text-[10px] text-slate-600">by the recoverer</span>
                   </div>
                 </div>
               )}

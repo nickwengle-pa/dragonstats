@@ -160,6 +160,8 @@ export interface PlayRecord {
   isTouchback?: boolean;
   penaltyCategory?: PenaltySide | null;
   blockedKickType?: BlockedKickType | null;
+  /** Yards carried after a fumble recovery. Feeds FumbleEvent.recoveryYards. */
+  fumbleReturnYards?: number | null;
   nextPossession?: "us" | "them";
   nextDown?: number;
   nextDistance?: number;

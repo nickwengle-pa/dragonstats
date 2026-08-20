@@ -421,6 +421,11 @@ export default function GameScreen() {
           || pd.blocked_kick_type === "punt"
           || pd.blocked_kick_type === "kickoff"
         ) ? pd.blocked_kick_type as BlockedKickType : null,
+        // Read back so a reload or an edit keeps the recovery return. Without
+        // this the value survives one save and is dropped on the next.
+        fumbleReturnYards: Number.isFinite(Number(pd.fumble_return_yards))
+          ? Number(pd.fumble_return_yards)
+          : null,
         tagged: [
           ...p.play_players.map((pp: any) => ({
             id: pp.player_id,
@@ -1002,6 +1007,9 @@ export default function GameScreen() {
         // "Our team did this, I couldn't see who." Only the role and the
         // credit are worth storing — the rest of a TEAM tag is constant, so
         // makeTeamTag rebuilds it on load.
+        // Yards the recoverer carried it. No column for this, and it belongs to
+        // the fumble rather than the play's own yardage, so it rides here.
+        fumble_return_yards: play.fumbleReturnYards ?? null,
         team_tagged: play.tagged
           .filter((tag) => tag.isTeam)
           .map((tag) => ({
@@ -1484,6 +1492,7 @@ export default function GameScreen() {
       turnover: isTurnover,
       isTouchback: data.isTouchback,
       blockedKickType: data.blockedKickType,
+      fumbleReturnYards: data.fumbleReturnYards ?? null,
       tagged: data.tagged,
       ballOn,
       down,
