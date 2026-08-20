@@ -13,6 +13,9 @@ interface Props {
   down?: number;
   /** Yards to go, shown alongside the down in the possession band. */
   distance?: number;
+  /** Preformatted spot, e.g. "PM 25". Passed in rather than derived so the
+   *  band and the scoreboard can never disagree about where the ball is. */
+  spotLabel?: string;
   /** Ball spot (0-100, offense driving toward 100) — lets the fast path swap
    *  to conversion attempts near the goal line. */
   ballOn?: number;
@@ -142,6 +145,7 @@ export default function QuickActions({
   suggestedPhase,
   down,
   distance,
+  spotLabel,
   ballOn,
   progColor = "#dc2626",
   oppColor = "#6b7280",
@@ -213,20 +217,35 @@ export default function QuickActions({
           borderColor: `${offenseColor}59`,
         }}
       >
-        <div className="flex items-center gap-2 mb-2">
-          <span
-            className="w-2.5 h-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: offenseColor, boxShadow: `0 0 8px ${offenseColor}` }}
-          />
-          <span
-            className="text-xs font-display font-black uppercase tracking-wider truncate"
-            style={{ color: offenseColor }}
-          >
-            {offenseName} ball
-          </span>
-          {down != null && distance != null && (
-            <span className="ml-auto text-xs font-display font-black tabular-nums text-white/85 shrink-0">
-              {ordinalDown(down)} &amp; {distance}
+        {/* Tier 1 of the type scale: the situation is the one thing that has
+            to be readable at arm's length, so it gets the only display size on
+            the card. Everything else here is chrome around it. Whose ball it
+            is stays small - the color already says that louder than text can. */}
+        <div className="flex items-end gap-2 mb-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: offenseColor, boxShadow: `0 0 8px ${offenseColor}` }}
+              />
+              <span
+                className="text-[10px] font-display font-bold uppercase tracking-[0.18em] truncate opacity-90"
+                style={{ color: offenseColor }}
+              >
+                {offenseName}
+              </span>
+            </div>
+            {down != null && distance != null && (
+              <div className="text-2xl leading-none font-display font-black tabular-nums text-white mt-1">
+                {ordinalDown(down)}
+                <span className="opacity-40 mx-1">&amp;</span>
+                {distance}
+              </div>
+            )}
+          </div>
+          {spotLabel && (
+            <span className="text-sm font-display font-bold tabular-nums text-white/55 shrink-0 pb-0.5">
+              {spotLabel}
             </span>
           )}
         </div>

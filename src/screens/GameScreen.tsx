@@ -2335,6 +2335,7 @@ export default function GameScreen() {
             progName={progName}
             oppName={oppName}
             suggestedPhase={suggestedPhase}
+            spotLabel={currentBallLabel}
             down={down}
             distance={distance}
             ballOn={ballOn}

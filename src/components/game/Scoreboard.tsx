@@ -127,8 +127,12 @@ export default function Scoreboard({
               </div>
             )}
             <div className="min-w-0">
+              {/* A scoreboard that truncates a team name reads as broken -
+                  "DRESS REHEA..." says less than "SIM" does. Abbreviation
+                  below lg, full name where there is room for it. */}
               <div className="text-[9px] font-display font-bold text-surface-muted uppercase tracking-widest truncate">
-                {progName}
+                <span className="lg:hidden">{progAbbr || progName}</span>
+                <span className="hidden lg:inline">{progName}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span
@@ -194,7 +198,8 @@ export default function Scoreboard({
           <div className="flex-1 flex items-center justify-end gap-1.5 lg:gap-2.5 min-w-0">
             <div className="min-w-0 text-right">
               <div className="text-[9px] font-display font-bold text-surface-muted uppercase tracking-widest truncate">
-                {oppName}
+                <span className="lg:hidden">{oppAbbr || oppName}</span>
+                <span className="hidden lg:inline">{oppName}</span>
               </div>
               <div className="flex items-center justify-end gap-2">
                 {state.possession === "them" && (
@@ -276,7 +281,10 @@ export default function Scoreboard({
               >
                 -
               </button>
-              <div className="flex-1 h-8 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-display font-extrabold text-amber-400 tabular-nums">
+              {/* Tier 3: chrome. The possession band states the situation now,
+                  so this is the place you come to CORRECT it - amber here was
+                  competing with the reading for attention. */}
+              <div className="flex-1 h-8 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-display font-extrabold text-slate-300 tabular-nums">
                 {state.ballOn + state.distance >= 100 ? "Goal" : state.distance}
               </div>
               <button
