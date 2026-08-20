@@ -1,5 +1,30 @@
+import { useMemo, useState } from "react";
 import { X, Pencil, RotateCcw, CloudOff } from "lucide-react";
 import { fmtClock, quarterLabel, yardLabel, type PlayRecord } from "./types";
+
+type LogFilter = "all" | "off" | "def" | "k";
+
+/** Anything where the kicking team is on the field. Filed under K rather than
+ *  by possession, because "who had the ball" is not the useful question about
+ *  a punt. */
+const KICKING_TYPES = new Set([
+  "kickoff", "punt", "onside_kick", "fair_catch", "blocked_kick", "fg", "pat",
+]);
+
+/** Which unit was on the field. Timeouts belong to no unit and show only
+ *  under All. */
+function unitOf(play: PlayRecord): LogFilter | "none" {
+  if (play.type === "timeout") return "none";
+  if (KICKING_TYPES.has(play.type)) return "k";
+  return play.possession === "us" ? "off" : "def";
+}
+
+const FILTERS: Array<{ id: LogFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "off", label: "Off" },
+  { id: "def", label: "Def" },
+  { id: "k", label: "K" },
+];
 
 interface Props {
   plays: PlayRecord[];
@@ -45,6 +70,28 @@ const PLAY_ICON_COLORS: Record<string, string> = {
 };
 
 export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds }: Props) {
+  const [filter, setFilter] = useState<LogFilter>("all");
+
+  /* Number by RECORDING order, before any filtering or reversing, so a play
+     keeps the same number whichever filter is on. Derived from position rather
+     than play.sequence: position is always contiguous and always present. */
+  const numbered = useMemo(
+    () => plays.map((play, idx) => ({ play, number: idx + 1 })),
+    [plays],
+  );
+  const visible = useMemo(
+    () => [...numbered].reverse().filter(({ play }) => filter === "all" || unitOf(play) === filter),
+    [numbered, filter],
+  );
+  const counts = useMemo(() => {
+    const c: Record<LogFilter, number> = { all: plays.length, off: 0, def: 0, k: 0 };
+    for (const play of plays) {
+      const u = unitOf(play);
+      if (u !== "none") c[u]++;
+    }
+    return c;
+  }, [plays]);
+
   return (
     <div className="sheet bg-black/80">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
@@ -62,12 +109,38 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds
           </div>
         </div>
 
+        {plays.length > 0 && (
+          <div className="flex gap-1.5 px-4 pb-2 shrink-0">
+            {FILTERS.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`flex-1 py-1.5 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                  filter === f.id
+                    ? "border-dragon-primary bg-dragon-primary/15 text-dragon-primary"
+                    : "border-surface-border bg-surface-bg text-surface-muted"
+                }`}
+              >
+                {f.label}
+                <span className="ml-1 opacity-60 tabular-nums">{counts[f.id]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1">
           {plays.length === 0 ? (
             <div className="text-sm text-surface-muted text-center py-8 font-body">No plays recorded yet.</div>
           ) : (
-            [...plays].reverse().map((play, i) => {
-              const isLast = i === 0;
+            visible.length === 0 ? (
+              <div className="text-sm text-surface-muted text-center py-8 font-body">
+                No {FILTERS.find(f => f.id === filter)?.label.toLowerCase()} plays yet.
+              </div>
+            ) :
+            visible.map(({ play, number }) => {
+              // "Last" means the most recent play overall, not the most recent
+              // one passing the filter.
+              const isLast = number === plays.length;
               return (
                 <div
                   key={play.id}
@@ -75,6 +148,11 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds
                     isLast ? "border-dragon-primary/30 bg-dragon-primary/5" : "border-surface-border bg-surface-card"
                   }`}
                 >
+                  {/* Recording order, so a play can be called out by number
+                      between the box and the booth. */}
+                  <span className="text-[10px] mt-1 font-display font-bold text-surface-muted/70 tabular-nums w-5 shrink-0 text-right">
+                    {number}
+                  </span>
                   <span className={`text-xs mt-1 font-bold ${PLAY_ICON_COLORS[play.type] ?? "text-surface-muted"}`}>
                     {PLAY_ICONS[play.type] ?? "\u25B8"}
                   </span>
