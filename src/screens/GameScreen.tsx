@@ -592,6 +592,10 @@ export default function GameScreen() {
   const [showLog, setShowLog] = useState(false);
   const [showLiveStats, setShowLiveStats] = useState(false);
   const [hurryUp, setHurryUp] = useState(false);
+  /** Phones can't show the selector and the play log at once — side by side
+   *  there is no room, stacked the log buries the buttons. One at a time,
+   *  switched by a pinned tab. Ignored at lg, where both columns fit. */
+  const [phonePane, setPhonePane] = useState<"play" | "plays">("play");
   const [endOfPeriodPrompt, setEndOfPeriodPrompt] = useState<null | { kind: "quarter" | "halftime" | "endgame"; targetQuarter: number }>(null);
   const lastEndPromptKey = useRef<string | null>(null);
   const [scoreCorrectTeam, setScoreCorrectTeam] = useState<TimeoutTeam | null>(null);
@@ -2199,18 +2203,38 @@ export default function GameScreen() {
         {quickStatsStrip("hidden lg:grid")}
       </div>
 
+      {/* Phone pane switcher. Pinned rather than scrolled: getting back to the
+          buttons after checking the log has to be one tap, mid-drive. */}
+      <div className="lg:hidden shrink-0 px-3 pb-2 flex gap-1.5">
+        {([
+          { id: "play" as const, label: "Play" },
+          { id: "plays" as const, label: `Plays (${plays.length})` },
+        ]).map(pane => (
+          <button
+            key={pane.id}
+            onClick={() => setPhonePane(pane.id)}
+            className={`flex-1 py-2 rounded-lg text-[11px] font-display font-black uppercase tracking-widest transition-colors ${
+              phonePane === pane.id
+                ? "bg-dragon-primary/20 text-dragon-primary border border-dragon-primary/30"
+                : "bg-surface-hover text-surface-muted border border-transparent"
+            }`}
+          >
+            {pane.label}
+          </button>
+        ))}
+      </div>
+
       {/* Below the pinned block: play selection and the drive summary. On a
           tablet in landscape they sit side by side and scroll independently;
           on narrower screens they stack in one scroller as before. */}
       <div className="flex-1 min-h-0 px-3 lg:px-5 pb-4 flex flex-col gap-3 overflow-y-auto
                       lg:flex-row lg:gap-4 lg:overflow-hidden">
 
-        {/* Phone copy of the quick stats: on screen at first paint, gone after
-            one flick, instead of permanently costing the play area. */}
-        {quickStatsStrip("grid lg:hidden shrink-0")}
-
-        {/* Left column: play selection. */}
-        <div className="lg:flex-1 min-h-0 lg:overflow-y-auto space-y-3">
+        {/* Left column: play selection. Hidden on the phone's Plays pane; the
+            lg:block wins the cascade back at tablet width, where both show. */}
+        <div className={`lg:flex-1 min-h-0 lg:overflow-y-auto space-y-3 lg:block ${
+          phonePane === "play" ? "" : "hidden"
+        }`}>
 
         {/* Quick Action Grid */}
         <div className="card p-3">
@@ -2231,10 +2255,24 @@ export default function GameScreen() {
 
         {/* Right column: drive summary. Scrolls on its own, so a long play
             list never pushes the play buttons off screen. */}
-        <div className="lg:w-[38%] lg:shrink-0 min-h-0 lg:overflow-y-auto space-y-3">
+        <div className={`lg:w-[38%] lg:shrink-0 min-h-0 lg:overflow-y-auto space-y-3 lg:block ${
+          phonePane === "plays" ? "" : "hidden"
+        }`}>
 
-        {/* Every play, newest first — capped and scrollable on phones, fills the
-            column on tablets where it is already its own scroller. */}
+        {/* Phone copy of the quick stats. It rides with the Plays pane rather
+            than above both, so the Play pane opens straight onto buttons. */}
+        {quickStatsStrip("grid lg:hidden shrink-0")}
+
+        {/* Phone only: without this the Plays pane is blank before the first
+            snap, which reads as broken rather than empty. */}
+        {plays.length === 0 && (
+          <div className="lg:hidden text-xs text-surface-muted italic text-center py-6">
+            No plays recorded yet.
+          </div>
+        )}
+
+        {/* Every play, newest first — the page scroller owns it on phones, and
+            on tablets it fills a column that is already its own scroller. */}
         {plays.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
