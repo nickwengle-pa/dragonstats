@@ -60,6 +60,15 @@ function ourLines<T extends { playerName: string }>(
 
 const QUARTER_COLS = ["1", "2", "3", "4"];
 
+/** Same O/D/K accents the play log and PostGameReview use — blue-500,
+ *  red-500 and purple-500 are the exact hex values in their UNIT_COLOR map.
+ *  Written as literal classes because Tailwind can't see interpolated ones. */
+const UNIT_GROUPS = {
+  offense: { label: "Offense", text: "text-blue-500", border: "border-blue-500" },
+  defense: { label: "Defense", text: "text-red-500", border: "border-red-500" },
+  special: { label: "Special Teams", text: "text-purple-500", border: "border-purple-500" },
+} as const;
+
 /** One side of the box-score header: crest, score, name. */
 function TeamSide({
   logoUrl,
@@ -246,13 +255,31 @@ export default function BoxScoreScreen() {
     </tr>
   );
 
+  // Sub-headings stay neutral so the unit heading above them carries the
+  // colour — dragon-primary here would collide with the red of Defense.
   const section = (title: string, headers: string[], rows: Array<Array<string | number>>) =>
     rows.length > 0 && (
-      <div key={title} className="mt-3">
-        <div className="text-[10px] font-black uppercase tracking-wider text-dragon-primary print:text-black mb-1">{title}</div>
+      <div key={title} className="mt-2">
+        <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 print:text-neutral-700 mb-1">{title}</div>
         <StatTable headers={headers} rows={rows} />
       </div>
     );
+
+  const unitGroup = (unit: keyof typeof UNIT_GROUPS, sections: React.ReactNode[]) => {
+    const filled = sections.filter(Boolean);
+    if (filled.length === 0) return null;
+    const { label, text, border } = UNIT_GROUPS[unit];
+    return (
+      <div className="mt-4">
+        <div className={`border-t-2 ${border} print:border-black pt-1.5 mb-1`}>
+          <span className={`text-[11px] font-display font-black uppercase tracking-[0.15em] ${text} print:text-black`}>
+            {label}
+          </span>
+        </div>
+        {filled}
+      </div>
+    );
+  };
 
   return (
     <div className="screen safe-top safe-bottom print:bg-white print:text-black">
@@ -379,70 +406,81 @@ export default function BoxScoreScreen() {
               </tbody>
             </table>
 
-            {/* Individual stats */}
-            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 print:text-neutral-600 mt-3">
+            {/* Individual stats, grouped by unit. Colour alone won't separate
+                these on a printed sheet, so each unit gets its own rule and
+                heading and the groups stay legible in black and white. */}
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 print:text-neutral-600 mt-4">
               Individual — {program?.name}
             </div>
-            {section(
-              "Passing",
-              ["Player", "C/ATT", "YDS", "TD", "INT"],
-              passing.map(([id, s]) => [
-                playerLabel(id, s.playerName, roster),
-                `${s.completions}/${s.attempts}`,
-                fmt(s.yards),
-                s.touchdowns,
-                s.interceptions,
-              ]),
-            )}
-            {section(
-              "Rushing",
-              ["Player", "CAR", "YDS", "AVG", "TD", "LNG"],
-              rushing.map(([id, s]) => [
-                playerLabel(id, s.playerName, roster),
-                s.carries,
-                // Negative rushing totals read as "(7)" on a box score sheet.
-                s.yards < 0 ? `(${fmt(Math.abs(s.yards))})` : fmt(s.yards),
-                s.carries > 0 ? (s.yards / s.carries).toFixed(1) : "0.0",
-                s.touchdowns,
-                s.longRush ?? 0,
-              ]),
-            )}
-            {section(
-              "Receiving",
-              ["Player", "REC", "YDS", "AVG", "TD", "LNG"],
-              receiving.map(([id, s]) => [
-                playerLabel(id, s.playerName, roster),
-                s.receptions,
-                fmt(s.yards),
-                s.receptions > 0 ? (s.yards / s.receptions).toFixed(1) : "0.0",
-                s.touchdowns,
-                s.longReception ?? 0,
-              ]),
-            )}
-            {section(
-              "Defense",
-              ["Player", "TKL", "TFL", "SCK", "INT", "PBU", "FF", "FR"],
-              defense.map(([id, s]) => [
-                playerLabel(id, s.playerName, roster),
-                fmt(s.totalTackles),
-                fmt(s.tacklesForLoss),
-                fmt(s.sacks),
-                s.interceptions,
-                s.passesDefended,
-                s.forcedFumbles,
-                s.fumbleRecoveries,
-              ]),
-            )}
-            {section(
-              "Kicking",
-              ["Player", "XP", "FG", "PTS"],
-              kicking.map(([id, s]) => [
-                playerLabel(id, s.playerName, roster),
-                `${s.extraPointMade}/${s.extraPointAttempts}`,
-                `${s.fieldGoalMade}/${s.fieldGoalAttempts}`,
-                s.totalPoints,
-              ]),
-            )}
+
+            {unitGroup("offense", [
+              section(
+                "Passing",
+                ["Player", "C/ATT", "YDS", "TD", "INT"],
+                passing.map(([id, s]) => [
+                  playerLabel(id, s.playerName, roster),
+                  `${s.completions}/${s.attempts}`,
+                  fmt(s.yards),
+                  s.touchdowns,
+                  s.interceptions,
+                ]),
+              ),
+              section(
+                "Rushing",
+                ["Player", "CAR", "YDS", "AVG", "TD", "LNG"],
+                rushing.map(([id, s]) => [
+                  playerLabel(id, s.playerName, roster),
+                  s.carries,
+                  // Negative rushing totals read as "(7)" on a box score sheet.
+                  s.yards < 0 ? `(${fmt(Math.abs(s.yards))})` : fmt(s.yards),
+                  s.carries > 0 ? (s.yards / s.carries).toFixed(1) : "0.0",
+                  s.touchdowns,
+                  s.longRush ?? 0,
+                ]),
+              ),
+              section(
+                "Receiving",
+                ["Player", "REC", "YDS", "AVG", "TD", "LNG"],
+                receiving.map(([id, s]) => [
+                  playerLabel(id, s.playerName, roster),
+                  s.receptions,
+                  fmt(s.yards),
+                  s.receptions > 0 ? (s.yards / s.receptions).toFixed(1) : "0.0",
+                  s.touchdowns,
+                  s.longReception ?? 0,
+                ]),
+              ),
+            ])}
+
+            {unitGroup("defense", [
+              section(
+                "Tackles & Takeaways",
+                ["Player", "TKL", "TFL", "SCK", "INT", "PBU", "FF", "FR"],
+                defense.map(([id, s]) => [
+                  playerLabel(id, s.playerName, roster),
+                  fmt(s.totalTackles),
+                  fmt(s.tacklesForLoss),
+                  fmt(s.sacks),
+                  s.interceptions,
+                  s.passesDefended,
+                  s.forcedFumbles,
+                  s.fumbleRecoveries,
+                ]),
+              ),
+            ])}
+
+            {unitGroup("special", [
+              section(
+                "Kicking",
+                ["Player", "XP", "FG", "PTS"],
+                kicking.map(([id, s]) => [
+                  playerLabel(id, s.playerName, roster),
+                  `${s.extraPointMade}/${s.extraPointAttempts}`,
+                  `${s.fieldGoalMade}/${s.fieldGoalAttempts}`,
+                  s.totalPoints,
+                ]),
+              ),
+            ])}
           </div>
         )}
 
