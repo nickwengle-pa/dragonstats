@@ -1114,9 +1114,25 @@ export default function PlayEntryModal({
   };
 
   /* ── Quick-add opponent player by jersey number ── */
+  /**
+   * The id has to be `opp_{position}_{jersey}`, and it has to be stable.
+   *
+   * That format is a contract, not a detail: LiveStatsPanel decides which
+   * SIDE a stat belongs to from the id alone — `startsWith("opp_")` or a hit
+   * in the opponent name map, everything else is ours. A `quick_6_...` id
+   * satisfied neither, so a quick-added opponent's tackles were counted on our
+   * defense, under a label that was the raw id because no name lookup matched.
+   *
+   * The timestamp made it worse: re-adding #6 minted a different id, so one
+   * player's stats split across several lines. `opp_UNK_{jersey}` is exactly
+   * the key GameScreen already derives for a position-less opponent, so the
+   * optimistic tag and the saved row resolve to the same place — and the tag
+   * lands immediately, with no wait on a network call that press-box wifi may
+   * not complete.
+   */
   const handleQuickAddOpponent = (jersey: number) => {
     const newPlayer: OpponentPlayerRef = {
-      id: `quick_${jersey}_${Date.now()}`,
+      id: `opp_UNK_${jersey}`,
       name: `#${jersey}`,
       jersey_number: jersey,
       position: null,

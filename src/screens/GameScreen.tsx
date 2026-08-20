@@ -69,6 +69,7 @@ import {
   isRosterTag,
   makePendingId,
   makeTeamTag,
+  normalizeOppTagId,
   pendingDisplayName,
   pendingJerseyFromId,
   findPlayTypeDef,
@@ -431,8 +432,8 @@ export default function GameScreen() {
           })),
           // Opponent tags are persisted in play_data (no FK row possible).
           ...((Array.isArray(pd.opp_tagged) ? pd.opp_tagged : []) as any[]).map((t: any) => ({
-            id: String(t.id ?? "opp_team"),
-            player_id: String(t.id ?? "opp_team"),
+            id: normalizeOppTagId(String(t.id ?? "opp_team"), t.jersey_number ?? null),
+            player_id: normalizeOppTagId(String(t.id ?? "opp_team"), t.jersey_number ?? null),
             jersey_number: t.jersey_number ?? null,
             name: String(t.name ?? "TEAM"),
             role: String(t.role ?? ""),

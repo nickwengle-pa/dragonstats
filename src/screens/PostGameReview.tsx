@@ -25,6 +25,7 @@ import {
   isRosterTag,
   makePendingId,
   makeTeamTag,
+  normalizeOppTagId,
   pendingDisplayName,
   pendingJerseyFromId,
   yardLabel,
@@ -115,8 +116,8 @@ function rowToPlayRecord(p: PlayWithPlayers): PlayRecord {
     })),
     // Opponent tags live in play_data (they have no play_players FK row).
     ...((Array.isArray(pd.opp_tagged) ? pd.opp_tagged : []) as any[]).map((t: any) => ({
-      id: String(t.id ?? "opp_team"),
-      player_id: String(t.id ?? "opp_team"),
+      id: normalizeOppTagId(String(t.id ?? "opp_team"), t.jersey_number ?? null),
+      player_id: normalizeOppTagId(String(t.id ?? "opp_team"), t.jersey_number ?? null),
       jersey_number: t.jersey_number ?? null,
       name: String(t.name ?? "TEAM"),
       role: String(t.role ?? ""),

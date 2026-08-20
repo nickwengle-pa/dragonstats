@@ -98,6 +98,23 @@ export function isRosterTag(
    including splitting one TEAM tackle into two tacklers. Left alone it stays
    TEAM forever, which is a legitimate end state. */
 
+/**
+ * Repair a legacy quick-added opponent id.
+ *
+ * Quick-add used to mint `quick_{jersey}_{timestamp}`, which broke the
+ * `opp_{position}_{jersey}` contract LiveStatsPanel uses to decide which side
+ * a stat belongs to — those tags were counted as OURS and labelled with the
+ * raw id. Applied on read so games already recorded come out right, with no
+ * migration to run and nothing to get wrong offline. Plays rewritten after
+ * this are stored in the correct form anyway.
+ */
+export function normalizeOppTagId(id: string, jersey: number | null): string {
+  if (!id.startsWith("quick_")) return id;
+  const fromId = Number(id.split("_")[1]);
+  const n = jersey ?? (Number.isFinite(fromId) ? fromId : null);
+  return `opp_UNK_${n ?? 0}`;
+}
+
 export const TEAM_PLAYER_ID = "our_team";
 
 export function isTeamId(id: string | null | undefined): boolean {
