@@ -24,6 +24,7 @@ import {
   findPlayTypeDef,
   isRosterTag,
   makePendingId,
+  makeTeamTag,
   pendingDisplayName,
   pendingJerseyFromId,
   yardLabel,
@@ -136,6 +137,12 @@ function rowToPlayRecord(p: PlayWithPlayers): PlayRecord {
         isPending: true,
       };
     }),
+    // TEAM placeholders from live entry — the credit is owed to our side but
+    // the jersey was never identified. Film review is where these get resolved.
+    ...((Array.isArray(pd.team_tagged) ? pd.team_tagged : []) as any[]).map((t: any) => ({
+      ...makeTeamTag(String(t.role ?? "")),
+      credit: t.credit ?? undefined,
+    })),
   ];
   return {
     id: p.id,
@@ -826,6 +833,15 @@ export default function PostGameReview() {
             .map((t) => ({
               id: t.player_id,
               jersey_number: t.jersey_number,
+              role: t.role,
+              credit: t.credit ?? null,
+            })),
+          // Same rewrite-don't-inherit rule: naming the real tackler in the
+          // editor has to actually clear the TEAM placeholder, which is the
+          // whole point of tagging TEAM live.
+          team_tagged: result.tagged
+            .filter((t) => t.isTeam)
+            .map((t) => ({
               role: t.role,
               credit: t.credit ?? null,
             })),

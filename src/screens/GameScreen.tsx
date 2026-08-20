@@ -68,6 +68,7 @@ import {
   type TaggedPlayer,
   isRosterTag,
   makePendingId,
+  makeTeamTag,
   pendingDisplayName,
   pendingJerseyFromId,
   findPlayTypeDef,
@@ -123,6 +124,42 @@ function formatTeamYardLabel(
   const offenseTag = possession === "us" ? programAbbr : opponentAbbr;
   const defenseTag = possession === "us" ? opponentAbbr : programAbbr;
   return ballOn <= 50 ? `${offenseTag} ${ballOn}` : `${defenseTag} ${100 - ballOn}`;
+}
+
+/**
+ * The manual field flip, remembered per game.
+ *
+ * It was plain state reset to false on every load, so a refresh threw it away
+ * and the field snapped back to the derived direction. For the second half
+ * that direction is a guess: the kicking team picks its goal at the half and
+ * we don't ask, so getOurDriveDirectionForQuarter just continues Q1's
+ * alternation. Keeping the operator's correction is what makes the guess
+ * survivable — otherwise every reload re-imposes the wrong end.
+ *
+ * localStorage rather than the game row, on purpose. It is a per-viewer
+ * choice (two people charting from opposite sidelines want opposite views),
+ * and it has to hold on press-box wifi where a write may never land.
+ */
+const fieldFlipKey = (gameId: string) => `dragonstats:fieldFlip:${gameId}`;
+
+function readFieldFlip(gameId: string | undefined): boolean {
+  if (!gameId) return false;
+  try {
+    return localStorage.getItem(fieldFlipKey(gameId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFieldFlip(gameId: string | undefined, flipped: boolean): void {
+  if (!gameId) return;
+  try {
+    if (flipped) localStorage.setItem(fieldFlipKey(gameId), "1");
+    else localStorage.removeItem(fieldFlipKey(gameId));
+  } catch {
+    /* Private mode or quota. The toggle still works for this session; only
+       the memory of it is lost, which is where we were before. */
+  }
 }
 
 function getFieldSideForSpot(ballOn: number, possession: "us" | "them"): FieldSide {
@@ -336,7 +373,7 @@ export default function GameScreen() {
     if (!season || !gameId) return;
     setLoading(true);
     quarterSnapshots.current = {};
-    setDirectionFlipped(false);
+    setDirectionFlipped(readFieldFlip(gameId));
 
     const [gameRes, rosterRes, existingPlays] = await Promise.all([
       supabase.from("games").select("*, opponent:opponents(*)").eq("id", gameId).single(),
@@ -415,6 +452,12 @@ export default function GameScreen() {
               isPending: true,
             };
           }),
+          // TEAM placeholders — our side, jersey never identified. Same
+          // storage reason again: no players row, so no play_players FK.
+          ...((Array.isArray(pd.team_tagged) ? pd.team_tagged : []) as any[]).map((t: any) => ({
+            ...makeTeamTag(String(t.role ?? "")),
+            credit: t.credit ?? undefined,
+          })),
         ],
         ballOn: p.yard_line,
         down: p.down,
@@ -704,7 +747,7 @@ export default function GameScreen() {
     return map;
   }, [oppPlayers]);
   const quarterSnapshots = useRef<Partial<Record<number, { clock: number; situation: LiveSituationSnapshot }>>>({});
-  const [directionFlipped, setDirectionFlipped] = useState(false);
+  const [directionFlipped, setDirectionFlipped] = useState(() => readFieldFlip(gameId));
   const ballDisplayPosition = useMemo(
     () => {
       const displayPosition = toDisplayFieldPosition(ballOn, possession, quarter, pregame);
@@ -749,7 +792,7 @@ export default function GameScreen() {
 
   useEffect(() => {
     quarterSnapshots.current = {};
-    setDirectionFlipped(false);
+    setDirectionFlipped(readFieldFlip(gameId));
     lastEndPromptKey.current = null;
   }, [gameId]);
 
@@ -949,6 +992,15 @@ export default function GameScreen() {
           .map((tag) => ({
             id: tag.player_id,
             jersey_number: tag.jersey_number,
+            role: tag.role,
+            credit: tag.credit ?? null,
+          })),
+        // "Our team did this, I couldn't see who." Only the role and the
+        // credit are worth storing — the rest of a TEAM tag is constant, so
+        // makeTeamTag rebuilds it on load.
+        team_tagged: play.tagged
+          .filter((tag) => tag.isTeam)
+          .map((tag) => ({
             role: tag.role,
             credit: tag.credit ?? null,
           })),
@@ -2179,7 +2231,11 @@ export default function GameScreen() {
           progLogoUrl={progLogoUrl}
           oppLogoUrl={oppLogoUrl}
           oppColor={oppColor}
-          onFlipDirection={() => setDirectionFlipped((current) => !current)}
+          onFlipDirection={() => setDirectionFlipped((current) => {
+            const next = !current;
+            writeFieldFlip(gameId, next);
+            return next;
+          })}
         />
 
         {/* Quick stats. Tablets only: on a phone these game totals cost a row

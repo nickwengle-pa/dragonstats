@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { X, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
+import Keypad from "./Keypad";
 import {
   type BlockedKickType,
   type PlayTypeDef,
@@ -16,6 +17,7 @@ import {
   DEFENSIVE_FORMATIONS,
   getPenaltyDefaultSide,
   makePendingId,
+  makeTeamTag,
   pendingDisplayName,
   yardLabel,
   buildDescription,
@@ -236,6 +238,7 @@ function PlayerGrid({
    *  there, so the confirm bar has to say "Remove" rather than "Confirm". */
   addedIds?: Set<string>;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const filtered = useMemo(() => {
     if (!search) return roster;
     const q = search.toLowerCase();
@@ -309,8 +312,12 @@ function PlayerGrid({
         {label}
       </div>
       <input
+        ref={inputRef}
         type="text"
-        inputMode="numeric"
+        /* "none", not "numeric": the pad below is the number entry, and an OS
+           keyboard here would cover the grid it filters. Hardware keyboards
+           are unaffected, so typing and Enter still work on a laptop. */
+        inputMode="none"
         placeholder="# or name..."
         value={search}
         onChange={e => onSearch(e.target.value)}
@@ -381,6 +388,7 @@ function PlayerGrid({
           </button>
         ))}
       </div>
+      <Keypad value={search} onChange={onSearch} inputRef={inputRef} />
     </div>
   );
 }
@@ -402,6 +410,7 @@ function OpponentPlayerGrid({
    *  there, so the confirm bar has to say "Remove". */
   addedIds?: Set<string>;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const filtered = useMemo(() => {
     if (!search) return players;
     const q = search.toLowerCase();
@@ -465,8 +474,9 @@ function OpponentPlayerGrid({
         {label}
       </div>
       <input
+        ref={inputRef}
         type="text"
-        inputMode="numeric"
+        inputMode="none"
         placeholder="# or name..."
         value={search}
         onChange={e => onSearch(e.target.value)}
@@ -532,6 +542,7 @@ function OpponentPlayerGrid({
           <Plus className="w-3.5 h-3.5" /> Add #{searchNum} to opponent roster & select
         </button>
       )}
+      <Keypad value={search} onChange={onSearch} inputRef={inputRef} />
     </div>
   );
 }
@@ -679,6 +690,20 @@ export default function PlayEntryModal({
 
   // Defensive credit (tacklers)
   const [tacklers, setTacklers] = useState<TaggedPlayer[]>([]);
+  /**
+   * No tackle happened — ran out of bounds, scored, knelt, or just fell.
+   *
+   * A ball carrier does not imply a tackler, so canHaveTackle can't screen
+   * these out: they're ordinary runs. Without an explicit answer the step has
+   * no way to tell "nobody tackled him" from "I haven't filled this in", which
+   * would either nag on every sideline run or push a TEAM tackle that never
+   * happened into the tackle counts.
+   *
+   * Deliberately not persisted. Blank already means no tackle, and TEAM means
+   * a tackle nobody identified — between them film review can read the play.
+   * This only says the blank was on purpose.
+   */
+  const [noTackle, setNoTackle] = useState(false);
   const [tacklerSearch, setTacklerSearch] = useState("");
 
   // Kickoff / Punt specific state (includes onside + fair catch variants)
@@ -911,6 +936,102 @@ export default function PlayEntryModal({
 
   const goNext = () => { if (stepIdx < steps.length - 1 && canGoNext()) setStepIdx(s => s + 1); };
   const goBack = () => { if (stepIdx > 0) setStepIdx(s => s - 1); };
+
+  /**
+   * Blank roles that will actually go unrecorded.
+   *
+   * Opponent-side roles are deliberately excluded. handleSubmit auto-fills
+   * those with the TEAM placeholder, so skipping the other side's passer and
+   * receiver is the intended fast path rather than a mistake — warning about
+   * it would put a second Next tap on most defensive snaps to report something
+   * the app already handles correctly. Our own skipped roles get no fallback,
+   * so those are the only ones worth stopping for.
+   */
+  const untaggedRoles = roles.filter(r =>
+    !tagged.some(t => t.role === r)
+    && !roleUsesOpponentRoster(r, isTheirBall, {
+      playTypeId: playType.id,
+      fumbleRecoveredByUs,
+      onsideRecoveredByKicker,
+    }),
+  );
+  /** Set when Next is held back to ask about blank roles; null the rest of the time. */
+  const [skipWarning, setSkipWarning] = useState<string[] | null>(null);
+
+  /**
+   * The Next BUTTON walks roles before it walks steps.
+   *
+   * goNext moves stepIdx, so on the players step it left the step outright and
+   * every role after the current one was never asked for — a pass recorded
+   * with a passer and no receiver, the receiver picker never once displayed.
+   * Picking a player already advances role-by-role (see handlePlayerSelect);
+   * Next now agrees with it. This also makes the carried-pick hint literal:
+   * "Next to keep" keeps this role and moves to the next one.
+   *
+   * Leaving the step with a role still blank asks first. It does not block —
+   * canGoNext stays permissive on purpose (empty opponent roster, unforced
+   * fumble, unidentified returner all have to go through) — but a skip should
+   * be a decision rather than the default outcome of one extra tap.
+   */
+  /**
+   * The tackler step needs the same guard, and it lives in its own state.
+   * Only when the tackle is ours: an untagged opponent tackler is somebody
+   * else's player and there is nothing useful to record against him.
+   */
+  const defenseNeedsTackler =
+    currentStep === "defense" && tacklersAreOurs && tacklers.length === 0 && !noTackle;
+
+  const goNextFromButton = () => {
+    if (currentStep === "players") {
+      if (currentRoleIdx < roles.length - 1) {
+        setCurrentRoleIdx(i => i + 1);
+        return;
+      }
+      if (untaggedRoles.length > 0 && !skipWarning) {
+        setSkipWarning(untaggedRoles);
+        return;
+      }
+    }
+    if (defenseNeedsTackler && !skipWarning) {
+      setSkipWarning(["tackler"]);
+      return;
+    }
+    setSkipWarning(null);
+    goNext();
+  };
+
+  /**
+   * Send the outstanding roles to TEAM and move on.
+   *
+   * "Our team did this, I could not see who" is a different fact from a blank
+   * role, and only one of them survives to film review as something to fix. A
+   * TEAM tackle is still one tackle, so it carries credit 1 exactly as a named
+   * solo tackler would; re-picking the role in the editor replaces it.
+   */
+  const assignSkippedToTeam = () => {
+    if (!skipWarning) return;
+    if (currentStep === "defense") {
+      setTacklers([{ ...makeTeamTag("tackler"), credit: 1 }]);
+    } else {
+      setTagged(prev => [
+        ...prev.filter(t => !skipWarning.includes(t.role)),
+        ...skipWarning.map(r => makeTeamTag(r)),
+      ]);
+    }
+    setSkipWarning(null);
+    goNext();
+  };
+
+  /** Mirror of the above, so Back can reach the passer again without leaving
+   *  the step and losing the receiver you just tagged. */
+  const goBackFromButton = () => {
+    setSkipWarning(null);
+    if (currentStep === "players" && currentRoleIdx > 0) {
+      setCurrentRoleIdx(i => i - 1);
+      return;
+    }
+    goBack();
+  };
 
   /* ── Player selection — when opponent has ball, offensive roles use opponent roster ── */
   const handlePlayerSelect = (p: RosterPlayer) => {
@@ -1541,12 +1662,15 @@ export default function PlayEntryModal({
                             ? unconfirmed
                               ? "bg-amber-500/15 text-amber-400 border border-amber-500/40"
                               : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            : "bg-surface-bg text-slate-500"
+                            // Grey-on-dark read as "just another chip" at a
+                            // glance. Dashed says unfilled the way the rest of
+                            // the modal uses dashed for "not a real pick yet".
+                            : "bg-surface-bg text-slate-500 border border-dashed border-slate-600"
                       }`}
                       style={currentRoleIdx === i ? { backgroundColor: activeTeamColor } : undefined}>
                       {/* Fall back to the name when there's no jersey, rather
                           than rendering "#null". */}
-                      {role}{tp ? `: ${tp.jersey_number != null ? `#${tp.jersey_number}` : tp.name}${tp.isPending ? "?" : ""}` : ""}
+                      {role}{tp ? `: ${tp.jersey_number != null ? `#${tp.jersey_number}` : tp.name}${tp.isPending ? "?" : ""}` : ": —"}
                     </button>
                   );
                 })}
@@ -2379,14 +2503,39 @@ export default function PlayEntryModal({
                 Select up to 3 tacklers from {tacklersAreOurs ? progName : oppName}.
                 {" "}1 player = solo (1.0), 2+ = assist (0.5 each).
               </div>
+              {/* Three outcomes, all one tap: name them, owe it to TEAM, or say
+                  no tackle happened. Only the last two are here — naming is the
+                  grid below. */}
+              {tacklersAreOurs && tacklers.length === 0 && (
+                <div className="flex gap-2 mb-2">
+                  <button
+                    onClick={() => { setTacklers([{ ...makeTeamTag("tackler"), credit: 1 }]); setSkipWarning(null); }}
+                    className="flex-1 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-400 text-xs font-bold uppercase tracking-wide"
+                  >
+                    Tackle by TEAM
+                  </button>
+                  <button
+                    onClick={() => { setNoTackle(true); setSkipWarning(null); goNext(); }}
+                    className="flex-1 py-2 rounded-xl border border-surface-border bg-surface-bg text-slate-400 text-xs font-bold uppercase tracking-wide"
+                  >
+                    No tackle
+                  </button>
+                </div>
+              )}
               {tacklers.length > 0 && (
                 <div className="flex gap-2 flex-wrap mb-2">
                   {tacklers.map(t => (
                     <span key={t.id} className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${
-                      t.isOpponent ? "bg-orange-900/30 text-orange-400" : "bg-red-900/30 text-red-400"
+                      t.isTeam
+                        ? "bg-amber-500/15 text-amber-400 border border-amber-500/40"
+                        : t.isOpponent ? "bg-orange-900/30 text-orange-400" : "bg-red-900/30 text-red-400"
                     }`}>
                       {t.isOpponent && <span className="text-[9px]">{oppTag}</span>}
-                      #{t.jersey_number} {t.name.split(" ")[1]}
+                      {/* A TEAM tag has no jersey and no surname — the generic
+                          chip would render "#null undefined". */}
+                      {t.isTeam
+                        ? "TEAM"
+                        : `#${t.jersey_number ?? "?"} ${t.name.split(" ")[1] ?? t.name}`}
                       <span className="text-[10px] opacity-60">({t.credit})</span>
                       <button onClick={() => setTacklers(prev => {
                         const next = prev.filter(x => x.id !== t.id);
@@ -2605,13 +2754,52 @@ export default function PlayEntryModal({
         </div>
 
         {/* Footer navigation */}
-        <div className="p-4 pt-2 border-t border-surface-border shrink-0 flex gap-2">
+        <div className="p-4 pt-2 border-t border-surface-border shrink-0">
+          {/* Amber, because this is the same "not a confirmed pick" idea the
+              rest of the modal uses — the play is about to be recorded with a
+              role nobody filled in. One more tap on Next goes through. */}
+          {skipWarning && (
+            <div className="mb-2 px-3 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-[11px] text-amber-400/90 flex items-center justify-between gap-2">
+              <span>
+                No <span className="font-bold uppercase">{skipWarning.join(", ")}</span> tagged.
+                {currentStep === "defense"
+                  ? " TEAM if someone made it and you couldn't see who; None if he ran out of bounds or scored."
+                  : " TEAM to credit the team and fix it in film review, or Next again to record it blank."}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={assignSkippedToTeam}
+                  className="px-2.5 py-1 rounded-lg border border-amber-400/60 bg-amber-500/15 text-amber-300 font-black text-[11px] uppercase tracking-wide"
+                >
+                  TEAM
+                </button>
+                {currentStep === "defense" && (
+                  <button
+                    onClick={() => { setNoTackle(true); setSkipWarning(null); goNext(); }}
+                    className="px-2.5 py-1 rounded-lg border border-surface-border bg-surface-bg text-slate-400 font-bold text-[11px] uppercase tracking-wide"
+                  >
+                    None
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setSkipWarning(null);
+                    if (currentStep !== "defense") setCurrentRoleIdx(roles.indexOf(skipWarning[0]));
+                  }}
+                  className="text-amber-400 font-bold underline"
+                >
+                  Fill it
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2">
           {currentStep !== "review" ? (
             <>
-              <button onClick={goBack} disabled={stepIdx === 0} className="btn-ghost flex-1 py-2.5 text-sm font-bold disabled:opacity-30">
+              <button onClick={goBackFromButton} disabled={stepIdx === 0 && currentRoleIdx === 0} className="btn-ghost flex-1 py-2.5 text-sm font-bold disabled:opacity-30">
                 <ChevronLeft className="w-4 h-4 inline mr-1" /> Back
               </button>
-              <button onClick={goNext} disabled={!canGoNext()} className="btn-primary flex-1 py-2.5 text-sm font-bold disabled:opacity-50">
+              <button onClick={goNextFromButton} disabled={!canGoNext()} className="btn-primary flex-1 py-2.5 text-sm font-bold disabled:opacity-50">
                 Next <ChevronRight className="w-4 h-4 inline ml-1" />
               </button>
             </>
@@ -2620,6 +2808,7 @@ export default function PlayEntryModal({
               Record Play
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>

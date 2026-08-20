@@ -34,6 +34,10 @@ export interface TaggedPlayer {
   /** Our side, but no roster row — an unrostered jersey seen during live entry.
    *  Stats accrue under the number until a coach resolves it from Roster. */
   isPending?: boolean;
+  /** Our side, deliberately unattributed — "somebody on our team did this, I
+   *  couldn't see who". A live-entry placeholder resolved during film review,
+   *  not a claim about a player. See TEAM_PLAYER_ID below. */
+  isTeam?: boolean;
 }
 
 /* ─────────────────────────────────────────────
@@ -74,8 +78,43 @@ export function pendingDisplayName(jersey: number | null): string {
  * Every play_players write must filter through this — a pending tag reaching
  * that insert would violate the foreign key and fail the whole save.
  */
-export function isRosterTag(tag: Pick<TaggedPlayer, "isOpponent" | "isPending">): boolean {
-  return !tag.isOpponent && !tag.isPending;
+export function isRosterTag(
+  tag: Pick<TaggedPlayer, "isOpponent" | "isPending" | "isTeam">,
+): boolean {
+  return !tag.isOpponent && !tag.isPending && !tag.isTeam;
+}
+
+/* ─────────────────────────────────────────────
+   TEAM tags (our side, unidentified)
+   ─────────────────────────────────────────────
+   A play where our team clearly did something — made the tackle, caught the
+   ball — but the jersey wasn't readable in real time. Tagging TEAM records
+   that the credit is owed and unassigned, which a blank role does not: blank
+   is indistinguishable from "forgot to enter it".
+
+   Like pending and opponent tags this has no `players` row, so it stays out of
+   play_players and rides in play_data.team_tagged. Resolution happens in film
+   review, where re-picking the role replaces TEAM with the real player(s) —
+   including splitting one TEAM tackle into two tacklers. Left alone it stays
+   TEAM forever, which is a legitimate end state. */
+
+export const TEAM_PLAYER_ID = "our_team";
+
+export function isTeamId(id: string | null | undefined): boolean {
+  return id === TEAM_PLAYER_ID;
+}
+
+/** The TEAM placeholder for a role. `credit` is left to the caller — a TEAM
+ *  tackle is still one tackle. */
+export function makeTeamTag(role: string): TaggedPlayer {
+  return {
+    id: TEAM_PLAYER_ID,
+    player_id: TEAM_PLAYER_ID,
+    jersey_number: null,
+    name: "TEAM",
+    role,
+    isTeam: true,
+  };
 }
 
 export type PenaltySide = "offense" | "defense";
