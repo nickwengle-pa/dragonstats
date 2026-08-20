@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PLAY_TYPES, type PlayTypeDef } from "./types";
 
-type PhaseFilter = "all" | "offense" | "defense" | "special";
+type PhaseFilter = "all" | "offense" | "special";
 
 interface Props {
   onSelect: (pt: PlayTypeDef) => void;
@@ -98,25 +98,23 @@ const CATEGORY_LABELS: Record<string, string> = {
 /**
  * Which play groups each tab shows.
  *
- * OFF and DEF cover the same scrimmage plays on purpose — a snap produces the
+ * There is no DEF tab. Every play recorded here is a snap, a kick or a
+ * penalty, and a defense is on the field for all of them — a snap produces the
  * same set of outcomes whichever sideline you're on. An interception is a pass
  * play by OUR offense, and a run by THEIR offense is still a run you record.
- * The two tabs differ in ORDER, not contents: the category sort below leads
- * with turnovers and kicks when the opponent has the ball.
  *
- * Previously OFF omitted "turnover" (no way to record an INT while we had the
- * ball) and DEF omitted "run"/"pass" (no way to record their snaps) — both
- * forced a detour through the All tab mid-drive.
+ * OFF and DEF had already converged on identical contents AND identical order
+ * (the sort below keys off possession, not the selected tab), so DEF was a tab
+ * that changed nothing on screen. The one thing it still communicated — whose
+ * ball it is — is the possession band directly above it.
+ *
+ * So OFF is the scrimmage tab: it means "someone is snapping it", not "we are".
  */
 const SCRIMMAGE_CATEGORIES = ["run", "pass", "turnover", "other"];
 
 const PHASE_CATEGORIES: Record<PhaseFilter, Set<string>> = {
   all: new Set(["run", "pass", "scoring", "kicking", "turnover", "other"]),
-  // Recording the opponent's runs and passes IS the defensive operator's job,
-  // and an interception is a pass play by OUR offense — so both tabs carry the
-  // full scrimmage set and differ only in the order below.
   offense: new Set(SCRIMMAGE_CATEGORIES),
-  defense: new Set(SCRIMMAGE_CATEGORIES),
   special: new Set(["kicking", "scoring"]),
 };
 
@@ -133,7 +131,6 @@ const FAST_PATH_COLS: Record<number, string> = {
 const PHASE_TABS: Array<{ value: PhaseFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "offense", label: "OFF" },
-  { value: "defense", label: "DEF" },
   { value: "special", label: "ST" },
 ];
 
@@ -175,10 +172,10 @@ export default function QuickActions({
     .filter((category) => allowedCategories.has(category))
     .sort((a, b) => {
       if (possession === "them") {
-        // Their snaps are still mostly runs and passes, so those lead. This
-        // used to open with kicking/turnover, which made sense when the DEF
-        // tab ONLY held turnovers — now that run/pass are here, leading with
-        // the rare stuff would bury the common one.
+        // Their snaps are still mostly runs and passes, so those lead. What
+        // this actually reorders is the All tab: it lifts turnover above
+        // kicking and scoring, which is what you reach for while they have the
+        // ball. The OFF tab's scrimmage set sorts the same either way.
         const defensePriority: Record<string, number> = {
           run: 0,
           pass: 1,

@@ -238,10 +238,18 @@ export default function Scoreboard({
           </button>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <div className="flex-1 min-w-[116px] rounded-xl border border-surface-border bg-black/20 px-2.5 py-2">
-            <div className="text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Down</div>
-            <div className="mt-1 grid grid-cols-4 gap-1">
+        {/* Phone: one no-wrap row.
+            The three cards' min-widths (116 + 104 + 176, plus 16 of gaps =
+            412) exceeded the 378 available at 428px, so Ball On wrapped onto a
+            second 66px row — a full row of height bought by 34px of overflow.
+            Below lg the micro-labels come out, the nudges shrink and the mins
+            tighten so all three fit one row (~104 + 96 + 120 + 12 = 332).
+            Every change here is a <phone> lg:<original> pair, so at 1024px and
+            up this renders exactly as it did. */}
+        <div className="mt-2 lg:mt-3 flex flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2">
+          <div className="flex-1 min-w-[104px] lg:min-w-[116px] rounded-xl border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
+            <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Down</div>
+            <div className="mt-0 lg:mt-1 grid grid-cols-4 gap-0.5 lg:gap-1">
               {[1, 2, 3, 4].map((down) => (
                 <button
                   key={down}
@@ -258,12 +266,12 @@ export default function Scoreboard({
             </div>
           </div>
 
-          <div className="flex-1 min-w-[104px] rounded-xl border border-surface-border bg-black/20 px-2.5 py-2">
-            <div className="text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">To Go</div>
-            <div className="mt-1 flex items-center gap-1">
+          <div className="flex-1 min-w-[96px] lg:min-w-[104px] rounded-xl border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
+            <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">To Go</div>
+            <div className="mt-0 lg:mt-1 flex items-center gap-0.5 lg:gap-1">
               <button
                 onClick={() => onAdjustDistance(-1)}
-                className="btn-ghost h-8 w-8 text-sm font-display font-bold cursor-pointer"
+                className="btn-ghost h-8 w-7 lg:w-8 text-sm font-display font-bold cursor-pointer"
                 title="Decrease distance"
               >
                 -
@@ -273,7 +281,7 @@ export default function Scoreboard({
               </div>
               <button
                 onClick={() => onAdjustDistance(1)}
-                className="btn-ghost h-8 w-8 text-sm font-display font-bold cursor-pointer"
+                className="btn-ghost h-8 w-7 lg:w-8 text-sm font-display font-bold cursor-pointer"
                 title="Increase distance"
               >
                 +
@@ -281,40 +289,40 @@ export default function Scoreboard({
             </div>
           </div>
 
-          <div className="flex-[1.2] min-w-[176px] rounded-xl border border-surface-border bg-black/20 px-2.5 py-2">
-            <div className="text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Ball On</div>
-            <div className="mt-1 flex items-center gap-1">
+          <div className="flex-[1.2] min-w-[120px] lg:min-w-[176px] rounded-xl border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
+            <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Ball On</div>
+            <div className="mt-0 lg:mt-1 flex items-center gap-0.5 lg:gap-1">
               <button
                 onClick={() => onAdjustBall(-5)}
-                className="btn-ghost h-8 px-1.5 text-[10px] font-display font-bold text-surface-muted cursor-pointer"
+                className="hidden lg:block btn-ghost h-8 px-1.5 text-[10px] font-display font-bold text-surface-muted cursor-pointer"
                 title="Move ball back 5 yards"
               >
                 -5
               </button>
               <button
                 onClick={() => onAdjustBall(-1)}
-                className="btn-ghost h-8 w-8 text-sm font-display font-bold cursor-pointer"
+                className="btn-ghost h-8 w-7 lg:w-8 text-sm font-display font-bold cursor-pointer"
                 title="Move ball back 1 yard"
               >
                 -
               </button>
               <button
                 onClick={onEditBall}
-                className="flex-1 min-w-[72px] h-8 rounded-lg bg-surface-bg flex items-center justify-center text-[11px] font-display font-extrabold text-emerald-400 tabular-nums px-2 cursor-pointer active:bg-surface-hover"
+                className="flex-1 min-w-[56px] lg:min-w-[72px] h-8 rounded-lg bg-surface-bg flex items-center justify-center text-[11px] font-display font-extrabold text-emerald-400 tabular-nums px-1 lg:px-2 cursor-pointer active:bg-surface-hover"
                 title="Set ball spot"
               >
                 {ballLabel}
               </button>
               <button
                 onClick={() => onAdjustBall(1)}
-                className="btn-ghost h-8 w-8 text-sm font-display font-bold cursor-pointer"
+                className="btn-ghost h-8 w-7 lg:w-8 text-sm font-display font-bold cursor-pointer"
                 title="Move ball forward 1 yard"
               >
                 +
               </button>
               <button
                 onClick={() => onAdjustBall(5)}
-                className="btn-ghost h-8 px-1.5 text-[10px] font-display font-bold text-surface-muted cursor-pointer"
+                className="hidden lg:block btn-ghost h-8 px-1.5 text-[10px] font-display font-bold text-surface-muted cursor-pointer"
                 title="Move ball forward 5 yards"
               >
                 +5

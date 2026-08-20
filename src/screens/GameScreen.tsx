@@ -1046,8 +1046,11 @@ export default function GameScreen() {
     // 4th down is a special-teams decision far more often than not, so open on
     // ST. The phase tabs stay tappable — one tap gets back to OFF for a go-for-it.
     if (down === 4) return "special" as const;
-    return possession === "us" ? "offense" as const : "defense" as const;
-  }, [ballOn, distance, down, gc.kickoff_yard_line, gc.pat_distance, gc.safety_kick_yard_line, possession]);
+    // Scrimmage either way: there is no DEF tab, because the snap offers the
+    // same plays whichever sideline is on offense. The possession band says
+    // whose ball it is.
+    return "offense" as const;
+  }, [ballOn, distance, down, gc.kickoff_yard_line, gc.pat_distance, gc.safety_kick_yard_line]);
   const timeoutState = useMemo(() => {
     const activeHalf = timeoutHalfForQuarter(quarter);
     let usedUs = 0;
