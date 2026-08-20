@@ -58,10 +58,20 @@ export function transformPlays(
   const result: Play[] = [];
   let homeScore = 0;
   let awayScore = 0;
+  // The engine segments drives on possession change but numbers them from
+  // context.driveNumber, which nothing here was setting. Every drive came
+  // back as #0 — indistinguishable in the drive list, and enough to cap
+  // red-zone trips at one per game (the engine dedupes those by drive number).
+  let driveNumber = 0;
+  let lastPossTeamId: string | null = null;
 
   for (const play of plays) {
     const possTeamId = play.possession === "us" ? ctx.programTeamId : otherTeam(ctx.programTeamId, ctx);
-    const playContext = buildContext(play, ctx, possTeamId, homeScore, awayScore);
+    if (possTeamId !== lastPossTeamId) {
+      driveNumber += 1;
+      lastPossTeamId = possTeamId;
+    }
+    const playContext = buildContext(play, ctx, possTeamId, homeScore, awayScore, driveNumber);
 
     const enginePlay = convertPlay(play, playContext, ctx);
     if (enginePlay) {
@@ -142,6 +152,7 @@ function buildContext(
   possTeamId: string,
   homeScore: number,
   awayScore: number,
+  driveNumber: number,
 ): PlayContext {
   const q = clampQuarter(play.quarter);
   return {
@@ -152,6 +163,7 @@ function buildContext(
     distance: play.distance ?? 10,
     yardLine: play.yard_line ?? 20,
     possessionTeam: possTeamId,
+    driveNumber,
     homeTeam: ctx.homeTeamId,
     awayTeam: ctx.awayTeamId,
     homeScore,

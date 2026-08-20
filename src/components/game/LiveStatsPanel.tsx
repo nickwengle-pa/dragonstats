@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import type {
   GameSummary,
+  TeamId,
   PassingStats,
   RushingStats,
   ReceivingStats,
@@ -19,6 +20,12 @@ interface Props {
 }
 
 type Tab = "off" | "def" | "st" | "drives";
+type TeamKey = "us" | "them";
+
+/** Empty-state copy. An empty opponent tab means "nobody was tagged", not
+ *  "it never happened" — say so, or it reads as a broken panel. */
+const noneYet = (team: TeamKey, what: string) =>
+  team === "them" ? `No opponent ${what} tagged yet` : `No ${what} yet`;
 
 /**
  * Pure presentation. Renders the engine GameSummary as a compact per-player
@@ -32,6 +39,8 @@ export default function LiveStatsPanel({
   programTeamId,
   onClose,
 }: Props) {
+  const [team, setTeam] = useState<TeamKey>("us");
+
   if (!summary) {
     return (
       <Shell onClose={onClose}>
@@ -45,9 +54,28 @@ export default function LiveStatsPanel({
   const nameFor = (id: string) =>
     rosterNameById[id] ?? oppPlayerNameById[id] ?? id;
 
+  // The engine returns one flat map per category, so team membership has to be
+  // decided from the id. The play transformer keys opponent tags
+  // "opp_{position}_{jersey}"; everything else — roster players and pending
+  // jerseys alike — is ours.
+  const isOpponentId = (id: string) => id in oppPlayerNameById || id.startsWith("opp_");
+  const includeId = (id: string) => (team === "them" ? isOpponentId(id) : !isOpponentId(id));
+
+  const ourTeam = summary.homeTeam.id === programTeamId ? summary.homeTeam : summary.awayTeam;
+  const theirTeam = summary.homeTeam.id === programTeamId ? summary.awayTeam : summary.homeTeam;
+
   return (
     <Shell onClose={onClose}>
-      <Tabs summary={summary} nameFor={nameFor} programTeamId={programTeamId} />
+      <Tabs
+        summary={summary}
+        nameFor={nameFor}
+        programTeamId={programTeamId}
+        team={team}
+        onTeamChange={setTeam}
+        ourTeam={ourTeam}
+        theirTeam={theirTeam}
+        includeId={includeId}
+      />
     </Shell>
   );
 }
@@ -74,18 +102,57 @@ function Tabs({
   summary,
   nameFor,
   programTeamId,
+  team,
+  onTeamChange,
+  ourTeam,
+  theirTeam,
+  includeId,
 }: {
   summary: GameSummary;
   nameFor: (id: string) => string;
   programTeamId: string;
+  team: TeamKey;
+  onTeamChange: (next: TeamKey) => void;
+  ourTeam: TeamId;
+  theirTeam: TeamId;
+  includeId: (id: string) => boolean;
 }) {
   // Tabs are local UI state; component is small enough to avoid lifting.
   return (
     <TabContainer
+      // Team is the outer dimension: pick a side, then pick a category.
+      // Drives stays a two-column both-teams view and labels each side itself,
+      // so it ignores the selection rather than showing one empty column.
+      header={
+        <TeamSelector
+          team={team}
+          onChange={onTeamChange}
+          ourTeam={ourTeam}
+          theirTeam={theirTeam}
+        />
+      }
       tabs={[
-        { id: "off", label: "Off", render: () => <OffenseTab summary={summary} nameFor={nameFor} /> },
-        { id: "def", label: "Def", render: () => <DefenseTab summary={summary} nameFor={nameFor} /> },
-        { id: "st", label: "ST", render: () => <SpecialTeamsTab summary={summary} nameFor={nameFor} /> },
+        {
+          id: "off",
+          label: "Off",
+          render: () => (
+            <OffenseTab summary={summary} nameFor={nameFor} includeId={includeId} team={team} />
+          ),
+        },
+        {
+          id: "def",
+          label: "Def",
+          render: () => (
+            <DefenseTab summary={summary} nameFor={nameFor} includeId={includeId} team={team} />
+          ),
+        },
+        {
+          id: "st",
+          label: "ST",
+          render: () => (
+            <SpecialTeamsTab summary={summary} nameFor={nameFor} includeId={includeId} team={team} />
+          ),
+        },
         {
           id: "drives",
           label: "Drives",
@@ -103,15 +170,53 @@ function Tabs({
   );
 }
 
+function TeamSelector({
+  team,
+  onChange,
+  ourTeam,
+  theirTeam,
+}: {
+  team: TeamKey;
+  onChange: (next: TeamKey) => void;
+  ourTeam: TeamId;
+  theirTeam: TeamId;
+}) {
+  const options: Array<{ id: TeamKey; label: string }> = [
+    { id: "us", label: ourTeam.abbreviation || ourTeam.name || "Us" },
+    { id: "them", label: theirTeam.abbreviation || theirTeam.name || "Opp" },
+  ];
+  return (
+    <div className="px-3 pt-3">
+      <div className="flex gap-1 rounded-lg bg-surface-hover p-1">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            onClick={() => onChange(option.id)}
+            aria-pressed={team === option.id}
+            className={`flex-1 py-1.5 rounded-md text-[11px] font-display font-black uppercase tracking-widest truncate transition-colors ${
+              team === option.id ? "bg-surface-bg text-white" : "text-surface-muted"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TabContainer({
   tabs,
+  header,
 }: {
   tabs: Array<{ id: Tab; label: string; render: () => React.ReactNode }>;
+  header?: React.ReactNode;
 }) {
   const [active, setActive] = useTabState(tabs[0]?.id ?? "off");
   const current = tabs.find((t) => t.id === active);
   return (
     <div>
+      {header}
       <div className="flex gap-1 px-3 pt-3">
         {tabs.map((t) => (
           <button
@@ -137,16 +242,26 @@ function useTabState(initial: Tab): [Tab, (t: Tab) => void] {
   return [tab, setTab];
 }
 
-function OffenseTab({ summary, nameFor }: { summary: GameSummary; nameFor: (id: string) => string }) {
-  const passing = Object.entries(summary.passing ?? {});
-  const rushing = Object.entries(summary.rushing ?? {});
-  const receiving = Object.entries(summary.receiving ?? {});
+function OffenseTab({
+  summary,
+  nameFor,
+  includeId,
+  team,
+}: {
+  summary: GameSummary;
+  nameFor: (id: string) => string;
+  includeId: (id: string) => boolean;
+  team: TeamKey;
+}) {
+  const passing = Object.entries(summary.passing ?? {}).filter(([id]) => includeId(id));
+  const rushing = Object.entries(summary.rushing ?? {}).filter(([id]) => includeId(id));
+  const receiving = Object.entries(summary.receiving ?? {}).filter(([id]) => includeId(id));
 
   return (
     <div className="space-y-4">
       <Section title="Passing">
         {passing.length === 0 ? (
-          <Empty>No passing plays yet</Empty>
+          <Empty>{noneYet(team, "passing plays")}</Empty>
         ) : (
           <Table
             headers={["Player", "CMP/ATT", "YDS", "TD", "INT", "RTG"]}
@@ -166,7 +281,7 @@ function OffenseTab({ summary, nameFor }: { summary: GameSummary; nameFor: (id: 
 
       <Section title="Rushing">
         {rushing.length === 0 ? (
-          <Empty>No rushing plays yet</Empty>
+          <Empty>{noneYet(team, "rushing plays")}</Empty>
         ) : (
           <Table
             headers={["Player", "CAR", "YDS", "AVG", "TD", "LNG"]}
@@ -187,7 +302,7 @@ function OffenseTab({ summary, nameFor }: { summary: GameSummary; nameFor: (id: 
 
       <Section title="Receiving">
         {receiving.length === 0 ? (
-          <Empty>No receiving plays yet</Empty>
+          <Empty>{noneYet(team, "receiving plays")}</Empty>
         ) : (
           <Table
             headers={["Player", "REC", "TGT", "YDS", "TD", "LNG"]}
@@ -209,9 +324,19 @@ function OffenseTab({ summary, nameFor }: { summary: GameSummary; nameFor: (id: 
   );
 }
 
-function DefenseTab({ summary, nameFor }: { summary: GameSummary; nameFor: (id: string) => string }) {
-  const defense = Object.entries(summary.defense ?? {});
-  if (defense.length === 0) return <Empty>No defensive stats yet</Empty>;
+function DefenseTab({
+  summary,
+  nameFor,
+  includeId,
+  team,
+}: {
+  summary: GameSummary;
+  nameFor: (id: string) => string;
+  includeId: (id: string) => boolean;
+  team: TeamKey;
+}) {
+  const defense = Object.entries(summary.defense ?? {}).filter(([id]) => includeId(id));
+  if (defense.length === 0) return <Empty>{noneYet(team, "defensive stats")}</Empty>;
   return (
     <Table
       headers={["Player", "TKL", "SCK", "TFL", "INT", "PBU", "FF", "FR"]}
@@ -232,16 +357,26 @@ function DefenseTab({ summary, nameFor }: { summary: GameSummary; nameFor: (id: 
   );
 }
 
-function SpecialTeamsTab({ summary, nameFor }: { summary: GameSummary; nameFor: (id: string) => string }) {
-  const kicking = Object.entries(summary.kicking ?? {});
-  const punting = Object.entries(summary.punting ?? {});
-  const returns = Object.entries(summary.returns ?? {});
+function SpecialTeamsTab({
+  summary,
+  nameFor,
+  includeId,
+  team,
+}: {
+  summary: GameSummary;
+  nameFor: (id: string) => string;
+  includeId: (id: string) => boolean;
+  team: TeamKey;
+}) {
+  const kicking = Object.entries(summary.kicking ?? {}).filter(([id]) => includeId(id));
+  const punting = Object.entries(summary.punting ?? {}).filter(([id]) => includeId(id));
+  const returns = Object.entries(summary.returns ?? {}).filter(([id]) => includeId(id));
 
   return (
     <div className="space-y-4">
       <Section title="Kicking (FG / PAT)">
         {kicking.length === 0 ? (
-          <Empty>No kicks yet</Empty>
+          <Empty>{noneYet(team, "kicks")}</Empty>
         ) : (
           <Table
             headers={["Player", "FG", "FG%", "PAT", "LNG"]}
@@ -260,7 +395,7 @@ function SpecialTeamsTab({ summary, nameFor }: { summary: GameSummary; nameFor: 
 
       <Section title="Punting">
         {punting.length === 0 ? (
-          <Empty>No punts yet</Empty>
+          <Empty>{noneYet(team, "punts")}</Empty>
         ) : (
           <Table
             headers={["Player", "PUNTS", "YDS", "AVG", "LNG"]}
@@ -277,7 +412,7 @@ function SpecialTeamsTab({ summary, nameFor }: { summary: GameSummary; nameFor: 
 
       <Section title="Returns">
         {returns.length === 0 ? (
-          <Empty>No returns yet</Empty>
+          <Empty>{noneYet(team, "returns")}</Empty>
         ) : (
           <Table
             headers={["Player", "KR", "KR YDS", "PR", "PR YDS", "TD"]}

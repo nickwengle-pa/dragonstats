@@ -250,6 +250,7 @@ function buildPlayContext(
   state: GameState,
   scoreBefore: LiveSessionScore,
   config: LiveSessionConfig,
+  driveNumber: number,
 ): PlayContext {
   const boardScore = mapBoardScore(scoreBefore, config);
   return {
@@ -260,6 +261,7 @@ function buildPlayContext(
     distance: state.distance,
     yardLine: state.ballOn,
     possessionTeam: getTeamId(state.possession, config),
+    driveNumber,
     homeTeam: config.isHome ? config.programTeamId : config.opponentTeamId,
     awayTeam: config.isHome ? config.opponentTeamId : config.programTeamId,
     homeScore: boardScore.homeScore,
@@ -273,8 +275,9 @@ function toEnginePlay(
   stateBefore: GameState,
   scoreBefore: LiveSessionScore,
   config: LiveSessionConfig,
+  driveNumber: number,
 ): Play | null {
-  const context = buildPlayContext(stateBefore, scoreBefore, config);
+  const context = buildPlayContext(stateBefore, scoreBefore, config, driveNumber);
   const penalties = buildPenalties(play, config);
 
   switch (play.type) {
@@ -720,9 +723,17 @@ export function replayLiveGame(
   const allEvents: GameEvent[] = [];
   let score = initialScore();
   let currentState = createInitialGameState(config);
+  // Mirrors transformPlays: the engine needs a drive number per play or every
+  // drive comes back as #0. Possession at the snap is what delimits a drive.
+  let driveNumber = 0;
+  let lastDrivePossession: "us" | "them" | null = null;
 
   for (const play of plays) {
     const beforeState = getBeforeStateForPlay(play, score);
+    if (beforeState.possession !== lastDrivePossession) {
+      driveNumber += 1;
+      lastDrivePossession = beforeState.possession;
+    }
     const beforeSituation: LiveSituation = {
       possession: beforeState.possession,
       down: beforeState.down,
@@ -730,7 +741,7 @@ export function replayLiveGame(
       ballOn: beforeState.ballOn,
     };
     const afterSituation = getRecordedNextSituation(play) ?? advanceSituationAfterPlay(play, beforeSituation, config.gameConfig);
-    const enginePlay = toEnginePlay(play, beforeState, score, config);
+    const enginePlay = toEnginePlay(play, beforeState, score, config, driveNumber);
     let events: GameEvent[] = [];
 
     if (enginePlay) {

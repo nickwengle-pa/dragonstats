@@ -53,6 +53,12 @@ export default function DrivesList({ drives, programTeamId, programAbbr = "US", 
         <SideSummary label={opponentAbbr} drives={them.length} tds={tdsThem} punts={puntsThem} />
       </div>
 
+      {/* The cards count one side each; the table below lists both, so spell
+          out the total rather than leaving 4 next to a nine-row table. */}
+      <div className="text-[10px] uppercase tracking-wider text-surface-muted">
+        {drives.length} drive{drives.length === 1 ? "" : "s"} total — both teams
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
@@ -67,12 +73,14 @@ export default function DrivesList({ drives, programTeamId, programAbbr = "US", 
             </tr>
           </thead>
           <tbody>
-            {drives.map((d) => {
+            {drives.map((d, index) => {
               const isUs = d.team === programTeamId;
               const result = RESULT_LABEL[d.result] ?? { short: d.result, color: "text-surface-muted" };
               return (
-                <tr key={d.driveNumber} className="border-t border-surface-border/40">
-                  <td className="py-1.5 pr-1.5 font-bold tabular-nums">{d.driveNumber}</td>
+                // Index is part of the key: older games were charted before the
+                // app sent a drive number, so their drives are all #0.
+                <tr key={`${d.driveNumber}-${index}`} className="border-t border-surface-border/40">
+                  <td className="py-1.5 pr-1.5 font-bold tabular-nums">{d.driveNumber || index + 1}</td>
                   <td className={`py-1.5 px-1.5 font-bold ${isUs ? "text-dragon-primary" : "text-slate-400"}`}>
                     {isUs ? programAbbr : opponentAbbr}
                   </td>
