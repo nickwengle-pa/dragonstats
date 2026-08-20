@@ -28,6 +28,9 @@ export interface PlayEditResult {
   isTouchdown: boolean;
   isFirstDown: boolean;
   isTouchback: boolean;
+  /** Did the ball change hands. Read by the caller instead of being re-derived
+   *  from the play type, which dropped a sack-fumble's turnover on every edit. */
+  turnover: boolean;
   result: string;
   penalty: string | null;
   penaltyCategory: PenaltySide | null;
@@ -229,10 +232,22 @@ export default function PlayEditModal({
   // Step management
   const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">(() => inferTwoPointStyle(play));
   const oppTag = teamTag(oppName);
+  /* A fumble is a modifier on the play, not a play type — same model live
+     entry uses. Seeded from what's already tagged so an existing sack-fumble
+     opens with the toggle on and its roles intact. */
+  const canHaveFumble = ["run", "scramble", "pass_comp", "sack", "kneel"].includes(playType.id);
+  const [hasFumble, setHasFumble] = useState(() =>
+    play.tagged.some(t => t.role === "forced_fumble" || t.role === "fumble_recovery"));
+  const [fumbleRecoveredByUs, setFumbleRecoveredByUs] = useState(() => play.turnover === false);
+  const isFumblePlay = playType.id === "fumble" || (canHaveFumble && hasFumble);
+
   const roles = useMemo(() => {
-    if (playType.id !== "two_pt") return playType.roles;
-    return twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
-  }, [playType, twoPointStyle]);
+    const base = playType.id !== "two_pt"
+      ? playType.roles
+      : twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
+    if (canHaveFumble && hasFumble) return [...base, "forced_fumble", "fumble_recovery"];
+    return base;
+  }, [playType, twoPointStyle, canHaveFumble, hasFumble]);
   const needsYards = !["pass_inc", "spike", "penalty_only", "pat", "two_pt"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
   const needsTouchback = ["kickoff", "punt"].includes(playType.id);
@@ -336,6 +351,9 @@ export default function PlayEditModal({
       isTouchdown: scored,
       isFirstDown: earnedFirst,
       isTouchback,
+      turnover: isFumblePlay
+        ? !fumbleRecoveredByUs
+        : playType.id === "int" ? true : play.turnover === true,
       result: finalResult,
       penalty,
       penaltyCategory,
@@ -559,6 +577,42 @@ export default function PlayEditModal({
                     className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                       isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-slate-500"
                     }`}>1st Down</button>
+                </div>
+              )}
+
+              {/* Same modifier as live entry, so a strip-sack charted in the
+                  press box can be corrected here instead of being flattened
+                  into a plain sack on save. */}
+              {canHaveFumble && (
+                <button
+                  onClick={() => setHasFumble(f => !f)}
+                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                    hasFumble
+                      ? "border-orange-500 bg-orange-500/20 text-orange-400"
+                      : "border-dashed border-surface-border bg-surface-bg text-slate-500"
+                  }`}
+                >
+                  {hasFumble ? "Fumble on this play" : "+ Fumble"}
+                </button>
+              )}
+
+              {isFumblePlay && (
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setFumbleRecoveredByUs(false)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        !fumbleRecoveredByUs ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {play.possession === "us" ? oppName : progName} (turnover)
+                    </button>
+                    <button onClick={() => setFumbleRecoveredByUs(true)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        fumbleRecoveredByUs ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {play.possession === "us" ? progName : oppName} (kept)
+                    </button>
+                  </div>
                 </div>
               )}
 

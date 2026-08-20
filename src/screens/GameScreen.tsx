@@ -1958,7 +1958,9 @@ export default function GameScreen() {
       play_type: result.playType.id,
       yards_gained: result.yards,
       is_touchdown: result.isTouchdown,
-      is_turnover: ["int", "fumble"].includes(result.playType.id),
+      // The editor's own flag, not a guess from the play type — a sack-fumble
+      // has type "sack" and was losing its turnover on every save.
+      is_turnover: result.turnover,
       is_penalty: !!result.penalty,
       primary_player_id: result.tagged.find(isRosterTag)?.player_id ?? null,
       description: result.description,
@@ -1997,7 +1999,7 @@ export default function GameScreen() {
       yards: result.yards,
       isTouchdown: result.isTouchdown,
       firstDown: result.isFirstDown,
-      turnover: ["int", "fumble"].includes(result.playType.id),
+      turnover: result.turnover,
       result: result.result,
       penalty: result.penalty,
       penaltyCategory: result.penaltyCategory,

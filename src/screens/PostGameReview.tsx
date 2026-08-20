@@ -805,7 +805,7 @@ export default function PostGameReview() {
         play_type: result.playType.id,
         yards_gained: result.yards,
         is_touchdown: result.isTouchdown,
-        is_turnover: ["int", "fumble"].includes(result.playType.id),
+        is_turnover: result.turnover,
         is_penalty: !!result.penalty,
         primary_player_id: result.tagged.find(isRosterTag)?.player_id ?? null,
         description: result.description,
