@@ -2184,9 +2184,14 @@ export default function GameScreen() {
         </div>
       </div>
 
-      {/* Scrolls: play selection and the drive summary. Everything above
-          stays put so the score, field, and stat line are always visible. */}
-      <div className="flex-1 min-h-0 px-5 overflow-y-auto pb-4 space-y-3">
+      {/* Below the pinned block: play selection and the drive summary. On a
+          tablet in landscape they sit side by side and scroll independently;
+          on narrower screens they stack in one scroller as before. */}
+      <div className="flex-1 min-h-0 px-5 pb-4 flex flex-col gap-3 overflow-y-auto
+                      lg:flex-row lg:gap-4 lg:overflow-hidden">
+
+        {/* Left column: play selection. */}
+        <div className="lg:flex-1 min-h-0 lg:overflow-y-auto space-y-3">
 
         {/* Quick Action Grid */}
         <div className="card p-3">
@@ -2199,6 +2204,11 @@ export default function GameScreen() {
             down={down}
           />
         </div>
+        </div>
+
+        {/* Right column: drive summary. Scrolls on its own, so a long play
+            list never pushes the play buttons off screen. */}
+        <div className="lg:w-[38%] lg:shrink-0 min-h-0 lg:overflow-y-auto space-y-3">
 
         {/* Recent Plays */}
         {plays.length > 0 && (
@@ -2253,6 +2263,7 @@ export default function GameScreen() {
             View Game Summary
           </button>
         )}
+        </div>
       </div>
 
       {/* ── MODALS ── */}

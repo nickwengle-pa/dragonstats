@@ -16,7 +16,10 @@ export default defineConfig({
         theme_color: "#dc2626",
         background_color: "#070a0f",
         display: "standalone",
-        orientation: "portrait",
+        // Landscape is the useful orientation on a press-box tablet — the
+        // game screen lays out in two columns there. Locking to portrait
+        // would make that unreachable once installed to the home screen.
+        orientation: "any",
         start_url: "/dragonstats/",
         scope: "/dragonstats/",
         icons: [

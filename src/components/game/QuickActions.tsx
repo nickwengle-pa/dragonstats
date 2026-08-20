@@ -143,7 +143,9 @@ export default function QuickActions({
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-1">
+      {/* Sticky so the phase filter stays reachable while the play groups
+          scroll beneath it — on a tablet that column is taller than the view. */}
+      <div className="flex gap-1 sticky top-0 z-10 bg-surface-card pb-1 -mt-1 pt-1">
         {PHASE_TABS.map((tab) => (
           <button
             key={tab.value}
