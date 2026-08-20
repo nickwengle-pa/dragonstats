@@ -13,6 +13,9 @@ interface Props {
   down?: number;
   /** Yards to go, shown alongside the down in the possession band. */
   distance?: number;
+  /** Ball spot (0-100, offense driving toward 100) — lets the fast path swap
+   *  to conversion attempts near the goal line. */
+  ballOn?: number;
   /** Team colors, so the band and the active phase tab wear the colors of
    *  whoever has the ball. */
   progColor?: string;
@@ -28,15 +31,29 @@ function ordinalDown(down: number): string {
 }
 
 /**
- * The plays you're overwhelmingly most likely to tap, given the down. These
- * render double-width and taller so they can be hit without looking down at
- * the tablet — the whole point of live entry is keeping your eyes on the field.
+ * The fast path: the handful of plays you're most likely to need right now,
+ * lifted OUT of the category groups and pinned to one fixed spot.
  *
- * 1st–3rd: run and the two pass outcomes. 4th: punt and field goal.
+ * This used to work by inflating buttons in place (col-span-2, taller) inside
+ * whichever group they belonged to. Three problems with that:
+ *   - it made the grid ragged, because a grid row sizes to its tallest item
+ *     and the normal buttons beside it stretched to match;
+ *   - it saved no scanning, since you still had to find the group first;
+ *   - on 4th down the primaries were punt/fg, which live in the kicking and
+ *     scoring groups — so if you tapped OFF to go for it, nothing was
+ *     emphasized at all, on the highest-stakes down of the game.
+ *
+ * Hoisting them fixes all three: the groups below stay a uniform grid, the
+ * fast path never moves, and it can offer plays from different categories
+ * side by side (punt, field goal, and going for it).
  */
-function primaryPlayIds(down: number | undefined): Set<string> {
-  if (down === 4) return new Set(["punt", "fg"]);
-  return new Set(["rush", "pass_comp", "pass_inc"]);
+function fastPathIds(down: number | undefined, ballOn: number | undefined): string[] {
+  // Inside the opponent's 3, a conversion attempt is far likelier than a snap.
+  if (ballOn != null && ballOn >= 97) return ["pat", "two_pt"];
+  // 4th: the actual decision is punt / kick it / go for it. "Go for it" isn't
+  // a play type, so we surface both ways of going for it.
+  if (down === 4) return ["punt", "fg", "rush", "pass_comp"];
+  return ["rush", "pass_comp", "pass_inc"];
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -103,6 +120,16 @@ const PHASE_CATEGORIES: Record<PhaseFilter, Set<string>> = {
   special: new Set(["kicking", "scoring"]),
 };
 
+/** Column count per fast-path size. Literal class strings — Tailwind cannot
+ *  see an interpolated `grid-cols-${n}`. Four wraps to 2x2 rather than
+ *  squeezing four tall buttons across. */
+const FAST_PATH_COLS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-2",
+};
+
 const PHASE_TABS: Array<{ value: PhaseFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "offense", label: "OFF" },
@@ -118,6 +145,7 @@ export default function QuickActions({
   suggestedPhase,
   down,
   distance,
+  ballOn,
   progColor = "#dc2626",
   oppColor = "#6b7280",
 }: Props) {
@@ -165,7 +193,11 @@ export default function QuickActions({
       return (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99);
     });
 
-  const primaries = primaryPlayIds(down);
+  // Resolved to real play defs, in the order fastPathIds returns them, so an
+  // id that no longer exists just drops out instead of rendering a blank.
+  const fastPath = fastPathIds(down, ballOn)
+    .map((id) => PLAY_TYPES.find((pt) => pt.id === id))
+    .filter((pt): pt is PlayTypeDef => pt !== undefined);
 
   const offenseName = possession === "us" ? progName : oppName;
   const offenseColor = possession === "us" ? progColor : oppColor;
@@ -222,6 +254,23 @@ export default function QuickActions({
         </div>
       </div>
 
+      {/* Fast path — always in the same place, whatever tab or group these
+          plays would otherwise live in. On 4th that means punt, field goal,
+          AND both ways of going for it, side by side. */}
+      {fastPath.length > 0 && (
+        <div className={`grid gap-1.5 ${FAST_PATH_COLS[fastPath.length] ?? "grid-cols-2"}`}>
+          {fastPath.map((playType) => (
+            <button
+              key={`fast-${playType.id}`}
+              onClick={() => onSelect(playType)}
+              className={`py-5 px-1 rounded-xl text-sm font-display font-black border-2 transition-all active:scale-95 cursor-pointer uppercase tracking-wide ring-1 ring-inset ring-white/10 ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
+            >
+              {playType.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {categories.map((category) => {
         // A colored rail per group, so the boundaries read at a glance instead
         // of relying on a low-contrast 11px header alone.
@@ -236,16 +285,11 @@ export default function QuickActions({
             </div>
             <div className="grid grid-cols-4 gap-1.5">
               {grouped[category].map((playType) => {
-                const isPrimary = primaries.has(playType.id);
                 return (
                   <button
                     key={playType.id}
                     onClick={() => onSelect(playType)}
-                    className={`px-1 rounded-xl font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${
-                      isPrimary
-                        ? "col-span-2 py-5 text-sm ring-1 ring-inset ring-white/10"
-                        : "py-2.5 text-[11px]"
-                    } ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
+                    className={`px-1 py-2.5 rounded-xl text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
                   >
                     {playType.label}
                   </button>

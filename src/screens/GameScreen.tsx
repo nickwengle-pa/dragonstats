@@ -2203,6 +2203,7 @@ export default function GameScreen() {
             suggestedPhase={suggestedPhase}
             down={down}
             distance={distance}
+            ballOn={ballOn}
             progColor={primaryColor}
             oppColor={oppColor}
           />
