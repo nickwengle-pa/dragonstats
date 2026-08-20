@@ -2201,6 +2201,15 @@ export default function GameScreen() {
         <button onClick={() => setShowPregame(true)} className="btn-ghost px-1.5 lg:px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
           Pregame
         </button>
+        {/* Phone only; at lg it stays on the scoreboard row. It used to sit at
+            the bottom of the Plays pane, which meant it vanished entirely
+            while the Play pane was showing - the button rendered at 0x0 and
+            was simply unfindable. Amber so it never reads as another neutral
+            header action. */}
+        <button onClick={() => setShowEndGame(true)}
+          className="lg:hidden btn-ghost px-1.5 py-1 text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider cursor-pointer shrink-0">
+          End
+        </button>
       </div>
 
       {/* Pinned: scoreboard and field never scroll away. The stats strip is
@@ -2433,13 +2442,6 @@ export default function GameScreen() {
           </button>
         )}
 
-        {/* End Game lives on the scoreboard at lg, but that row has no width to
-            spare on a phone. Outside the plays conditional above: a game can be
-            ended before anything is recorded. */}
-        <button onClick={() => setShowEndGame(true)}
-          className="lg:hidden w-full text-center py-2 text-[11px] font-display font-bold text-amber-400 uppercase tracking-wider cursor-pointer">
-          End Game
-        </button>
         </div>
       </div>
 
