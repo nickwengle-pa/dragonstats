@@ -134,9 +134,18 @@ async function nextSequenceFor(gameId: string): Promise<number> {
   }
 }
 
+export interface InsertPlayOptions {
+  /** Return as soon as the play is in the local cache and push to Supabase in
+   *  the background. The row carries a client-generated id, so the optimistic
+   *  row and the eventual server row are the same row. Use this on live entry:
+   *  a press-box round trip must not hold the play modal open. */
+  optimistic?: boolean;
+}
+
 export async function insertPlay(
   play: PlayInsert,
-  players: Omit<PlayPlayerInsert, "play_id">[]
+  players: Omit<PlayPlayerInsert, "play_id">[],
+  options: InsertPlayOptions = {}
 ): Promise<PlayRow | null> {
   // Lazy-import to avoid pulling offlineDb into modules that don't need it.
   const { cachePlay, enqueueInsert, isOfflineSupported } = await import("./offlineDb");
@@ -159,59 +168,78 @@ export async function insertPlay(
     credit: p.credit ?? null,
   }));
 
+  const localRow: PlayRow = {
+    ...(insertData as unknown as PlayRow),
+    created_at: now,
+  };
+
+  const queueIt = async () => {
+    await enqueueInsert({
+      gameId: play.game_id,
+      playId,
+      play: insertData as unknown as PlayInsert,
+      players: playerRows as unknown as Array<Record<string, unknown>>,
+    });
+    await refreshSyncStatus();
+  };
+
   // 1) Cache locally with denormalized player rows so reads work offline.
   if (isOfflineSupported()) {
     const cachedShape: PlayWithPlayers = {
-      ...(insertData as unknown as PlayRow),
-      created_at: now,
+      ...localRow,
       play_players: playerRows.map((pp) => ({ ...pp, id: genUuid(), player: undefined })),
     };
     await cachePlay(cachedShape);
   }
 
-  // 2) Try the network. On success, return the server row; on failure or
-  //    offline, enqueue and return the local shape.
-  const goOnline = typeof navigator === "undefined" || navigator.onLine;
-  if (goOnline) {
-    try {
-      const { data: playRow, error: playErr } = await supabase
-        .from("plays")
-        .upsert(insertData, { onConflict: "id" })
-        .select()
-        .single();
+  // 2) Push to the server. Returns the server row on success, null when the
+  //    write failed (or we're offline) and the play went to the sync queue.
+  const push = async (): Promise<PlayRow | null> => {
+    const goOnline = typeof navigator === "undefined" || navigator.onLine;
+    if (goOnline) {
+      try {
+        const { data: playRow, error: playErr } = await supabase
+          .from("plays")
+          .upsert(insertData, { onConflict: "id" })
+          .select()
+          .single();
 
-      if (!playErr && playRow) {
-        if (playerRows.length > 0) {
-          // Replace any existing play_players for this id (idempotent retry).
-          await supabase.from("play_players").delete().eq("play_id", playId);
-          const { error: ppErr } = await supabase.from("play_players").insert(playerRows);
-          if (ppErr) {
-            console.warn("play_players insert failed; queueing for retry:", ppErr);
-            await enqueueInsert({ gameId: play.game_id, playId, play: insertData as unknown as PlayInsert, players: playerRows as unknown as Array<Record<string, unknown>> });
+        if (!playErr && playRow) {
+          if (playerRows.length > 0) {
+            // No delete-before-insert: `playId` was generated a few lines up,
+            // so there is nothing stale to clear. Retries go through the sync
+            // queue, and `pushItem` there does clear tags before re-inserting.
+            const { error: ppErr } = await supabase.from("play_players").insert(playerRows);
+            if (ppErr) {
+              console.warn("play_players insert failed; queueing for retry:", ppErr);
+              await queueIt();
+              return playRow as PlayRow;
+            }
           }
+          await refreshSyncStatus();
+          return playRow as PlayRow;
         }
-        await refreshSyncStatus();
-        return playRow as PlayRow;
+        console.warn("insertPlay network failed, queueing:", playErr);
+      } catch (err) {
+        console.warn("insertPlay network threw, queueing:", err);
       }
-      console.warn("insertPlay network failed, queueing:", playErr);
-    } catch (err) {
-      console.warn("insertPlay network threw, queueing:", err);
     }
+
+    // 3) Queue for later sync.
+    await queueIt();
+    return null;
+  };
+
+  // Live entry returns on the local write and syncs behind the operator;
+  // callers that need the server version of the row still wait for it.
+  // The IndexedDB guard matters: without a cached local row, the next play
+  // has nothing to take its sequence from and two plays claim the same one.
+  if (options.optimistic && isOfflineSupported()) {
+    void push().catch((err) => console.warn("insertPlay background push threw:", err));
+    return localRow;
   }
 
-  // 3) Queue for later sync.
-  await enqueueInsert({
-    gameId: play.game_id,
-    playId,
-    play: insertData as unknown as PlayInsert,
-    players: playerRows as unknown as Array<Record<string, unknown>>,
-  });
-  await refreshSyncStatus();
-
-  return {
-    ...(insertData as unknown as PlayRow),
-    created_at: now,
-  };
+  return (await push()) ?? localRow;
 }
 
 /* ─────────────────────────────────────────────
@@ -479,6 +507,14 @@ export async function updatePlayFull(
   return true;
 }
 
+export interface UpdatePlaySituationOptions {
+  /** Game the play belongs to. Required for an offline edit to ever sync —
+   *  the queue drains by game, so an entry filed under "" is invisible. */
+  gameId?: string;
+  /** Return once the cache is patched and push in the background. */
+  optimistic?: boolean;
+}
+
 export async function updatePlaySituation(
   playId: string,
   fields: {
@@ -493,6 +529,7 @@ export async function updatePlaySituation(
     play_end_time?: number | null;
   },
   playData?: Record<string, unknown>,
+  options: UpdatePlaySituationOptions = {},
 ): Promise<boolean> {
   const { updateCachedPlay, enqueueUpdate } = await import("./offlineDb");
   const { refreshSyncStatus } = await import("./syncWorker");
@@ -511,27 +548,36 @@ export async function updatePlaySituation(
   // Patch the cache so the offline UI shows the corrected situation.
   await updateCachedPlay(playId, updateObj);
 
-  const goOnline = typeof navigator === "undefined" || navigator.onLine;
-  if (goOnline) {
-    try {
-      const { error } = await supabase
-        .from("plays")
-        .update(updateObj)
-        .eq("id", playId);
+  const push = async (): Promise<boolean> => {
+    const goOnline = typeof navigator === "undefined" || navigator.onLine;
+    if (goOnline) {
+      try {
+        const { error } = await supabase
+          .from("plays")
+          .update(updateObj)
+          .eq("id", playId);
 
-      if (!error) {
-        await refreshSyncStatus();
-        return true;
+        if (!error) {
+          await refreshSyncStatus();
+          return true;
+        }
+        console.warn("updatePlaySituation network failed, queueing:", error);
+      } catch (err) {
+        console.warn("updatePlaySituation network threw, queueing:", err);
       }
-      console.warn("updatePlaySituation network failed, queueing:", error);
-    } catch (err) {
-      console.warn("updatePlaySituation network threw, queueing:", err);
     }
+
+    await enqueueUpdate({ gameId: options.gameId ?? "", playId, patch: updateObj, playData });
+    await refreshSyncStatus();
+    return true;
+  };
+
+  if (options.optimistic) {
+    void push().catch((err) => console.warn("updatePlaySituation background push threw:", err));
+    return true;
   }
 
-  await enqueueUpdate({ gameId: "", playId, patch: updateObj, playData });
-  await refreshSyncStatus();
-  return true;
+  return push();
 }
 
 export async function updateCurrentGameState(

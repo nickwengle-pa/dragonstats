@@ -760,7 +760,7 @@ export default function PostGameReview() {
       down: sitDraft.down,
       distance: sitDraft.distance,
       yard_line: sitDraft.yard_line,
-    });
+    }, undefined, { gameId });
     setSavingSit(false);
     if (!ok) {
       setError("Couldn't save the situation — check your connection and try again.");
@@ -770,7 +770,7 @@ export default function PostGameReview() {
     const row = refreshed.find((p) => p.id === editingPlay.id) ?? null;
     setEditingPlay(row);
     if (row) setSitDraft(situationFromPlay(row));
-  }, [editingPlay, sitDraft, load]);
+  }, [editingPlay, gameId, sitDraft, load]);
 
   const handleSaveCharting = useCallback(async () => {
     if (!draft) return;

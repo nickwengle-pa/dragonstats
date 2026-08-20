@@ -1167,11 +1167,11 @@ export default function GameScreen() {
         end_yard_line: stored.after.ballOn,
         play_start_time: getStoredStartClock(play),
         play_end_time: getStoredEndClock(play),
-      }, stored.playData);
+      }, stored.playData, { gameId });
     });
 
     void Promise.all(updates);
-  }, [buildStoredPlayData, liveSessionConfig]);
+  }, [buildStoredPlayData, gameId, liveSessionConfig]);
 
   const queueSituationAdjustment = useCallback((
     playId: string,
@@ -1491,7 +1491,7 @@ export default function GameScreen() {
       credit: t.credit ?? null,
     }));
 
-    const savedPlay = await insertPlay(playInsert, playerInserts);
+    const savedPlay = await insertPlay(playInsert, playerInserts, { optimistic: true });
     if (!savedPlay) { console.error("insertPlay returned null — check Supabase logs"); isSubmitting.current = false; setSelectedPlayType(null); return; }
 
     // Add to local play log
@@ -1515,7 +1515,7 @@ export default function GameScreen() {
     setPlays(prev => [...prev, localPlay]);
 
     // Mark game live on first play
-    if (plays.length === 0) await updateGameScore(gameId, ourScore, theirScore, "live");
+    if (plays.length === 0) void updateGameScore(gameId, ourScore, theirScore, "live");
 
     // ── Scoring ──
     const nextScore = resolution?.scoreAfter ?? storedPreview.scoreAfter;
@@ -1524,7 +1524,7 @@ export default function GameScreen() {
 
     if (nextOur !== ourScore || nextTheir !== theirScore) {
       setOurScore(nextOur); setTheirScore(nextTheir);
-      await updateGameScore(gameId, nextOur, nextTheir);
+      void updateGameScore(gameId, nextOur, nextTheir);
     }
 
     // ── Game state advance ──
@@ -1834,7 +1834,7 @@ export default function GameScreen() {
         end_yard_line: stored.after.ballOn,
         play_start_time: getStoredStartClock(updatedPlay),
         play_end_time: nextClock,
-      }, stored.playData);
+      }, stored.playData, { gameId, optimistic: true });
 
       if (!saved) return;
 
@@ -1867,6 +1867,7 @@ export default function GameScreen() {
   }, [
     buildStoredPlayData,
     closePendingClockCapture,
+    gameId,
     gc.quarter_length_secs,
     pendingClockCapture,
     postPlayClockMins,

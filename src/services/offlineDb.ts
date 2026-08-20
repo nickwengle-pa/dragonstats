@@ -226,7 +226,11 @@ export async function getQueueForGame(gameId: string): Promise<SyncQueueItem[]> 
   if (!isOfflineSupported()) return [];
   const db = await getDb();
   const all = await db.getAllFromIndex("sync_queue", "by-game", gameId);
-  return all
+  // Play edits used to be filed under an empty gameId, which no per-game drain
+  // could ever match. Ops are keyed by playId and idempotent, so sweep those
+  // orphans along with whatever game is open.
+  const orphaned = gameId ? await db.getAllFromIndex("sync_queue", "by-game", "") : [];
+  return [...all, ...orphaned]
     .filter((i) => i.status !== "failed" || i.attempts < 5)
     .sort((a, b) => a.createdAt - b.createdAt);
 }
