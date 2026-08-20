@@ -2089,9 +2089,9 @@ export default function GameScreen() {
   const oppLogoUrl = game?.opponent?.logo_url ?? null;
 
   return (
-    <div className="screen safe-top safe-bottom">
+    <div className="screen safe-top safe-bottom h-dvh overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 pt-4 pb-2">
+      <div className="flex items-center gap-3 px-5 pt-4 pb-2 shrink-0">
         <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
         <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] flex-1 truncate">vs {oppName}</h1>
         <SyncBadge gameId={gameId ?? null} />
@@ -2118,7 +2118,8 @@ export default function GameScreen() {
         </button>
       </div>
 
-      <div className="flex-1 px-5 overflow-y-auto pb-4 space-y-3">
+      {/* Pinned: scoreboard, field, and quick stats never scroll away. */}
+      <div className="shrink-0 px-5 pb-3 space-y-3">
         {/* Scoreboard */}
         <Scoreboard
           state={gameState}
@@ -2181,6 +2182,11 @@ export default function GameScreen() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Scrolls: play selection and the drive summary. Everything above
+          stays put so the score, field, and stat line are always visible. */}
+      <div className="flex-1 min-h-0 px-5 overflow-y-auto pb-4 space-y-3">
 
         {/* Quick Action Grid */}
         <div className="card p-3">

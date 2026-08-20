@@ -688,11 +688,18 @@ export default function PlayEntryModal({
   };
   const isPenaltyOnly = playType.id === "penalty_only";
 
-  /* ── Who makes the tackle ────────────────────────────────────────────────
-     On a scrimmage play the tackler is on the team WITHOUT the ball. On a kick
-     it's the reverse: the kicking team has possession going in, and they're the
-     ones bringing the returner down. */
-  const tacklersAreOurs = isKickPlay ? !isTheirBall : isTheirBall;
+  /* ── Who makes the tackle ── */
+  // Two cases invert the normal rule, both because whoever carries the ball
+  // at the END of the play is not who had it at the snap:
+  //   kicks     - the kicking team has possession going in, and they are the
+  //               ones running down the returner.
+  //   turnovers - a pick or a lost fumble flips possession mid-play, so the
+  //               offense that gave it away makes the tackle on the return.
+  //               A fumble the offense recovers is not a turnover and keeps
+  //               the normal rule.
+  const isReturnedTurnover = playType.id === "int"
+    || (playType.id === "fumble" && !fumbleRecoveredByUs);
+  const tacklersAreOurs = (isKickPlay || isReturnedTurnover) ? !isTheirBall : isTheirBall;
   /* A tackle needs a ball carrier to bring down — these plays never have one. */
   const canHaveTackle = !["pass_inc", "throwaway", "drop", "spike", "penalty_only", "pat", "fg"]
     .includes(playType.id);
