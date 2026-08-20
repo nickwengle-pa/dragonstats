@@ -516,11 +516,17 @@ export function advanceSituationAfterPlay(
     }
 
     if (play.blockedKickType === "field_goal") {
+      // Spot the ball where the play ENDED, not where the kick was attempted
+      // from. This used to read before.ballOn and clamp up to the touchback
+      // line, so a blocked field goal that was recovered and returned always
+      // suggested the 20 and silently discarded the return yardage the
+      // operator had just entered on the previous step. The punt and kickoff
+      // branch below already did this correctly; they now agree.
       return {
         possession: oppositeTeam(possession),
         down: 1,
         distance: config.first_down_distance,
-        ballOn: Math.max(config.touchback_yard_line, flipFieldPosition(before.ballOn)),
+        ballOn: play.isTouchback ? config.touchback_yard_line : flipFieldPosition(newBallOn),
       };
     }
 
