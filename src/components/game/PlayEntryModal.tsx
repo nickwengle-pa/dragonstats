@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
 import {
   type BlockedKickType,
@@ -169,54 +169,53 @@ function teamTag(name: string): string {
 }
 
 /**
- * Type a jersey number, get the player — no second tap.
+ * What the operator's keystrokes point at — a suggestion, never a commitment.
  *
- * Only fires when the number can't be the start of a longer one on the same
- * roster. With 8 and 88 both dressed, typing "8" is genuinely ambiguous and
- * auto-picking #8 would make #88 unreachable by typing; typing "88" or "28" is
- * certain, so it selects immediately.
- *
- * The ref guard stops a re-select when you tab back to a role whose search box
- * still holds the number you already used, which would otherwise stomp a
- * correction you just made by hand.
+ * Typing a jersey number used to tag the player and advance the step outright.
+ * That guessed wrong in the case that matters: the opponent grid only knows the
+ * opponents quick-added so far, so with #2 on the list and #21 not yet added,
+ * "2" looked unambiguous and fired. No guard can fix that — the candidate list
+ * cannot know a longer number is still being typed. So nothing selects itself
+ * any more; typing narrows, and the operator confirms.
  */
-function useJerseyAutoSelect<T>(
+type SoftTarget<T> =
+  | { kind: "player"; item: T }
+  | { kind: "pending"; jersey: number };
+
+/**
+ * Resolve what a search points at. A pure derivation of (search, candidates) —
+ * deliberately not an effect. The previous hook needed a ref guard and an
+ * "already tagged" escape hatch only because it fired side effects; deriving
+ * the highlight instead makes every one of those cases disappear.
+ *
+ * `pendingJersey` is the unrostered/quick-add number this grid would offer, or
+ * null when the grid has no such affordance.
+ */
+function resolveSoftTarget<T>(
   search: string,
   candidates: Array<{ jersey: number | null; item: T }>,
-  onSelect: (item: T) => void,
-  /** Skip entirely when the role is already filled. Without this, stepping
-   *  BACK to the players step remounts the grid, the ref guard resets, and the
-   *  effect re-fires and shoves you forward again — making it impossible to
-   *  return and change a pick. */
-  alreadyTagged: boolean,
-) {
-  const handled = useRef<string | null>(null);
-  const selectRef = useRef(onSelect);
-  selectRef.current = onSelect;
+  pendingJersey: number | null,
+): SoftTarget<T> | null {
+  if (!search) return null;
+  if (!/^\d+$/.test(search)) return null;
 
-  useEffect(() => {
-    if (alreadyTagged) return;
-    if (!/^\d+$/.test(search)) return;
-    if (handled.current === search) return;
+  const exact = candidates.filter(c => c.jersey != null && String(c.jersey) === search);
+  if (exact.length === 1) return { kind: "player", item: exact[0].item };
+  // Two players wearing the same number (opponent quick-add allows it): never
+  // guess which one, make the operator tap.
+  if (exact.length > 1) return null;
 
-    const exact = candidates.filter(c => c.jersey != null && String(c.jersey) === search);
-    if (exact.length !== 1) return;
-
-    const couldBePrefix = candidates.some(c =>
-      c.jersey != null && String(c.jersey) !== search && String(c.jersey).startsWith(search));
-    if (couldBePrefix) return;
-
-    handled.current = search;
-    selectRef.current(exact[0].item);
-    // candidates is rebuilt each render; keying on `search` is what matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, alreadyTagged]);
+  const prefix = candidates.filter(c => c.jersey != null && String(c.jersey).startsWith(search));
+  if (prefix.length === 1) return { kind: "player", item: prefix[0].item };
+  // Only offer to invent a player once no rostered number could still be meant.
+  if (prefix.length === 0 && pendingJersey != null) return { kind: "pending", jersey: pendingJersey };
+  return null;
 }
 
 /* ── Player selector grid (our roster) ── */
 function PlayerGrid({
   roster, label, onSelect, selectedId, search, onSearch, accentColor,
-  onSelectPending, selectedPendingId, selectionIsCarried,
+  onSelectPending, selectedPendingId, selectionIsCarried, addedIds,
 }: {
   roster: RosterPlayer[];
   label: string;
@@ -233,31 +232,30 @@ function PlayerGrid({
   /** The selection was carried from the last play, not picked here — render it
    *  amber so it reads as a suggestion awaiting confirmation. */
   selectionIsCarried?: boolean;
+  /** Ids already added on a multi-select step (tacklers). `onSelect` toggles
+   *  there, so the confirm bar has to say "Remove" rather than "Confirm". */
+  addedIds?: Set<string>;
 }) {
-  useJerseyAutoSelect(
-    search,
-    roster.map(p => ({ jersey: p.jersey_number, item: p })),
-    onSelect,
-    selectedId != null || selectedPendingId != null,
-  );
-
   const filtered = useMemo(() => {
     if (!search) return roster;
     const q = search.toLowerCase();
     const isNumeric = /^\d+$/.test(search);
-    const matched = roster.filter(p =>
-      String(p.jersey_number).includes(q) ||
+    // Numbers filter by prefix, not substring: typing "2" means "the 2x
+    // jerseys", not every number containing a 2.
+    if (isNumeric) {
+      return roster
+        .filter(p => String(p.jersey_number).startsWith(search))
+        .sort((a, b) => {
+          const aExact = String(a.jersey_number) === search ? 0 : 1;
+          const bExact = String(b.jersey_number) === search ? 0 : 1;
+          return aExact - bExact;
+        });
+    }
+    return roster.filter(p =>
       p.player.first_name.toLowerCase().includes(q) ||
       p.player.last_name.toLowerCase().includes(q) ||
       (p.position ?? "").toLowerCase().includes(q)
     );
-    if (!isNumeric) return matched;
-    // For numeric searches, surface exact jersey matches first.
-    return matched.sort((a, b) => {
-      const aExact = String(a.jersey_number) === search ? 0 : 1;
-      const bExact = String(b.jersey_number) === search ? 0 : 1;
-      return aExact - bExact;
-    });
   }, [roster, search]);
 
   /** A numeric search nobody on the roster wears — offer it as pending. */
@@ -267,6 +265,40 @@ function PlayerGrid({
     if (!Number.isFinite(n) || n < 0 || n > 99) return null;
     return roster.some(p => p.jersey_number === n) ? null : n;
   }, [roster, search]);
+
+  const soft = useMemo(() => {
+    const numeric = resolveSoftTarget(
+      search,
+      roster.map(p => ({ jersey: p.jersey_number, item: p })),
+      onSelectPending ? pendingJersey : null,
+    );
+    if (numeric) return numeric;
+    // A name search that narrows to one player is just as unambiguous.
+    if (search && !/^\d+$/.test(search) && filtered.length === 1) {
+      return { kind: "player" as const, item: filtered[0] };
+    }
+    return null;
+  }, [search, roster, pendingJersey, onSelectPending, filtered]);
+
+  /** Commit the soft target. The only path that writes a tag from typing. */
+  const confirmSoft = () => {
+    if (!soft) return;
+    if (soft.kind === "player") onSelect(soft.item);
+    else onSelectPending?.(soft.jersey);
+  };
+
+  const softPlayerId = soft?.kind === "player" ? soft.item.player_id : null;
+  const softIsAdded = softPlayerId != null && addedIds?.has(softPlayerId);
+  const softLabel = soft == null
+    ? ""
+    : soft.kind === "pending"
+      ? `Add & select #${soft.jersey}`
+      // Jersey can legitimately be null; never render "Confirm #null".
+      : `${softIsAdded ? "Remove" : "Confirm"} ${soft.item.jersey_number != null ? `#${soft.item.jersey_number} ` : ""}${soft.item.player.preferred_name || soft.item.player.first_name}`;
+  // A tile that is already the confirmed pick needs no confirm bar.
+  const showConfirmBar = soft != null
+    && !(soft.kind === "player" && selectedId === soft.item.player_id && !selectionIsCarried)
+    && !(soft.kind === "pending" && selectedPendingId === makePendingId(soft.jersey));
 
   return (
     <div>
@@ -283,25 +315,31 @@ function PlayerGrid({
         value={search}
         onChange={e => onSearch(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          // Prefer an exact jersey match — with 8 and 88 both dressed, typing
-          // "8" leaves two results but the intent is unambiguous on Enter.
-          const exact = roster.find(p => String(p.jersey_number) === search);
-          const pick = exact ?? (filtered.length === 1 ? filtered[0] : null);
-          if (pick) {
-            e.preventDefault();
-            onSelect(pick);
-            return;
-          }
-          // Nobody rostered under that number — Enter takes the pending tile.
-          if (pendingJersey != null && onSelectPending) {
-            e.preventDefault();
-            onSelectPending(pendingJersey);
-          }
+          if (e.key !== "Enter" || !soft) return;
+          // Enter confirms whatever is soft-selected and nothing else. Where
+          // the old handler fell through to the pending tile even with several
+          // numbers still matching, ambiguity is now simply a no-op.
+          e.preventDefault();
+          confirmSoft();
+          // Toggling a tackler off leaves the search box holding his number,
+          // which would keep him highlighted as if still pickable.
+          if (softIsAdded) onSearch("");
         }}
         className="input mb-2 text-sm"
         autoFocus
       />
+      {/* Solid amber = "your keystrokes point here". Dashed amber elsewhere
+          means a suggestion from somewhere else (carried pick, unrostered
+          jersey); both stay short of a confirmed pick, which is accent-colored. */}
+      {showConfirmBar && (
+        <button
+          onClick={() => { confirmSoft(); if (softIsAdded) onSearch(""); }}
+          className="mb-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-amber-400 bg-amber-500/15 text-amber-400 flex items-center justify-center gap-2"
+        >
+          {softLabel}
+          <span className="opacity-60 text-xs">↵</span>
+        </button>
+      )}
       <div className="grid grid-cols-5 gap-1.5 max-h-56 overflow-y-auto">
         {/* Unrostered jersey. Amber + dashed matches the carried-tag styling:
             amber always means "not a confirmed pick". Never auto-selected —
@@ -310,7 +348,7 @@ function PlayerGrid({
           <button
             onClick={() => onSelectPending(pendingJersey)}
             className="flex flex-col items-center py-2 rounded-xl border-2 border-dashed transition-all duration-200 border-amber-500/50 bg-amber-500/5 text-amber-400 active:bg-amber-500/15"
-            style={selectedPendingId === makePendingId(pendingJersey)
+            style={selectedPendingId === makePendingId(pendingJersey) || soft?.kind === "pending"
               ? { borderStyle: "solid", backgroundColor: "rgba(245,158,11,0.18)" }
               : undefined}
           >
@@ -324,9 +362,12 @@ function PlayerGrid({
             key={p.player_id}
             onClick={() => onSelect(p)}
             className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 bg-surface-bg text-slate-400 active:bg-surface-hover ${
-              selectedId === p.player_id && selectionIsCarried
-                ? "border-dashed border-amber-500/60 bg-amber-500/10 text-amber-400"
-                : "border-transparent"
+              // Precedence: confirmed (inline style below) > soft > carried.
+              softPlayerId === p.player_id && !(selectedId === p.player_id && !selectionIsCarried)
+                ? "border-amber-400 bg-amber-500/15 text-amber-400"
+                : selectedId === p.player_id && selectionIsCarried
+                  ? "border-dashed border-amber-500/60 bg-amber-500/10 text-amber-400"
+                  : "border-transparent"
             }`}
             style={selectedId === p.player_id && !selectionIsCarried && accentColor
               ? { borderColor: accentColor, backgroundColor: `${accentColor}1a`, color: accentColor }
@@ -346,7 +387,7 @@ function PlayerGrid({
 
 /* ── Opponent player selector with quick-add ── */
 function OpponentPlayerGrid({
-  players, label, onSelect, selectedId, search, onSearch, onQuickAdd, accentColor,
+  players, label, onSelect, selectedId, search, onSearch, onQuickAdd, accentColor, addedIds,
 }: {
   players: OpponentPlayerRef[];
   label: string;
@@ -357,35 +398,63 @@ function OpponentPlayerGrid({
   onQuickAdd?: (jersey: number) => void;
   /** Opponent's color for the label and the selected chip. */
   accentColor?: string;
+  /** Ids already added on a multi-select step (tacklers) — `onSelect` toggles
+   *  there, so the confirm bar has to say "Remove". */
+  addedIds?: Set<string>;
 }) {
-  useJerseyAutoSelect(
-    search,
-    players.map(p => ({ jersey: p.jersey_number, item: p })),
-    onSelect,
-    selectedId != null,
-  );
-
   const filtered = useMemo(() => {
     if (!search) return players;
     const q = search.toLowerCase();
     const isNumeric = /^\d+$/.test(search);
-    const matched = players.filter(p =>
-      String(p.jersey_number).includes(q) ||
+    // Prefix, not substring — see PlayerGrid.
+    if (isNumeric) {
+      return players
+        .filter(p => String(p.jersey_number).startsWith(search))
+        .sort((a, b) => {
+          const aExact = String(a.jersey_number) === search ? 0 : 1;
+          const bExact = String(b.jersey_number) === search ? 0 : 1;
+          return aExact - bExact;
+        });
+    }
+    return players.filter(p =>
       p.name.toLowerCase().includes(q) ||
       (p.position ?? "").toLowerCase().includes(q)
     );
-    if (!isNumeric) return matched;
-    return matched.sort((a, b) => {
-      const aExact = String(a.jersey_number) === search ? 0 : 1;
-      const bExact = String(b.jersey_number) === search ? 0 : 1;
-      return aExact - bExact;
-    });
   }, [players, search]);
 
   // Check if search is a number that doesn't match any existing player
   const searchNum = parseInt(search, 10);
   const canQuickAdd = onQuickAdd && !isNaN(searchNum) && searchNum > 0
     && !players.some(p => p.jersey_number === searchNum);
+
+  const soft = useMemo(() => {
+    const numeric = resolveSoftTarget(
+      search,
+      players.map(p => ({ jersey: p.jersey_number, item: p })),
+      canQuickAdd ? searchNum : null,
+    );
+    if (numeric) return numeric;
+    if (search && !/^\d+$/.test(search) && filtered.length === 1) {
+      return { kind: "player" as const, item: filtered[0] };
+    }
+    return null;
+  }, [search, players, canQuickAdd, searchNum, filtered]);
+
+  const confirmSoft = () => {
+    if (!soft) return;
+    if (soft.kind === "player") onSelect(soft.item);
+    else onQuickAdd?.(soft.jersey);
+  };
+
+  const softPlayerId = soft?.kind === "player" ? soft.item.id : null;
+  const softIsAdded = softPlayerId != null && addedIds?.has(softPlayerId);
+  const softLabel = soft == null
+    ? ""
+    : soft.kind === "pending"
+      ? `Add & select #${soft.jersey}`
+      : `${softIsAdded ? "Remove" : "Confirm"} ${soft.item.jersey_number != null ? `#${soft.item.jersey_number} ` : ""}${soft.item.name}`;
+  const showConfirmBar = soft != null
+    && !(soft.kind === "player" && selectedId === soft.item.id);
 
   return (
     <div>
@@ -397,11 +466,29 @@ function OpponentPlayerGrid({
       </div>
       <input
         type="text"
+        inputMode="numeric"
         placeholder="# or name..."
         value={search}
         onChange={e => onSearch(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" || !soft) return;
+          e.preventDefault();
+          // Quick-add on Enter creates the opponent player, which is fine here:
+          // it only happens on an explicit confirm, never from typing alone.
+          confirmSoft();
+          if (softIsAdded) onSearch("");
+        }}
         className="input mb-2 text-sm"
       />
+      {showConfirmBar && (
+        <button
+          onClick={() => { confirmSoft(); if (softIsAdded) onSearch(""); }}
+          className="mb-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-amber-400 bg-amber-500/15 text-amber-400 flex items-center justify-center gap-2"
+        >
+          {softLabel}
+          <span className="opacity-60 text-xs">↵</span>
+        </button>
+      )}
       <div className="grid grid-cols-5 gap-1.5 max-h-40 overflow-y-auto">
         {/* Catch-all TEAM tile — always available so stats never go untracked */}
         <button
@@ -418,7 +505,11 @@ function OpponentPlayerGrid({
           <button
             key={p.id}
             onClick={() => onSelect(p)}
-            className="flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 border-transparent bg-surface-bg text-slate-400 active:bg-surface-hover"
+            className={`flex flex-col items-center py-2 rounded-xl border-2 transition-all duration-200 bg-surface-bg text-slate-400 active:bg-surface-hover ${
+              softPlayerId === p.id && selectedId !== p.id
+                ? "border-amber-400 bg-amber-500/15 text-amber-400"
+                : "border-transparent"
+            }`}
             style={selectedId === p.id && accentColor
               ? { borderColor: accentColor, backgroundColor: `${accentColor}1a`, color: accentColor }
               : undefined}
@@ -2314,6 +2405,7 @@ export default function PlayEntryModal({
                   selectedId={null}
                   search={tacklerSearch}
                   onSearch={setTacklerSearch}
+                  addedIds={new Set(tacklers.map(t => t.player_id))}
                 />
               ) : (
                 <OpponentPlayerGrid
@@ -2324,6 +2416,7 @@ export default function PlayEntryModal({
                   search={tacklerSearch}
                   onSearch={setTacklerSearch}
                   onQuickAdd={handleQuickAddOpponent}
+                  addedIds={new Set(tacklers.map(t => t.id))}
                 />
               )}
               <div className="text-[10px] text-slate-600 text-center mt-2">
