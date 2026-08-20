@@ -167,6 +167,17 @@ export interface PassPlay {
     fumble?: FumbleEvent;
     penalties?: PenaltyEvent[];
     tackledBy?: string[];
+    /**
+     * Defenders who made the tackle on a TURNOVER RETURN — a fumble recovery or
+     * an interception being run back.
+     *
+     * Deliberately separate from `tackledBy`. On a strip-sack `tackledBy` is the
+     * sackers and has to stay that way, or the defender who stopped the recoverer
+     * would be credited a share of a sack he had nothing to do with. These earn a
+     * tackle and nothing else: no sack, and no tackle for loss, because the
+     * play's yardage describes the offense's snap rather than the return.
+     */
+    returnTackledBy?: string[];
     assistedTackle?: string[];
     defendedBy?: string[];
     forcedOutOfBounds?: boolean;
@@ -187,6 +198,17 @@ export interface RushPlay {
     fumble?: FumbleEvent;
     penalties?: PenaltyEvent[];
     tackledBy?: string[];
+    /**
+     * Defenders who made the tackle on a TURNOVER RETURN — a fumble recovery or
+     * an interception being run back.
+     *
+     * Deliberately separate from `tackledBy`. On a strip-sack `tackledBy` is the
+     * sackers and has to stay that way, or the defender who stopped the recoverer
+     * would be credited a share of a sack he had nothing to do with. These earn a
+     * tackle and nothing else: no sack, and no tackle for loss, because the
+     * play's yardage describes the offense's snap rather than the return.
+     */
+    returnTackledBy?: string[];
     assistedTackle?: string[];
     description?: string;
 }
@@ -209,6 +231,17 @@ export interface SpecialTeamsPlay {
     fumble?: FumbleEvent;
     penalties?: PenaltyEvent[];
     tackledBy?: string[];
+    /**
+     * Defenders who made the tackle on a TURNOVER RETURN — a fumble recovery or
+     * an interception being run back.
+     *
+     * Deliberately separate from `tackledBy`. On a strip-sack `tackledBy` is the
+     * sackers and has to stay that way, or the defender who stopped the recoverer
+     * would be credited a share of a sack he had nothing to do with. These earn a
+     * tackle and nothing else: no sack, and no tackle for loss, because the
+     * play's yardage describes the offense's snap rather than the return.
+     */
+    returnTackledBy?: string[];
     description?: string;
 }
 export interface PenaltyPlay {

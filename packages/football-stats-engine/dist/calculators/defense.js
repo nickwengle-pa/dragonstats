@@ -40,6 +40,35 @@ export class DefensiveCalculator {
                 }
             }
         }
+        /*
+         * Tackles made on a turnover return.
+         *
+         * Kept out of `tackledBy` on purpose: on a strip-sack that array is the
+         * sackers, and mixing the two would hand the man who stopped the recoverer
+         * a share of a sack. These earn a tackle only.
+         *
+         * No tackle-for-loss check either. `yardsGained` describes the offense's
+         * snap — a sack for -7 — and has nothing to do with how far the recovery
+         * was carried, so testing it here would award a TFL for stopping a return
+         * on a play that happened to lose yardage.
+         *
+         * Credit follows the same rule as a normal tackle: alone is a solo, and
+         * anything more than that is half each.
+         */
+        if (p.returnTackledBy && Array.isArray(p.returnTackledBy)) {
+            const solo = p.returnTackledBy.length === 1;
+            for (const tackler of p.returnTackledBy) {
+                const stat = this.getOrCreate(tackler);
+                if (solo) {
+                    stat.soloTackles++;
+                    stat.totalTackles++;
+                }
+                else {
+                    stat.assistedTackles++;
+                    stat.totalTackles += 0.5;
+                }
+            }
+        }
         // Assisted tackles
         if (p.assistedTackle && Array.isArray(p.assistedTackle)) {
             for (const assister of p.assistedTackle) {

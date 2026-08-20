@@ -184,6 +184,18 @@ function clampQuarter(q: number | null): Quarter {
   return q as Quarter;
 }
 
+/**
+ * Defenders who stopped the ball carrier on a turnover return.
+ *
+ * Its own engine field rather than tackledBy: on a strip-sack tackledBy is the
+ * sackers, and merging the two would hand the man who tackled the recoverer a
+ * share of the sack.
+ */
+function returnTacklers(play: PlayWithPlayers): string[] | undefined {
+  const ids = playersByRole(play, "recovery_tackler");
+  return ids.length > 0 ? ids : undefined;
+}
+
 // Extract player IDs by role from play_players
 function playersByRole(play: PlayWithPlayers, role: string): string[] {
   return play.play_players
@@ -296,6 +308,7 @@ function convertPlay(
         tackledBy: playersByRole(play, "tackler"),
         assistedTackle: playersByRole(play, "assist"),
         fumble: buildFumble(play, rusher, ctx),
+        returnTackledBy: returnTacklers(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -319,6 +332,7 @@ function convertPlay(
         tackledBy: playersByRole(play, "tackler"),
         assistedTackle: playersByRole(play, "assist"),
         fumble: buildFumble(play, rusher, ctx),
+        returnTackledBy: returnTacklers(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -340,6 +354,7 @@ function convertPlay(
         tackledBy: playersByRole(play, "tackler"),
         assistedTackle: playersByRole(play, "assist"),
         fumble: buildFumble(play, receiver ?? passer, ctx),
+        returnTackledBy: returnTacklers(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -416,6 +431,7 @@ function convertPlay(
         // when neither fumble role is tagged, so an ordinary sack is
         // unaffected. Rush and completed passes already did this.
         fumble: buildFumble(play, passer, ctx),
+        returnTackledBy: returnTacklers(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -437,6 +453,7 @@ function convertPlay(
         isTouchdown: play.is_touchdown,
         interceptedBy: interceptor,
         interceptionReturnYards,
+        returnTackledBy: returnTacklers(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -455,6 +472,7 @@ function convertPlay(
         tackledBy: playersByRole(play, "tackler"),
         assistedTackle: playersByRole(play, "assist"),
         fumble: buildFumble(play, rusher, ctx),
+        returnTackledBy: returnTacklers(play),
         penalties,
         description: play.description ?? undefined,
         context,
