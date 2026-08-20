@@ -2230,13 +2230,40 @@ export default function GameScreen() {
               </div>
             </div>
             <div className="space-y-1 max-h-[22rem] overflow-y-auto pr-1 lg:max-h-none lg:overflow-visible lg:pr-0">
-              {plays.slice().reverse().map(play => (
+              {plays.slice().reverse().map(play => {
+                // Which unit was on the field, from OUR sideline: a play with
+                // us in possession is our offense, otherwise our defense.
+                // Timeouts belong to neither.
+                const isTimeout = play.type === "timeout";
+                const ourOffense = play.possession === "us";
+                // Turnovers record a net field-position swing in `yards`, which
+                // can read as a gain (a pick returned upfield is "+11" for the
+                // passing team's spot). Showing that beside rushing yardage is
+                // misleading, so turnovers show their label instead. The stats
+                // engine reads play type, not this number, so nothing downstream
+                // is affected either way.
+                const isTurnover = play.type === "int"
+                  || (play.type === "fumble" && play.turnover !== false);
+                return (
                 <button key={play.id}
-                  onClick={() => { if (play.type !== "timeout") setEditPlay(play); }}
-                  className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 border border-surface-border bg-surface-card text-left ${
-                    play.type === "timeout" ? "" : "active:bg-surface-hover cursor-pointer"
+                  onClick={() => { if (!isTimeout) setEditPlay(play); }}
+                  className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 border-l-[3px] border-y border-r border-y-surface-border border-r-surface-border text-left ${
+                    isTimeout ? "" : "active:bg-surface-hover cursor-pointer"
+                  } ${
+                    isTimeout
+                      ? "border-l-amber-500/60 bg-surface-card"
+                      : ourOffense
+                        ? "border-l-emerald-500/70 bg-emerald-950/25"
+                        : "border-l-sky-500/70 bg-sky-950/25"
                   }`}
                 >
+                  <span
+                    className={`text-[9px] font-display font-black uppercase tracking-wider w-7 shrink-0 ${
+                      isTimeout ? "text-amber-400" : ourOffense ? "text-emerald-400" : "text-sky-400"
+                    }`}
+                  >
+                    {isTimeout ? "TO" : ourOffense ? "Off" : "Def"}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-body font-semibold truncate">{play.description}</div>
                     <div className="text-[10px] text-surface-muted font-body">
@@ -2244,19 +2271,26 @@ export default function GameScreen() {
                     </div>
                   </div>
                   <div className={`text-xs font-display font-extrabold tabular-nums ${
-                    play.type === "timeout"
+                    isTimeout
                       ? "text-amber-300"
-                      : play.yards > 0
-                        ? "text-emerald-400"
-                        : play.yards < 0
-                          ? "text-red-400"
-                          : "text-surface-muted"
+                      : isTurnover
+                        ? "text-red-400"
+                        : play.yards > 0
+                          ? "text-emerald-400"
+                          : play.yards < 0
+                            ? "text-red-400"
+                            : "text-surface-muted"
                   }`}>
-                    {play.type === "timeout" ? "TO" : play.yards > 0 ? `+${play.yards}` : play.yards}
+                    {isTimeout
+                      ? "TO"
+                      : isTurnover
+                        ? (play.type === "int" ? "INT" : "FUM")
+                        : play.yards > 0 ? `+${play.yards}` : play.yards}
                   </div>
                   {play.isTouchdown && <span className="text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider">TD</span>}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
