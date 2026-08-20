@@ -759,8 +759,11 @@ export default function PlayEntryModal({
   // record backwards returns (caught at the 35, "returned to" the 20 = -15).
   useEffect(() => {
     if (!isKickPlay) return;
-    setReturnToYardLine(kickedToYard);
-    setReturnToTeam(receivingFieldSide);
+    const onKickingSide = kickedToYard > 50;
+    setReturnToYardLine(Math.max(1, onKickingSide ? 100 - kickedToYard : kickedToYard));
+    setReturnToTeam(onKickingSide
+      ? (receivingFieldSide === "program" ? "opponent" : "program")
+      : receivingFieldSide);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kickedToYard]);
   const receivingFieldSide: FieldTeam = gameState.possession === "us" ? "opponent" : "program";
@@ -824,13 +827,25 @@ export default function PlayEntryModal({
     return ballOn <= 50 ? `${offenseTag} ${ballOn}` : `${defenseTag} ${100 - ballOn}`;
   };
   const kickStartLabel = formatFieldSpot(gameState.ballOn, gameState.possession);
-  const landingLabel = kickedToYard === 0 ? `${fieldTeamTag(receivingFieldSide)} EZ` : `${fieldTeamTag(receivingFieldSide)} ${kickedToYard}`;
+  /* kickedToYard counts up from the RECEIVING team's goal line, so a value
+     over 50 means the ball came down on the KICKING team's side — a punt that
+     never reached midfield. Rendering it as a receiving-team yard line printed
+     impossible spots like "OPP 55" and put the ball on the wrong side of the
+     field. */
+  const landingLabel = kickedToYard === 0
+    ? `${fieldTeamTag(receivingFieldSide)} EZ`
+    : kickedToYard <= 50
+      ? `${fieldTeamTag(receivingFieldSide)} ${kickedToYard}`
+      : `${fieldTeamTag(receivingFieldSide === "program" ? "opponent" : "program")} ${100 - kickedToYard}`;
   const kickDistance = isKickPlay ? Math.max(0, (100 - kickedToYard) - gameState.ballOn) : 0;
 
   /** Inverse of kickDistance: given a distance, where did the ball come down? */
   const setKickedToYardFromDistance = (distance: number) => {
     const landingYard = 100 - gameState.ballOn - distance;
-    setKickedToYard(Math.max(0, Math.min(50, landingYard)));
+    // 0..100, not 0..50. Clamped at 50 every short punt pinned the spot to
+    // midfield, so the derived distance stopped responding to what was typed
+    // and the readout claimed the far side of the 50.
+    setKickedToYard(Math.max(0, Math.min(100, landingYard)));
   };
 
   /** Inverse of the return-yards readout: given return yardage, what's the spot?
@@ -918,8 +933,14 @@ export default function PlayEntryModal({
      Re-seeds if the catch spot is changed on the way back through. */
   useEffect(() => {
     if (!isKickPlay) return;
-    setReturnToTeam(receivingFieldSide);
-    setReturnToYardLine(Math.max(1, Math.min(50, kickedToYard)));
+    // A short punt comes down on the kicking team's side, so the return has to
+    // start there. Clamping to 50 seeded every short punt at midfield on the
+    // receiving team's side — the wrong half of the field.
+    const onKickingSide = kickedToYard > 50;
+    setReturnToTeam(onKickingSide
+      ? (receivingFieldSide === "program" ? "opponent" : "program")
+      : receivingFieldSide);
+    setReturnToYardLine(Math.max(1, onKickingSide ? 100 - kickedToYard : kickedToYard));
     setReturnToRaw("");
     setReturnYardsRaw("");
   }, [isKickPlay, kickedToYard, receivingFieldSide]);
@@ -1902,7 +1923,7 @@ export default function PlayEntryModal({
                 </label>
                 <div className="flex items-center gap-1.5">
                   {[-10, -5, -1].map(n => (
-                    <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(50, y + n)))}
+                    <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(100, y + n)))}
                       className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
                   ))}
                   {/* Holds a full label like "OPP 30", not just digits, so it
@@ -1911,7 +1932,7 @@ export default function PlayEntryModal({
                     {landingLabel}
                   </div>
                   {[1, 5, 10].map(n => (
-                    <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(50, y + n)))}
+                    <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(100, y + n)))}
                       className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
                   ))}
                 </div>
