@@ -926,7 +926,22 @@ export default function PlayEntryModal({
   })();
 
   const setResultFromTotalYards = (totalYards: number) => {
-    const targetBallOn = Math.max(1, Math.min(99, gameState.ballOn + totalYards));
+    const rawTarget = gameState.ballOn + totalYards;
+    /* Reaching the goal line IS the touchdown, and the spot pair below cannot
+       express it: resultYardLine tops out at 50 per side, so targetBallOn was
+       clamped to 1..99 and you could type your way to the 1 and no further —
+       10 yards from the 10 came out as 9. A play that gets there sets the TD
+       flag instead, which submit already turns into 100 - ballOn. Turnover
+       returns score at the other end, so they check the opposite bound. */
+    const scoresOnTurnover = ["int", "fumble"].includes(playType.id);
+    if (scoresOnTurnover ? rawTarget <= 0 : rawTarget >= 100) {
+      setIsTD(true);
+      return;
+    }
+    // Typing a shorter gain after marking a TD un-marks it, or the flag would
+    // silently outrank the number just entered.
+    if (isTD) setIsTD(false);
+    const targetBallOn = Math.max(1, Math.min(99, rawTarget));
     const programBallOn = gameState.possession === "us" ? targetBallOn : 100 - targetBallOn;
     const side: "our" | "opp" = programBallOn <= 50 ? "our" : "opp";
     const yardLine = programBallOn <= 50 ? programBallOn : 100 - programBallOn;
@@ -2387,13 +2402,45 @@ export default function PlayEntryModal({
                           oppAbbr={oppTag}
                           progLogoUrl={progLogoUrl}
                           oppLogoUrl={oppLogoUrl}
-                          onPickSpot={handleFieldPick}
+                          onPickSpot={(displayPosition) => {
+                            // Tapping a spot means it wasn't a score after all.
+                            // Without this the field is inert while TD is on and
+                            // reads as broken.
+                            if (isTD) setIsTD(false);
+                            handleFieldPick(displayPosition);
+                          }}
                         />
                         <div className="text-[10px] text-slate-600 text-center mt-1">
-                          Tap the field to set the spot · started at {yardLabel(gameState.ballOn)}
+                          {isTD
+                            ? <>Scored · tap the field if it was stopped short</>
+                            : <>Tap the field to set the spot · started at {yardLabel(gameState.ballOn)}</>}
                         </div>
                       </div>
 
+                      {/* A touchdown has no spot to pick — the ball is in the end
+                          zone, and submit already scores it as 100 - ballOn (or
+                          -ballOn on a turnover return). Leaving the picker live
+                          showed a yard line that contradicted the TD toggle and
+                          invited the operator to "fix" a number that was never
+                          used. Same treatment the interception return already
+                          gets. */}
+                      {isTD ? (
+                        <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 flex items-center justify-between">
+                          <span className="text-sm font-black text-amber-300">
+                            {fieldTeamTag(
+                              ["int", "fumble"].includes(playType.id)
+                                ? (gameState.possession === "us" ? "opponent" : "program")
+                                : (gameState.possession === "us" ? "opponent" : "program"),
+                            )} EZ
+                          </span>
+                          <span className="text-[11px] font-bold text-amber-400/80 tabular-nums">
+                            {["int", "fumble"].includes(playType.id)
+                              ? -gameState.ballOn
+                              : 100 - gameState.ballOn} yds · touchdown
+                          </span>
+                        </div>
+                      ) : (
+                      <>
                       <div className="flex gap-1.5 mb-3">
                         {spotSideOrder.map(side => (
                         <button
@@ -2463,6 +2510,8 @@ export default function PlayEntryModal({
                         {yardLabel(gameState.ballOn)} → <span className="font-bold text-slate-300">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
                         {" "}(<span className={yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : ""}>{yards > 0 ? "+" : ""}{yards} yds</span>)
                       </div>
+                      </>
+                      )}
                     </>
                   )}
                 </div>
