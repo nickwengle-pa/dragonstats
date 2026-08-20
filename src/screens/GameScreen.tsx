@@ -2176,7 +2176,14 @@ export default function GameScreen() {
       {/* Header */}
       <div className="flex items-center gap-1.5 lg:gap-3 px-3 lg:px-5 pt-4 pb-2 shrink-0">
         <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
-        <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] flex-1 truncate">vs {oppName}</h1>
+        {/* The abbreviation on a phone, the full name from lg up. Truncating
+            the name gave "V..." at 375 once End joined the row, which says
+            less than "RTB" does in the same space. The iPad header, where the
+            full name reads properly, is unchanged. */}
+        <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] shrink-0 lg:shrink lg:flex-1 lg:truncate whitespace-nowrap">
+          vs <span className="lg:hidden">{oppAbbr || oppName}</span>
+          <span className="hidden lg:inline">{oppName}</span>
+        </h1>
         <SyncBadge gameId={gameId ?? null} />
         <button
           onClick={() => setHurryUp((h) => !h)}

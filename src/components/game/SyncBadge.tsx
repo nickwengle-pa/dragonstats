@@ -53,6 +53,11 @@ export default function SyncBadge({ gameId }: Props) {
     title = `${status.pending} plays waiting to sync. Tap to sync now.`;
   }
 
+  /* "Synced" says nothing the green cloud does not, and it costs ~40px of a
+     375px header. Every other state carries a COUNT, which the icon cannot
+     show, so those keep their label at every width. */
+  const labelEarnsItsWidth = status.draining || isOffline || hasPending;
+
   return (
     <button
       onClick={onClick}
@@ -63,7 +68,7 @@ export default function SyncBadge({ gameId }: Props) {
       }`}
     >
       {icon}
-      <span>{label}</span>
+      <span className={labelEarnsItsWidth ? undefined : "hidden lg:inline"}>{label}</span>
     </button>
   );
 }
