@@ -954,7 +954,10 @@ export default function GameScreen() {
     const existingSource = typeof play.playData?.next_situation_source === "string"
       ? play.playData?.next_situation_source
       : null;
-    const isTurnoverPlay = play.type === "int" || (play.type === "fumble" && play.turnover !== false);
+    // The flag, not the type — a sack-fumble is a turnover on a play whose
+    // type is "sack", and it needs the same review prompt as any other change
+    // of possession.
+    const isTurnoverPlay = play.type === "int" || play.turnover === true;
     const nextSituationSource = existingSource
       ?? (play.type === "timeout"
         ? "timeout"
@@ -2354,8 +2357,7 @@ export default function GameScreen() {
                 // misleading, so turnovers show their label instead. The stats
                 // engine reads play type, not this number, so nothing downstream
                 // is affected either way.
-                const isTurnover = play.type === "int"
-                  || (play.type === "fumble" && play.turnover !== false);
+                const isTurnover = play.type === "int" || play.turnover === true;
                 return (
                 <button key={play.id}
                   onClick={() => { if (!isTimeout) setEditPlay(play); }}

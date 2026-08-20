@@ -407,6 +407,10 @@ function convertPlay(
         yardsGained: play.yards_gained, // negative
         isTouchdown: false,
         tackledBy: sackers.length > 0 ? sackers : playersByRole(play, "tackler"),
+        // A strip-sack is a sack AND a fumble. buildFumble returns undefined
+        // when neither fumble role is tagged, so an ordinary sack is
+        // unaffected. Rush and completed passes already did this.
+        fumble: buildFumble(play, passer, ctx),
         penalties,
         description: play.description ?? undefined,
         context,

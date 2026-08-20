@@ -686,6 +686,18 @@ export default function PlayEntryModal({
   const [isFirstDown, setIsFirstDown] = useState(false);
   // Fumble recovery: false = lost (turnover, default), true = offense recovered.
   const [fumbleRecoveredByUs, setFumbleRecoveredByUs] = useState(false);
+  /**
+   * A fumble ON another play — a sack-fumble, a runner stripped, a receiver
+   * losing it after the catch.
+   *
+   * The engine has always modelled a fumble this way: RushPlay and PassPlay
+   * both carry a `fumble` built from the forced_fumble and fumble_recovery
+   * roles. Only entry insisted it was a play TYPE, which forced a choice
+   * between recording the sack and recording the turnover — and picking the
+   * sack left possession unchanged for every play that followed, because game
+   * state is replayed from the play list.
+   */
+  const [hasFumble, setHasFumble] = useState(false);
   // Onside kicks: true when the kicking team recovered its own kick.
   const [onsideRecoveredByKicker, setOnsideRecoveredByKicker] = useState(false);
   /* ── How the kick ended ───────────────────────────────────────────────────
@@ -804,6 +816,14 @@ export default function PlayEntryModal({
 
   // Step management
   const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">("pass");
+  /* Somebody has to be holding the ball to lose it. "fumble" is excluded
+     because it already IS one — the standalone play type stays for a plain
+     runner-fumbles, which is one tap. */
+  const canHaveFumble = ["run", "scramble", "pass_comp", "sack", "kneel"].includes(playType.id);
+  /* Either the dedicated play type or the modifier means the fumble roles and
+     the recovered-by question apply. */
+  const isFumblePlay = playType.id === "fumble" || (canHaveFumble && hasFumble);
+
   const roles = useMemo(() => {
     // A blocked punt wants the PUNTER, not a kicker. The tag made before the
     // block was discovered carries role "punter", so asking for "kicker" here
@@ -812,9 +832,14 @@ export default function PlayEntryModal({
       const kickerRole = blockedKickType === "punt" ? "punter" : "kicker";
       return [kickerRole, "blocker", "recoverer"];
     }
-    if (playType.id !== "two_pt") return playType.roles;
-    return twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
-  }, [playType, twoPointStyle, blockedKickType]);
+    const base = playType.id !== "two_pt"
+      ? playType.roles
+      : twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
+    // Who knocked it out and who came up with it, appended so the base play's
+    // own roles are still asked for first.
+    if (canHaveFumble && hasFumble) return [...base, "forced_fumble", "fumble_recovery"];
+    return base;
+  }, [playType, twoPointStyle, blockedKickType, canHaveFumble, hasFumble]);
   const isTheirBall = gameState.possession === "them";
   const progTag = teamTag(progName);
   const oppTag = teamTag(oppName);
@@ -1436,7 +1461,9 @@ export default function PlayEntryModal({
       isTouchdown: scored,
       isFirstDown: earnedFirst,
       isTouchback,
-      turnover: playType.id === "fumble" ? !fumbleRecoveredByUs : playType.id === "int" ? true : undefined,
+      // The flag, not the play type, is what says the ball changed hands — a
+      // sack-fumble is a sack that was lost.
+      turnover: isFumblePlay ? !fumbleRecoveredByUs : playType.id === "int" ? true : undefined,
       onsideRecoveredByKicker: playType.id === "onside_kick" ? onsideRecoveredByKicker : undefined,
       result: finalResult,
       penalty,
@@ -2580,8 +2607,24 @@ export default function PlayEntryModal({
                 </div>
               )}
 
+              {/* Fumble as a modifier. Turning it on appends the forced-fumble
+                  and recovery roles to this play rather than replacing it, so a
+                  sack stays a sack and still changes possession. */}
+              {canHaveFumble && (
+                <button
+                  onClick={() => setHasFumble(f => !f)}
+                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                    hasFumble
+                      ? "border-orange-500 bg-orange-500/20 text-orange-400"
+                      : "border-dashed border-surface-border bg-surface-bg text-slate-500"
+                  }`}
+                >
+                  {hasFumble ? "Fumble on this play" : "+ Fumble"}
+                </button>
+              )}
+
               {/* Fumble recovery — drives possession */}
-              {playType.id === "fumble" && (
+              {isFumblePlay && (
                 <div>
                   <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
                   <div className="grid grid-cols-2 gap-2">

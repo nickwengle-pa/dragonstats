@@ -434,9 +434,22 @@ export function advanceSituationAfterPlay(
     // enforcement === "declined" — fall through to normal play advancement.
   }
 
-  // A fumble counts as a change of possession unless explicitly recovered by
-  // the offense (turnover === false).
-  const fumbleLost = play.type === "fumble" && play.turnover !== false;
+  /* A lost fumble changes possession, and the FLAG is what says so — not the
+     play type. Keyed off type === "fumble", a sack-fumble left the ball with
+     the offense: the type was "sack", so this was false, possession never
+     flipped, and because live state is replayed from the play list every
+     snap after it inherited the wrong team.
+
+     `=== true` rather than `!== false` because turnover is undefined on
+     ordinary plays; only an explicit turnover flips.
+
+     The second clause preserves the old reading for a legacy "fumble" row
+     whose flag was never stored. is_turnover is BOOLEAN DEFAULT false so this
+     should not exist, but a row predating the column would come back null,
+     and under `=== true` alone it would silently stop changing possession —
+     rewriting the state of a game already recorded. */
+  const fumbleLost = play.turnover === true
+    || (play.type === "fumble" && play.turnover == null);
 
   if (play.isTouchdown) {
     const isReturnTd =
