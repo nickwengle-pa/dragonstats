@@ -11,6 +11,20 @@ interface Props {
   suggestedPhase?: PhaseFilter;
   /** Current down — drives which buttons get the oversized hit target. */
   down?: number;
+  /** Yards to go, shown alongside the down in the possession band. */
+  distance?: number;
+  /** Team colors, so the band and the active phase tab wear the colors of
+   *  whoever has the ball. */
+  progColor?: string;
+  oppColor?: string;
+}
+
+/** "2nd", "3rd" — for the down readout in the possession band. */
+function ordinalDown(down: number): string {
+  if (down === 1) return "1st";
+  if (down === 2) return "2nd";
+  if (down === 3) return "3rd";
+  return `${down}th`;
 }
 
 /**
@@ -43,6 +57,16 @@ const CATEGORY_ORDER: Record<string, number> = {
   kicking: 3,
   turnover: 4,
   other: 5,
+};
+
+/** Rail color per group, matched to the play-button color family inside it. */
+const CATEGORY_ACCENT: Record<string, string> = {
+  run: "#34d399",       // emerald
+  pass: "#60a5fa",      // blue
+  scoring: "#fbbf24",   // amber
+  kicking: "#c084fc",   // purple
+  turnover: "#fb923c",  // orange
+  other: "#facc15",     // yellow
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -93,6 +117,9 @@ export default function QuickActions({
   oppName,
   suggestedPhase,
   down,
+  distance,
+  progColor = "#dc2626",
+  oppColor = "#6b7280",
 }: Props) {
   const [phase, setPhase] = useState<PhaseFilter>(suggestedPhase ?? "all");
   const [manualOverride, setManualOverride] = useState(false);
@@ -138,60 +165,96 @@ export default function QuickActions({
       return (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99);
     });
 
-  const possessionLabel = possession === "us" ? `${progName} possession` : `${oppName} possession`;
   const primaries = primaryPlayIds(down);
+
+  const offenseName = possession === "us" ? progName : oppName;
+  const offenseColor = possession === "us" ? progColor : oppColor;
 
   return (
     <div className="space-y-3">
-      {/* Sticky so the phase filter stays reachable while the play groups
-          scroll beneath it — on a tablet that column is taller than the view. */}
-      <div className="flex gap-1 sticky top-0 z-10 bg-surface-card pb-1 -mt-1 pt-1">
-        {PHASE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => { setPhase(tab.value); setManualOverride(true); }}
-            className={`flex-1 py-1.5 rounded-lg text-[10px] font-display font-black uppercase tracking-wider transition-colors ${
-              phase === tab.value
-                ? "bg-dragon-primary/20 text-dragon-primary border border-dragon-primary/30"
-                : "bg-surface-bg text-surface-muted border border-transparent active:bg-surface-hover"
-            }`}
+      {/* Possession band — the single most important fact on this card, and
+          previously the least visible (small red text, and only when the
+          opponent had the ball). Team-colored, always present, and it carries
+          the phase filter so context and filter read as one block. Sticky so
+          both stay reachable while the play groups scroll under them. */}
+      <div
+        className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-2xl border-b"
+        style={{
+          background: `linear-gradient(180deg, ${offenseColor}26, #111820)`,
+          borderColor: `${offenseColor}59`,
+        }}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ backgroundColor: offenseColor, boxShadow: `0 0 8px ${offenseColor}` }}
+          />
+          <span
+            className="text-xs font-display font-black uppercase tracking-wider truncate"
+            style={{ color: offenseColor }}
           >
-            {tab.label}
-          </button>
-        ))}
+            {offenseName} ball
+          </span>
+          {down != null && distance != null && (
+            <span className="ml-auto text-xs font-display font-black tabular-nums text-white/85 shrink-0">
+              {ordinalDown(down)} &amp; {distance}
+            </span>
+          )}
+        </div>
+
+        <div className="flex gap-1">
+          {PHASE_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => { setPhase(tab.value); setManualOverride(true); }}
+              className={`flex-1 py-2 rounded-lg text-[11px] font-display font-black uppercase tracking-wider transition-colors border-2 ${
+                phase === tab.value
+                  ? "text-white"
+                  : "bg-surface-bg/60 text-surface-muted border-transparent active:bg-surface-hover"
+              }`}
+              style={phase === tab.value
+                ? { backgroundColor: offenseColor, borderColor: offenseColor }
+                : undefined}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {possession === "them" && (
-        <div className="text-[10px] font-display font-bold text-red-400 uppercase tracking-widest">
-          {possessionLabel}
-        </div>
-      )}
-
-      {categories.map((category) => (
-        <div key={category}>
-          <div className="section-title text-[10px] mb-2">
-            {CATEGORY_LABELS[category] ?? category}
+      {categories.map((category) => {
+        // A colored rail per group, so the boundaries read at a glance instead
+        // of relying on a low-contrast 11px header alone.
+        const accent = CATEGORY_ACCENT[category] ?? "#64748b";
+        return (
+          <div key={category} className="border-l-[3px] pl-2.5" style={{ borderColor: accent }}>
+            <div
+              className="text-[11px] font-display font-bold uppercase tracking-[0.2em] mb-2"
+              style={{ color: accent }}
+            >
+              {CATEGORY_LABELS[category] ?? category}
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {grouped[category].map((playType) => {
+                const isPrimary = primaries.has(playType.id);
+                return (
+                  <button
+                    key={playType.id}
+                    onClick={() => onSelect(playType)}
+                    className={`px-1 rounded-xl font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${
+                      isPrimary
+                        ? "col-span-2 py-5 text-sm ring-1 ring-inset ring-white/10"
+                        : "py-2.5 text-[11px]"
+                    } ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
+                  >
+                    {playType.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="grid grid-cols-4 gap-1.5">
-            {grouped[category].map((playType) => {
-              const isPrimary = primaries.has(playType.id);
-              return (
-                <button
-                  key={playType.id}
-                  onClick={() => onSelect(playType)}
-                  className={`px-1 rounded-xl font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${
-                    isPrimary
-                      ? "col-span-2 py-5 text-sm ring-1 ring-inset ring-white/10"
-                      : "py-2.5 text-[11px]"
-                  } ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
-                >
-                  {playType.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

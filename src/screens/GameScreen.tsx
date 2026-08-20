@@ -2202,6 +2202,9 @@ export default function GameScreen() {
             oppName={oppName}
             suggestedPhase={suggestedPhase}
             down={down}
+            distance={distance}
+            progColor={primaryColor}
+            oppColor={oppColor}
           />
         </div>
         </div>
@@ -2210,22 +2213,23 @@ export default function GameScreen() {
             list never pushes the play buttons off screen. */}
         <div className="lg:w-[38%] lg:shrink-0 min-h-0 lg:overflow-y-auto space-y-3">
 
-        {/* Recent Plays */}
+        {/* Every play, newest first — capped and scrollable on phones, fills the
+            column on tablets where it is already its own scroller. */}
         {plays.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="section-title mb-0">Recent Plays</span>
+              <span className="section-title mb-0">Plays ({plays.length})</span>
               <div className="flex items-center gap-3">
                 <button onClick={handleUndo} className="text-[10px] font-display font-bold text-red-400 flex items-center gap-1 uppercase tracking-wider cursor-pointer">
                   <RotateCcw className="w-3 h-3" /> Undo
                 </button>
                 <button onClick={() => setShowLog(true)} className="text-[10px] font-display font-bold text-dragon-primary uppercase tracking-wider cursor-pointer">
-                  All {plays.length}
+                  Full Log
                 </button>
               </div>
             </div>
-            <div className="space-y-1">
-              {plays.slice(-5).reverse().map(play => (
+            <div className="space-y-1 max-h-[22rem] overflow-y-auto pr-1 lg:max-h-none lg:overflow-visible lg:pr-0">
+              {plays.slice().reverse().map(play => (
                 <button key={play.id}
                   onClick={() => { if (play.type !== "timeout") setEditPlay(play); }}
                   className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 border border-surface-border bg-surface-card text-left ${
