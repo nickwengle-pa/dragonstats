@@ -2093,26 +2093,6 @@ export default function GameScreen() {
   const progLogoUrl = program?.logo_url ?? null;
   const oppLogoUrl = game?.opponent?.logo_url ?? null;
 
-  /** Rendered twice — pinned at lg, in the scroller on phones — so the two
-   *  copies can't drift. `extra` carries the display class for each. */
-  const quickStatsStrip = (extra: string) => (
-    <div className={`grid-cols-5 gap-1.5 ${extra}`}>
-      {[
-        { label: "RUSH", val: `${stats.rushAtt}/${stats.rushYds}` },
-        { label: "PASS", val: `${stats.passComp}-${stats.passAtt}/${stats.passYds}` },
-        { label: "1ST", val: stats.firstDowns },
-        { label: "TO", val: stats.tos },
-        { label: "PEN", val: stats.pens },
-      ].map(s => (
-        <div key={s.label} className="card p-1.5 text-center">
-          <div className="stat-label text-[8px]">{s.label}</div>
-          {/* "12-20/145" overflows a fifth of a 375px screen at text-xs. */}
-          <div className="text-[10px] lg:text-xs font-display font-extrabold tabular-nums">{s.val}</div>
-        </div>
-      ))}
-    </div>
-  );
-
   return (
     // Phone landscape can't afford a pinned block — header plus scoreboard plus
     // field already exceed the viewport, which collapses the play area to zero
@@ -2199,8 +2179,24 @@ export default function GameScreen() {
           onFlipDirection={() => setDirectionFlipped((current) => !current)}
         />
 
-        {/* Quick stats — pinned on tablets only; see the scroller copy below. */}
-        {quickStatsStrip("hidden lg:grid")}
+        {/* Quick stats. Tablets only: on a phone these game totals cost a row
+            of the pinned block, and the scoreboard already carries the
+            situation that matters mid-drive. Full numbers are a tap away in
+            Live Stats. */}
+        <div className="hidden lg:grid grid-cols-5 gap-1.5">
+          {[
+            { label: "RUSH", val: `${stats.rushAtt}/${stats.rushYds}` },
+            { label: "PASS", val: `${stats.passComp}-${stats.passAtt}/${stats.passYds}` },
+            { label: "1ST", val: stats.firstDowns },
+            { label: "TO", val: stats.tos },
+            { label: "PEN", val: stats.pens },
+          ].map(s => (
+            <div key={s.label} className="card p-1.5 text-center">
+              <div className="stat-label text-[8px]">{s.label}</div>
+              <div className="text-xs font-display font-extrabold tabular-nums">{s.val}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Phone pane switcher. Pinned rather than scrolled: getting back to the
@@ -2258,10 +2254,6 @@ export default function GameScreen() {
         <div className={`lg:w-[38%] lg:shrink-0 min-h-0 lg:overflow-y-auto space-y-3 lg:block ${
           phonePane === "plays" ? "" : "hidden"
         }`}>
-
-        {/* Phone copy of the quick stats. It rides with the Plays pane rather
-            than above both, so the Play pane opens straight onto buttons. */}
-        {quickStatsStrip("grid lg:hidden shrink-0")}
 
         {/* Phone only: without this the Plays pane is blank before the first
             snap, which reads as broken rather than empty. */}
