@@ -18,9 +18,6 @@ interface Props {
   canNextQuarter: boolean;
   onEditClock: () => void;
   onEndGame: () => void;
-  /** Phone only: whether the correction strip is open. Driven from the
-   *  possession band's spot, so the control costs no height of its own. */
-  showAdjust?: boolean;
   onSetDown: (down: number) => void;
   onAdjustDistance: (delta: number) => void;
   onAdjustBall: (delta: number) => void;
@@ -103,7 +100,6 @@ export default function Scoreboard({
   canNextQuarter,
   onEditClock,
   onEndGame,
-  showAdjust = false,
   onSetDown,
   onAdjustDistance,
   onAdjustBall,
@@ -266,15 +262,15 @@ export default function Scoreboard({
             tighten so all three fit one row (~104 + 96 + 120 + 12 = 332).
             Every change here is a <phone> lg:<original> pair, so at 1024px and
             up this renders exactly as it did. */}
-        <div className={`${showAdjust ? "flex" : "hidden"} lg:flex mt-2 lg:mt-3 flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2`}>
-          <div className="flex-1 min-w-[104px] lg:min-w-[116px] rounded-xl border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
+        <div className="mt-2 lg:mt-3 flex flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2">
+          <div className="flex-1 min-w-[104px] lg:min-w-[116px] rounded-[4px] border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
             <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Down</div>
             <div className="mt-0 lg:mt-1 grid grid-cols-4 gap-0.5 lg:gap-1">
               {[1, 2, 3, 4].map((down) => (
                 <button
                   key={down}
                   onClick={() => onSetDown(down)}
-                  className={`h-8 rounded-lg text-[11px] font-display font-bold transition-colors cursor-pointer ${
+                  className={`h-8 rounded-[3px] text-[11px] font-display font-bold transition-colors cursor-pointer ${
                     state.down === down
                       ? "bg-amber-500 text-black"
                       : "bg-surface-bg text-surface-muted active:bg-surface-hover"
@@ -286,7 +282,7 @@ export default function Scoreboard({
             </div>
           </div>
 
-          <div className="flex-1 min-w-[96px] lg:min-w-[104px] rounded-xl border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
+          <div className="flex-1 min-w-[96px] lg:min-w-[104px] rounded-[4px] border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
             <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">To Go</div>
             <div className="mt-0 lg:mt-1 flex items-center gap-0.5 lg:gap-1">
               <button
@@ -296,10 +292,11 @@ export default function Scoreboard({
               >
                 -
               </button>
-              {/* Tier 3: chrome. The possession band states the situation now,
-                  so this is the place you come to CORRECT it - amber here was
-                  competing with the reading for attention. */}
-              <div className="flex-1 h-8 rounded-lg bg-surface-bg flex items-center justify-center text-sm font-display font-extrabold text-slate-300 tabular-nums">
+              {/* Stays amber. This is not chrome: tapping the field on a phone
+                  is not precise enough, so these nudges are how the spot is
+                  actually set. A control you reach for every play belongs at
+                  full strength. */}
+              <div className="flex-1 h-8 rounded-[3px] bg-surface-bg flex items-center justify-center text-sm font-display font-extrabold text-amber-400 tabular-nums">
                 {state.ballOn + state.distance >= 100 ? "Goal" : state.distance}
               </div>
               <button
@@ -312,7 +309,7 @@ export default function Scoreboard({
             </div>
           </div>
 
-          <div className="flex-[1.2] min-w-[120px] lg:min-w-[176px] rounded-xl border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
+          <div className="flex-[1.2] min-w-[120px] lg:min-w-[176px] rounded-[4px] border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
             <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Ball On</div>
             <div className="mt-0 lg:mt-1 flex items-center gap-0.5 lg:gap-1">
               <button
@@ -331,7 +328,7 @@ export default function Scoreboard({
               </button>
               <button
                 onClick={onEditBall}
-                className="flex-1 min-w-[56px] lg:min-w-[72px] h-8 rounded-lg bg-surface-bg flex items-center justify-center text-[11px] font-display font-extrabold text-emerald-400 tabular-nums px-1 lg:px-2 cursor-pointer active:bg-surface-hover"
+                className="flex-1 min-w-[56px] lg:min-w-[72px] h-8 rounded-[3px] bg-surface-bg flex items-center justify-center text-[11px] font-display font-extrabold text-emerald-400 tabular-nums px-1 lg:px-2 cursor-pointer active:bg-surface-hover"
                 title="Set ball spot"
               >
                 {ballLabel}

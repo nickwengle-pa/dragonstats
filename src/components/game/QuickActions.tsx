@@ -64,16 +64,46 @@ function fastPathIds(down: number | undefined, ballOn: number | undefined): stri
   return ["rush", "pass_comp", "pass_inc"];
 }
 
-const COLOR_MAP: Record<string, string> = {
-  emerald: "bg-emerald-950/80 text-emerald-400 border-emerald-800/40 hover:bg-emerald-900/60",
-  blue: "bg-blue-950/80 text-blue-400 border-blue-800/40 hover:bg-blue-900/60",
-  red: "bg-red-950/80 text-red-400 border-red-800/40 hover:bg-red-900/60",
-  amber: "bg-amber-950/80 text-amber-400 border-amber-800/40 hover:bg-amber-900/60",
-  purple: "bg-purple-950/80 text-purple-400 border-purple-800/40 hover:bg-purple-900/60",
-  orange: "bg-orange-950/80 text-orange-400 border-orange-800/40 hover:bg-orange-900/60",
-  yellow: "bg-yellow-950/80 text-yellow-400 border-yellow-800/40 hover:bg-yellow-900/60",
-  neutral: "bg-neutral-900/80 text-neutral-400 border-neutral-800/40 hover:bg-neutral-800/60",
+/**
+ * Play-button palette: turf, chalk, gold, steel, ember.
+ *
+ * The old one was Tailwind's defaults - emerald #34d399, blue #60a5fa, purple
+ * #c084fc - which is mint, sky and lavender, and reads as generic because it
+ * is the palette every framework ships and every dashboard uses. Purple in
+ * particular has nothing to do with football.
+ *
+ * These are drawn from what you are actually looking at on a Friday night:
+ * turf, the chalk of the lines, the gold of a scoreboard bulb, the grey steel
+ * of the uprights, the rust of an alarm. Hex rather than Tailwind families,
+ * because escaping the default families is the whole point.
+ *
+ * Each entry is {fill, ink, edge}. Fill stays near-black so the buttons remain
+ * dark under stadium light; the ink carries the identity.
+ */
+interface PlayHue { fill: string; ink: string; edge: string; }
+
+const PLAY_HUES: Record<string, PlayHue> = {
+  // Turf. Deeper and greyer than mint - a real field is not a highlighter.
+  emerald: { fill: "#131a12", ink: "#8fb96a", edge: "#2f4426" },
+  // Chalk. The lines on the grass; reads as bright without belonging to a hue.
+  blue:    { fill: "#16171a", ink: "#d8d3c6", edge: "#3d3f45" },
+  // Ember, for what went wrong.
+  red:     { fill: "#1c1210", ink: "#e0714b", edge: "#4d2519" },
+  // Scoreboard gold.
+  amber:   { fill: "#1b1710", ink: "#e0aa3c", edge: "#4a3a18" },
+  // Steel of the uprights. This replaces purple outright.
+  purple:  { fill: "#14171a", ink: "#93a7b8", edge: "#33404b" },
+  // Rust, a shade off the ember so a turnover is not mistaken for an incompletion.
+  orange:  { fill: "#1d1510", ink: "#d4894a", edge: "#4f3320" },
+  // Sand.
+  yellow:  { fill: "#1a1810", ink: "#c4ad72", edge: "#453d24" },
+  neutral: { fill: "#15161a", ink: "#8b8f96", edge: "#2e3138" },
 };
+
+function hueStyle(color: string): React.CSSProperties {
+  const h = PLAY_HUES[color] ?? PLAY_HUES.neutral;
+  return { backgroundColor: h.fill, color: h.ink, borderColor: h.edge };
+}
 
 const CATEGORY_ORDER: Record<string, number> = {
   run: 0,
@@ -86,12 +116,12 @@ const CATEGORY_ORDER: Record<string, number> = {
 
 /** Rail color per group, matched to the play-button color family inside it. */
 const CATEGORY_ACCENT: Record<string, string> = {
-  run: "#34d399",       // emerald
-  pass: "#60a5fa",      // blue
-  scoring: "#fbbf24",   // amber
-  kicking: "#c084fc",   // purple
-  turnover: "#fb923c",  // orange
-  other: "#facc15",     // yellow
+  run: PLAY_HUES.emerald.ink,      // turf
+  pass: PLAY_HUES.blue.ink,        // chalk
+  scoring: PLAY_HUES.amber.ink,    // scoreboard gold
+  kicking: PLAY_HUES.purple.ink,   // upright steel
+  turnover: PLAY_HUES.orange.ink,  // rust
+  other: PLAY_HUES.yellow.ink,     // sand
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -218,7 +248,7 @@ export default function QuickActions({
           the phase filter so context and filter read as one block. Sticky so
           both stay reachable while the play groups scroll under them. */}
       <div
-        className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-2xl border-b"
+        className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-[4px] border-b"
         style={{
           background: `linear-gradient(180deg, ${offenseColor}26, #111820)`,
           borderColor: `${offenseColor}59`,
@@ -270,7 +300,7 @@ export default function QuickActions({
             <button
               key={tab.value}
               onClick={() => { setPhase(tab.value); setManualOverride(true); }}
-              className={`flex-1 py-2 rounded-lg text-[11px] font-display font-black uppercase tracking-wider transition-colors border-2 ${
+              className={`flex-1 py-2 rounded-[3px] text-[11px] font-display font-black uppercase tracking-wider transition-colors border-2 ${
                 phase === tab.value
                   ? "text-white"
                   : "bg-surface-bg/60 text-surface-muted border-transparent active:bg-surface-hover"
@@ -294,7 +324,11 @@ export default function QuickActions({
             <button
               key={`fast-${playType.id}`}
               onClick={() => onSelect(playType)}
-              className={`py-5 px-1 rounded-xl text-sm font-display font-black border-2 transition-all active:scale-95 cursor-pointer uppercase tracking-wide ring-1 ring-inset ring-white/10 ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
+              /* rounded-[3px], not rounded-xl. A 12px radius on a small dark
+                 button is what makes it read as a phone-app pill; near-square
+                 corners read as instrumentation, which is what this is. */
+              className="py-5 px-1 rounded-[3px] text-sm font-display font-black border-2 transition-all active:scale-95 cursor-pointer uppercase tracking-wide ring-1 ring-inset ring-white/5"
+              style={hueStyle(playType.color)}
             >
               {playType.label}
             </button>
@@ -322,7 +356,8 @@ export default function QuickActions({
                     onClick={() => onSelect(playType)}
                     // A quarter of a 375px row is ~62px; "ENCROACHMENT" needs
                     // the smaller type and tighter padding to sit inside it.
-                    className={`px-0.5 lg:px-1 py-2.5 rounded-xl text-[10px] lg:text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide ${COLOR_MAP[playType.color] ?? COLOR_MAP.neutral}`}
+                    className="px-0.5 lg:px-1 py-2.5 rounded-[3px] text-[10px] lg:text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide"
+                    style={hueStyle(playType.color)}
                   >
                     {playType.label}
                   </button>
