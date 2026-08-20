@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
+import TeamCrest from "@/components/TeamCrest";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
 import type {
@@ -21,6 +22,8 @@ interface GameInfo {
   status: string;
   opponent_name: string;
   opponent_abbrev: string | null;
+  opponent_color: string;
+  opponent_logo_url: string | null;
   game_date: string;
 }
 
@@ -57,6 +60,72 @@ function ourLines<T extends { playerName: string }>(
 
 const QUARTER_COLS = ["1", "2", "3", "4"];
 
+/** One side of the box-score header: crest, score, name. */
+function TeamSide({
+  logoUrl,
+  abbr,
+  name,
+  color,
+  score,
+}: {
+  logoUrl: string | null;
+  abbr: string;
+  name: string;
+  color?: string | null;
+  score: number;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1 min-w-0">
+      <TeamCrest logoUrl={logoUrl} abbr={abbr} color={color} size="lg" />
+      <div className="text-3xl font-display font-black tabular-nums leading-none">{score}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 print:text-neutral-600 truncate max-w-[9rem]">
+        {name}
+      </div>
+    </div>
+  );
+}
+
+/** Individual stat lines as a real table — the previous run-on text lines
+ *  ("#22 M.Webb 5-12-1, 88 yds, 1 TD") were unscannable down a column. */
+function StatTable({
+  headers,
+  rows,
+}: {
+  headers: string[];
+  rows: Array<Array<string | number>>;
+}) {
+  return (
+    <table className="w-full text-xs print:text-[11px]">
+      <thead>
+        <tr className="text-[10px] uppercase text-slate-500 print:text-neutral-600 border-b border-surface-border/60 print:border-neutral-300">
+          {headers.map((h, i) => (
+            <th
+              key={h}
+              className={`py-1 font-bold ${i === 0 ? "text-left" : "text-right w-10"}`}
+            >
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="tabular-nums">
+        {rows.map((row, i) => (
+          <tr key={i} className="border-b border-surface-border/30 print:border-neutral-200">
+            {row.map((cell, j) => (
+              <td
+                key={j}
+                className={`py-1 ${j === 0 ? "text-left font-bold" : "text-right text-slate-300 print:text-black"}`}
+              >
+                {cell}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function BoxScoreScreen() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
@@ -76,7 +145,7 @@ export default function BoxScoreScreen() {
       const [{ data: gData }, { data: rData }, result] = await Promise.all([
         supabase
           .from("games")
-          .select("our_score, opponent_score, is_home, status, game_date, opponent:opponents(name, abbreviation)")
+          .select("our_score, opponent_score, is_home, status, game_date, opponent:opponents(name, abbreviation, primary_color, logo_url)")
           .eq("id", gameId)
           .single(),
         supabase
@@ -101,6 +170,8 @@ export default function BoxScoreScreen() {
           status: gData.status,
           opponent_name: opp?.name ?? "Opponent",
           opponent_abbrev: opp?.abbreviation ?? null,
+          opponent_color: opp?.primary_color ?? "#6b7280",
+          opponent_logo_url: opp?.logo_url ?? null,
           game_date: gData.game_date,
         });
       }
@@ -175,13 +246,11 @@ export default function BoxScoreScreen() {
     </tr>
   );
 
-  const section = (title: string, rows: string[]) =>
+  const section = (title: string, headers: string[], rows: Array<Array<string | number>>) =>
     rows.length > 0 && (
-      <div key={title}>
-        <div className="text-[10px] font-black uppercase tracking-wider text-dragon-primary print:text-black mt-3 mb-1">{title}</div>
-        {rows.map((r, i) => (
-          <div key={i} className="text-xs leading-5 print:text-[11px]">{r}</div>
-        ))}
+      <div key={title} className="mt-3">
+        <div className="text-[10px] font-black uppercase tracking-wider text-dragon-primary print:text-black mb-1">{title}</div>
+        <StatTable headers={headers} rows={rows} />
       </div>
     );
 
@@ -203,15 +272,31 @@ export default function BoxScoreScreen() {
 
         {!loading && summary && gameInfo && (
           <div className="card p-5 space-y-1 print:border-0 print:shadow-none print:bg-white">
-            {/* Header */}
-            <div className="text-center mb-2">
-              <div className="text-sm font-display font-extrabold uppercase tracking-wide">
-                {gameInfo.is_home
-                  ? `${gameInfo.opponent_name} at ${program?.name}`
-                  : `${program?.name} at ${gameInfo.opponent_name}`}
+            {/* Header — crests identify the two sides without reading, which
+                is the whole job on a sheet that gets printed and passed
+                around. Order matches the line score below: us, then them. */}
+            <div className="mb-3">
+              <div className="flex items-end justify-center gap-5">
+                <TeamSide
+                  logoUrl={program?.logo_url ?? null}
+                  abbr={progAbbr}
+                  name={program?.name ?? "Us"}
+                  color={program?.primary_color}
+                  score={gameInfo.our_score}
+                />
+                <div className="text-[11px] font-bold text-slate-600 print:text-neutral-500 pb-2">vs</div>
+                <TeamSide
+                  logoUrl={gameInfo.opponent_logo_url}
+                  abbr={oppAbbr}
+                  name={gameInfo.opponent_name}
+                  color={gameInfo.opponent_color}
+                  score={gameInfo.opponent_score}
+                />
               </div>
-              <div className="text-[11px] text-slate-500 print:text-neutral-600">
-                {dateLabel}{gameInfo.status === "live" ? " · IN PROGRESS" : " · FINAL"}
+              <div className="text-center text-[11px] text-slate-500 print:text-neutral-600 mt-2">
+                {gameInfo.is_home ? "Home" : "Away"}
+                {dateLabel ? ` · ${dateLabel}` : ""}
+                {gameInfo.status === "live" ? " · IN PROGRESS" : " · FINAL"}
               </div>
             </div>
 
@@ -220,20 +305,30 @@ export default function BoxScoreScreen() {
               <thead>
                 <tr className="text-[10px] text-slate-500 print:text-neutral-600 uppercase">
                   <th className="text-left py-1 font-bold">Team</th>
-                  {quarterCols.map(c => <th key={c} className="text-right py-1 w-9 font-bold">{c}</th>)}
-                  <th className="text-right py-1 w-10 font-black">F</th>
+                  {quarterCols.map(c => <th key={c} className="text-center py-1 w-10 font-bold">{c}</th>)}
+                  <th className="text-center py-1 w-12 font-black">F</th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">
                 <tr className="border-t border-surface-border/40 print:border-neutral-300">
-                  <td className="py-1 font-bold">{progAbbr}</td>
-                  {quarterCols.map((c, i) => <td key={c} className="text-right py-1">{qPoints(lineScore.us, c, i)}</td>)}
-                  <td className="text-right py-1 font-black">{gameInfo.our_score}</td>
+                  <td className="py-1">
+                    <span className="flex items-center gap-2 font-bold">
+                      <TeamCrest logoUrl={program?.logo_url} abbr={progAbbr} color={program?.primary_color} size="sm" />
+                      {progAbbr}
+                    </span>
+                  </td>
+                  {quarterCols.map((c, i) => <td key={c} className="text-center py-1">{qPoints(lineScore.us, c, i)}</td>)}
+                  <td className="text-center py-1 font-black">{gameInfo.our_score}</td>
                 </tr>
                 <tr className="border-t border-surface-border/40 print:border-neutral-300">
-                  <td className="py-1 font-bold">{oppAbbr}</td>
-                  {quarterCols.map((c, i) => <td key={c} className="text-right py-1">{qPoints(lineScore.them, c, i)}</td>)}
-                  <td className="text-right py-1 font-black">{gameInfo.opponent_score}</td>
+                  <td className="py-1">
+                    <span className="flex items-center gap-2 font-bold">
+                      <TeamCrest logoUrl={gameInfo.opponent_logo_url} abbr={oppAbbr} color={gameInfo.opponent_color} size="sm" />
+                      {oppAbbr}
+                    </span>
+                  </td>
+                  {quarterCols.map((c, i) => <td key={c} className="text-center py-1">{qPoints(lineScore.them, c, i)}</td>)}
+                  <td className="text-center py-1 font-black">{gameInfo.opponent_score}</td>
                 </tr>
               </tbody>
             </table>
@@ -257,8 +352,18 @@ export default function BoxScoreScreen() {
               <thead>
                 <tr className="text-[10px] text-slate-500 print:text-neutral-600 uppercase border-b border-surface-border print:border-neutral-400">
                   <th className="text-left py-1"></th>
-                  <th className="text-right py-1 px-2">{progAbbr}</th>
-                  <th className="text-right py-1 pl-2">{oppAbbr}</th>
+                  <th className="py-1 px-2 w-20">
+                    <span className="flex items-center justify-end gap-1.5">
+                      <TeamCrest logoUrl={program?.logo_url} abbr={progAbbr} color={program?.primary_color} size="sm" />
+                      {progAbbr}
+                    </span>
+                  </th>
+                  <th className="py-1 pl-2 w-20">
+                    <span className="flex items-center justify-end gap-1.5">
+                      <TeamCrest logoUrl={gameInfo.opponent_logo_url} abbr={oppAbbr} color={gameInfo.opponent_color} size="sm" />
+                      {oppAbbr}
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -278,25 +383,66 @@ export default function BoxScoreScreen() {
             <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 print:text-neutral-600 mt-3">
               Individual — {program?.name}
             </div>
-            {section("Passing", passing.map(([id, s]) =>
-              `${playerLabel(id, s.playerName, roster)} ${s.completions}-${s.attempts}-${s.interceptions}, ${fmt(s.yards)} yds${s.touchdowns ? `, ${s.touchdowns} TD` : ""}`))}
-            {section("Rushing", rushing.map(([id, s]) =>
-              `${playerLabel(id, s.playerName, roster)} ${s.carries}-${s.yards < 0 ? `(${fmt(s.yards)})` : fmt(s.yards)}${s.touchdowns ? `, ${s.touchdowns} TD` : ""}${s.longRush ? ` (long ${s.longRush})` : ""}`))}
-            {section("Receiving", receiving.map(([id, s]) =>
-              `${playerLabel(id, s.playerName, roster)} ${s.receptions}-${fmt(s.yards)}${s.touchdowns ? `, ${s.touchdowns} TD` : ""}`))}
-            {section("Defense", defense.map(([id, s]) => {
-              const bits: string[] = [];
-              if (s.totalTackles) bits.push(`${fmt(s.totalTackles)} tkl`);
-              if (s.tacklesForLoss) bits.push(`${fmt(s.tacklesForLoss)} TFL`);
-              if (s.sacks) bits.push(`${fmt(s.sacks)} sck`);
-              if (s.interceptions) bits.push(`${s.interceptions} INT`);
-              if (s.passesDefended) bits.push(`${s.passesDefended} PBU`);
-              if (s.forcedFumbles) bits.push(`${s.forcedFumbles} FF`);
-              if (s.fumbleRecoveries) bits.push(`${s.fumbleRecoveries} FR`);
-              return `${playerLabel(id, s.playerName, roster)} ${bits.join(", ")}`;
-            }))}
-            {section("Kicking", kicking.map(([id, s]) =>
-              `${playerLabel(id, s.playerName, roster)} XP ${s.extraPointMade}/${s.extraPointAttempts}, FG ${s.fieldGoalMade}/${s.fieldGoalAttempts}, ${s.totalPoints} pts`))}
+            {section(
+              "Passing",
+              ["Player", "C/ATT", "YDS", "TD", "INT"],
+              passing.map(([id, s]) => [
+                playerLabel(id, s.playerName, roster),
+                `${s.completions}/${s.attempts}`,
+                fmt(s.yards),
+                s.touchdowns,
+                s.interceptions,
+              ]),
+            )}
+            {section(
+              "Rushing",
+              ["Player", "CAR", "YDS", "AVG", "TD", "LNG"],
+              rushing.map(([id, s]) => [
+                playerLabel(id, s.playerName, roster),
+                s.carries,
+                // Negative rushing totals read as "(7)" on a box score sheet.
+                s.yards < 0 ? `(${fmt(Math.abs(s.yards))})` : fmt(s.yards),
+                s.carries > 0 ? (s.yards / s.carries).toFixed(1) : "0.0",
+                s.touchdowns,
+                s.longRush ?? 0,
+              ]),
+            )}
+            {section(
+              "Receiving",
+              ["Player", "REC", "YDS", "AVG", "TD", "LNG"],
+              receiving.map(([id, s]) => [
+                playerLabel(id, s.playerName, roster),
+                s.receptions,
+                fmt(s.yards),
+                s.receptions > 0 ? (s.yards / s.receptions).toFixed(1) : "0.0",
+                s.touchdowns,
+                s.longReception ?? 0,
+              ]),
+            )}
+            {section(
+              "Defense",
+              ["Player", "TKL", "TFL", "SCK", "INT", "PBU", "FF", "FR"],
+              defense.map(([id, s]) => [
+                playerLabel(id, s.playerName, roster),
+                fmt(s.totalTackles),
+                fmt(s.tacklesForLoss),
+                fmt(s.sacks),
+                s.interceptions,
+                s.passesDefended,
+                s.forcedFumbles,
+                s.fumbleRecoveries,
+              ]),
+            )}
+            {section(
+              "Kicking",
+              ["Player", "XP", "FG", "PTS"],
+              kicking.map(([id, s]) => [
+                playerLabel(id, s.playerName, roster),
+                `${s.extraPointMade}/${s.extraPointAttempts}`,
+                `${s.fieldGoalMade}/${s.fieldGoalAttempts}`,
+                s.totalPoints,
+              ]),
+            )}
           </div>
         )}
 

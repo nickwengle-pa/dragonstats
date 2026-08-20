@@ -7,6 +7,7 @@ import { computeGameStats } from "@/services/statsService";
 import { exportGameSummaryCsv } from "@/services/csvExport";
 import { loadGamePlays } from "@/services/gameService";
 import DrivesList from "@/components/game/DrivesList";
+import TeamCrest from "@/components/TeamCrest";
 import { type GameSummary, type TeamStats, type PassingStats, type RushingStats, type ReceivingStats, type DefensiveStats } from "football-stats-engine";
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,8 @@ interface GameInfo {
   status: string;
   opponent_name: string;
   opponent_color: string;
+  opponent_abbrev: string | null;
+  opponent_logo_url: string | null;
   game_date: string;
 }
 
@@ -159,7 +162,7 @@ export default function GameSummaryScreen() {
         // Load game info for display
         const { data: gData } = await supabase
           .from("games")
-          .select("our_score, opponent_score, is_home, status, game_date, opponent:opponents(name, primary_color)")
+          .select("our_score, opponent_score, is_home, status, game_date, opponent:opponents(name, abbreviation, primary_color, logo_url)")
           .eq("id", gameId)
           .single();
 
@@ -174,6 +177,8 @@ export default function GameSummaryScreen() {
             status: gData.status,
             opponent_name: opp?.name ?? "Opponent",
             opponent_color: opp?.primary_color ?? "#6b7280",
+            opponent_abbrev: opp?.abbreviation ?? null,
+            opponent_logo_url: opp?.logo_url ?? null,
             game_date: gData.game_date,
           });
         }
@@ -365,6 +370,27 @@ export default function GameSummaryScreen() {
         {summary && ourTeamStats && theirTeamStats && (
           <div className="card p-5">
             <div className="text-xs font-bold text-slate-500 uppercase mb-3">Team Stats</div>
+            {/* Which column is whose — the numbers alone never said. Widths
+                match StatRow so the crests sit over their own column. */}
+            <div className="flex items-center pb-2 mb-1 border-b border-surface-border/60">
+              <span className="w-16 flex justify-center">
+                <TeamCrest
+                  logoUrl={program?.logo_url}
+                  abbr={program?.abbreviation ?? "US"}
+                  color={program?.primary_color}
+                  size="md"
+                />
+              </span>
+              <span className="flex-1" />
+              <span className="w-16 flex justify-center">
+                <TeamCrest
+                  logoUrl={gameInfo?.opponent_logo_url}
+                  abbr={gameInfo?.opponent_abbrev ?? gameInfo?.opponent_name ?? "OPP"}
+                  color={gameInfo?.opponent_color}
+                  size="md"
+                />
+              </span>
+            </div>
             <StatRow label="Total Yards" home={fmt(ourTeamStats.totalYards)} away={fmt(theirTeamStats.totalYards)} />
             <StatRow label="Rush Yards" home={fmt(ourTeamStats.rushingYards)} away={fmt(theirTeamStats.rushingYards)} />
             <StatRow label="Pass Yards" home={fmt(ourTeamStats.passingYards)} away={fmt(theirTeamStats.passingYards)} />
