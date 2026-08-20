@@ -170,6 +170,14 @@ function defaultBlockedKickType(gameState: GameState): BlockedKickType {
   return "field_goal";
 }
 
+/** "2nd", "3rd" — matches the readout in the possession band. */
+function ordinalDown(down: number): string {
+  if (down === 1) return "1st";
+  if (down === 2) return "2nd";
+  if (down === 3) return "3rd";
+  return `${down}th`;
+}
+
 function teamTag(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "TEAM";
@@ -2154,6 +2162,25 @@ export default function PlayEntryModal({
           {/* ── STEP: Yards / Result ── */}
           {currentStep === "yards" && (
             <>
+              {/* Down and distance while the yardage is being chosen. Picking
+                  yards is the one step where what's NEEDED matters as much as
+                  what happened, and the operator was having to remember it
+                  from the screen before. Goal-to-go says "Goal" rather than a
+                  distance, same as the scoreboard. */}
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-surface-border bg-black/20">
+                <span className="text-sm font-display font-black text-amber-400 tabular-nums">
+                  {ordinalDown(gameState.down)}
+                  {" & "}
+                  {gameState.ballOn + gameState.distance >= 100 ? "Goal" : gameState.distance}
+                </span>
+                <span className="text-[11px] font-bold text-slate-500 tabular-nums">
+                  Ball on {yardLabel(gameState.ballOn)}
+                  {gameState.ballOn + gameState.distance < 100 && (
+                    <> · 1st at {yardLabel(gameState.ballOn + gameState.distance)}</>
+                  )}
+                </span>
+              </div>
+
               {playType.id === "blocked_kick" && (
                 <div>
                   <label className="label block mb-1.5">Blocked Kick Type</label>
