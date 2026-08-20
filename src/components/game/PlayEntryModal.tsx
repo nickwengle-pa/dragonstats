@@ -703,6 +703,10 @@ export default function PlayEntryModal({
    */
   const [hasFumble, setHasFumble] = useState(false);
   const [fumbleReturnRaw, setFumbleReturnRaw] = useState("");
+  /** Where the ball was actually picked up. Null means "where the play ended",
+   *  which is the common case and costs no taps; a loose ball that bounced is
+   *  set explicitly. */
+  const [fumbleRecoveredAt, setFumbleRecoveredAt] = useState<number | null>(null);
   const [recoverySearch, setRecoverySearch] = useState("");
   const [recoveryTacklerSearch, setRecoveryTacklerSearch] = useState("");
   const fumbleReturnYards = (() => {
@@ -976,10 +980,15 @@ export default function PlayEntryModal({
      this a 20-yard return by the defence would push the ball 20 yards toward
      the goal the offense was already attacking. */
   const fumbleReturnDirection = fumbleRecoveredByUs ? 1 : -1;
+  /* The return starts where it was RECOVERED, which is not always where the
+     play ended: a ball can come loose behind the line and be fallen on ten
+     yards further downfield. Defaults to the play's end spot so the common
+     case is still zero taps. */
+  const fumbleRecoveredAtBallOn = fumbleRecoveredAt ?? fumbleSpotBallOn;
   const fumbleReturnBallOn = Math.max(0, Math.min(100,
-    fumbleSpotBallOn + fumbleReturnDirection * fumbleReturnYards));
+    fumbleRecoveredAtBallOn + fumbleReturnDirection * fumbleReturnYards));
   const setFumbleReturnFromBallOn = (ballOn: number) => {
-    const gained = fumbleReturnDirection * (ballOn - fumbleSpotBallOn);
+    const gained = fumbleReturnDirection * (ballOn - fumbleRecoveredAtBallOn);
     setFumbleReturnRaw(String(Math.round(gained)));
   };
 
@@ -2293,8 +2302,28 @@ export default function PlayEntryModal({
                   selectedId={tagged.find(t => t.role === "fumble_recovery")?.player_id ?? null}
                   search={recoverySearch}
                   onSearch={setRecoverySearch}
+                  /* Without this the confirmed tile renders exactly like an
+                     unpicked one: PlayerGrid paints the selection through an
+                     inline style gated on accentColor. The tap registered and
+                     showed nothing, which reads as a dead button. */
+                  accentColor={fumbleRecoveredByUs ? offenseColor : defenseColor}
                 />
               )}
+
+              <div className="mt-3">
+                <label className="label block mb-1">Recovered At</label>
+                <div className="text-[10px] text-slate-600 mb-1">
+                  Defaults to where the play ended{" "}
+                  ({formatFieldSpot(fumbleSpotBallOn, gameState.possession)}) - move it if the ball bounced
+                </div>
+                <YardReel
+                  value={fumbleRecoveredAtBallOn}
+                  onChange={(b) => setFumbleRecoveredAt(b)}
+                  offenseDirection={offenseDirection}
+                  accentColor="#f59e0b"
+                  formatSpot={(b) => formatFieldSpot(b, gameState.possession)}
+                />
+              </div>
 
               {/* Same spot picking the yards step uses, because a recovery
                   return is a spot on the field like any other. */}
@@ -2352,6 +2381,7 @@ export default function PlayEntryModal({
                     selectedId={tagged.find(t => t.role === "recovery_tackler")?.player_id ?? null}
                     search={recoveryTacklerSearch}
                     onSearch={setRecoveryTacklerSearch}
+                    accentColor={progColor}
                   />
                 ) : (
                   <OpponentPlayerGrid
