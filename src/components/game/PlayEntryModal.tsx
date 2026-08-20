@@ -840,6 +840,19 @@ export default function PlayEntryModal({
   const kickDistance = isKickPlay ? Math.max(0, (100 - kickedToYard) - gameState.ballOn) : 0;
 
   /** Inverse of kickDistance: given a distance, where did the ball come down? */
+  /* The landing spot in the SAME terms the field and the reel speak: distance
+     from the kicking team's own goal line. kickedToYard counts the other way,
+     from the receiving team's goal, so the two are simple complements. Keeping
+     the conversion in one place stops the field and the number boxes drifting
+     apart. */
+  const kickLandingBallOn = 100 - kickedToYard;
+  const setKickedToYardFromBallOn = (ballOn: number) => {
+    setKickedToYard(Math.max(0, Math.min(100, 100 - ballOn)));
+    // Both typed boxes are now stale — they described a different spot.
+    setKickedToRaw("");
+    setKickDistanceRaw("");
+  };
+
   const setKickedToYardFromDistance = (distance: number) => {
     const landingYard = 100 - gameState.ballOn - distance;
     // 0..100, not 0..50. Clamped at 50 every short punt pinned the spot to
@@ -1917,7 +1930,43 @@ export default function PlayEntryModal({
           {/* ── KICK STEP: Kick Location ── */}
           {currentStep === "kick_location" && (
             <>
-              <div>
+              {/* Same spot-picking as the run/pass yards step: tap the field
+                  or drag the ruler. It's also the only control here that can
+                  place the ball on EITHER side of the 50 — the "caught at" box
+                  takes a receiving-team yard line by definition, so a punt
+                  that never reached midfield can't be expressed in it. */}
+              <div className="mb-3">
+                <FieldVisualizer
+                  compact
+                  ballOn={kickLandingBallOn}
+                  ballPosition={toFieldDisplay(kickLandingBallOn)}
+                  firstDownPosition={toFieldDisplay(gameState.ballOn)}
+                  possession={gameState.possession}
+                  ourEndZoneSide={ourEndZoneSide}
+                  primaryColor={progColor}
+                  oppColor={oppColor}
+                  progName={progName}
+                  oppName={oppName}
+                  progAbbr={progTag}
+                  oppAbbr={oppTag}
+                  progLogoUrl={progLogoUrl}
+                  oppLogoUrl={oppLogoUrl}
+                  onPickSpot={(displayPosition) => setKickedToYardFromBallOn(toFieldDisplay(displayPosition))}
+                />
+                <div className="text-[10px] text-slate-600 text-center mt-1">
+                  Tap the field where it came down · kicked from {yardLabel(gameState.ballOn)}
+                </div>
+              </div>
+
+              <YardReel
+                value={kickLandingBallOn}
+                onChange={setKickedToYardFromBallOn}
+                offenseDirection={offenseDirection}
+                accentColor="#a78bfa"
+                formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+              />
+
+              <div className="mt-3">
                 <label className="label block mb-2">
                   {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicked" : "Punted"} To ({receivingTeamLabel} Yard Line)
                 </label>
