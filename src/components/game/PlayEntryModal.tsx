@@ -742,6 +742,10 @@ export default function PlayEntryModal({
    * This only says the blank was on purpose.
    */
   const [noTackle, setNoTackle] = useState(false);
+  /* On a sack the defender who got there IS the tackler — the engine already
+     reads sackers first and falls back to tacklers. Tagging the role by play
+     type keeps one step instead of two and lets a split sack hold both names. */
+  const defensiveCreditRole = playType.id === "sack" ? "sacker" : "tackler";
   const [tacklerSearch, setTacklerSearch] = useState("");
 
   // Kickoff / Punt specific state (includes onside + fair catch variants)
@@ -1088,7 +1092,7 @@ export default function PlayEntryModal({
       }
     }
     if (defenseNeedsTackler && !skipWarning) {
-      setSkipWarning(["tackler"]);
+      setSkipWarning([defensiveCreditRole]);
       return;
     }
     setSkipWarning(null);
@@ -1106,7 +1110,7 @@ export default function PlayEntryModal({
   const assignSkippedToTeam = () => {
     if (!skipWarning) return;
     if (currentStep === "defense") {
-      setTacklers([{ ...makeTeamTag("tackler"), credit: 1 }]);
+      setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1 }]);
     } else {
       setTagged(prev => [
         ...prev.filter(t => !skipWarning.includes(t.role)),
@@ -1269,7 +1273,7 @@ export default function PlayEntryModal({
       player_id: p.player_id,
       jersey_number: p.jersey_number,
       name: `${p.player.first_name} ${p.player.last_name}`,
-      role: "tackler",
+      role: defensiveCreditRole,
       credit,
     };
     setTacklers(prev => {
@@ -1298,7 +1302,7 @@ export default function PlayEntryModal({
       player_id: p.id,
       jersey_number: p.jersey_number,
       name: p.name,
-      role: "tackler",
+      role: defensiveCreditRole,
       credit,
       isOpponent: true,
     };
@@ -2797,8 +2801,8 @@ export default function PlayEntryModal({
           {currentStep === "defense" && (
             <>
               <div className="text-xs text-slate-400 mb-1">
-                Select up to 3 tacklers from {tacklersAreOurs ? progName : oppName}.
-                {" "}1 player = solo (1.0), 2+ = assist (0.5 each).
+                Select up to 3 {playType.id === "sack" ? "sackers" : "tacklers"} from {tacklersAreOurs ? progName : oppName}.
+                {" "}1 player = {playType.id === "sack" ? "full sack (1.0)" : "solo (1.0)"}, 2+ = {playType.id === "sack" ? "split (0.5 each)" : "assist (0.5 each)"}.
               </div>
               {/* Three outcomes, all one tap: name them, owe it to TEAM, or say
                   no tackle happened. Only the last two are here — naming is the
@@ -2806,17 +2810,22 @@ export default function PlayEntryModal({
               {tacklersAreOurs && tacklers.length === 0 && (
                 <div className="flex gap-2 mb-2">
                   <button
-                    onClick={() => { setTacklers([{ ...makeTeamTag("tackler"), credit: 1 }]); setSkipWarning(null); }}
+                    onClick={() => { setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1 }]); setSkipWarning(null); }}
                     className="flex-1 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-400 text-xs font-bold uppercase tracking-wide"
                   >
-                    Tackle by TEAM
+                    {playType.id === "sack" ? "Sack by TEAM" : "Tackle by TEAM"}
                   </button>
-                  <button
-                    onClick={() => { setNoTackle(true); setSkipWarning(null); goNext(); }}
-                    className="flex-1 py-2 rounded-xl border border-surface-border bg-surface-bg text-slate-400 text-xs font-bold uppercase tracking-wide"
-                  >
-                    No tackle
-                  </button>
+                  {/* A sack always had somebody get there — "no tackle" is only
+                      an answer for a runner who went out of bounds, scored, or
+                      fell down. */}
+                  {playType.id !== "sack" && (
+                    <button
+                      onClick={() => { setNoTackle(true); setSkipWarning(null); goNext(); }}
+                      className="flex-1 py-2 rounded-xl border border-surface-border bg-surface-bg text-slate-400 text-xs font-bold uppercase tracking-wide"
+                    >
+                      No tackle
+                    </button>
+                  )}
                 </div>
               )}
               {tacklers.length > 0 && (
@@ -3070,7 +3079,7 @@ export default function PlayEntryModal({
                 >
                   TEAM
                 </button>
-                {currentStep === "defense" && (
+                {currentStep === "defense" && playType.id !== "sack" && (
                   <button
                     onClick={() => { setNoTackle(true); setSkipWarning(null); goNext(); }}
                     className="px-2.5 py-1 rounded-lg border border-surface-border bg-surface-bg text-slate-400 font-bold text-[11px] uppercase tracking-wide"

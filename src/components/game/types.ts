@@ -203,7 +203,12 @@ export const PLAY_TYPES: PlayTypeDef[] = [
   { id: "pass_inc", label: "Incomplete", color: "neutral", category: "pass", roles: ["passer", "target"] },
   { id: "throwaway", label: "Throw Away", color: "neutral", category: "pass", roles: ["passer"] },
   { id: "drop", label: "Drop", color: "neutral", category: "pass", roles: ["passer", "target"] },
-  { id: "sack", label: "Sack", color: "red", category: "pass", roles: ["passer", "sacker"] },
+  /* No "sacker" here on purpose. The defensive credit is taken on the defense
+     step instead, which is multi-select with split credit — a sack shared by
+     two players is 0.5 each, exactly how the tackler step already works. As a
+     single-select role it could only ever hold one name, and it also made the
+     operator name the same player twice: sacker, then tackler. */
+  { id: "sack", label: "Sack", color: "red", category: "pass", roles: ["passer"] },
 
   // Scoring
   { id: "pat", label: "PAT Kick", color: "amber", category: "scoring", roles: ["kicker"] },
