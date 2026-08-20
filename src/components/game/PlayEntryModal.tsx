@@ -10,6 +10,7 @@ import {
   type TaggedPlayer,
   type GameState,
   BLOCKED_KICK_TYPES,
+  PLAY_TYPES,
   PENALTIES,
   PENALTY_DEFAULT_YARDS,
   STICKY_ROLES,
@@ -133,12 +134,18 @@ function roleUsesOpponentRoster(
     playTypeId?: string;
     fumbleRecoveredByUs?: boolean;
     onsideRecoveredByKicker?: boolean;
+    blockedRecoveredByKicking?: boolean;
   } = {},
 ): boolean {
   if (role === "fumble_recovery") {
     return opts.fumbleRecoveredByUs ? isTheirBall : !isTheirBall;
   }
   if (role === "returner" || role === "recoverer") {
+    // A blocked kick is a live ball either team can fall on, so the recoverer's
+    // roster follows the toggle rather than a fixed side.
+    if (opts.playTypeId === "blocked_kick") {
+      return opts.blockedRecoveredByKicking ? isTheirBall : !isTheirBall;
+    }
     return opts.playTypeId === "onside_kick" && opts.onsideRecoveredByKicker
       ? isTheirBall
       : !isTheirBall;
@@ -552,7 +559,7 @@ function OpponentPlayerGrid({
    ═══════════════════════════════════════════════ */
 
 export default function PlayEntryModal({
-  playType, gameState, roster, opponentPlayers, progName, oppName,
+  playType: chosenPlayType, gameState, roster, opponentPlayers, progName, oppName,
   gameConfig = DEFAULT_GAME_CONFIG, lastPlayerByRole,
   progColor = "#dc2626", oppColor = "#6b7280", progAbbr, oppAbbr,
   progLogoUrl, oppLogoUrl, ourEndZoneSide = "left", offenseDirection = "right",
@@ -681,7 +688,21 @@ export default function PlayEntryModal({
   // Penalty-only plays get their own dedicated step now, so this toggle only
   // governs the optional flag on a normal play.
   const [showPenalties, setShowPenalties] = useState(false);
+  /**
+   * The play type can change mid-flow.
+   *
+   * A field goal that gets blocked IS a blocked_kick, and it has to be one by
+   * the time it's written: four separate paths key next_situation_source off
+   * the type, and a blocked kick must land as "pending_review" instead of
+   * letting the engine compute a possession and spot it cannot know. Swapping
+   * the result alone would record the block while quietly auto-computing a
+   * confidently wrong next situation.
+   */
+  const [playTypeOverride, setPlayTypeOverride] = useState<PlayTypeDef | null>(null);
+  const playType = playTypeOverride ?? chosenPlayType;
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(() => defaultBlockedKickType(gameState));
+  /** Who fell on the blocked kick. Drives which roster `recoverer` picks from. */
+  const [blockedRecoveredByKicking, setBlockedRecoveredByKicking] = useState(false);
 
   // Formations
   const [offFormation, setOffFormation] = useState<string | null>(null);
@@ -760,9 +781,16 @@ export default function PlayEntryModal({
   // Step management
   const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">("pass");
   const roles = useMemo(() => {
+    // A blocked punt wants the PUNTER, not a kicker. The tag made before the
+    // block was discovered carries role "punter", so asking for "kicker" here
+    // would strand it and show an empty role the operator already filled.
+    if (playType.id === "blocked_kick") {
+      const kickerRole = blockedKickType === "punt" ? "punter" : "kicker";
+      return [kickerRole, "blocker", "recoverer"];
+    }
     if (playType.id !== "two_pt") return playType.roles;
     return twoPointStyle === "run" ? ["rusher"] : ["passer", "receiver"];
-  }, [playType, twoPointStyle]);
+  }, [playType, twoPointStyle, blockedKickType]);
   const isTheirBall = gameState.possession === "them";
   const progTag = teamTag(progName);
   const oppTag = teamTag(oppName);
@@ -953,6 +981,7 @@ export default function PlayEntryModal({
       playTypeId: playType.id,
       fumbleRecoveredByUs,
       onsideRecoveredByKicker,
+    blockedRecoveredByKicking,
     }),
   );
   /** Set when Next is held back to ask about blank roles; null the rest of the time. */
@@ -1253,6 +1282,7 @@ export default function PlayEntryModal({
         playTypeId: playType.id,
         fumbleRecoveredByUs,
         onsideRecoveredByKicker,
+    blockedRecoveredByKicking,
       });
     const rolesToFill = isKickPlay
       ? [
@@ -1366,6 +1396,7 @@ export default function PlayEntryModal({
     playTypeId: playType.id,
     fumbleRecoveredByUs,
     onsideRecoveredByKicker,
+    blockedRecoveredByKicking,
   });
 
   // Identity of whichever team's roster is on screen right now.
@@ -1888,6 +1919,31 @@ export default function PlayEntryModal({
                     </button>
                   ))}
                 </div>
+                {/* Same escape as the FG/PAT result step. A punt that never
+                    got away isn't one of these outcomes at all — it's a
+                    different play — and it has to BE a blocked_kick before it
+                    is written, so next_situation_source lands on
+                    "pending_review" instead of the engine computing a spot and
+                    possession off a kick that never happened. */}
+                <button
+                  onClick={() => {
+                    const blocked = PLAY_TYPES.find(pt => pt.id === "blocked_kick");
+                    if (!blocked) return;
+                    // fair_catch is a punt that was fair caught, so a block on
+                    // it is a blocked punt — not a blocked kickoff.
+                    setBlockedKickType(
+                      ["punt", "fair_catch"].includes(playType.id) ? "punt" : "kickoff",
+                    );
+                    setPlayTypeOverride(blocked);
+                    // Roles change to kicker/blocker/recoverer, so restart. The
+                    // kicker or punter already tagged keeps his tag.
+                    setCurrentRoleIdx(0);
+                    setStepIdx(0);
+                  }}
+                  className="mt-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-dashed border-red-500/50 bg-red-500/10 text-red-400"
+                >
+                  Blocked
+                </button>
               </div>
 
               <div className="text-xs text-slate-500 text-center">
@@ -2232,7 +2288,12 @@ export default function PlayEntryModal({
                         />
                       </div>
                       <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[10px] text-slate-500">Yards:</span>
+                        {/* On a blocked kick the number that matters is what
+                            the recoverer did with it, so say so rather than
+                            leaving a bare "Yards" to be guessed at. */}
+                        <span className="text-[10px] text-slate-500">
+                          {playType.id === "blocked_kick" ? "Return yards:" : "Yards:"}
+                        </span>
                         <input
                           type="number"
                           inputMode="numeric"
@@ -2278,6 +2339,30 @@ export default function PlayEntryModal({
                         }`}>{r}</button>
                     ))}
                   </div>
+                  {/* A block is discovered after you've already committed to
+                      the kick, so it has to be reachable from here rather than
+                      only as its own play type on the ST tab. This switches the
+                      flow outright — the play must BE a blocked_kick by the
+                      time it's written, or next_situation_source computes a
+                      possession and spot the engine can't know. */}
+                  {["fg", "pat"].includes(playType.id) && (
+                    <button
+                      onClick={() => {
+                        const blocked = PLAY_TYPES.find(pt => pt.id === "blocked_kick");
+                        if (!blocked) return;
+                        setBlockedKickType(playType.id === "pat" ? "extra_point" : "field_goal");
+                        setResult("");
+                        setPlayTypeOverride(blocked);
+                        // Roles change (kicker, blocker, recoverer), so restart
+                        // the flow. The kicker already tagged keeps his tag.
+                        setCurrentRoleIdx(0);
+                        setStepIdx(0);
+                      }}
+                      className="mt-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-dashed border-red-500/50 bg-red-500/10 text-red-400"
+                    >
+                      Blocked
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -2292,6 +2377,28 @@ export default function PlayEntryModal({
                     className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                       isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-slate-500"
                     }`}>1st Down</button>
+                </div>
+              )}
+
+              {/* Blocked kick recovery — a live ball either side can fall on,
+                  and it decides which roster the recoverer comes from. */}
+              {playType.id === "blocked_kick" && (
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setBlockedRecoveredByKicking(false)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        !blockedRecoveredByKicking ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {gameState.possession === "us" ? oppName : progName}
+                    </button>
+                    <button onClick={() => setBlockedRecoveredByKicking(true)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        blockedRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {gameState.possession === "us" ? progName : oppName} (kicking team)
+                    </button>
+                  </div>
                 </div>
               )}
 

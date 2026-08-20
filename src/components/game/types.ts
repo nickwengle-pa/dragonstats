@@ -215,7 +215,10 @@ export const PLAY_TYPES: PlayTypeDef[] = [
   { id: "onside_kick", label: "Onside", color: "purple", category: "kicking", roles: ["kicker", "recoverer"] },
   { id: "punt", label: "Punt", color: "purple", category: "kicking", roles: ["punter", "returner"] },
   { id: "fair_catch", label: "Fair Catch", color: "purple", category: "kicking", roles: ["punter", "returner"] },
-  { id: "blocked_kick", label: "Blocked", color: "red", category: "kicking", roles: ["blocker"] },
+  /* Kicker first (it was still his attempt), then who blocked it, then who
+     fell on it. Either team can recover a blocked kick, so `recoverer` is
+     resolved against a recovered-by toggle rather than a fixed side. */
+  { id: "blocked_kick", label: "Blocked", color: "red", category: "kicking", roles: ["kicker", "blocker", "recoverer"] },
 
   // Turnovers
   { id: "fumble", label: "Fumble", color: "orange", category: "turnover", roles: ["rusher", "forced_fumble", "fumble_recovery"] },
