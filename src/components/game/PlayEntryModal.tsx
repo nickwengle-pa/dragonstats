@@ -80,6 +80,9 @@ export interface PlaySubmitData {
   /** Yards the recoverer carried it after a fumble. The engine's FumbleEvent
    *  has always had a recoveryYards field; nothing ever filled it. */
   fumbleReturnYards?: number;
+  /** Where the ball was picked up, offense-relative. The next situation is
+   *  measured from here, not from where the play ended. */
+  fumbleRecoveredAt?: number;
   /** Onside kicks only: true when the kicking team recovered its own kick. */
   onsideRecoveredByKicker?: boolean;
   result: string; // "Good" | "No Good" | "Returned" | "Complete" | "Incomplete" | ""
@@ -1537,6 +1540,7 @@ export default function PlayEntryModal({
       // sack-fumble is a sack that was lost.
       turnover: isFumblePlay ? !fumbleRecoveredByUs : playType.id === "int" ? true : undefined,
       fumbleReturnYards: isFumblePlay ? fumbleReturnYards : undefined,
+      fumbleRecoveredAt: isFumblePlay ? fumbleRecoveredAtBallOn : undefined,
       onsideRecoveredByKicker: playType.id === "onside_kick" ? onsideRecoveredByKicker : undefined,
       result: finalResult,
       penalty,

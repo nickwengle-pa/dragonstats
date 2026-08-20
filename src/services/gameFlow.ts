@@ -45,6 +45,10 @@ interface AdvanceablePlay {
   turnover?: boolean;
   isTouchback?: boolean;
   blockedKickType?: string | null;
+  /** Offense-relative spot the fumble was recovered at, and how far the
+   *  recoverer then carried it. Both needed to place the ball afterwards. */
+  fumbleRecoveredAt?: number | null;
+  fumbleReturnYards?: number | null;
   nextPossession?: TeamSide;
   nextDown?: number;
   nextDistance?: number;
@@ -555,11 +559,25 @@ export function advanceSituationAfterPlay(
 
   // Interception always flips; fumble flips only when it was lost.
   if (play.type === "int" || fumbleLost) {
+    /*
+     * Where the ball actually finished, in the offense's frame.
+     *
+     * newBallOn alone is where the PLAY ended - for a strip-sack, the spot the
+     * quarterback went down. It ignored both the recovery spot and the return,
+     * so a sack from the 40 for -7 recovered and run back 12 yards suggested
+     * the ball at the 33, as though the recoverer never moved.
+     *
+     * The recovering team runs the other way, so its return counts DOWN here.
+     * Both fields are absent on an interception and on older plays, where this
+     * falls back to exactly the previous behaviour.
+     */
+    const recoveredAt = play.fumbleRecoveredAt ?? newBallOn;
+    const finishedAt = clampBallOn(recoveredAt - (play.fumbleReturnYards ?? 0));
     return {
       possession: oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
-      ballOn: flipFieldPosition(newBallOn),
+      ballOn: flipFieldPosition(finishedAt),
     };
   }
 

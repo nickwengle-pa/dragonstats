@@ -162,6 +162,8 @@ export interface PlayRecord {
   blockedKickType?: BlockedKickType | null;
   /** Yards carried after a fumble recovery. Feeds FumbleEvent.recoveryYards. */
   fumbleReturnYards?: number | null;
+  /** Offense-relative spot where the fumble was recovered. */
+  fumbleRecoveredAt?: number | null;
   nextPossession?: "us" | "them";
   nextDown?: number;
   nextDistance?: number;
