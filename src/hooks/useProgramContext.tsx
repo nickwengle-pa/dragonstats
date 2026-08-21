@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import type { Program } from "@/services/programService";
 import { seasonService, type Season } from "@/services/seasonService";
+import { cachedRead, cacheKeys } from "@/services/offlineCache";
 
 export interface Branding {
   primaryColor: string;
@@ -18,6 +19,11 @@ interface ProgramContextValue {
   seasons: Season[];
   branding: Branding;
   loading: boolean;
+  /** The server could not be reached on the last load. Anything above may be
+   *  a cached copy from this device — and a null `program` here means "could
+   *  not look", NOT "no program exists". Routing must not treat it as the
+   *  latter or an offline coach lands in first-time setup. */
+  offline: boolean;
   /** Reload program + season from DB */
   refresh: () => Promise<void>;
   /** Set the active season manually */
@@ -38,6 +44,7 @@ const ProgramContext = createContext<ProgramContextValue>({
   seasons: [],
   branding: DEFAULT_BRANDING,
   loading: true,
+  offline: false,
   refresh: async () => {},
   setSeason: async () => false,
 });
@@ -70,6 +77,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   const [season, setSeasonState] = useState<Season | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   // Once a program has loaded, background refreshes (auth event echoes,
   // manual refresh()) must not flip `loading` back to true — that swaps the
   // route content for a spinner and unmounts live screens mid-game.
@@ -91,6 +99,11 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       setProgram(null);
       setSeasonState(null);
       setSeasons([]);
+      // Must clear, not leave stale. Signing out while offline would otherwise
+      // keep `offline` true with a null program, and the router would answer
+      // every route with the no-connection card — including /login, locking
+      // the user out of signing back in.
+      setOffline(false);
       hasLoadedRef.current = false;
       setLoading(false);
       return;
@@ -98,22 +111,47 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
 
     if (!hasLoadedRef.current) setLoading(true);
 
-    // Get program
-    const { data: prog } = await supabase
-      .from("programs")
-      .select("*")
-      .eq("owner_id", user.id)
-      .maybeSingle();
+    // Get program. cachedRead needs the fetcher to THROW on failure: a network
+    // error that came back as a plain null would look exactly like "this coach
+    // has no program yet", and the router answers that with the first-time
+    // setup screen. At a field with no signal that misread is the whole app.
+    const programRead = await cachedRead<Program>(cacheKeys.program(user.id), async () => {
+      const { data, error } = await supabase
+        .from("programs")
+        .select("*")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as Program | null) ?? null;
+    });
+
+    const prog = programRead.value;
+    let couldNotReachServer = programRead.offline;
 
     setProgram((prev) => keepIfEqual(prev, prog));
 
     if (prog) {
-      const programSeasons = await seasonService.getByProgram(prog.id);
+      const seasonsRead = await cachedRead<Season[]>(cacheKeys.seasons(prog.id), async () => {
+        const { data, error } = await supabase
+          .from("seasons").select("*")
+          .eq("program_id", prog.id)
+          .order("year", { ascending: false })
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        return data ?? [];
+      });
+      const programSeasons = seasonsRead.value ?? [];
+      couldNotReachServer = couldNotReachServer || seasonsRead.offline;
+
       const activeSeasons = programSeasons.filter((entry) => entry.is_active);
 
       if (activeSeasons.length > 1) {
         const canonicalSeason = activeSeasons[0];
-        const updated = await seasonService.activate(prog.id, canonicalSeason.id);
+        // `activate` is a write. Offline it cannot succeed, and there is no
+        // point queueing a tidy-up — just run with the season we have.
+        const updated = couldNotReachServer
+          ? false
+          : await seasonService.activate(prog.id, canonicalSeason.id);
         if (updated) {
           applyActiveSeason(programSeasons, canonicalSeason.id);
         } else {
@@ -125,12 +163,18 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
         setSeasonState((prev) => keepIfEqual(prev, activeSeasons[0]));
       } else if (programSeasons.length > 0) {
         const fallbackSeason = programSeasons[0];
-        const updated = await seasonService.activate(prog.id, fallbackSeason.id);
+        const updated = couldNotReachServer
+          ? false
+          : await seasonService.activate(prog.id, fallbackSeason.id);
         if (updated) {
           applyActiveSeason(programSeasons, fallbackSeason.id);
         } else {
           setSeasons(programSeasons);
-          setSeasonState(null);
+          // Offline, leaving this null would strand the user on the settings
+          // screen with a perfectly good cached season sitting right there.
+          setSeasonState((prev) =>
+            couldNotReachServer ? keepIfEqual(prev, fallbackSeason) : null,
+          );
         }
       } else {
         setSeasons([]);
@@ -141,6 +185,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       setSeasonState(null);
     }
 
+    setOffline(couldNotReachServer);
     hasLoadedRef.current = true;
     setLoading(false);
   }, [applyActiveSeason, user]);
@@ -164,7 +209,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   }, [applyActiveSeason, program, seasons]);
 
   return (
-    <ProgramContext.Provider value={{ program, season, seasons, branding, loading, refresh, setSeason }}>
+    <ProgramContext.Provider value={{ program, season, seasons, branding, loading, offline, refresh, setSeason }}>
       {children}
     </ProgramContext.Provider>
   );

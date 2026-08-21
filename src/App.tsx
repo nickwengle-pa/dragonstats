@@ -50,6 +50,36 @@ function LoadingFallback() {
   );
 }
 
+/** Shown when the server is unreachable and this device has nothing cached to
+ *  fall back on. The alternative — and what the app used to do — was to read
+ *  "no program" as "new coach" and open first-time setup, which is a terrifying
+ *  thing to meet in a press box ten minutes before kickoff. */
+function OfflineNoData({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="screen items-center justify-center p-6 text-center">
+      <div className="max-w-sm space-y-3">
+        <div className="text-lg font-display font-bold uppercase tracking-wider text-red-400">
+          No connection
+        </div>
+        <p className="text-sm text-slate-400">
+          Can't reach the server, and this device hasn't saved a copy of your
+          program yet. Your saved plays are safe — this only affects loading
+          the app.
+        </p>
+        <p className="text-sm text-slate-400">
+          Step outside or find a signal, then try again.
+        </p>
+        <button
+          onClick={onRetry}
+          className="mt-2 px-4 py-2 rounded-md border border-slate-600 text-sm font-display font-bold uppercase tracking-wider text-slate-200"
+        >
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingFallback />;
@@ -57,7 +87,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const { program, season, loading } = useProgramContext();
+  const { program, season, loading, offline, refresh } = useProgramContext();
+
+  /* Offline with nothing cached: `program`/`season` being null here means
+     "could not look", not "does not exist". Falling through to the setup
+     screens below would tell a coach mid-season that he has no program. */
+  if (!loading && offline && (!program || !season)) {
+    return <OfflineNoData onRetry={() => { void refresh(); }} />;
+  }
 
   // If logged in but no program yet, force Settings
   if (!loading && !program) {

@@ -25,6 +25,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { clearAllOfflineData, clearGameCache } from "./offlineDb";
+import { invalidateCache, cacheKeys } from "./offlineCache";
 
 export interface PurgeResult {
   ok: boolean;
@@ -90,6 +91,10 @@ export async function deleteGame(gameId: string): Promise<PurgeResult> {
   if (!data?.length) return fail("Nothing was deleted — the game may already be gone.");
 
   await clearGameCache(gameId);
+  // The cached game row would otherwise let a deleted game still be opened
+  // offline. The cached schedule self-heals: deleting happens from the
+  // schedule screen, which reloads online right afterwards.
+  await invalidateCache(cacheKeys.game(gameId));
   return ok(data.length);
 }
 
@@ -109,7 +114,11 @@ export async function purgeSeasonGames(seasonId: string): Promise<PurgeResult> {
 
   if (error) return fail(error.message);
 
-  await Promise.all(gameIds.map(clearGameCache));
+  await Promise.all([
+    ...gameIds.map(clearGameCache),
+    ...gameIds.map((id) => invalidateCache(cacheKeys.game(id))),
+    invalidateCache(cacheKeys.schedule(seasonId)),
+  ]);
   return ok(data?.length ?? 0);
 }
 
@@ -216,7 +225,12 @@ export async function deleteSeason(seasonId: string): Promise<PurgeResult> {
   if (error) return fail(error.message);
   if (!data?.length) return fail("Nothing was deleted — the season may already be gone.");
 
-  await Promise.all(gameIds.map(clearGameCache));
+  await Promise.all([
+    ...gameIds.map(clearGameCache),
+    ...gameIds.map((id) => invalidateCache(cacheKeys.game(id))),
+    invalidateCache(cacheKeys.schedule(seasonId)),
+    invalidateCache(cacheKeys.roster(seasonId)),
+  ]);
   return ok(data.length);
 }
 

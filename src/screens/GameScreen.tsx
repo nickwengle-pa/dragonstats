@@ -58,6 +58,7 @@ import SyncBadge from "@/components/game/SyncBadge";
 import ClockInput from "@/components/game/ClockInput";
 import { setupAutoDrain, drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
 import { getQueueForGame } from "@/services/offlineDb";
+import { cachedRead, cacheKeys } from "@/services/offlineCache";
 import {
   type RosterPlayer,
   type OpponentPlayerRef,
@@ -376,18 +377,34 @@ export default function GameScreen() {
     quarterSnapshots.current = {};
     setDirectionFlipped(readFieldFlip(gameId));
 
-    const [gameRes, rosterRes, existingPlays] = await Promise.all([
-      supabase.from("games").select("*, opponent:opponents(*)").eq("id", gameId).single(),
-      supabase.from("season_rosters").select("*, player:players(*)").eq("season_id", season.id).eq("is_active", true).order("jersey_number", { ascending: true, nullsFirst: false }),
+    /* All three fall back to this device when the server is unreachable.
+       The roster is the one that stings: without it every tag on every play
+       is a jersey number with no name behind it, which is not a chartable
+       game. In a steel press box that is the normal case, not the edge one. */
+    const [gameRead, rosterRead, existingPlays] = await Promise.all([
+      cachedRead<any>(cacheKeys.game(gameId), async () => {
+        const { data, error } = await supabase
+          .from("games").select("*, opponent:opponents(*)").eq("id", gameId).single();
+        if (error) throw error;
+        return data;
+      }),
+      cachedRead<RosterPlayer[]>(cacheKeys.roster(season.id), async () => {
+        const { data, error } = await supabase
+          .from("season_rosters").select("*, player:players(*)")
+          .eq("season_id", season.id).eq("is_active", true)
+          .order("jersey_number", { ascending: true, nullsFirst: false });
+        if (error) throw error;
+        return (data ?? []) as RosterPlayer[];
+      }),
       loadGamePlays(gameId),
     ]);
 
-    const gameData = gameRes.data;
+    const gameData = gameRead.value;
     const gameConfig = resolveGameConfig(baseGc, gameData?.rules_config as Record<string, unknown> | null);
     const pregameConfig = getPregameConfig(gameData);
 
     setGame(gameData);
-    setRoster(rosterRes.data ?? []);
+    setRoster(rosterRead.value ?? []);
 
     /* A play still sitting in the sync queue is read back from the local
        cache, where its play_players rows were written without the joined
@@ -395,7 +412,7 @@ export default function GameScreen() {
        seen the play yet. Without a fallback every tag on an unsynced play
        renders as "?", which reads exactly like the app lost who made it. */
     const rosterNames = new Map<string, string>();
-    for (const entry of (rosterRes.data ?? []) as any[]) {
+    for (const entry of (rosterRead.value ?? []) as any[]) {
       const player = entry?.player;
       if (entry?.player_id && player) {
         rosterNames.set(entry.player_id, `${player.first_name} ${player.last_name}`);
@@ -404,8 +421,21 @@ export default function GameScreen() {
 
     // Load opponent players
     if (gameData?.opponent_id) {
-      const opp = await opponentPlayerService.getByOpponent(gameData.opponent_id);
-      setOppPlayers(opp);
+      /* Queried inline rather than through opponentPlayerService: that helper
+         swallows its error and returns [], which cachedRead would take for a
+         real empty result and write over a perfectly good cached roster. */
+      const oppRead = await cachedRead<OpponentPlayerRef[]>(
+        cacheKeys.opponentPlayers(gameData.opponent_id),
+        async () => {
+          const { data, error } = await supabase
+            .from("opponent_players").select("*")
+            .eq("opponent_id", gameData.opponent_id)
+            .order("jersey_number", { ascending: true, nullsFirst: false });
+          if (error) throw error;
+          return (data ?? []) as OpponentPlayerRef[];
+        },
+      );
+      setOppPlayers(oppRead.value ?? []);
     }
 
     // Convert DB plays to local PlayRecord format

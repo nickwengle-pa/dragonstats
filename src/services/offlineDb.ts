@@ -398,3 +398,9 @@ export async function setMeta(key: string, value: unknown): Promise<void> {
   const db = await getDb();
   await db.put("meta", { key, value });
 }
+
+export async function deleteMeta(key: string): Promise<void> {
+  if (!isOfflineSupported()) return;
+  const db = await getDb();
+  await db.delete("meta", key);
+}

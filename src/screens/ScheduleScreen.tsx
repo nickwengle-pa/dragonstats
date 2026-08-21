@@ -7,6 +7,7 @@ import {
 import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
+import { cachedRead, cacheKeys } from "@/services/offlineCache";
 import {
   opponentPlayerService,
   type Opponent,
@@ -555,11 +556,21 @@ export default function ScheduleScreen() {
   const loadData = useCallback(async () => {
     if (!season || !program) return;
     setLoading(true);
-    const [gamesRes, oppsRes] = await Promise.all([
-      supabase.from("games").select("*, opponent:opponents(*)").eq("season_id", season.id).order("game_date"),
+    /* The schedule is how you reach a game, so it has to survive offline too
+       — a cached roster is no help if you can't open Friday's game to use it.
+       Opponents are only needed for scheduling new games, which is an online
+       job, so that one stays a plain read. */
+    const [gamesRead, oppsRes] = await Promise.all([
+      cachedRead<GameRow[]>(cacheKeys.schedule(season.id), async () => {
+        const { data, error } = await supabase
+          .from("games").select("*, opponent:opponents(*)")
+          .eq("season_id", season.id).order("game_date");
+        if (error) throw error;
+        return (data ?? []) as GameRow[];
+      }),
       supabase.from("opponents").select("*").eq("program_id", program.id).order("name"),
     ]);
-    setGames(gamesRes.data ?? []);
+    setGames(gamesRead.value ?? []);
     setOpponents(oppsRes.data ?? []);
     setLoading(false);
   }, [season, program]);
