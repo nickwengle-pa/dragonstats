@@ -17,9 +17,7 @@ npm run build     # PWA/service worker regenerates here, so run it
 ```
 
 Dev server: `preview_start` with `dragonstats-dev`, app at
-`http://localhost:5174/` — served from the root since the move to
-dragonstats.app. It used to sit under `/dragonstats/` on github.io, so treat
-any surviving reference to that prefix as stale.
+`http://localhost:5174/dragonstats/` (note the base path).
 
 **Claude cannot log in** — Supabase is unreachable from the sandbox. Anything
 behind auth (the whole game screen) has to be verified by the user. Say so

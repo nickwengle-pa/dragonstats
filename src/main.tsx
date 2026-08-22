@@ -8,9 +8,7 @@ import "./index.css";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      {/* Served from the root of dragonstats.app — no basename. It was
-          "/dragonstats" while the app lived on github.io under the repo path. */}
-      <BrowserRouter>
+      <BrowserRouter basename="/dragonstats">
         <App />
       </BrowserRouter>
     </ErrorBoundary>

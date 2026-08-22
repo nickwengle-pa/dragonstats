@@ -19,23 +19,6 @@
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <script>
-      // Other half of the 404.html SPA redirect. GitHub Pages has no server
-      // rewrite, so a cold deep link (/game/123) 404s; 404.html bounces it to
-      // /?/game/123 and this puts it back before the router mounts. The
-      // redirect half has always been here — this side was missing, so deep
-      // links quietly landed on the home screen instead.
-      (function (l) {
-        if (l.search[1] === "/") {
-          var decoded = l.search
-            .slice(1)
-            .split("&")
-            .map(function (s) { return s.replace(/~and~/g, "&"); })
-            .join("?");
-          window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash);
-        }
-      })(window.location);
-    </script>
   </head>
   <body class="bg-surface-bg text-white antialiased">
     <div id="root">

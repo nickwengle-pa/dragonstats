@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  base: "/",
+  base: "/dragonstats/",
   plugins: [
     react(),
     VitePWA({
@@ -20,8 +20,8 @@ export default defineConfig({
         // game screen lays out in two columns there. Locking to portrait
         // would make that unreachable once installed to the home screen.
         orientation: "any",
-        start_url: "/",
-        scope: "/",
+        start_url: "/dragonstats/",
+        scope: "/dragonstats/",
         // PNG rather than SVG: Android's launcher and the install prompt are
         // fussy about SVG icons, and these are generated from the dragon at
         // fixed sizes anyway. The maskable copy is inset to the ~80% safe
@@ -35,7 +35,7 @@ export default defineConfig({
       workbox: {
         // Precache app shell + assets; network-first for Supabase API.
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff,woff2}"],
-        navigateFallback: "/index.html",
+        navigateFallback: "/dragonstats/index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/rest\//, /supabase\.co/],
         runtimeCaching: [
           {
@@ -51,8 +51,8 @@ export default defineConfig({
             },
           },
           {
-            // Static assets in /assets/ — cache-first
-            urlPattern: ({ url }) => url.pathname.startsWith("/assets/"),
+            // Static assets in /dragonstats/assets/ — cache-first
+            urlPattern: ({ url }) => url.pathname.startsWith("/dragonstats/assets/"),
             handler: "CacheFirst",
             options: {
               cacheName: "dragonstats-assets",
