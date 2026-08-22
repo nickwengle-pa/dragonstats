@@ -5,7 +5,8 @@
     <script>
       // GitHub Pages SPA redirect: rewrites the path into a query string
       // so index.html can restore it on load.
-      var pathSegmentsToKeep = 1; // keep '/dragonstats' prefix
+      // 0 at the apex: there is no repo-name prefix to preserve any more.
+      var pathSegmentsToKeep = 0;
       var l = window.location;
       l.replace(
         l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
