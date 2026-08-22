@@ -11,9 +11,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
     <title>Dragon Stats</title>
-    <!-- Browser tab icon — rising stat bars + trend arrow (red/black/gold) -->
+    <!-- The dragon mark, generated from src/assets/pl-dragon.png. Flattened
+         onto the app background rather than left transparent: iOS renders a
+         transparent home-screen icon's alpha as black, so it may as well be
+         deliberate. apple-touch-icon is the one iOS uses when you Add to Home
+         Screen — the manifest icons below are for Android and desktop. -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body class="bg-surface-bg text-white antialiased">

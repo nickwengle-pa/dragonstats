@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["icon.svg", "icon-maskable.svg"],
+      includeAssets: ["apple-touch-icon.png", "favicon.ico", "favicon-48.png"],
       manifest: {
         name: "Dragon Stats",
         short_name: "Dragon Stats",
@@ -22,10 +22,14 @@ export default defineConfig({
         orientation: "any",
         start_url: "/dragonstats/",
         scope: "/dragonstats/",
+        // PNG rather than SVG: Android's launcher and the install prompt are
+        // fussy about SVG icons, and these are generated from the dragon at
+        // fixed sizes anyway. The maskable copy is inset to the ~80% safe
+        // zone so a circular crop doesn't cut the wings off.
         icons: [
-          { src: "icon.svg", sizes: "192x192", type: "image/svg+xml", purpose: "any" },
-          { src: "icon.svg", sizes: "512x512", type: "image/svg+xml", purpose: "any" },
-          { src: "icon-maskable.svg", sizes: "512x512", type: "image/svg+xml", purpose: "maskable" },
+          { src: "icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
       workbox: {
