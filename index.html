@@ -40,11 +40,17 @@
   <body class="bg-surface-bg text-white antialiased">
     <div id="root">
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;gap:20px;font-family:'Barlow Condensed',sans-serif;background:#070a0f">
-        <!-- Splash logo -->
+        <!-- Splash logo. This is plain HTML on purpose: it paints before the
+             bundle loads, so it can't use the hashed asset the login screen
+             imports — hence a stable file in public/ rather than src/assets. -->
         <div style="position:relative">
-          <div style="width:88px;height:88px;border-radius:20px;background:linear-gradient(135deg,#dc2626,#991b1b);display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(220,38,38,0.3)">
-            <span style="font-size:36px;font-weight:900;color:white;letter-spacing:2px;font-style:italic">DS</span>
-          </div>
+          <img
+            src="/splash-dragon.png"
+            alt=""
+            width="96"
+            height="96"
+            style="display:block;object-fit:contain;filter:drop-shadow(0 0 32px rgba(220,38,38,0.35))"
+          />
         </div>
         <!-- App name -->
         <div>
