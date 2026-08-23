@@ -43,6 +43,28 @@ function endZoneLabel(name: string, abbr: string) {
   return name.trim().length > 0 ? name.toUpperCase() : abbr;
 }
 
+/** Endzone watermark.
+ *
+ *  An `<img>` is a replaced element, so an absolutely-positioned one with
+ *  `width/height: auto` takes its INTRINSIC size and ignores the opposing
+ *  `right`/`bottom` — `inset-2` alone left a square logo hanging off the
+ *  right edge of a 60px endzone, clipped by `overflow-hidden` down to a
+ *  sliver. Explicit `w-full h-full` makes the box actually fill the endzone
+ *  so `object-contain` has something to fit into. `mix-blend-screen` is also
+ *  gone: a dark logo screened onto a dark team color renders as nothing. */
+function EndZoneLogo({ url, name }: { url: string; name: string }) {
+  return (
+    <img
+      src={url}
+      alt={name}
+      // A broken/expired storage URL should leave a clean endzone, not a
+      // browser's broken-image glyph over the team name.
+      onError={e => { e.currentTarget.style.display = "none"; }}
+      className="absolute inset-0 w-full h-full object-contain p-1.5 opacity-50 pointer-events-none"
+    />
+  );
+}
+
 export default function FieldVisualizer({
   ballOn,
   ballPosition,
@@ -109,13 +131,7 @@ export default function FieldVisualizer({
           className="absolute top-0 bottom-0 w-[10%] flex items-center justify-center z-10 overflow-hidden"
           style={{ ...ourEndZoneStyle, background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)` }}
         >
-          {progLogoUrl && (
-            <img
-              src={progLogoUrl}
-              alt={progName}
-              className="absolute inset-2 w-auto h-auto object-contain opacity-20 mix-blend-screen pointer-events-none"
-            />
-          )}
+          {progLogoUrl && <EndZoneLogo url={progLogoUrl} name={progName} />}
           <span
             className={`relative text-[9px] font-display font-extrabold text-white/88 uppercase tracking-[0.14em] whitespace-nowrap select-none ${ourLabelRotation}`}
           >
@@ -127,13 +143,7 @@ export default function FieldVisualizer({
           className="absolute top-0 bottom-0 w-[10%] flex items-center justify-center z-10 overflow-hidden"
           style={{ ...theirEndZoneStyle, background: `linear-gradient(135deg, ${oppColor}, ${oppColor}cc)` }}
         >
-          {oppLogoUrl && (
-            <img
-              src={oppLogoUrl}
-              alt={oppName}
-              className="absolute inset-2 w-auto h-auto object-contain opacity-20 mix-blend-screen pointer-events-none"
-            />
-          )}
+          {oppLogoUrl && <EndZoneLogo url={oppLogoUrl} name={oppName} />}
           <span
             className={`relative text-[9px] font-display font-extrabold text-white/88 uppercase tracking-[0.14em] whitespace-nowrap select-none ${theirLabelRotation}`}
           >
