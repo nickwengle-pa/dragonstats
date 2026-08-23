@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Plus, X, Trash2, UserRound, Upload, Edit2,
-  Check, AlertTriangle, FileText,
+  Check, AlertTriangle, Loader2,
 } from "lucide-react";
 import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
@@ -57,25 +57,34 @@ function PosTags({ positions, primary }: { positions: string[]; primary?: string
 /* ─── Import Modal ─── */
 
 function ImportModal({
-  onClose, onImport, seasonYear,
+  onClose, onImport, seasonYear, importing,
 }: {
   onClose: () => void;
   onImport: (players: ParsedPlayer[]) => void;
   seasonYear?: number;
+  importing: boolean;
 }) {
   const [mode, setMode] = useState<"csv" | "maxpreps">("maxpreps");
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<ParsedPlayer[]>([]);
   const [issues, setIssues] = useState<string[]>([]);
   const [parsed, setParsed] = useState(false);
+  const [reading, setReading] = useState(false);
 
-  const handleParse = () => {
-    const result = mode === "maxpreps"
-      ? parseMaxPrepsRoster(text, seasonYear)
-      : parseCSVRoster(text, seasonYear);
-    setPreview(result.players);
-    setIssues(result.issues);
-    setParsed(true);
+  // The parse itself is synchronous and blocks the main thread on a big paste,
+  // so flip the button into its busy state and let a frame paint before running it.
+  const handleRead = () => {
+    if (reading) return;
+    setReading(true);
+    setTimeout(() => {
+      const result = mode === "maxpreps"
+        ? parseMaxPrepsRoster(text, seasonYear)
+        : parseCSVRoster(text, seasonYear);
+      setPreview(result.players);
+      setIssues(result.issues);
+      setParsed(true);
+      setReading(false);
+    }, 60);
   };
 
   return (
@@ -125,11 +134,22 @@ function ImportModal({
             className="input font-mono text-xs w-full resize-none"
           />
 
-          {/* Parse button */}
+          {/* Import button */}
           {!parsed && (
-            <button onClick={handleParse} disabled={!text.trim()} className="btn-primary w-full text-sm">
-              <FileText className="w-4 h-4 mr-1.5 inline" /> Parse Roster
-            </button>
+            <>
+              <button onClick={handleRead} disabled={!text.trim() || reading} className="btn-primary w-full text-sm">
+                {reading ? (
+                  <><Loader2 className="w-4 h-4 mr-1.5 inline animate-spin" /> Reading roster...</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-1.5 inline" /> Import Roster</>
+                )}
+              </button>
+              {reading && (
+                <p className="text-xs text-neutral-500 text-center animate-pulse">
+                  Working through your pasted roster...
+                </p>
+              )}
+            </>
           )}
 
           {/* Issues */}
@@ -159,14 +179,18 @@ function ImportModal({
                   </div>
                 ))}
               </div>
-              <button onClick={() => onImport(preview)} className="btn-primary w-full text-sm">
-                <Upload className="w-4 h-4 mr-1.5 inline" /> Import {preview.length} Player{preview.length !== 1 && "s"}
+              <button onClick={() => onImport(preview)} disabled={importing} className="btn-primary w-full text-sm">
+                {importing ? (
+                  <><Loader2 className="w-4 h-4 mr-1.5 inline animate-spin" /> Adding {preview.length} player{preview.length !== 1 && "s"}...</>
+                ) : (
+                  <><Check className="w-4 h-4 mr-1.5 inline" /> Confirm &mdash; Add {preview.length} Player{preview.length !== 1 && "s"}</>
+                )}
               </button>
             </>
           )}
 
           {parsed && preview.length === 0 && (
-            <p className="text-sm text-red-400 text-center py-4">No players parsed. Check your data and try again.</p>
+            <p className="text-sm text-red-400 text-center py-4">No players found in that paste. Check your data and try again.</p>
           )}
         </div>
       </div>
@@ -310,6 +334,7 @@ export default function RosterScreen() {
   const [showImport, setShowImport] = useState(false);
   const [editingEntry, setEditingEntry] = useState<RosterPlayer | null>(null);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ done: 0, total: 0 });
   const [pending, setPending] = useState<PendingPlayerSummary[]>([]);
   const [showPending, setShowPending] = useState(false);
 
@@ -398,8 +423,10 @@ export default function RosterScreen() {
   const handleBulkImport = async (players: ParsedPlayer[]) => {
     if (!program || !season || !players.length) return;
     setImporting(true);
+    setImportProgress({ done: 0, total: players.length });
 
-    for (const p of players) {
+    for (const [i, p] of players.entries()) {
+      setImportProgress({ done: i, total: players.length });
       const { data: player } = await supabase.from("players").insert({
         program_id: program.id,
         first_name: p.firstName,
@@ -422,6 +449,7 @@ export default function RosterScreen() {
       }
     }
 
+    setImportProgress({ done: players.length, total: players.length });
     setImporting(false);
     setShowImport(false);
     loadRoster();
@@ -543,10 +571,23 @@ export default function RosterScreen() {
 
       {/* Importing overlay */}
       {importing && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-          <div className="card p-6 text-center">
-            <div className="animate-pulse text-sm font-bold mb-2">Importing players...</div>
-            <p className="text-xs text-neutral-500">This may take a moment.</p>
+        <div className="fixed inset-0 bg-black/75 z-[60] flex items-center justify-center">
+          <div className="card p-6 text-center flex flex-col items-center gap-2 min-w-[220px]">
+            <Loader2 className="w-6 h-6 text-dragon-primary animate-spin" />
+            <div className="text-sm font-bold">Importing players...</div>
+            <p className="text-xs text-neutral-400">
+              {importProgress.total > 0
+                ? `${importProgress.done} of ${importProgress.total} added`
+                : "This may take a moment."}
+            </p>
+            {importProgress.total > 0 && (
+              <div className="w-full h-1.5 rounded-full bg-surface-bg overflow-hidden">
+                <div
+                  className="h-full bg-dragon-primary transition-[width] duration-200"
+                  style={{ width: `${Math.round((importProgress.done / importProgress.total) * 100)}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -566,6 +607,7 @@ export default function RosterScreen() {
           onClose={() => setShowImport(false)}
           onImport={handleBulkImport}
           seasonYear={season?.year}
+          importing={importing}
         />
       )}
       {showPending && season && program && (
