@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Plus, X, MapPin, Play, Calendar as CalIcon,
-  Users, ChevronDown, ChevronUp, Trash2, Shield, Upload, Image,
+  Users, ChevronDown, ChevronUp, Trash2, Shield, Upload, Image, Loader2,
 } from "lucide-react";
 import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
@@ -38,6 +38,27 @@ interface GameRow {
 
 type Site = "home" | "away" | "neutral";
 
+/* ─── Kickoff time ─── */
+
+/** `kickoff_time` is stored as the raw value of an `<input type="time">`
+ *  ("19:00", or "19:00:00" once Postgres hands it back), so printing it
+ *  straight shows 24h. Format it for people; fall back to the game_date
+ *  timestamp when no kickoff was entered. */
+function formatKickoff(kickoffTime: string | null, gameDate: string): string {
+  const raw = kickoffTime?.trim();
+  if (raw) {
+    const m = raw.match(/^(\d{1,2}):(\d{2})/);
+    if (m) {
+      const h = Number(m[1]);
+      if (h >= 0 && h <= 23) {
+        return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h >= 12 ? "PM" : "AM"}`;
+      }
+    }
+    return raw; // Already human-readable, or something we don't recognize.
+  }
+  return new Date(gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 /* ─── Opponent Player Row (inline add/list) ─── */
 
 function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: string; startExpanded?: boolean }) {
@@ -51,6 +72,7 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
   const [importText, setImportText] = useState("");
   const [importPreview, setImportPreview] = useState<ParsedPlayer[]>([]);
   const [importParsed, setImportParsed] = useState(false);
+  const [importReading, setImportReading] = useState(false);
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
@@ -75,12 +97,18 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
     }
   };
 
-  const handleParse = () => {
-    const result = importMode === "maxpreps"
-      ? parseMaxPrepsRoster(importText)
-      : parseCSVRoster(importText);
-    setImportPreview(result.players);
-    setImportParsed(true);
+  // Parsing is synchronous, so paint the busy state before it blocks the thread.
+  const handleRead = () => {
+    if (importReading) return;
+    setImportReading(true);
+    setTimeout(() => {
+      const result = importMode === "maxpreps"
+        ? parseMaxPrepsRoster(importText)
+        : parseCSVRoster(importText);
+      setImportPreview(result.players);
+      setImportParsed(true);
+      setImportReading(false);
+    }, 60);
   };
 
   const handleBulkImport = async () => {
@@ -145,11 +173,15 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
               <textarea value={importText} onChange={e => { setImportText(e.target.value); setImportParsed(false); }}
                 rows={4} placeholder="Paste roster here..." className="input text-xs resize-none" />
               {!importParsed ? (
-                <button onClick={handleParse} disabled={!importText.trim()}
-                  className="btn-primary text-xs w-full py-1.5">Parse</button>
+                <button onClick={handleRead} disabled={!importText.trim() || importReading}
+                  className="btn-primary text-xs w-full py-1.5 flex items-center justify-center gap-1.5">
+                  {importReading
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Reading roster...</>
+                    : <><Upload className="w-3.5 h-3.5" /> Import Roster</>}
+                </button>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-[10px] font-bold text-emerald-400">{importPreview.length} players parsed</div>
+                  <div className="text-[10px] font-bold text-emerald-400">{importPreview.length} players found</div>
                   <div className="max-h-32 overflow-y-auto divide-y divide-surface-border rounded-lg bg-surface-bg">
                     {importPreview.map((p, i) => (
                       <div key={i} className="flex items-center gap-2 px-2 py-1 text-[10px]">
@@ -160,8 +192,10 @@ function OpponentRosterSection({ opponentId, startExpanded }: { opponentId: stri
                     ))}
                   </div>
                   <button onClick={handleBulkImport} disabled={importing || importPreview.length === 0}
-                    className="btn-primary text-xs w-full py-1.5">
-                    {importing ? "Importing..." : `Import ${importPreview.length} Players`}
+                    className="btn-primary text-xs w-full py-1.5 flex items-center justify-center gap-1.5">
+                    {importing
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Importing...</>
+                      : <>Confirm &mdash; Add {importPreview.length} Players</>}
                   </button>
                 </div>
               )}
@@ -738,9 +772,7 @@ export default function ScheduleScreen() {
                       <Play className="w-5 h-5 text-dragon-primary" />
                     ) : (
                       <span className="text-xs text-neutral-600 font-semibold">
-                        {game.kickoff_time
-                          ? game.kickoff_time
-                          : new Date(game.game_date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                        {formatKickoff(game.kickoff_time, game.game_date)}
                       </span>
                     )}
                   </div>
