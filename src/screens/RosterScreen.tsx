@@ -7,6 +7,7 @@ import {
 import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
+import { readSeasonRoster } from "@/services/offlineCache";
 import { parseCSVRoster, parseMaxPrepsRoster, type ParsedPlayer } from "@/utils/rosterImport";
 import PendingPlayersSheet from "@/components/roster/PendingPlayersSheet";
 import { loadPendingPlayers, type PendingPlayerSummary } from "@/services/pendingPlayerService";
@@ -341,13 +342,8 @@ export default function RosterScreen() {
   const loadRoster = useCallback(async () => {
     if (!season) return;
     setLoading(true);
-    const { data } = await supabase
-      .from("season_rosters")
-      .select("*, player:players(*)")
-      .eq("season_id", season.id)
-      .eq("is_active", true)
-      .order("jersey_number", { ascending: true, nullsFirst: false });
-    setRoster(data ?? []);
+    const rosterRead = await readSeasonRoster<RosterPlayer>(season.id);
+    setRoster(rosterRead.value ?? []);
     setLoading(false);
   }, [season]);
 

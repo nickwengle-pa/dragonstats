@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProgramContext } from "@/hooks/useProgramContext";
+import { readSeasonGames, readSeasonRoster } from "@/services/offlineCache";
 import { supabase } from "@/lib/supabase";
 import {
   Calendar, Users, BarChart3, Settings, ChevronRight, Trophy, SlidersHorizontal,
@@ -65,15 +66,26 @@ export default function DashboardScreen() {
   const { program, season } = useProgramContext();
   const navigate = useNavigate();
   const [stats, setStats] = useState<QuickStats>({ totalGames: 0, wins: 0, losses: 0, ties: 0, rosterCount: 0, nextGame: null, liveGame: null });
+  /* The tiles start at zero and are filled in by an async load, so every
+     visit to this screen flashed "0 games, 0 players" before the real numbers
+     landed. Harmless online — for about 300ms. Offline the load never
+     populates and those zeros just sit there, which is indistinguishable from
+     a season with no games in it. Show a dash until we actually know. */
+  const [statsLoaded, setStatsLoaded] = useState(false);
 
   useEffect(() => {
     if (!season) return;
     (async () => {
-      const [gamesRes, rosterRes] = await Promise.all([
-        supabase.from("games").select("*, opponent:opponents(name)").eq("season_id", season.id).order("game_date"),
-        supabase.from("season_rosters").select("id").eq("season_id", season.id).eq("is_active", true),
+      /* Both go through the shared cached readers. This is the screen the app
+         opens on, so it is also where the cache gets warmed in practice — and
+         it was the screen reporting "0 games and 0 players" offline, because
+         it ran its own uncached queries. */
+      const [gamesRead, rosterRead] = await Promise.all([
+        readSeasonGames<any>(season.id),
+        readSeasonRoster<any>(season.id),
       ]);
-      const games = gamesRes.data ?? [];
+      const games = gamesRead.value ?? [];
+      const rosterRows = rosterRead.value ?? [];
       const completed = games.filter((g: any) => g.status === "completed");
       const wins = completed.filter((g: any) => g.our_score > g.opponent_score).length;
       const losses = completed.filter((g: any) => g.our_score < g.opponent_score).length;
@@ -83,7 +95,7 @@ export default function DashboardScreen() {
       setStats({
         totalGames: games.length,
         wins, losses, ties,
-        rosterCount: rosterRes.data?.length ?? 0,
+        rosterCount: rosterRows.length,
         nextGame: nextGame ? {
           opponent_name: (nextGame as any).opponent?.name ?? "TBD",
           game_date: nextGame.game_date,
@@ -96,14 +108,15 @@ export default function DashboardScreen() {
           opponent_score: live.opponent_score,
         } : null,
       });
+      setStatsLoaded(true);
     })();
   }, [season]);
 
   const programName = program?.name ?? "DRAGON STATS";
   const mascot = program?.mascot ?? "";
   const primaryColor = program?.primary_color ?? "#dc2626";
-  const record = `${stats.wins}-${stats.losses}`;
-  const ties = stats.ties > 0 ? `-${stats.ties}` : "";
+  const record = statsLoaded ? `${stats.wins}-${stats.losses}` : "\u2013";
+  const ties = statsLoaded && stats.ties > 0 ? `-${stats.ties}` : "";
 
   return (
     <div className="screen safe-top lg:max-w-tablet lg:mx-auto pb-20">
@@ -168,11 +181,11 @@ export default function DashboardScreen() {
             <div className="stat-label mt-1">Record</div>
           </div>
           <div className="card p-4 text-center col-span-1">
-            <div className="stat-value text-white">{stats.totalGames}</div>
+            <div className="stat-value text-white">{statsLoaded ? stats.totalGames : "\u2013"}</div>
             <div className="stat-label mt-1">Games</div>
           </div>
           <div className="card p-4 text-center col-span-1">
-            <div className="stat-value text-white">{stats.rosterCount}</div>
+            <div className="stat-value text-white">{statsLoaded ? stats.rosterCount : "\u2013"}</div>
             <div className="stat-label mt-1">Players</div>
           </div>
         </div>

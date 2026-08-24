@@ -7,7 +7,7 @@ import {
 import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
-import { cachedRead, cacheKeys } from "@/services/offlineCache";
+import { readSeasonGames } from "@/services/offlineCache";
 import {
   opponentPlayerService,
   type Opponent,
@@ -595,13 +595,7 @@ export default function ScheduleScreen() {
        Opponents are only needed for scheduling new games, which is an online
        job, so that one stays a plain read. */
     const [gamesRead, oppsRes] = await Promise.all([
-      cachedRead<GameRow[]>(cacheKeys.schedule(season.id), async () => {
-        const { data, error } = await supabase
-          .from("games").select("*, opponent:opponents(*)")
-          .eq("season_id", season.id).order("game_date");
-        if (error) throw error;
-        return (data ?? []) as GameRow[];
-      }),
+      readSeasonGames<GameRow>(season.id),
       supabase.from("opponents").select("*").eq("program_id", program.id).order("name"),
     ]);
     setGames(gamesRead.value ?? []);

@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import type { Program } from "@/services/programService";
 import { seasonService, type Season } from "@/services/seasonService";
-import { cachedRead, cacheKeys } from "@/services/offlineCache";
+import { cachedRead, cacheKeys, warmGamedayCache } from "@/services/offlineCache";
 
 export interface Branding {
   primaryColor: string;
@@ -193,6 +193,16 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  /* Pull the roster and schedule down as soon as a season is known, rather
+     than waiting for the user to happen to visit those screens while still in
+     signal. Seeding the device used to be a ritual — open the schedule, open
+     a game, back out — and the first real test of it came back "0 games and 0
+     players" because the ritual is easy to get wrong. Opening the app with
+     service is now enough. */
+  useEffect(() => {
+    if (season?.id) warmGamedayCache(season.id);
+  }, [season?.id]);
 
   const branding = deriveBranding(program);
   const setSeason = useCallback(async (nextSeason: Season) => {

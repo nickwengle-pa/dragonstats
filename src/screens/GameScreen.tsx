@@ -58,7 +58,7 @@ import SyncBadge from "@/components/game/SyncBadge";
 import ClockInput from "@/components/game/ClockInput";
 import { setupAutoDrain, drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
 import { getQueueForGame } from "@/services/offlineDb";
-import { cachedRead, cacheKeys } from "@/services/offlineCache";
+import { cachedRead, cacheKeys, readSeasonRoster } from "@/services/offlineCache";
 import {
   type RosterPlayer,
   type OpponentPlayerRef,
@@ -388,14 +388,7 @@ export default function GameScreen() {
         if (error) throw error;
         return data;
       }),
-      cachedRead<RosterPlayer[]>(cacheKeys.roster(season.id), async () => {
-        const { data, error } = await supabase
-          .from("season_rosters").select("*, player:players(*)")
-          .eq("season_id", season.id).eq("is_active", true)
-          .order("jersey_number", { ascending: true, nullsFirst: false });
-        if (error) throw error;
-        return (data ?? []) as RosterPlayer[];
-      }),
+      readSeasonRoster<RosterPlayer>(season.id),
       loadGamePlays(gameId),
     ]);
 
