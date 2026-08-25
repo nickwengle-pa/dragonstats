@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { RotateCcw, Home, BarChart3 } from "lucide-react";
+import { RotateCcw, Home, BarChart3, Sun, Moon } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import {
@@ -56,6 +56,7 @@ import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEdi
 import PlayLog from "@/components/game/PlayLog";
 import LiveStatsPanel from "@/components/game/LiveStatsPanel";
 import SyncBadge from "@/components/game/SyncBadge";
+import { useWakeLock, readKeepAwake, writeKeepAwake } from "@/hooks/useWakeLock";
 import ClockInput from "@/components/game/ClockInput";
 import { setupAutoDrain, drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
 import { getQueueForGame } from "@/services/offlineDb";
@@ -689,6 +690,11 @@ export default function GameScreen() {
   const [showLog, setShowLog] = useState(false);
   const [showLiveStats, setShowLiveStats] = useState(false);
   const [hurryUp, setHurryUp] = useState(false);
+  /* Keeps the screen lit for as long as this screen is open, so the phone
+     never sleeps, so iOS never reclaims the tab, so unlocking between series
+     is a resume and not a cold start with no signal to recover from. */
+  const [keepAwake, setKeepAwake] = useState(readKeepAwake);
+  const { held: awakeHeld, supported: awakeSupported } = useWakeLock(keepAwake);
   /** Phones can't show the selector and the play log at once — side by side
    *  there is no room, stacked the log buries the buttons. One at a time,
    *  switched by a pinned tab. Ignored at lg, where both columns fit. */
@@ -2408,6 +2414,31 @@ export default function GameScreen() {
           <span className="hidden lg:inline">{oppName}</span>
         </h1>
         <SyncBadge gameId={gameId ?? null} />
+        {/* Icon-only: this row is already eight items at 375px. Amber-when-on
+            matches Hurry. Lit but unheld stays muted rather than going red —
+            the lock drops briefly on every app switch and a red header
+            blinking through a game would train the operator to ignore it. */}
+        {awakeSupported && (
+          <button
+            onClick={() => {
+              const next = !keepAwake;
+              setKeepAwake(next);
+              writeKeepAwake(next);
+            }}
+            className={`btn-ghost p-1.5 cursor-pointer shrink-0 ${
+              keepAwake && awakeHeld ? "text-amber-400" : "text-surface-muted"
+            }`}
+            title={
+              !keepAwake
+                ? "Screen may sleep. Tap to keep it awake — stops the phone dropping the app between series."
+                : awakeHeld
+                  ? "Screen is being kept awake. Tap to allow sleep and save battery."
+                  : "Keeping awake, but the phone refused the lock (often battery saver). Tap to turn off."
+            }
+          >
+            {keepAwake ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+        )}
         <button
           onClick={() => setHurryUp((h) => !h)}
           className={`btn-ghost px-1.5 lg:px-2 py-1 text-[10px] font-display font-bold uppercase tracking-wider cursor-pointer ${
