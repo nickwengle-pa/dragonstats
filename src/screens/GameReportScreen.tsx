@@ -42,6 +42,103 @@ function signed(v: number): string {
   return v > 0 ? String(v) : String(v);
 }
 
+/* ── Identity ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Keep the image out of the printed page when it will not load.
+ *
+ * A logo lives on remote storage. Printing a report from a press box with no
+ * service would otherwise put a broken-image glyph on the sheet, which is worse
+ * than the initials it replaced.
+ */
+function useLoadable(url: string | null) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [url]);
+  return { show: Boolean(url) && !failed, onError: () => setFailed(true) };
+}
+
+/** Team mark, falling back to initials in the team's colour. */
+function Crest({
+  logoUrl, abbr, color, size = 20,
+}: {
+  logoUrl: string | null;
+  abbr: string;
+  color: string;
+  size?: number;
+}) {
+  const img = useLoadable(logoUrl);
+  if (img.show) {
+    return (
+      <img
+        src={logoUrl as string}
+        alt=""
+        onError={img.onError}
+        className="object-contain shrink-0"
+        style={{
+          width: size,
+          height: size,
+          // Browsers drop images and background colour from a print by
+          // default. The crest is the one thing on the sheet that says whose
+          // it is, so it prints.
+          printColorAdjust: "exact",
+          WebkitPrintColorAdjust: "exact",
+        }}
+      />
+    );
+  }
+  return (
+    <span
+      className="shrink-0 rounded-sm flex items-center justify-center font-black text-white"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.max(7, Math.round(size * 0.38)),
+        backgroundColor: color,
+        printColorAdjust: "exact",
+        WebkitPrintColorAdjust: "exact",
+      }}
+    >
+      {abbr.slice(0, 3)}
+    </span>
+  );
+}
+
+/**
+ * The program's mark, ghosted behind the sheet.
+ *
+ * position: fixed rather than absolute under print, because a fixed element
+ * repeats on every printed page while an absolute one appears once and then
+ * pages two through four come out blank behind the tables.
+ *
+ * aria-hidden and pointer-events-none: it is decoration, and it must never
+ * take a tap meant for the table on top of it.
+ */
+function Watermark({ logoUrl }: { logoUrl: string | null }) {
+  const img = useLoadable(logoUrl);
+  if (!img.show) return null;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 print:fixed print:inset-0 flex items-center justify-center overflow-hidden"
+      style={{ zIndex: 0 }}
+    >
+      <img
+        src={logoUrl as string}
+        alt=""
+        onError={img.onError}
+        className="object-contain"
+        style={{
+          width: "70%",
+          maxWidth: "6in",
+          opacity: 0.05,
+          printColorAdjust: "exact",
+          WebkitPrintColorAdjust: "exact",
+        }}
+      />
+    </div>
+  );
+}
+
 /* ── Document primitives ──────────────────────────────────────────────────── */
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -250,21 +347,35 @@ export default function GameReportScreen() {
         )}
 
         {!loading && report && gameInfo && (
-          <div className="mx-auto max-w-[8.5in] bg-white text-black rounded-lg print:rounded-none shadow-lg print:shadow-none p-5 print:p-0 font-body">
+          <div className="relative mx-auto max-w-[8.5in] bg-white text-black rounded-lg print:rounded-none shadow-lg print:shadow-none p-5 print:p-0 font-body">
+            <Watermark logoUrl={report.us.logoUrl} />
+
+            {/* Everything above the ghosted mark. One stacking context on the
+                content rather than a z-index on every table. */}
+            <div className="relative" style={{ zIndex: 1 }}>
 
             {/* ── Header block ────────────────────────────────────────── */}
             <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-black pb-2">
-              <div className="min-w-0">
-                <div className="text-[11px] font-bold uppercase tracking-wide">
-                  DATE: {report.dateLabel}
-                  {report.occasion ? ` - ${report.occasion}` : ""}
+              <div className="flex items-start gap-3 min-w-0">
+                {/* Whose sheet this is, answered before anything is read. */}
+                <Crest
+                  logoUrl={report.us.logoUrl}
+                  abbr={report.us.abbr}
+                  color={report.us.color}
+                  size={46}
+                />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-wide">
+                    DATE: {report.dateLabel}
+                    {report.occasion ? ` - ${report.occasion}` : ""}
+                  </div>
+                  <div className="text-[17px] font-black uppercase leading-tight tracking-wide mt-0.5">
+                    {report.title}
+                  </div>
+                  {report.kickoffLabel && (
+                    <div className="text-[11px] font-bold mt-0.5">{report.kickoffLabel}</div>
+                  )}
                 </div>
-                <div className="text-[17px] font-black uppercase leading-tight tracking-wide mt-0.5">
-                  {report.title}
-                </div>
-                {report.kickoffLabel && (
-                  <div className="text-[11px] font-bold mt-0.5">{report.kickoffLabel}</div>
-                )}
               </div>
 
               {/* Line score */}
@@ -282,14 +393,24 @@ export default function GameReportScreen() {
                 </thead>
                 <tbody>
                   <tr className="border-t border-black">
-                    <td className="px-1.5 py-0.5 font-bold uppercase whitespace-nowrap">{report.us.name}</td>
+                    <td className="px-1.5 py-0.5 font-bold uppercase whitespace-nowrap">
+                      <span className="flex items-center gap-1.5">
+                        <Crest logoUrl={report.us.logoUrl} abbr={report.us.abbr} color={report.us.color} size={16} />
+                        {report.us.name}
+                      </span>
+                    </td>
                     {report.lineScore.us.map((v, i) => (
                       <td key={i} className="px-2 py-0.5 text-center">{v}</td>
                     ))}
                     <td className="px-2 py-0.5 text-center font-black">{report.lineScore.usTotal}</td>
                   </tr>
                   <tr className="border-t border-neutral-300">
-                    <td className="px-1.5 py-0.5 font-bold uppercase whitespace-nowrap">{report.them.name}</td>
+                    <td className="px-1.5 py-0.5 font-bold uppercase whitespace-nowrap">
+                      <span className="flex items-center gap-1.5">
+                        <Crest logoUrl={report.them.logoUrl} abbr={report.them.abbr} color={report.them.color} size={16} />
+                        {report.them.name}
+                      </span>
+                    </td>
                     {report.lineScore.them.map((v, i) => (
                       <td key={i} className="px-2 py-0.5 text-center">{v}</td>
                     ))}
@@ -468,8 +589,18 @@ export default function GameReportScreen() {
               <thead>
                 <tr className="border-b border-black">
                   <th className="text-left py-1 px-1.5 font-black uppercase text-[10px]">Action Name</th>
-                  <th className="text-right py-1 px-1.5 font-black uppercase text-[10px] w-16">{report.us.abbr}</th>
-                  <th className="text-right py-1 px-1.5 font-black uppercase text-[10px] w-16">{report.them.abbr}</th>
+                  <th className="py-1 px-1.5 font-black uppercase text-[10px] w-16">
+                    <span className="flex items-center justify-end gap-1">
+                      <Crest logoUrl={report.us.logoUrl} abbr={report.us.abbr} color={report.us.color} size={14} />
+                      {report.us.abbr}
+                    </span>
+                  </th>
+                  <th className="py-1 px-1.5 font-black uppercase text-[10px] w-16">
+                    <span className="flex items-center justify-end gap-1">
+                      <Crest logoUrl={report.them.logoUrl} abbr={report.them.abbr} color={report.them.color} size={14} />
+                      {report.them.abbr}
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">
@@ -547,6 +678,7 @@ export default function GameReportScreen() {
                   </tr>
                 </tbody>
               </table>
+            </div>
             </div>
           </div>
         )}
