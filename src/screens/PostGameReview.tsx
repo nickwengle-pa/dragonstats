@@ -838,12 +838,18 @@ export default function PostGameReview() {
               role: t.role,
               credit: t.credit ?? null,
             })),
-          next_possession: null,
-          next_down: null,
-          next_distance: null,
-          next_yard_line: null,
-          next_situation_source:
-            result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
+          /* A spot the recorder set by hand outranks the computed
+             enforcement, exactly as it does on the live screen. This path used
+             to hardcode all four to null, which was harmless while the old
+             editor had no way to set one - and became a silent data loss the
+             moment editing moved to the entry modal, which does. */
+          next_possession: result.nextSituation ? original?.possession ?? null : null,
+          next_down: result.nextSituation?.down ?? null,
+          next_distance: result.nextSituation?.distance ?? null,
+          next_yard_line: result.nextSituation?.ballOn ?? null,
+          next_situation_source: result.nextSituation
+            ? "manual_override"
+            : result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
           // Rewritten from the edit result rather than inherited from `pd`,
           // so removing a pending tag in the editor actually removes it.
           pending_tagged: result.tagged
