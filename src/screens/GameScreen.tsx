@@ -52,7 +52,6 @@ import FieldVisualizer from "@/components/game/FieldVisualizer";
 import PregameSetupSheet from "@/components/game/PregameSetupSheet";
 import QuickActions from "@/components/game/QuickActions";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
-import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditModal";
 import PlayLog from "@/components/game/PlayLog";
 import LiveStatsPanel from "@/components/game/LiveStatsPanel";
 import SyncBadge from "@/components/game/SyncBadge";
@@ -2011,10 +2010,28 @@ export default function GameScreen() {
   };
 
   /* ── Edit play (full) ── */
-  const handleSaveEdit = async (playId: string, result: PlayEditResult) => {
+  /**
+   * Save an edit.
+   *
+   * Takes PlaySubmitData because editing runs through the entry modal now, so
+   * a change made in the editor goes through exactly the controls and exactly
+   * the arithmetic that recorded the play in the first place. The old editor
+   * was a second, thinner implementation of the same screen: no kick flow to
+   * speak of, and a ball spot it computed differently from the one that had
+   * been entered.
+   */
+  const handleSaveEdit = async (playId: string, result: PlaySubmitData) => {
     const idx = plays.findIndex(p => p.id === playId);
     if (idx === -1) return;
     const original = plays[idx];
+    // The flag when the modal set one - a fumble says whether it was lost, an
+    // interception always is - and the play type otherwise.
+    const editTurnover = result.turnover ?? ["int", "fumble"].includes(result.playType.id);
+    // A spot the operator set by hand outranks the computed enforcement, the
+    // same way it does on entry.
+    const editSource = result.nextSituation
+      ? "manual_override"
+      : (result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto");
 
     // Persist to DB
     const ok = await updatePlayFull(playId, {
@@ -2023,7 +2040,7 @@ export default function GameScreen() {
       is_touchdown: result.isTouchdown,
       // The editor's own flag, not a guess from the play type — a sack-fumble
       // has type "sack" and was losing its turnover on every save.
-      is_turnover: result.turnover,
+      is_turnover: editTurnover,
       is_penalty: !!result.penalty,
       primary_player_id: result.tagged.find(isRosterTag)?.player_id ?? null,
       description: result.description,
@@ -2032,18 +2049,25 @@ export default function GameScreen() {
       ...(result.hashMark != null ? { hash_mark: result.hashMark } : {}),
       play_data: {
         ...(original.playData ?? {}),
+        // Everything the modal produced this time round - hash, direction,
+        // wristband call, kick spots, interception spots. Without this an edit
+        // silently kept whatever the play was first recorded with.
+        ...(result.playData ?? {}),
         result: result.result || null,
         is_first_down: result.isFirstDown,
         is_touchback: result.isTouchback,
         penalty_type: result.penalty,
         play_category: result.penaltyCategory,
+        penalty_enforcement: result.penalty ? result.penaltyEnforcement : null,
         penalty_yards: result.flagYards,
         blocked_kick_type: result.blockedKickType,
-        next_possession: null,
-        next_down: null,
-        next_distance: null,
-        next_yard_line: null,
-        next_situation_source: result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
+        fumble_return_yards: result.fumbleReturnYards ?? null,
+        fumble_recovered_at: result.fumbleRecoveredAt ?? null,
+        next_possession: result.nextSituation ? original.possession : null,
+        next_down: result.nextSituation?.down ?? null,
+        next_distance: result.nextSituation?.distance ?? null,
+        next_yard_line: result.nextSituation?.ballOn ?? null,
+        next_situation_source: editSource,
       },
     }, result.tagged.filter(isRosterTag).map(t => ({
       player_id: t.player_id,
@@ -2062,32 +2086,39 @@ export default function GameScreen() {
       yards: result.yards,
       isTouchdown: result.isTouchdown,
       firstDown: result.isFirstDown,
-      turnover: result.turnover,
+      turnover: editTurnover,
       result: result.result,
       penalty: result.penalty,
       penaltyCategory: result.penaltyCategory,
+      penaltyEnforcement: result.penalty ? result.penaltyEnforcement : undefined,
       flagYards: result.flagYards,
       isTouchback: result.isTouchback,
       blockedKickType: result.blockedKickType,
       tagged: result.tagged,
-      nextPossession: undefined,
-      nextDown: undefined,
-      nextDistance: undefined,
-      nextBallOn: undefined,
+      fumbleReturnYards: result.fumbleReturnYards ?? null,
+      fumbleRecoveredAt: result.fumbleRecoveredAt ?? null,
+      nextPossession: result.nextSituation ? original.possession : undefined,
+      nextDown: result.nextSituation?.down,
+      nextDistance: result.nextSituation?.distance,
+      nextBallOn: result.nextSituation?.ballOn,
       description: result.description,
       offensiveFormation: result.offensiveFormation,
       defensiveFormation: result.defensiveFormation,
       hashMark: result.hashMark,
       playData: {
         ...(original.playData ?? {}),
+        ...(result.playData ?? {}),
         result: result.result || null,
         is_first_down: result.isFirstDown,
         is_touchback: result.isTouchback,
         penalty_type: result.penalty,
         play_category: result.penaltyCategory ?? null,
+        penalty_enforcement: result.penalty ? result.penaltyEnforcement : null,
         penalty_yards: result.flagYards,
         blocked_kick_type: result.blockedKickType ?? null,
-        next_situation_source: result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
+        fumble_return_yards: result.fumbleReturnYards ?? null,
+        fumble_recovered_at: result.fumbleRecoveredAt ?? null,
+        next_situation_source: editSource,
       },
     };
 
@@ -2681,20 +2712,69 @@ export default function GameScreen() {
       )}
 
       {/* Play Edit */}
+      {/* Editing IS entering, against the play's own starting situation.
+          The same steps in the same order with the same field and the same
+          ruler, so a play can be corrected exactly the way it was put in. */}
       {editPlay && (() => {
+        const editType = findPlayTypeDef(editPlay.type);
+        if (!editType) return null;
         return (
-          <PlayEditModal
-            play={editPlay}
+          <PlayEntryModal
+            key={editPlay.id}
+            playType={editType}
+            editing={editPlay}
+            gameState={{
+              quarter: editPlay.quarter,
+              clock: editPlay.clock,
+              possession: editPlay.possession,
+              ourScore,
+              theirScore,
+              down: editPlay.down,
+              distance: editPlay.distance,
+              ballOn: editPlay.ballOn,
+            }}
             roster={roster}
             opponentPlayers={oppPlayers}
             progName={progName}
             oppName={oppName}
-            ballOnBefore={editPlay.ballOn}
-            downBefore={editPlay.down}
-            distanceBefore={editPlay.distance}
-            onSave={handleSaveEdit}
-            onDelete={handleDeletePlay}
+            gameConfig={gc}
+            progColor={primaryColor}
+            oppColor={oppColor}
+            progAbbr={progAbbr}
+            oppAbbr={oppAbbr}
+            progLogoUrl={progLogoUrl}
+            oppLogoUrl={oppLogoUrl}
+            /* The play's OWN quarter, not the current one - teams change ends
+               at half, so a Q1 play edited in Q3 has to draw the field the way
+               round it was when it happened. The screen flip applies on top,
+               exactly as it does for live entry. */
+            ourEndZoneSide={(() => {
+              const side = getOurEndZoneSideForQuarter(editPlay.quarter, pregame);
+              return directionFlipped ? oppositeFieldDirection(side) : side;
+            })()}
+            offenseDirection={(() => {
+              const direction = getOffenseDriveDirection(editPlay.possession, editPlay.quarter, pregame);
+              return directionFlipped ? oppositeFieldDirection(direction) : direction;
+            })()}
+            /* Charting prefs gate what a NEW play asks for. An edit has to be
+               able to reach anything already on the play, and to add what was
+               skipped live, so both steps are always available here. */
+            trackFormations
+            trackTacklers
+            onSubmit={(data) => { void handleSaveEdit(editPlay.id, data); }}
+            onDelete={() => { void handleDeletePlay(editPlay.id); }}
             onClose={() => setEditPlay(null)}
+            onAddOpponentPlayer={async (player) => {
+              if (game?.opponent_id) {
+                const saved = await opponentPlayerService.create({
+                  opponent_id: game.opponent_id,
+                  jersey_number: player.jersey_number,
+                  name: player.name,
+                  position: player.position,
+                });
+                if (saved) setOppPlayers(prev => [...prev, saved]);
+              }
+            }}
           />
         );
       })()}

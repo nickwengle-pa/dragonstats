@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Flag, Plus, Trash2 } from "lucide-react";
 import Keypad from "./Keypad";
 import {
   type BlockedKickType,
@@ -9,6 +9,7 @@ import {
   type OpponentPlayerRef,
   type TaggedPlayer,
   type GameState,
+  type PlayRecord,
   BLOCKED_KICK_TYPES,
   PLAY_TYPES,
   PENALTIES,
@@ -23,6 +24,7 @@ import {
   yardLabel,
   buildDescription,
 } from "./types";
+import { buildEditSeed } from "./playEntrySeed";
 import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
@@ -63,6 +65,16 @@ interface Props {
    *  parent). Pre-tagged on open so repeat personnel costs zero taps —
    *  tapping a different player replaces the pre-fill. */
   prefillTags?: Record<string, TaggedPlayer>;
+  /** Editing an already-recorded play rather than entering a new one.
+   *
+   *  The whole modal is reused: same steps, same field, same ruler, same order.
+   *  A separate editor could only ever be a partial copy of this one, and was —
+   *  it had no kick flow worth the name and spotted the ball wrong. Every piece
+   *  of state seeds from the play (see playEntrySeed.ts), so an edit opens
+   *  showing what was entered. */
+  editing?: PlayRecord | null;
+  /** Remove the play being edited. Absent when entering. */
+  onDelete?: () => void;
 }
 
 export type PenaltyEnforcement = "accepted" | "declined" | "offset";
@@ -579,8 +591,21 @@ export default function PlayEntryModal({
   progColor = "#dc2626", oppColor = "#6b7280", progAbbr, oppAbbr,
   progLogoUrl, oppLogoUrl, ourEndZoneSide = "left", offenseDirection = "right",
   trackFormations = true, trackTacklers = true,
-  onSubmit, onClose, onAddOpponentPlayer,
+  onSubmit, onClose, onAddOpponentPlayer, editing = null, onDelete,
 }: Props) {
+  /* The recorded play, read back into the state that produced it. Built once:
+     every state initialiser below reads it during the first render, and it must
+     not change identity between them. See playEntrySeed.ts. */
+  const edit = useMemo(() => (editing ? buildEditSeed(editing) : null), [editing]);
+  const isEditing = edit != null;
+  /* The spot-seeding effects below all fire on mount, and on an edit they would
+     immediately overwrite the spots just read off the play with the defaults a
+     fresh entry starts from. They have to keep running afterwards - moving the
+     catch spot should still drag the return with it - so each gets a one-shot
+     pass rather than being disabled outright. */
+  const skipFirstReturnSeed = useRef(isEditing);
+  const skipFirstKickReturnSeed = useRef(isEditing);
+  const skipFirstIntReturnSeed = useRef(isEditing);
   /**
    * The play type can change mid-flow.
    *
@@ -639,10 +664,13 @@ export default function PlayEntryModal({
   const seeded = useMemo(seedFromLastPlay, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tagged players for this play
-  const [tagged, setTagged] = useState<TaggedPlayer[]>(seeded.tags);
+  const [tagged, setTagged] = useState<TaggedPlayer[]>(edit ? edit.tagged : seeded.tags);
   // Roles filled from the previous play rather than picked here — rendered
   // differently so a stale carry-over can't masquerade as a confirmed pick.
-  const [carriedRoles, setCarriedRoles] = useState<Set<string>>(seeded.roles);
+  // Nothing is carried over on an edit - every tag on the play was picked.
+  const [carriedRoles, setCarriedRoles] = useState<Set<string>>(
+    edit ? new Set<string>() : seeded.roles,
+  );
   // Always open on the first role, even when it's already carried over. The
   // carried pick shows highlighted so it can be eyeballed and changed — a
   // wrong passer that was never displayed is worse than one extra Next tap.
@@ -662,8 +690,8 @@ export default function PlayEntryModal({
     const yl = programBallOn <= 50 ? programBallOn : 100 - programBallOn;
     return { side, yl: yl || 1 };
   })();
-  const [resultYardLine, setResultYardLine] = useState(initResult.yl);
-  const [resultSide, setResultSide] = useState<"our" | "opp">(initResult.side);
+  const [resultYardLine, setResultYardLine] = useState(edit?.resultYardLine ?? initResult.yl);
+  const [resultSide, setResultSide] = useState<"our" | "opp">(edit?.resultSide ?? initResult.side);
   const [resultYardRaw, setResultYardRaw] = useState("");
   const [totalYardsRaw, setTotalYardsRaw] = useState("");
 
@@ -689,10 +717,10 @@ export default function PlayEntryModal({
   };
 
   // Toggles
-  const [isTD, setIsTD] = useState(false);
-  const [isFirstDown, setIsFirstDown] = useState(false);
+  const [isTD, setIsTD] = useState(edit?.isTD ?? false);
+  const [isFirstDown, setIsFirstDown] = useState(edit?.isFirstDown ?? false);
   // Fumble recovery: false = lost (turnover, default), true = offense recovered.
-  const [fumbleRecoveredByUs, setFumbleRecoveredByUs] = useState(false);
+  const [fumbleRecoveredByUs, setFumbleRecoveredByUs] = useState(edit?.fumbleRecoveredByUs ?? false);
   /**
    * A fumble ON another play — a sack-fumble, a runner stripped, a receiver
    * losing it after the catch.
@@ -704,12 +732,12 @@ export default function PlayEntryModal({
    * sack left possession unchanged for every play that followed, because game
    * state is replayed from the play list.
    */
-  const [hasFumble, setHasFumble] = useState(false);
-  const [fumbleReturnRaw, setFumbleReturnRaw] = useState("");
+  const [hasFumble, setHasFumble] = useState(edit?.hasFumble ?? false);
+  const [fumbleReturnRaw, setFumbleReturnRaw] = useState(edit?.fumbleReturnRaw ?? "");
   /** Where the ball was actually picked up. Null means "where the play ended",
    *  which is the common case and costs no taps; a loose ball that bounced is
    *  set explicitly. */
-  const [fumbleRecoveredAt, setFumbleRecoveredAt] = useState<number | null>(null);
+  const [fumbleRecoveredAt, setFumbleRecoveredAt] = useState<number | null>(edit?.fumbleRecoveredAt ?? null);
   const [recoverySearch, setRecoverySearch] = useState("");
   const [recoveryTacklerSearch, setRecoveryTacklerSearch] = useState("");
   const fumbleReturnYards = (() => {
@@ -717,25 +745,25 @@ export default function PlayEntryModal({
     return Number.isFinite(n) ? n : 0;
   })();
   // Onside kicks: true when the kicking team recovered its own kick.
-  const [onsideRecoveredByKicker, setOnsideRecoveredByKicker] = useState(false);
+  const [onsideRecoveredByKicker, setOnsideRecoveredByKicker] = useState(edit?.onsideRecoveredByKicker ?? false);
   /* ── How the kick ended ───────────────────────────────────────────────────
      Only "returned" involves an actual return. The rest all spot the ball at
      the landing point with zero return yards; they differ in who's credited
      and how the play reads. Touchback is the exception — the receiving team
      starts at their own 20 regardless of where it came down. */
-  const [kickOutcome, setKickOutcome] = useState<KickOutcome>("returned");
+  const [kickOutcome, setKickOutcome] = useState<KickOutcome>(edit?.kickOutcome ?? "returned");
   const isTouchback = kickOutcome === "touchback";
   const wasReturned = kickOutcome === "returned";
-  const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">("");
+  const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">(edit?.result ?? "");
 
   // Penalty
-  const [penalty, setPenalty] = useState<string | null>(null);
-  const [penaltyCategory, setPenaltyCategory] = useState<PenaltySide | null>(null);
-  const [penaltyEnforcement, setPenaltyEnforcement] = useState<PenaltyEnforcement>("accepted");
-  const [flagYards, setFlagYards] = useState(5);
+  const [penalty, setPenalty] = useState<string | null>(edit?.penalty ?? null);
+  const [penaltyCategory, setPenaltyCategory] = useState<PenaltySide | null>(edit?.penaltyCategory ?? null);
+  const [penaltyEnforcement, setPenaltyEnforcement] = useState<PenaltyEnforcement>(edit?.penaltyEnforcement ?? "accepted");
+  const [flagYards, setFlagYards] = useState(edit?.flagYards ?? 5);
   // Raw text mirror so the yards box can be cleared and retyped without the
   // controlled value snapping back to 0 on every keystroke.
-  const [flagYardsRaw, setFlagYardsRaw] = useState("5");
+  const [flagYardsRaw, setFlagYardsRaw] = useState(String(edit?.flagYards ?? 5));
   // Manual spot: when the officials' spot doesn't match the computed
   // enforcement, the recorder's eyes win over the math.
   const [overrideSpot, setOverrideSpot] = useState(false);
@@ -746,26 +774,30 @@ export default function PlayEntryModal({
   const [spotDistance, setSpotDistance] = useState(10);
   // Penalty-only plays get their own dedicated step now, so this toggle only
   // governs the optional flag on a normal play.
-  const [showPenalties, setShowPenalties] = useState(false);
-  const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(() => defaultBlockedKickType(gameState));
+  // A play that already carries a flag opens with the picker open, or the
+  // penalty on it is invisible until something is tapped.
+  const [showPenalties, setShowPenalties] = useState(edit?.penalty != null);
+  const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(
+    () => edit?.blockedKickType ?? defaultBlockedKickType(gameState),
+  );
   /** Who fell on the blocked kick. Drives which roster `recoverer` picks from. */
-  const [blockedRecoveredByKicking, setBlockedRecoveredByKicking] = useState(false);
+  const [blockedRecoveredByKicking, setBlockedRecoveredByKicking] = useState(edit?.blockedRecoveredByKicking ?? false);
 
   // Formations
-  const [offFormation, setOffFormation] = useState<string | null>(null);
-  const [defFormation, setDefFormation] = useState<string | null>(null);
-  const [hashMark, setHashMark] = useState<string | null>(null);
+  const [offFormation, setOffFormation] = useState<string | null>(edit?.offFormation ?? null);
+  const [defFormation, setDefFormation] = useState<string | null>(edit?.defFormation ?? null);
+  const [hashMark, setHashMark] = useState<string | null>(edit?.hashMark ?? null);
   /* Which way the ball went, from the OFFENSE's point of view - the same left
      and right the play was called with, not press-box left and right, so it
      stays the same fact after the teams change ends. */
-  const [playDirection, setPlayDirection] = useState<"left" | "right" | null>(null);
+  const [playDirection, setPlayDirection] = useState<"left" | "right" | null>(edit?.playDirection ?? null);
   /* The wristband call as it was sent in ("R42", "L7"). Free text on purpose:
      the letter and number scheme belongs to the coaching staff and changes week
      to week, so there is nothing here worth constraining. */
-  const [wristbandCall, setWristbandCall] = useState("");
+  const [wristbandCall, setWristbandCall] = useState(edit?.wristbandCall ?? "");
 
   // Defensive credit (tacklers)
-  const [tacklers, setTacklers] = useState<TaggedPlayer[]>([]);
+  const [tacklers, setTacklers] = useState<TaggedPlayer[]>(edit?.tacklers ?? []);
   /**
    * No tackle happened — ran out of bounds, scored, knelt, or just fell.
    *
@@ -796,15 +828,16 @@ export default function PlayEntryModal({
   const kickerRole = (playType.id === "kickoff" || playType.id === "onside_kick")
     ? "kicker"
     : "punter";
-  const [kickedToYard, setKickedToYard] = useState(5); // receiving team's yard line where ball lands
+  const [kickedToYard, setKickedToYard] = useState(edit?.kickedToYard ?? 5); // receiving team's yard line where ball lands
   const [kickedToRaw, setKickedToRaw] = useState("");
-  const [returnToYardLine, setReturnToYardLine] = useState(20);
+  const [returnToYardLine, setReturnToYardLine] = useState(edit?.returnToYardLine ?? 20);
 
   // Default the return spot to wherever the kick was caught (a 0-yard return),
   // matching the INT flow. A hardcoded default let a rushed operator silently
   // record backwards returns (caught at the 35, "returned to" the 20 = -15).
   useEffect(() => {
     if (!isKickPlay) return;
+    if (skipFirstReturnSeed.current) { skipFirstReturnSeed.current = false; return; }
     const onKickingSide = kickedToYard > 50;
     setReturnToYardLine(Math.max(1, onKickingSide ? 100 - kickedToYard : kickedToYard));
     setReturnToTeam(onKickingSide
@@ -813,7 +846,7 @@ export default function PlayEntryModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kickedToYard]);
   const receivingFieldSide: FieldTeam = gameState.possession === "us" ? "opponent" : "program";
-  const [returnToTeam, setReturnToTeam] = useState<FieldTeam>(receivingFieldSide);
+  const [returnToTeam, setReturnToTeam] = useState<FieldTeam>(edit?.returnToTeam ?? receivingFieldSide);
   const [returnToRaw, setReturnToRaw] = useState("");
   // Alternate entry: type the distance instead of the spot. Same numbers, just
   // whichever one you actually saw — a "42-yard punt" or "caught at the 12".
@@ -839,13 +872,13 @@ export default function PlayEntryModal({
   };
 
   const initialIntCatchSpot = toFieldSpot(Math.max(1, Math.min(99, gameState.ballOn + 10)));
-  const [intCaughtTeam, setIntCaughtTeam] = useState<FieldTeam>(initialIntCatchSpot.side);
-  const [intCaughtYardLine, setIntCaughtYardLine] = useState(initialIntCatchSpot.yardLine);
-  const [intReturnTeam, setIntReturnTeam] = useState<FieldTeam>(initialIntCatchSpot.side);
-  const [intReturnYardLine, setIntReturnYardLine] = useState(initialIntCatchSpot.yardLine);
+  const [intCaughtTeam, setIntCaughtTeam] = useState<FieldTeam>(edit?.intCaughtTeam ?? initialIntCatchSpot.side);
+  const [intCaughtYardLine, setIntCaughtYardLine] = useState(edit?.intCaughtYardLine ?? initialIntCatchSpot.yardLine);
+  const [intReturnTeam, setIntReturnTeam] = useState<FieldTeam>(edit?.intReturnTeam ?? initialIntCatchSpot.side);
+  const [intReturnYardLine, setIntReturnYardLine] = useState(edit?.intReturnYardLine ?? initialIntCatchSpot.yardLine);
 
   // Step management
-  const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">("pass");
+  const [twoPointStyle, setTwoPointStyle] = useState<"pass" | "run">(edit?.twoPointStyle ?? "pass");
   /* Somebody has to be holding the ball to lose it. "fumble" is excluded
      because it already IS one — the standalone play type stays for a plain
      runner-fumbles, which is one tap. */
@@ -1063,6 +1096,7 @@ export default function PlayEntryModal({
      Re-seeds if the catch spot is changed on the way back through. */
   useEffect(() => {
     if (!isKickPlay) return;
+    if (skipFirstKickReturnSeed.current) { skipFirstKickReturnSeed.current = false; return; }
     // A short punt comes down on the kicking team's side, so the return has to
     // start there. Clamping to 50 seeded every short punt at midfield on the
     // receiving team's side — the wrong half of the field.
@@ -1081,6 +1115,7 @@ export default function PlayEntryModal({
      back through, exactly as the kick return does. */
   useEffect(() => {
     if (!isInterception) return;
+    if (skipFirstIntReturnSeed.current) { skipFirstIntReturnSeed.current = false; return; }
     setIntReturnTeam(intCaughtTeam);
     setIntReturnYardLine(intCaughtYardLine);
   }, [isInterception, intCaughtTeam, intCaughtYardLine]);
@@ -1640,7 +1675,19 @@ export default function PlayEntryModal({
         interception_net_yards: playYards,
         } : isKickPlay ? {
           kick_outcome: kickOutcome,
+          // The two spots the kick flow is built around. Derivable from the
+          // yardage only by re-running the whole flow's arithmetic backwards,
+          // and not at all once a return or a touchback is in the mix, so they
+          // are written down instead of inferred.
+          kicked_to_yard: kickedToYard,
+          return_to_ball_on: returnSpotBallOn,
+          ...(playType.id === "onside_kick"
+            ? { onside_recovered_by_kicker: onsideRecoveredByKicker }
+            : {}),
         } : {}),
+        ...(playType.id === "blocked_kick"
+          ? { blocked_recovered_by_kicking: blockedRecoveredByKicking }
+          : {}),
       },
     });
   };
@@ -1895,7 +1942,14 @@ export default function PlayEntryModal({
             <button onClick={onClose} className="btn-ghost p-1.5"><X className="w-5 h-5" /></button>
           )}
           <div className="flex-1">
-            <div className="text-sm font-black">{playType.label}</div>
+            <div className="text-sm font-black">
+              {playType.label}
+              {isEditing && (
+                <span className="ml-2 text-[10px] font-bold uppercase tracking-widest text-amber-400">
+                  Editing
+                </span>
+              )}
+            </div>
             <div className="text-[10px] text-slate-500">
               Step {stepIdx + 1} of {steps.length}: {
                 ({
@@ -3568,9 +3622,22 @@ export default function PlayEntryModal({
               </button>
             </>
           ) : (
-            <button onClick={handleSubmit} disabled={!canGoNext()} className="btn-primary w-full py-3 text-sm font-black disabled:opacity-50">
-              Record Play
-            </button>
+            <>
+              {isEditing && onDelete && (
+                <button
+                  onClick={() => {
+                    if (window.confirm("Delete this play? Everything after it re-chains.")) onDelete();
+                  }}
+                  className="px-4 py-3 rounded-xl border-2 border-red-500/50 bg-red-500/10 text-red-400 text-sm font-black shrink-0"
+                  title="Delete play"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              <button onClick={handleSubmit} disabled={!canGoNext()} className="btn-primary flex-1 py-3 text-sm font-black disabled:opacity-50">
+                {isEditing ? "Save Changes" : "Record Play"}
+              </button>
+            </>
           )}
           </div>
         </div>
