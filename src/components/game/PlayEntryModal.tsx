@@ -1056,7 +1056,9 @@ export default function PlayEntryModal({
     }
     if (wasReturned) {
       steps.push("kick_return_yards");
-      if (trackTacklers) steps.push("defense"); // who brought the returner down
+      // Nobody brought down a returner who scored, so a return TD skips the
+      // tackler question instead of asking for a name that doesn't exist.
+      if (trackTacklers && !isTD) steps.push("defense");
     }
     steps.push("review");
   } else if (isPenaltyOnly) {
@@ -1069,7 +1071,9 @@ export default function PlayEntryModal({
   } else {
     if (roles.length > 0) steps.push("players");
     if (needsYards || needsResult) steps.push("yards");
-    if (canHaveTackle && trackTacklers) steps.push("defense");
+    // A touchdown was, by definition, not tackled. Asking anyway put a step
+    // and a skip warning between the score and the review on every TD.
+    if (canHaveTackle && trackTacklers && !isTD) steps.push("defense");
     // After the tackle: who came up with it, how far he carried it, and who
     // stopped him. Its own step because a recovery return is its own play
     // within the play, with its own spot and its own tackler.
