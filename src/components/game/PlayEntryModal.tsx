@@ -3611,7 +3611,20 @@ export default function PlayEntryModal({
                 {tacklers.length > 0 && (
                   <div className="flex justify-between">
                     <span className="text-slate-500">Tacklers</span>
-                    <span className="font-bold">{tacklers.map(t => `#${t.jersey_number}`).join(", ")}</span>
+                    <span className="font-bold">
+                      {/* A TEAM tackle has no jersey and no name of its own,
+                          and a tag rebuilt from the database may have no
+                          number either. Bare interpolation printed "#null"
+                          for both - which is what an edited play showed for
+                          every tackler on it. */}
+                      {tacklers.map(t => (
+                        t.isTeam || t.player_id === OPP_TEAM_PLAYER.id
+                          ? "TEAM"
+                          : t.jersey_number != null
+                            ? `#${t.jersey_number}`
+                            : (t.name?.trim().split(/s+/).slice(-1)[0] || "?")
+                      )).join(", ")}
+                    </span>
                   </div>
                 )}
               </div>

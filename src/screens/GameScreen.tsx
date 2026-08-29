@@ -406,10 +406,16 @@ export default function GameScreen() {
        seen the play yet. Without a fallback every tag on an unsynced play
        renders as "?", which reads exactly like the app lost who made it. */
     const rosterNames = new Map<string, string>();
+    /* Jersey numbers live on season_rosters, not on the play_players join, so
+       a tag rebuilt from the database has always come back numberless. Every
+       consumer then had to re-attach them or print without them - and one of
+       them printed "#null" instead. Attach once, here. */
+    const rosterJerseys = new Map<string, number | null>();
     for (const entry of (rosterRead.value ?? []) as any[]) {
       const player = entry?.player;
       if (entry?.player_id && player) {
         rosterNames.set(entry.player_id, `${player.first_name} ${player.last_name}`);
+        rosterJerseys.set(entry.player_id, entry.jersey_number ?? null);
       }
     }
 
@@ -470,7 +476,7 @@ export default function GameScreen() {
           ...p.play_players.map((pp: any) => ({
             id: pp.player_id,
             player_id: pp.player_id,
-            jersey_number: null,
+            jersey_number: rosterJerseys.get(pp.player_id) ?? null,
             name: pp.player
               ? `${pp.player.first_name} ${pp.player.last_name}`
               : rosterNames.get(pp.player_id) ?? "?",

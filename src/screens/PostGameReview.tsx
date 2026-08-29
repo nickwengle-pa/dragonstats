@@ -105,13 +105,20 @@ function parseClockText(clockText: unknown, fallback: number): number {
   return mins * 60 + secs;
 }
 
-function rowToPlayRecord(p: PlayWithPlayers): PlayRecord {
+/** Jersey numbers live on season_rosters, not on the play_players join, so a
+ *  tag rebuilt from the database comes back numberless unless the roster is
+ *  handed in to re-attach them. Without it the editor prints a tackler with no
+ *  number - and used to print "#null". */
+function rowToPlayRecord(
+  p: PlayWithPlayers,
+  jerseys?: Map<string, number | null>,
+): PlayRecord {
   const pd = (p.play_data ?? {}) as Record<string, any>;
   const tagged: TaggedPlayer[] = [
     ...(p.play_players ?? []).map((pp: any) => ({
       id: pp.player_id,
       player_id: pp.player_id,
-      jersey_number: null,
+      jersey_number: jerseys?.get(pp.player_id) ?? null,
       name: pp.player ? `${pp.player.first_name} ${pp.player.last_name}` : "?",
       role: pp.role,
       credit: pp.credit ?? undefined,
@@ -689,6 +696,12 @@ export default function PostGameReview() {
   const [charting, setCharting] = useState<Record<string, PlayCharting>>({});
   const [meta, setMeta] = useState<GameMeta | null>(null);
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
+  const rosterJerseys = useMemo(
+    () => new Map<string, number | null>(
+      roster.map((r: any) => [r.player_id, r.jersey_number ?? null]),
+    ),
+    [roster],
+  );
   const [oppPlayers, setOppPlayers] = useState<OpponentPlayerRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1069,7 +1082,7 @@ export default function PostGameReview() {
                       </Td>
                       <Td>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setEditRecord(rowToPlayRecord(p)); }}
+                          onClick={(e) => { e.stopPropagation(); setEditRecord(rowToPlayRecord(p, rosterJerseys)); }}
                           className="btn-ghost p-1 text-surface-muted/50 hover:text-dragon-primary cursor-pointer"
                           title="Edit this play"
                         >
@@ -1102,7 +1115,7 @@ export default function PostGameReview() {
           onChange={(patch) => setDraft((d) => (d ? { ...d, ...patch } : d))}
           onClose={() => { setEditingPlay(null); setDraft(null); setSitDraft(null); }}
           onSave={handleSaveCharting}
-          onEditPlay={() => editingPlay && setEditRecord(rowToPlayRecord(editingPlay))}
+          onEditPlay={() => editingPlay && setEditRecord(rowToPlayRecord(editingPlay, rosterJerseys))}
           sitDraft={sitDraft}
           onSitChange={(patch) => setSitDraft((d) => (d ? { ...d, ...patch } : d))}
           onSaveSituation={handleSaveSituation}
