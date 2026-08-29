@@ -967,6 +967,10 @@ export default function PlayEntryModal({
     .includes(playType.id);
   const needsYards = !["pass_inc", "throwaway", "drop", "spike", "penalty_only", "pat", "two_pt", "kickoff", "punt", "onside_kick", "fair_catch"].includes(playType.id);
   const needsResult = ["pat", "fg", "two_pt"].includes(playType.id);
+  /* A try is a fixed down at a fixed spot and the only thing recorded about it
+     is whether it was good. Nothing downstream reads a hash, a formation or a
+     tackler on one, so asking costs taps on every score and returns nothing. */
+  const isConversion = ["pat", "two_pt"].includes(playType.id);
   const needsTouchback = false; // handled in kick-specific flow now
   const interceptionSpotBallOn = isInterception
     ? toOffensePerspectiveBallOn(intCaughtTeam, intCaughtYardLine)
@@ -1107,12 +1111,12 @@ export default function PlayEntryModal({
     if (needsYards || needsResult) steps.push("yards");
     // A touchdown was, by definition, not tackled. Asking anyway put a step
     // and a skip warning between the score and the review on every TD.
-    if (canHaveTackle && trackTacklers && !isTD) steps.push("defense");
+    if (canHaveTackle && trackTacklers && !isTD && !isConversion) steps.push("defense");
     // After the tackle: who came up with it, how far he carried it, and who
     // stopped him. Its own step because a recovery return is its own play
     // within the play, with its own spot and its own tackler.
     if (canHaveFumble && hasFumble) steps.push("fumble_return");
-    if (trackFormations) steps.push("formations");
+    if (trackFormations && !isConversion) steps.push("formations");
     steps.push("review");
   }
 
