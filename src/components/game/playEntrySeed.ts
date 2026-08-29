@@ -17,11 +17,13 @@
  * no direction rather than refusing to open.
  */
 
-import {
-  type BlockedKickType,
-  type PenaltySide,
-  type PlayRecord,
-  type TaggedPlayer,
+// A type-only import so this module has no runtime dependency at all, which
+// keeps playEntrySeed.test.ts runnable under plain node.
+import type {
+  BlockedKickType,
+  PenaltySide,
+  PlayRecord,
+  TaggedPlayer,
 } from "./types";
 
 export type FieldTeam = "program" | "opponent";
@@ -77,6 +79,42 @@ const num = (v: unknown): number | null => {
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
+/**
+ * Kick distance and return yardage, read back out of the play description.
+ *
+ * Plays recorded before the kick spots were stored do not carry them as
+ * numbers, and the numeric columns cannot give them back: yards_gained holds
+ * the NET kick, distance minus return, so landing and return are one equation
+ * in two unknowns. Substituting end_yard_line collapses to an identity - it
+ * adds no information, only rearranges the same fact.
+ *
+ * The description does carry both, because buildDescription was already
+ * writing them out in full: "Punt #21 Smith 38 yds to OPP 12, ret #3 Jones 10
+ * yds". Distance and return are each printed immediately before the word
+ * "yds", so both come straight back. A prose field is a poor source of truth
+ * and this is not one - stored numbers win whenever a play has them - but it
+ * is a great deal better than opening every historical kick on the 5.
+ *
+ * Returns null when the play predates even that (the older branch of
+ * buildDescription wrote no distance at all).
+ */
+function kickInfoFromDescription(description: string): { kickDistance: number; returnYards: number } | null {
+  // The distance is the number immediately before "yds to <spot>" or
+  // "yds Touchback". A jersey in a player label cannot match: those are
+  // written "#21 Smith", so the number is followed by a name, not by "yds".
+  const distance = /(\d+)\s+yds\s+(?:to\b|Touchback\b)/.exec(description);
+  if (!distance) return null;
+
+  // "…, ret #3 Jones 10 yds" — the return is the last number before "yds" in
+  // the return clause, and the clause only exists when there was a return.
+  const returnClause = /,\s*ret\b([^]*?)(-?\d+)\s+yds/.exec(description);
+
+  return {
+    kickDistance: Number(distance[1]),
+    returnYards: returnClause ? Number(returnClause[2]) : 0,
+  };
+}
+
 /** Offense-relative ball position to the program-perspective side + yard line. */
 function toFieldSpot(possession: "us" | "them", offenseBallOn: number): {
   side: FieldTeam;
@@ -116,11 +154,33 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
      yardage when they were not stored outright. */
   const receivingFieldSide: FieldTeam = possession === "us" ? "opponent" : "program";
   const storedKickedTo = num(pd.kicked_to_yard);
-  const kickedToYard = storedKickedTo ?? 5;
+  const fromDescription = storedKickedTo == null
+    ? kickInfoFromDescription(play.description ?? "")
+    : null;
+  /* kickedToYard counts up from the RECEIVING team's goal line, and the kick
+     travelled from the kicking team's own yard line, so the two are
+     complements around the length of the kick. This is the exact inverse of
+     how the modal computes the distance it printed. */
+  const kickedToYard = storedKickedTo
+    ?? (fromDescription
+      ? Math.max(0, Math.min(100, 100 - play.ballOn - fromDescription.kickDistance))
+      : 5);
+
   const storedReturnTo = num(pd.return_to_ball_on);
+  /* Where the return ended, in the receiving team's own numbers: caught on the
+     10 and brought out 10 is their 20. Over midfield it flips sides, exactly
+     as the return picker does. */
+  const returnedToReceiverYard = fromDescription
+    ? kickedToYard + fromDescription.returnYards
+    : kickedToYard;
   const returnSpot = storedReturnTo != null
     ? toFieldSpot(possession, storedReturnTo)
-    : { side: receivingFieldSide, yardLine: Math.max(1, kickedToYard) };
+    : returnedToReceiverYard <= 50
+      ? { side: receivingFieldSide, yardLine: Math.max(1, returnedToReceiverYard) }
+      : {
+          side: (receivingFieldSide === "program" ? "opponent" : "program") as FieldTeam,
+          yardLine: Math.max(1, 100 - returnedToReceiverYard),
+        };
 
   /* Interceptions store both spots outright — they always have. */
   const intSpot = (pd.interception_spot ?? null) as Record<string, unknown> | null;
