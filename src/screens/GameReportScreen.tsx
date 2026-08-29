@@ -366,7 +366,7 @@ export default function GameReportScreen() {
              minus the margins, and a container insisting on 8.5in inside 8in
              of printable width is exactly a half inch of clipped tables. On
              screen the 8.5in cap stays - it is what makes it read as paper. */
-          <div className="relative mx-auto max-w-[8.5in] print:max-w-none bg-white text-black rounded-lg print:rounded-none shadow-lg print:shadow-none p-5 print:p-0 font-body">
+          <div className="game-report-sheet relative mx-auto max-w-[8.5in] print:max-w-none bg-white text-black rounded-lg print:rounded-none shadow-lg print:shadow-none p-5 print:p-0 font-body">
             <Watermark logoUrl={report.us.logoUrl} />
 
             {/* Everything above the ghosted mark. One stacking context on the

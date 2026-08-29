@@ -69,13 +69,45 @@
   }
   th, td {
     border-bottom: 1px solid #ddd;
-    padding: 4px 6px !important;
+    padding: 4px 6px;
     color: black !important;
   }
   th {
     background: #f3f3f3 !important;
     color: black !important;
     text-align: left;
+  }
+
+  /* ── The game report opts out of everything above ─────────────────────
+     It is already a print document: it renders as a white sheet on screen
+     precisely so that what you proof is what comes out of the printer. The
+     rules above were written for the dark app screens and they damage it.
+
+     font-size: 10pt is the one that was cutting stats off. The report lays
+     out at 11px; 10pt is 13.3px, so every table came out about a fifth
+     wider than it was designed for and the wide grids - the thirteen-column
+     defensive table, the returns grid - ran off the right edge of the page.
+
+     The rest are visual: left-aligned th undoes its numeric columns, the grey
+     th background is not its design, the blanket th/td border draws lines it
+     already draws on the rows, and page-break-inside: avoid on every table
+     fights its own four-page layout. */
+  .game-report-sheet table {
+    font-size: inherit;
+    page-break-inside: auto;
+  }
+  .game-report-sheet th,
+  .game-report-sheet td {
+    border-bottom: 0;
+  }
+  .game-report-sheet th {
+    background: transparent !important;
+  }
+  /* A scroll container does not scroll on paper - it clips. Any table wider
+     than the page silently lost its right-hand columns, which is the other
+     half of why stats went missing. */
+  .game-report-sheet .overflow-x-auto {
+    overflow: visible !important;
   }
 
   /* Page break hints between major sections */
