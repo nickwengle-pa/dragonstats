@@ -792,6 +792,10 @@ export default function PlayEntryModal({
     playType.id === "punt" ||
     playType.id === "onside_kick" ||
     playType.id === "fair_catch";
+  /** Kickoffs have a kicker, punts have a punter, and the tag role differs. */
+  const kickerRole = (playType.id === "kickoff" || playType.id === "onside_kick")
+    ? "kicker"
+    : "punter";
   const [kickedToYard, setKickedToYard] = useState(5); // receiving team's yard line where ball lands
   const [kickedToRaw, setKickedToRaw] = useState("");
   const [returnToYardLine, setReturnToYardLine] = useState(20);
@@ -1452,7 +1456,8 @@ export default function PlayEntryModal({
 
   /* ── Kick-specific player selection helpers ── */
   const handleKickerSelect = (p: RosterPlayer) => {
-    const role = (playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter";
+    const role = kickerRole;
+    setCarriedRoles(prev => { const next = new Set(prev); next.delete(role); return next; });
     const tp: TaggedPlayer = {
       id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
       name: `${p.player.first_name} ${p.player.last_name}`, role,
@@ -1462,7 +1467,8 @@ export default function PlayEntryModal({
   };
 
   const handleKickerSelectOpp = (p: OpponentPlayerRef) => {
-    const role = (playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter";
+    const role = kickerRole;
+    setCarriedRoles(prev => { const next = new Set(prev); next.delete(role); return next; });
     const tp: TaggedPlayer = {
       id: p.id, player_id: p.id, jersey_number: p.jersey_number,
       name: p.name, role, isOpponent: true,
@@ -1472,6 +1478,7 @@ export default function PlayEntryModal({
   };
 
   const handleReturnerSelect = (p: RosterPlayer) => {
+    setCarriedRoles(prev => { const next = new Set(prev); next.delete("returner"); return next; });
     const tp: TaggedPlayer = {
       id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
       name: `${p.player.first_name} ${p.player.last_name}`, role: "returner",
@@ -1481,6 +1488,7 @@ export default function PlayEntryModal({
   };
 
   const handleReturnerSelectOpp = (p: OpponentPlayerRef) => {
+    setCarriedRoles(prev => { const next = new Set(prev); next.delete("returner"); return next; });
     const tp: TaggedPlayer = {
       id: p.id, player_id: p.id, jersey_number: p.jersey_number,
       name: p.name, role: "returner", isOpponent: true,
@@ -2084,24 +2092,32 @@ export default function PlayEntryModal({
           {/* ── KICK STEP: Kicker / Punter ── */}
           {currentStep === "kick_kicker" && (
             <>
+              {carriedRoles.has(kickerRole) && (
+                <div className="mb-2 px-3 py-2 rounded-xl border border-dashed border-amber-500/50 bg-amber-500/10 text-[11px] text-amber-400/90">
+                  Carried from the last kick - Next keeps him, tap anyone to change.
+                </div>
+              )}
               {isTheirBall ? (
                 <OpponentPlayerGrid
                   players={localOppPlayers}
-                  label={`Select ${(playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter"} (opponent)`}
+                  label={`Select ${kickerRole} (opponent)`}
                   onSelect={handleKickerSelectOpp}
-                  selectedId={tagged.find(t => t.role === ((playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter"))?.id ?? null}
+                  selectedId={tagged.find(t => t.role === kickerRole)?.id ?? null}
                   search={kickerSearch}
                   onSearch={setKickerSearch}
                   onQuickAdd={handleQuickAddOpponent}
+                  accentColor={oppColor}
                 />
               ) : (
                 <PlayerGrid
                   roster={roster}
-                  label={`Select ${(playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter"}`}
+                  label={`Select ${kickerRole}`}
                   onSelect={handleKickerSelect}
-                  selectedId={tagged.find(t => t.role === ((playType.id === "kickoff" || playType.id === "onside_kick") ? "kicker" : "punter"))?.player_id ?? null}
+                  selectedId={tagged.find(t => t.role === kickerRole)?.player_id ?? null}
                   search={kickerSearch}
                   onSearch={setKickerSearch}
+                  accentColor={progColor}
+                  selectionIsCarried={carriedRoles.has(kickerRole)}
                 />
               )}
             </>
@@ -2300,6 +2316,8 @@ export default function PlayEntryModal({
                   selectedId={tagged.find(t => t.role === "returner")?.player_id ?? null}
                   search={returnerSearch}
                   onSearch={setReturnerSearch}
+                  accentColor={progColor}
+                  selectionIsCarried={carriedRoles.has("returner")}
                 />
               ) : (
                 <OpponentPlayerGrid
@@ -2310,6 +2328,7 @@ export default function PlayEntryModal({
                   search={returnerSearch}
                   onSearch={setReturnerSearch}
                   onQuickAdd={handleQuickAddOpponent}
+                  accentColor={oppColor}
                 />
               )}
             </>
