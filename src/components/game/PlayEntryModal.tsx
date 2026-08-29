@@ -755,6 +755,14 @@ export default function PlayEntryModal({
   const [offFormation, setOffFormation] = useState<string | null>(null);
   const [defFormation, setDefFormation] = useState<string | null>(null);
   const [hashMark, setHashMark] = useState<string | null>(null);
+  /* Which way the ball went, from the OFFENSE's point of view - the same left
+     and right the play was called with, not press-box left and right, so it
+     stays the same fact after the teams change ends. */
+  const [playDirection, setPlayDirection] = useState<"left" | "right" | null>(null);
+  /* The wristband call as it was sent in ("R42", "L7"). Free text on purpose:
+     the letter and number scheme belongs to the coaching staff and changes week
+     to week, so there is nothing here worth constraining. */
+  const [wristbandCall, setWristbandCall] = useState("");
 
   // Defensive credit (tacklers)
   const [tacklers, setTacklers] = useState<TaggedPlayer[]>([]);
@@ -1569,7 +1577,10 @@ export default function PlayEntryModal({
       nextSituation: overrideSpot && penalty
         ? { ballOn: overrideBallOn, down: spotDown, distance: spotDistance }
         : null,
-      playData: isInterception ? {
+      playData: {
+        ...(playDirection ? { play_direction: playDirection } : {}),
+        ...(wristbandCall.trim() ? { wristband_call: wristbandCall.trim() } : {}),
+        ...(isInterception ? {
         interception_spot: {
           field_side: intCaughtTeam,
           yard_line: intCaughtYardLine,
@@ -1584,9 +1595,10 @@ export default function PlayEntryModal({
         },
         interception_return_yards: interceptionReturnYards,
         interception_net_yards: playYards,
-      } : isKickPlay ? {
-        kick_outcome: kickOutcome,
-      } : undefined,
+        } : isKickPlay ? {
+          kick_outcome: kickOutcome,
+        } : {}),
+      },
     });
   };
 
@@ -3055,6 +3067,32 @@ export default function PlayEntryModal({
                       }`}>{h}</button>
                   ))}
                 </div>
+              </div>
+              <div>
+                <label className="label block mb-1.5">Play Direction</label>
+                <div className="flex gap-2">
+                  {(["left", "right"] as const).map(d => (
+                    <button key={d} onClick={() => setPlayDirection(prev => prev === d ? null : d)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
+                        playDirection === d ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>{d}</button>
+                  ))}
+                </div>
+                <div className="text-[10px] text-slate-600 mt-1">
+                  Offense left and right, the way the play was called.
+                </div>
+              </div>
+              <div>
+                <label className="label block mb-1.5">Wristband Call</label>
+                <input
+                  type="text"
+                  inputMode="text"
+                  autoCapitalize="characters"
+                  placeholder="e.g. R42"
+                  value={wristbandCall}
+                  onChange={e => setWristbandCall(e.target.value.toUpperCase())}
+                  className="input w-full text-center text-base font-black tracking-widest"
+                />
               </div>
               <div>
                 <label className="label block mb-1.5">Offensive Formation</label>
