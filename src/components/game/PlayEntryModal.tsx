@@ -1016,6 +1016,9 @@ export default function PlayEntryModal({
      is whether it was good. Nothing downstream reads a hash, a formation or a
      tackler on one, so asking costs taps on every score and returns nothing. */
   const isConversion = ["pat", "two_pt"].includes(playType.id);
+  /* The ball hit the ground or never left: no yardage, no score, no first
+     down. These still need the step for its penalty picker. */
+  const isDeadBall = ["pass_inc", "throwaway", "drop", "spike"].includes(playType.id);
   const needsTouchback = false; // handled in kick-specific flow now
   const interceptionSpotBallOn = isInterception
     ? toOffensePerspectiveBallOn(intCaughtTeam, intCaughtYardLine)
@@ -1163,7 +1166,14 @@ export default function PlayEntryModal({
     steps.push("review");
   } else {
     if (roles.length > 0) steps.push("players");
-    if (needsYards || needsResult) steps.push("yards");
+    /* An incompletion has no yardage and no result to pick, so it used to skip
+       this step outright - and the step is also where the penalty picker, the
+       fumble modifier and the score toggles live. That left a dropped pass or
+       a throwaway with nowhere to flag the pass interference that caused it,
+       and nothing to edit afterwards but the passer and the target. The step
+       renders only the controls a given play type actually has, so showing it
+       here costs one Next and reaches everything. */
+    steps.push("yards");
     // A touchdown was, by definition, not tackled. Asking anyway put a step
     // and a skip warning between the score and the review on every TD.
     if (canHaveTackle && trackTacklers && !isTD && !isConversion) steps.push("defense");
@@ -3042,8 +3052,11 @@ export default function PlayEntryModal({
                 </div>
               )}
 
-              {/* TD / First Down toggles */}
-              {!needsResult && (
+              {/* TD / First Down toggles. Not on a play where the ball hit
+                  the ground - an incompletion scores nothing and moves no
+                  chains, and offering the toggles invites a mis-tap that the
+                  engine would then have to be argued out of. */}
+              {!needsResult && !isDeadBall && (
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => setIsTD(t => !t)}
                     className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
