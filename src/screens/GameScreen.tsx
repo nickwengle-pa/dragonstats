@@ -29,6 +29,7 @@ import {
   type ChartingPrefs,
   getOurDriveDirectionForQuarter,
   getPregameConfig,
+  getRecordedNextSituation,
   moveToQuarter,
   normalizeQuarter,
   oppositeFieldDirection,
@@ -1291,7 +1292,17 @@ export default function GameScreen() {
     play: PlayRecord,
     before: { possession: "us" | "them"; down: number; distance: number; ballOn: number },
   ) => {
-    const suggested = advanceSituationAfterPlay(play, before, gc);
+    /* What the recorder already said outranks what the rules compute.
+       A spot set by hand in the entry modal is stored on the play and flagged
+       manual_override, and every other consumer honours it - the replay, the
+       stored play data, the film chart. This sheet did not: it recomputed the
+       enforcement from scratch, so the ball the operator had just placed was
+       replaced by the mechanical spot the moment the verify screen opened, and
+       confirming it wrote the wrong ball back over the right one.
+
+       Falling back to the computed spot still covers the ordinary case, since
+       a play with no override carries the replay's own after-situation. */
+    const suggested = getRecordedNextSituation(play) ?? advanceSituationAfterPlay(play, before, gc);
     setPendingSituationPlayId(playId);
     setAdjPossession(suggested.possession);
     setAdjBallOn(suggested.ballOn);
