@@ -37,6 +37,7 @@ import {
   type PregameConfig,
 } from "./gameFlow";
 import type { GameConfig } from "./programService";
+import { resolveDriveResults } from "./driveResults";
 
 export interface LiveSessionConfig {
   gameId: string;
@@ -780,6 +781,18 @@ export function replayLiveGame(
   let summary: GameSummary | null = null;
   try {
     summary = engine.getGameSummary();
+    // The engine labels every drive that did not reach the end zone a punt.
+    // Correct it here too, or the live Drives tab disagrees with the summary
+    // screen on the same game. See driveResults.ts.
+    summary.drives = resolveDriveResults(summary.drives, plays.map(p => ({
+      possession: p.possession,
+      playType: p.type,
+      quarter: p.quarter,
+      down: p.down,
+      isTouchdown: p.isTouchdown,
+      isTurnover: p.turnover,
+      result: p.result ?? "",
+    })));
   } catch (err) {
     console.warn("[liveGameSession] engine.getGameSummary failed", err);
   }

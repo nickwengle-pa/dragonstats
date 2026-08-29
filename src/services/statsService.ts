@@ -10,6 +10,7 @@ import { loadGamePlays, calcDefenseStats, type PlayWithPlayers } from "./gameSer
 import { transformPlays, collectOpponentPlayerIds, type TransformContext } from "./playTransformer";
 import { opponentPlayerService } from "./opponentService";
 import { getPregameConfig } from "./gameFlow";
+import { resolveDriveResults } from "./driveResults";
 import {
   FootballStatsEngine,
   CoinTossChoice,
@@ -250,6 +251,18 @@ export async function computeGameStatsBundle(
 
   // 8. Supplement defensive stats with PBU/hurry from app's own calculator
   supplementDefenseStats(summary, plays, rosterPlayers);
+
+  // 9. Correct drive results — the engine labels every non-touchdown drive a
+  //    punt, field goals and turnovers included. See driveResults.ts.
+  summary.drives = resolveDriveResults(summary.drives, plays.map(p => ({
+    possession: p.possession,
+    playType: p.play_type,
+    quarter: p.quarter,
+    down: p.down,
+    isTouchdown: p.is_touchdown,
+    isTurnover: p.is_turnover,
+    result: String(p.play_data?.result ?? ""),
+  })));
 
   return { summary, plays, roster, game };
 }
