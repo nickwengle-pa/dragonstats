@@ -25,6 +25,7 @@ import {
   buildDescription,
 } from "./types";
 import { buildEditSeed } from "./playEntrySeed";
+import ClockInput from "./ClockInput";
 import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
@@ -97,6 +98,8 @@ export interface PlaySubmitData {
   fumbleRecoveredAt?: number;
   /** Onside kicks only: true when the kicking team recovered its own kick. */
   onsideRecoveredByKicker?: boolean;
+  /** Scoreboard time at the snap, in seconds. */
+  clock: number;
   result: string; // "Good" | "No Good" | "Returned" | "Complete" | "Incomplete" | ""
   penalty: string | null;
   penaltyCategory: PenaltySide | null;
@@ -795,6 +798,11 @@ export default function PlayEntryModal({
      the letter and number scheme belongs to the coaching staff and changes week
      to week, so there is nothing here worth constraining. */
   const [wristbandCall, setWristbandCall] = useState(edit?.wristbandCall ?? "");
+  /* What the scoreboard read at the snap. The running clock supplies it on
+     entry, but it is a fact ABOUT the play and belongs on the play - a game
+     charted from film, or an operator who fell a snap behind, needs it
+     correctable without leaving the play. */
+  const [clockSecs, setClockSecs] = useState(gameState.clock);
 
   // Defensive credit (tacklers)
   const [tacklers, setTacklers] = useState<TaggedPlayer[]>(edit?.tacklers ?? []);
@@ -1646,6 +1654,7 @@ export default function PlayEntryModal({
       isTouchdown: scored,
       isFirstDown: earnedFirst,
       isTouchback,
+      clock: clockSecs,
       // The flag, not the play type, is what says the ball changed hands — a
       // sack-fumble is a sack that was lost.
       turnover: isFumblePlay ? !fumbleRecoveredByUs : playType.id === "int" ? true : undefined,
@@ -3391,7 +3400,23 @@ export default function PlayEntryModal({
           {/* ── STEP: Review ── */}
           {currentStep === "review" && (
             <div className="space-y-3">
-              <div className="text-sm font-bold text-slate-300">Review Play</div>
+              <div className="text-sm font-bold text-slate-300">
+                {isEditing ? "Review Changes" : "Review Play"}
+              </div>
+
+              {/* Scoreboard time at the snap. Pre-filled from the running
+                  clock, so entering a play live costs nothing; correcting one
+                  charted from film no longer means leaving the play. */}
+              <div className="card p-3">
+                <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1.5">
+                  Clock at snap
+                </div>
+                <ClockInput
+                  seconds={clockSecs}
+                  onChange={setClockSecs}
+                  maxSeconds={gameConfig.quarter_length_secs}
+                />
+              </div>
               <div className="card p-3 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Type</span>

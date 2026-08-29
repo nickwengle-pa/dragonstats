@@ -20,6 +20,7 @@ import {
   type PlayChartingDraft,
 } from "@/services/chartingService";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
+import { formatClockValue } from "@/components/game/ClockInput";
 import {
   findPlayTypeDef,
   isRosterTag,
@@ -804,6 +805,7 @@ export default function PostGameReview() {
       playId,
       {
         play_type: result.playType.id,
+        clock: formatClockValue(result.clock),
         yards_gained: result.yards,
         is_touchdown: result.isTouchdown,
         is_turnover: editTurnover,
@@ -818,6 +820,8 @@ export default function PostGameReview() {
           // Everything this pass through the modal produced - hash, direction,
           // wristband call, kick spots, interception spots.
           ...(result.playData ?? {}),
+          recorded_start_clock: formatClockValue(result.clock),
+          recorded_start_clock_seconds: result.clock,
           result: result.result || null,
           is_first_down: result.isFirstDown,
           is_touchback: result.isTouchback,

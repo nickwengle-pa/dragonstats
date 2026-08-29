@@ -1496,6 +1496,9 @@ export default function GameScreen() {
       playType: penaltyType,
       tagged: [],
       yards: 0,
+      // A one-tap pre-snap flag never opens the modal, so it takes the
+      // running clock as-is.
+      clock,
       isTouchdown: false,
       isFirstDown: false,
       isTouchback: false,
@@ -1527,11 +1530,15 @@ export default function GameScreen() {
     // Interceptions always change possession; fumbles only when not recovered
     // by the offense (the modal sends an explicit flag).
     const isTurnover = data.turnover ?? ["int", "fumble"].includes(data.playType.id);
+    /* The modal can correct the snap time, so the play is stamped with what
+       it returned rather than with whatever the running clock reads by the
+       time Record Play is tapped. */
+    const playClock = data.clock ?? clock;
     const previewPlay: PlayRecord = {
       id: "pending",
       sequence: plays.length + 1,
       quarter,
-      clock,
+      clock: playClock,
       type: data.playType.id,
       yards: data.yards,
       result: data.result,
@@ -1564,8 +1571,8 @@ export default function GameScreen() {
       hashMark: data.hashMark,
       playData: {
         season_id: season.id,
-        recorded_start_clock: fmtClock(clock),
-        recorded_start_clock_seconds: clock,
+        recorded_start_clock: fmtClock(playClock),
+        recorded_start_clock_seconds: playClock,
         ...(data.playData ?? {}),
         next_situation_source: data.nextSituation
           ? "manual_override"
@@ -1588,7 +1595,7 @@ export default function GameScreen() {
     const playInsert: PlayInsert = {
       game_id: gameId,
       quarter,
-      clock: fmtClock(clock),
+      clock: fmtClock(playClock),
       possession,
       down,
       distance,
@@ -2036,6 +2043,7 @@ export default function GameScreen() {
     // Persist to DB
     const ok = await updatePlayFull(playId, {
       play_type: result.playType.id,
+      clock: fmtClock(result.clock),
       yards_gained: result.yards,
       is_touchdown: result.isTouchdown,
       // The editor's own flag, not a guess from the play type — a sack-fumble
@@ -2061,6 +2069,8 @@ export default function GameScreen() {
         penalty_enforcement: result.penalty ? result.penaltyEnforcement : null,
         penalty_yards: result.flagYards,
         blocked_kick_type: result.blockedKickType,
+        recorded_start_clock: fmtClock(result.clock),
+        recorded_start_clock_seconds: result.clock,
         fumble_return_yards: result.fumbleReturnYards ?? null,
         fumble_recovered_at: result.fumbleRecoveredAt ?? null,
         /* Rewritten from this edit rather than inherited. These three lists
@@ -2108,6 +2118,7 @@ export default function GameScreen() {
     const updatedPlay: PlayRecord = {
       ...original,
       type: result.playType.id,
+      clock: result.clock,
       yards: result.yards,
       isTouchdown: result.isTouchdown,
       firstDown: result.isFirstDown,
@@ -2133,6 +2144,8 @@ export default function GameScreen() {
       playData: {
         ...(original.playData ?? {}),
         ...(result.playData ?? {}),
+        recorded_start_clock: fmtClock(result.clock),
+        recorded_start_clock_seconds: result.clock,
         result: result.result || null,
         is_first_down: result.isFirstDown,
         is_touchback: result.isTouchback,
