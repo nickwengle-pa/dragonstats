@@ -1224,7 +1224,12 @@ export default function PlayEntryModal({
    * steps and the review can show it and the submit can write it.
    */
   const teamDefaultRoles = (isKickPlay
-    ? [kickerRole, ...(isTouchback ? [] : ["returner"])]
+    /* Only kicks somebody actually fielded have a returner. Downed and out of
+       bounds never show the returner step, so defaulting one to TEAM invented
+       a return attempt on a play where nobody touched the ball - and the
+       review screen now displays that list, so it was visible as well as
+       wrong. Touchback was already excluded; the other two were not. */
+    ? [kickerRole, ...((wasReturned || kickOutcome === "fair_catch") ? ["returner"] : [])]
     : roles
   ).filter(role =>
     !tagged.some(t => t.role === role)
