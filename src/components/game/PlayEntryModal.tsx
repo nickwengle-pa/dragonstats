@@ -873,6 +873,10 @@ export default function PlayEntryModal({
     return base;
   }, [playType, twoPointStyle, blockedKickType, canHaveFumble, hasFumble]);
   const isTheirBall = gameState.possession === "them";
+  /* Whether the opponent's kicker is worth naming on this play. Off by
+     default: their punter records as TEAM unless the operator asks for the
+     step, which the kick location screen offers in one tap. */
+  const [showOppKicker, setShowOppKicker] = useState(false);
   const progTag = teamTag(progName);
   const oppTag = teamTag(oppName);
   const perspectiveSideLabel = (side: "our" | "opp") => side === "our" ? progName : oppName;
@@ -1083,8 +1087,11 @@ export default function PlayEntryModal({
 
   const steps: Step[] = [];
   if (isKickPlay) {
-    // Kickoff/Punt specific flow
-    steps.push("kick_kicker");
+    // Kickoff/Punt specific flow.
+    // Their kicker is a name we do not have and do not chart, so it records as
+    // TEAM and the step is skipped outright. The location screen offers it back
+    // in one tap for the rare case worth naming.
+    if (!isTheirBall || showOppKicker) steps.push("kick_kicker");
     steps.push("kick_location");
     // Downed / out of bounds / touchback: nobody fielded it, so there's no
     // returner to tag. A fair catch DOES have a receiver worth crediting, but
@@ -1166,6 +1173,29 @@ export default function PlayEntryModal({
     blockedRecoveredByKicking,
     }),
   );
+  /**
+   * Opponent-side roles nobody has named. These record as TEAM.
+   *
+   * Their stats have to land somewhere - a punt with no punter is a punt that
+   * never happened as far as the report is concerned - and we do not chart
+   * their roster. So the fallback has always existed; it just happened silently
+   * at submit, described in a comment, with nothing on screen to say which
+   * roles it was about to cover. This is that same list, computed once, so the
+   * steps and the review can show it and the submit can write it.
+   */
+  const teamDefaultRoles = (isKickPlay
+    ? [kickerRole, ...(isTouchback ? [] : ["returner"])]
+    : roles
+  ).filter(role =>
+    !tagged.some(t => t.role === role)
+    && roleUsesOpponentRoster(role, isTheirBall, {
+      playTypeId: playType.id,
+      fumbleRecoveredByUs,
+      onsideRecoveredByKicker,
+      blockedRecoveredByKicking,
+    }),
+  );
+
   /** Set when Next is held back to ask about blank roles; null the rest of the time. */
   const [skipWarning, setSkipWarning] = useState<string[] | null>(null);
 
@@ -1504,33 +1534,22 @@ export default function PlayEntryModal({
   const handleSubmit = () => {
     const allTagged = [...tagged, ...tacklers];
 
-    // ── Auto-fill skipped OPPONENT-side roles with the TEAM placeholder ──
-    // Our own skipped roles stay untagged (coach should attribute real
-    // players); opponent stats always land somewhere visible.
-    const roleUsesOppRoster = (role: string): boolean =>
-      roleUsesOpponentRoster(role, isTheirBall, {
-        playTypeId: playType.id,
-        fumbleRecoveredByUs,
-        onsideRecoveredByKicker,
-    blockedRecoveredByKicking,
+    // ── Fill opponent-side roles nobody named with the TEAM placeholder ──
+    // Our own skipped roles stay untagged: a coach should attribute his own
+    // players, and a blank is the signal to go back and do it. Their side has
+    // no roster to attribute to, so the stat lands on TEAM rather than
+    // vanishing. teamDefaultRoles is the same list the steps and the review
+    // showed on the way here, so nothing appears at submit that was not on
+    // screen first.
+    for (const role of teamDefaultRoles) {
+      allTagged.push({
+        id: OPP_TEAM_PLAYER.id,
+        player_id: OPP_TEAM_PLAYER.id,
+        jersey_number: null,
+        name: OPP_TEAM_PLAYER.name,
+        role,
+        isOpponent: true,
       });
-    const rolesToFill = isKickPlay
-      ? [
-          playType.id === "punt" || playType.id === "fair_catch" ? "punter" : "kicker",
-          ...(isTouchback ? [] : ["returner"]),
-        ]
-      : roles;
-    for (const role of rolesToFill) {
-      if (!allTagged.some(t => t.role === role) && roleUsesOppRoster(role)) {
-        allTagged.push({
-          id: OPP_TEAM_PLAYER.id,
-          player_id: OPP_TEAM_PLAYER.id,
-          jersey_number: null,
-          name: OPP_TEAM_PLAYER.name,
-          role,
-          isOpponent: true,
-        });
-      }
     }
     const passResult = playType.id === "pass_comp" ? "Complete" : playType.id === "pass_inc" ? "Incomplete" : "";
     const finalResult = result || passResult;
@@ -2064,6 +2083,14 @@ export default function PlayEntryModal({
                 </span>
               </div>
 
+              {/* Their side is recorded as TEAM unless a number was caught, so
+                  say so here instead of leaving it to happen at submit. */}
+              {showOpponentRoster && teamDefaultRoles.includes(currentRole) && (
+                <div className="px-3 py-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-[11px] text-amber-400/80">
+                  Records as <span className="font-black">TEAM</span> unless you pick someone.
+                </div>
+              )}
+
               {/* Show opponent or our roster */}
               {showOpponentRoster ? (
                 <OpponentPlayerGrid
@@ -2130,6 +2157,17 @@ export default function PlayEntryModal({
           {/* ── KICK STEP: Kick Location ── */}
           {currentStep === "kick_location" && (
             <>
+              {isTheirBall && !showOppKicker && (
+                <button
+                  onClick={() => { setShowOppKicker(true); setStepIdx(0); }}
+                  className="w-full mb-1 px-3 py-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-[11px] font-bold text-amber-400/80 flex items-center justify-between"
+                >
+                  <span className="uppercase tracking-wide">
+                    {kickerRole}: <span className="font-black">TEAM</span>
+                  </span>
+                  <span className="underline">Name him</span>
+                </button>
+              )}
               {/* Same spot-picking as the run/pass yards step: tap the field
                   or drag the ruler. It's also the only control here that can
                   place the ball on EITHER side of the 50 — the "caught at" box
@@ -3300,7 +3338,21 @@ export default function PlayEntryModal({
                     <span className="text-slate-500 capitalize">{t.role}</span>
                     <span className="font-bold">
                       {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>}
-                      #{t.jersey_number} {t.name}
+                      {/* A TEAM tag has no jersey and no name of its own; the
+                          generic line rendered it as "#null TEAM". */}
+                      {t.isTeam || t.player_id === OPP_TEAM_PLAYER.id
+                        ? "TEAM"
+                        : `#${t.jersey_number ?? "?"} ${t.name}`}
+                    </span>
+                  </div>
+                ))}
+                {/* What is about to be filled in for us, before it happens
+                    rather than in the play log afterwards. */}
+                {teamDefaultRoles.map(role => (
+                  <div key={`team-${role}`} className="flex justify-between">
+                    <span className="text-slate-500 capitalize">{role}</span>
+                    <span className="font-bold text-amber-400/80">
+                      <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>TEAM
                     </span>
                   </div>
                 ))}
