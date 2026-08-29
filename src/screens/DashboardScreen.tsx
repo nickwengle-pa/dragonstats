@@ -6,7 +6,7 @@ import { readSeasonGames, readSeasonRoster } from "@/services/offlineCache";
 import { supabase } from "@/lib/supabase";
 import {
   Calendar, Users, BarChart3, Settings, ChevronRight, Trophy, SlidersHorizontal,
-  Home, LogOut,
+  Home, LogOut, ClipboardList, FileText, Film, ChevronDown,
 } from "lucide-react";
 
 interface LiveGame {
@@ -15,6 +15,26 @@ interface LiveGame {
   our_score: number;
   opponent_score: number;
 }
+
+/** A finished game, and the four ways of reading it back. */
+interface CompletedGame {
+  id: string;
+  opponent_name: string;
+  our_score: number;
+  opponent_score: number;
+  game_date: string;
+  is_home: boolean;
+}
+
+/** Everything recorded about a game, in the order you would want it after
+ *  one: the sheet you hand round, the short version, the whole picture, the
+ *  play-by-play you take to film. */
+const GAME_VIEWS = [
+  { label: "Game Report", desc: "Full stat sheet", icon: ClipboardList, path: "report" },
+  { label: "Box Score", desc: "Line & team stats", icon: FileText, path: "boxscore" },
+  { label: "Summary", desc: "Drives & leaders", icon: BarChart3, path: "summary" },
+  { label: "Play by Play", desc: "Every play", icon: Film, path: "review" },
+] as const;
 
 interface QuickStats {
   totalGames: number;
@@ -72,6 +92,10 @@ export default function DashboardScreen() {
      populates and those zeros just sit there, which is indistinguishable from
      a season with no games in it. Show a dash until we actually know. */
   const [statsLoaded, setStatsLoaded] = useState(false);
+  const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
+  /* One game open at a time. Four buttons per game on a phone would otherwise
+     push the list off the screen before the second result. */
+  const [openGameId, setOpenGameId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!season) return;
@@ -108,6 +132,20 @@ export default function DashboardScreen() {
           opponent_score: live.opponent_score,
         } : null,
       });
+      /* Most recent first: the game you want to read about is almost always
+         the one just played. game_date is a date string, so it sorts. */
+      setCompletedGames(
+        [...completed]
+          .sort((a: any, b: any) => String(b.game_date ?? "").localeCompare(String(a.game_date ?? "")))
+          .map((g: any) => ({
+            id: g.id,
+            opponent_name: g.opponent?.name ?? "Opponent",
+            our_score: g.our_score ?? 0,
+            opponent_score: g.opponent_score ?? 0,
+            game_date: g.game_date,
+            is_home: g.is_home,
+          })),
+      );
       setStatsLoaded(true);
     })();
   }, [season]);
@@ -228,6 +266,79 @@ export default function DashboardScreen() {
             </div>
             <ChevronRight className="w-4 h-4 text-surface-muted/40" />
           </button>
+        )}
+
+        {/* Completed games — every finished game, and the four ways of reading
+            one back. The reports existed and were reachable only by walking
+            Schedule to a game to its summary, which is three taps to find out
+            how many carries somebody had last Friday. */}
+        {completedGames.length > 0 && (
+          <>
+            <div className="section-title mt-6">Completed Games</div>
+            <div className="space-y-2">
+              {completedGames.map(g => {
+                const open = openGameId === g.id;
+                const won = g.our_score > g.opponent_score;
+                const tied = g.our_score === g.opponent_score;
+                return (
+                  <div key={g.id} className="card overflow-hidden">
+                    <button
+                      onClick={() => setOpenGameId(open ? null : g.id)}
+                      className="w-full p-4 flex items-center gap-3 text-left active:scale-[0.99] transition-transform cursor-pointer"
+                    >
+                      <span
+                        className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-display font-black ${
+                          tied
+                            ? "bg-slate-500/15 text-slate-400"
+                            : won
+                              ? "bg-emerald-500/15 text-emerald-400"
+                              : "bg-red-500/15 text-red-400"
+                        }`}
+                      >
+                        {tied ? "T" : won ? "W" : "L"}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-display font-bold text-sm uppercase tracking-wide truncate">
+                          {g.is_home ? "vs" : "@"} {g.opponent_name}
+                        </div>
+                        <div className="text-[11px] text-surface-muted font-medium mt-0.5">
+                          {g.game_date
+                            ? new Date(g.game_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                            : "—"}
+                        </div>
+                      </div>
+                      <div className="text-base font-display font-extrabold tabular-nums shrink-0">
+                        {g.our_score}<span className="text-surface-muted/50 mx-0.5">&ndash;</span>{g.opponent_score}
+                      </div>
+                      {open
+                        ? <ChevronDown className="w-4 h-4 text-surface-muted/40 shrink-0" />
+                        : <ChevronRight className="w-4 h-4 text-surface-muted/40 shrink-0" />}
+                    </button>
+
+                    {open && (
+                      <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+                        {GAME_VIEWS.map(view => (
+                          <button
+                            key={view.path}
+                            onClick={() => navigate(`/game/${g.id}/${view.path}`)}
+                            className="rounded-xl border border-surface-border bg-surface-bg p-3 text-left active:scale-[0.97] transition-transform cursor-pointer"
+                          >
+                            <view.icon className="w-4 h-4 mb-2" style={{ color: primaryColor }} />
+                            <div className="font-display font-bold text-[12px] uppercase tracking-wide leading-tight">
+                              {view.label}
+                            </div>
+                            <div className="text-[10px] text-surface-muted font-medium mt-0.5 leading-tight">
+                              {view.desc}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {/* Nav Grid */}
