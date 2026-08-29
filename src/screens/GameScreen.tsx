@@ -2063,6 +2063,31 @@ export default function GameScreen() {
         blocked_kick_type: result.blockedKickType,
         fumble_return_yards: result.fumbleReturnYards ?? null,
         fumble_recovered_at: result.fumbleRecoveredAt ?? null,
+        /* Rewritten from this edit rather than inherited. These three lists
+           hold the tags that cannot be foreign keys, and inheriting them meant
+           naming the real tackler in the editor left the TEAM placeholder
+           sitting in play_data beside him - so the play came back from a
+           reload with both. */
+        opp_tagged: result.tagged
+          .filter(t => t.isOpponent)
+          .map(t => ({
+            id: t.player_id,
+            name: t.name,
+            jersey_number: t.jersey_number,
+            role: t.role,
+            credit: t.credit ?? null,
+          })),
+        pending_tagged: result.tagged
+          .filter(t => t.isPending)
+          .map(t => ({
+            id: t.player_id,
+            jersey_number: t.jersey_number,
+            role: t.role,
+            credit: t.credit ?? null,
+          })),
+        team_tagged: result.tagged
+          .filter(t => t.isTeam)
+          .map(t => ({ role: t.role, credit: t.credit ?? null })),
         next_possession: result.nextSituation ? original.possession : null,
         next_down: result.nextSituation?.down ?? null,
         next_distance: result.nextSituation?.distance ?? null,

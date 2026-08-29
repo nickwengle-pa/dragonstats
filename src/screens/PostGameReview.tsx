@@ -19,7 +19,7 @@ import {
   type PlayCharting,
   type PlayChartingDraft,
 } from "@/services/chartingService";
-import PlayEditModal, { type PlayEditResult } from "@/components/game/PlayEditModal";
+import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import {
   findPlayTypeDef,
   isRosterTag,
@@ -795,9 +795,10 @@ export default function PostGameReview() {
   }, [draft]);
 
   // ── Edit the play's recorded stats (writes to `plays`; stats recompute) ──
-  const handleSavePlayEdit = useCallback(async (playId: string, result: PlayEditResult) => {
+  const handleSavePlayEdit = useCallback(async (playId: string, result: PlaySubmitData) => {
     const original = plays.find((p) => p.id === playId);
     const pd = (original?.play_data ?? {}) as Record<string, any>;
+    const editTurnover = result.turnover ?? ["int", "fumble"].includes(result.playType.id);
 
     const ok = await updatePlayFull(
       playId,
@@ -805,7 +806,7 @@ export default function PostGameReview() {
         play_type: result.playType.id,
         yards_gained: result.yards,
         is_touchdown: result.isTouchdown,
-        is_turnover: result.turnover,
+        is_turnover: editTurnover,
         is_penalty: !!result.penalty,
         primary_player_id: result.tagged.find(isRosterTag)?.player_id ?? null,
         description: result.description,
@@ -814,13 +815,29 @@ export default function PostGameReview() {
         ...(result.hashMark != null ? { hash_mark: result.hashMark } : {}),
         play_data: {
           ...pd,
+          // Everything this pass through the modal produced - hash, direction,
+          // wristband call, kick spots, interception spots.
+          ...(result.playData ?? {}),
           result: result.result || null,
           is_first_down: result.isFirstDown,
           is_touchback: result.isTouchback,
           penalty_type: result.penalty,
           play_category: result.penaltyCategory,
           penalty_yards: result.flagYards,
+          penalty_enforcement: result.penalty ? result.penaltyEnforcement : null,
           blocked_kick_type: result.blockedKickType,
+          fumble_return_yards: result.fumbleReturnYards ?? null,
+          fumble_recovered_at: result.fumbleRecoveredAt ?? null,
+          // Same rewrite-don't-inherit rule as the other two lists below.
+          opp_tagged: result.tagged
+            .filter((t) => t.isOpponent)
+            .map((t) => ({
+              id: t.player_id,
+              name: t.name,
+              jersey_number: t.jersey_number,
+              role: t.role,
+              credit: t.credit ?? null,
+            })),
           next_possession: null,
           next_down: null,
           next_distance: null,
@@ -1031,22 +1048,38 @@ export default function PostGameReview() {
         />
       )}
 
-      {/* Play-data editor (same component the live screen uses) */}
-      {editRecord && (
-        <PlayEditModal
-          play={editRecord}
-          roster={roster}
-          opponentPlayers={oppPlayers}
-          progName={program?.name ?? "Team"}
-          oppName={meta?.opponent_name ?? "Opponent"}
-          ballOnBefore={editRecord.ballOn}
-          downBefore={editRecord.down}
-          distanceBefore={editRecord.distance}
-          onSave={handleSavePlayEdit}
-          onDelete={handleDeletePlayEdit}
-          onClose={() => setEditRecord(null)}
-        />
-      )}
+      {/* Play editor - the same screen that recorded the play, so film review
+          corrects a play through the controls it was entered with. */}
+      {editRecord && (() => {
+        const editType = findPlayTypeDef(editRecord.type);
+        if (!editType) return null;
+        return (
+          <PlayEntryModal
+            key={editRecord.id}
+            playType={editType}
+            editing={editRecord}
+            gameState={{
+              quarter: editRecord.quarter,
+              clock: editRecord.clock,
+              possession: editRecord.possession,
+              ourScore: 0,
+              theirScore: 0,
+              down: editRecord.down,
+              distance: editRecord.distance,
+              ballOn: editRecord.ballOn,
+            }}
+            roster={roster}
+            opponentPlayers={oppPlayers}
+            progName={program?.name ?? "Team"}
+            oppName={meta?.opponent_name ?? "Opponent"}
+            trackFormations
+            trackTacklers
+            onSubmit={(data) => { void handleSavePlayEdit(editRecord.id, data); }}
+            onDelete={() => { void handleDeletePlayEdit(editRecord.id); }}
+            onClose={() => setEditRecord(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
