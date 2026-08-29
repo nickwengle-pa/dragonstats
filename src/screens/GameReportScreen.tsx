@@ -362,7 +362,11 @@ export default function GameReportScreen() {
         )}
 
         {!loading && report && gameInfo && (
-          <div className="relative mx-auto max-w-[8.5in] bg-white text-black rounded-lg print:rounded-none shadow-lg print:shadow-none p-5 print:p-0 font-body">
+          /* max-w-none under print: the paper's printable width is the page
+             minus the margins, and a container insisting on 8.5in inside 8in
+             of printable width is exactly a half inch of clipped tables. On
+             screen the 8.5in cap stays - it is what makes it read as paper. */
+          <div className="relative mx-auto max-w-[8.5in] print:max-w-none bg-white text-black rounded-lg print:rounded-none shadow-lg print:shadow-none p-5 print:p-0 font-body">
             <Watermark logoUrl={report.us.logoUrl} />
 
             {/* Everything above the ghosted mark. One stacking context on the

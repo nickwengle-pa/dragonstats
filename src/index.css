@@ -84,7 +84,11 @@
 
   @page {
     size: letter;
-    margin: 0.5in;
+    /* Quarter inch: the game report's wide tables (the 13-column defensive
+       grid, the returns grid) were clipping on the right at half-inch
+       margins. These sheets are handouts, not bound documents - nothing
+       needs a binding edge. */
+    margin: 0.25in;
   }
 }
 
