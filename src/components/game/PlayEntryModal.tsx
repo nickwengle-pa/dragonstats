@@ -837,7 +837,7 @@ export default function PlayEntryModal({
   /* Somebody has to be holding the ball to lose it. "fumble" is excluded
      because it already IS one — the standalone play type stays for a plain
      runner-fumbles, which is one tap. */
-  const canHaveFumble = ["run", "scramble", "pass_comp", "sack", "kneel"].includes(playType.id);
+  const canHaveFumble = ["rush", "scramble", "pass_comp", "sack", "kneel"].includes(playType.id);
   /* Either the dedicated play type or the modifier means the fumble roles and
      the recovered-by question apply. */
   const isFumblePlay = playType.id === "fumble" || (canHaveFumble && hasFumble);
