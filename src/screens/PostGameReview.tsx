@@ -92,7 +92,7 @@ const UNIT_COLOR: Record<Unit, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// DB row → PlayRecord (the shape PlayEditModal expects). Mirrors the converter
+// DB row → PlayRecord (the shape the play entry modal expects). Mirrors the converter
 // used by the live GameScreen so editing behaves identically.
 // ---------------------------------------------------------------------------
 
@@ -697,7 +697,7 @@ export default function PostGameReview() {
   const [sitDraft, setSitDraft] = useState<SituationDraft | null>(null);
   const [savingSit, setSavingSit] = useState(false);
 
-  // Play-data editor (reuses the live PlayEditModal)
+  // Play-data editor (reuses the live play entry modal)
   const [editRecord, setEditRecord] = useState<PlayRecord | null>(null);
 
   const load = useCallback(async (): Promise<PlayWithPlayers[]> => {
