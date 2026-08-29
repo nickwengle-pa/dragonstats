@@ -1125,8 +1125,13 @@ export default function PlayEntryModal({
     // Kickoff/Punt specific flow.
     // Their kicker is a name we do not have and do not chart, so it records as
     // TEAM and the step is skipped outright. The location screen offers it back
-    // in one tap for the rare case worth naming.
-    if (!isTheirBall || showOppKicker) steps.push("kick_kicker");
+    // in one tap for the rare case worth naming - and a play that already
+    // names him keeps the step, or editing one would hide the very tag it was
+    // opened to change.
+    const namedKicker = tagged.some(
+      t => t.role === kickerRole && t.player_id !== OPP_TEAM_PLAYER.id,
+    );
+    if (!isTheirBall || showOppKicker || namedKicker) steps.push("kick_kicker");
     steps.push("kick_location");
     // Downed / out of bounds / touchback: nobody fielded it, so there's no
     // returner to tag. A fair catch DOES have a receiver worth crediting, but
