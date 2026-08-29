@@ -314,6 +314,9 @@ export default function GameReportScreen() {
           occasion: null,
           ourScore: info.our_score,
           theirScore: info.opponent_score,
+          touchbackYardLine: Number(
+            (program.game_config as Record<string, unknown> | null | undefined)?.touchback_yard_line,
+          ) || 20,
         }));
       } else {
         setReport(null);

@@ -282,6 +282,10 @@ export interface BuildReportInput {
   occasion: string | null;
   ourScore: number;
   theirScore: number;
+  /** Where a touchback spots the ball, from the program's rules. Net kicking
+   *  yardage measures to it, so a program playing a 25 would have had every
+   *  net figure off by five. */
+  touchbackYardLine: number;
 }
 
 export function buildGameReport(input: BuildReportInput): GameReport {
@@ -501,7 +505,14 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     if (play.play_type !== "int") continue;
     const pick = tagWithRole(play, ["interceptor"]);
     if (!pick || !ours.has(pick.id)) continue;
-    const yds = num(play.play_data?.interception_return_yards);
+    /* Same fallback playTransformer uses. Without it a pick recorded before
+       the return spot was stored reads 0 here while the defensive table -
+       which comes from the engine, which does fall back - shows the real
+       number, so one sheet contradicted itself. */
+    const stored = play.play_data?.interception_return_yards;
+    const yds = typeof stored === "number"
+      ? stored
+      : Math.max(0, num(play.yards_gained));
     const cur = intReturnByPlayer.get(pick.id) ?? { yds: 0, long: 0, no: 0 };
     intReturnByPlayer.set(pick.id, {
       yds: cur.yds + yds,
@@ -670,14 +681,17 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const intTdThem = countPlays("us", p => p.is_touchdown && p.play_type === "int");
   const theirIntReturnYards = plays
     .filter(p => p.play_type === "int" && p.possession === "us")
-    .reduce((s, p) => s + num(p.play_data?.interception_return_yards), 0);
+    .reduce((s, p) => {
+      const stored = p.play_data?.interception_return_yards;
+      return s + (typeof stored === "number" ? stored : Math.max(0, num(p.yards_gained)));
+    }, 0);
 
   /* Net kicking yardage: kick spot to where the receiving team actually
      starts. Gross minus the return, except on a touchback, where the return
      never happened and the ball is placed by rule - which is what makes a
      touchback a poor kickoff rather than a 65-yard one. The engine models
      gross only, so both nets are summed here. */
-  const touchbackLine = 20;
+  const touchbackLine = input.touchbackYardLine;
   const netKickFor = (side: "us" | "them", types: string[]): { yards: number; count: number } =>
     plays
       .filter(p => p.possession === side && types.includes(p.play_type))
