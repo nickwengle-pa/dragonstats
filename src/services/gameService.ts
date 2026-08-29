@@ -545,6 +545,10 @@ export async function updatePlaySituation(
     end_yard_line?: number | null;
     play_start_time?: number | null;
     play_end_time?: number | null;
+    /** Order in the game. Written on every recalc so that the list's order IS
+     *  the stored order - which is what makes inserting a missed play between
+     *  two others possible at all. */
+    sequence?: number;
   },
   playData?: Record<string, unknown>,
   options: UpdatePlaySituationOptions = {},

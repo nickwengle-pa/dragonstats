@@ -691,6 +691,12 @@ export default function GameScreen() {
   const lastEndPromptKey = useRef<string | null>(null);
   const [scoreCorrectTeam, setScoreCorrectTeam] = useState<TimeoutTeam | null>(null);
   const [editPlay, setEditPlay] = useState<PlayRecord | null>(null);
+  /* Recording a play that belongs BEFORE the end of the list.
+     Holds the id of the play the new one goes after - null means the normal
+     case, appending to the end. A missed snap noticed three plays later has
+     to land where it happened, or every down, spot and score after it is
+     computed from a game that did not happen in that order. */
+  const [insertAfterPlayId, setInsertAfterPlayId] = useState<string | null>(null);
   const [showPatGate, setShowPatGate] = useState(false);
   const [patGatePossession, setPatGatePossession] = useState<"us" | "them">("us");
   const [showClockEditor, setShowClockEditor] = useState(false);
@@ -749,6 +755,33 @@ export default function GameScreen() {
     }
     return map;
   }, [plays, roster, oppPlayers]);
+
+  /* The game state a play inserted here would start from: the situation the
+     NEXT play began with, which is the anchor play's own after-situation. The
+     live situation is the end of the game and would be wrong by every down and
+     yard that has happened since. */
+  const insertContext = useMemo(() => {
+    if (!insertAfterPlayId) return null;
+    const idx = plays.findIndex(p => p.id === insertAfterPlayId);
+    if (idx === -1) return null;
+    const anchor = plays[idx];
+    const next = plays[idx + 1];
+    const situation = next
+      ? { possession: next.possession, down: next.down, distance: next.distance, ballOn: next.ballOn }
+      : {
+          possession: anchor.nextPossession ?? anchor.possession,
+          down: anchor.nextDown ?? anchor.down,
+          distance: anchor.nextDistance ?? anchor.distance,
+          ballOn: anchor.nextBallOn ?? anchor.ballOn,
+        };
+    return {
+      index: idx,
+      anchor,
+      quarter: next?.quarter ?? anchor.quarter,
+      clock: next?.clock ?? anchor.clock,
+      ...situation,
+    };
+  }, [insertAfterPlayId, plays]);
 
   /* ── Live engine summary (re-derives per play change) ── */
   const liveSummary = useMemo(() => {
@@ -1272,6 +1305,11 @@ export default function GameScreen() {
       scoreCursor = stored.scoreAfter;
 
       return updatePlaySituation(play.id, {
+        /* Position in the list is the order of the game. Persisting it here -
+           on the pass that already rewrites every play after any change -
+           means a play spliced into the middle keeps its place across a
+           reload, with no separate reordering step to get out of step. */
+        sequence: index + 1,
         quarter: play.quarter,
         clock: fmtClock(play.clock),
         possession: play.possession,
@@ -1535,10 +1573,15 @@ export default function GameScreen() {
        it returned rather than with whatever the running clock reads by the
        time Record Play is tapped. */
     const playClock = data.clock ?? clock;
+    /* Recording into the middle of the game rather than onto the end. The
+       play is built against the situation AT that point, and everything after
+       it re-chains, so the rest of the game is recomputed from a list that
+       now runs in the order it was played. */
+    const insertAt = insertContext;
     const previewPlay: PlayRecord = {
       id: "pending",
-      sequence: plays.length + 1,
-      quarter,
+      sequence: insertAt ? insertAt.index + 2 : plays.length + 1,
+      quarter: insertAt ? insertAt.quarter : quarter,
       clock: playClock,
       type: data.playType.id,
       yards: data.yards,
@@ -1555,11 +1598,11 @@ export default function GameScreen() {
       fumbleReturnYards: data.fumbleReturnYards ?? null,
       fumbleRecoveredAt: data.fumbleRecoveredAt ?? null,
       tagged: data.tagged,
-      ballOn,
-      down,
-      distance,
+      ballOn: insertAt ? insertAt.ballOn : ballOn,
+      down: insertAt ? insertAt.down : down,
+      distance: insertAt ? insertAt.distance : distance,
       description: data.description,
-      possession,
+      possession: insertAt ? insertAt.possession : possession,
       // Onside recovered by the kicking team: keep possession (the situation
       // engine reads nextPossession to decide flip vs. keep).
       nextPossession: data.playType.id === "onside_kick" && data.onsideRecoveredByKicker ? possession : undefined,
@@ -1645,6 +1688,19 @@ export default function GameScreen() {
         },
       },
     };
+    if (insertAt) {
+      /* Everything after the inserted play has to be recomputed: its own down,
+         distance, spot and the running score all followed from a list that was
+         missing this snap. recalcScoreAndState replays the whole game and
+         persists the new order, so the row order in the database ends up
+         matching the order it was played in. */
+      const spliced = [...plays];
+      spliced.splice(insertAt.index + 1, 0, localPlay);
+      setInsertAfterPlayId(null);
+      await recalcScoreAndState(spliced);
+      // The finally below clears the submitting flag and the picker.
+      return;
+    }
     setPlays(prev => [...prev, localPlay]);
 
     // Mark game live on first play
@@ -2488,6 +2544,39 @@ export default function GameScreen() {
           phonePane === "play" ? "" : "hidden"
         }`}>
 
+        {/* Recording into the middle of the game rather than onto the end.
+            This has to be loud: every control below now behaves as if the game
+            were at a different point, and a play recorded here lands between
+            two others. Without the banner the operator has no way to tell. */}
+        {insertContext && (
+          <div className="card p-3 border border-amber-500/50 bg-amber-500/10">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-display font-black uppercase tracking-widest text-amber-400">
+                  Inserting a missed play
+                </div>
+                <div className="text-[11px] text-amber-200/80 mt-0.5 truncate">
+                  Goes after #{insertContext.index + 1}
+                  {" · "}
+                  {insertContext.possession === "us" ? progName : oppName}
+                  {" "}
+                  {insertContext.down}
+                  {insertContext.down === 1 ? "st" : insertContext.down === 2 ? "nd" : insertContext.down === 3 ? "rd" : "th"}
+                  &amp;{insertContext.distance}
+                  {" · "}
+                  {formatTeamYardLabel(insertContext.ballOn, insertContext.possession, progAbbr, oppAbbr)}
+                </div>
+              </div>
+              <button
+                onClick={() => setInsertAfterPlayId(null)}
+                className="btn-ghost px-3 py-1.5 text-[11px] font-display font-bold uppercase tracking-wider text-amber-400 shrink-0"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Quick Action Grid */}
         <div className="card p-3">
           <QuickActions
@@ -2632,7 +2721,21 @@ export default function GameScreen() {
       {selectedPlayType && (
         <PlayEntryModal
           playType={selectedPlayType}
-          gameState={gameState}
+          /* Inserting into the middle of the game: the play is entered
+             against the situation AT that point, not against the live one,
+             which is the end of the game and wrong by everything since. */
+          gameState={insertContext
+            ? {
+                quarter: insertContext.quarter,
+                clock: insertContext.clock,
+                possession: insertContext.possession,
+                ourScore,
+                theirScore,
+                down: insertContext.down,
+                distance: insertContext.distance,
+                ballOn: insertContext.ballOn,
+              }
+            : gameState}
           roster={roster}
           opponentPlayers={oppPlayers}
           progName={progName}
@@ -2650,7 +2753,7 @@ export default function GameScreen() {
           trackFormations={charting.formations}
           trackTacklers={charting.tacklers}
           onSubmit={handlePlaySubmit}
-          onClose={() => setSelectedPlayType(null)}
+          onClose={() => { setSelectedPlayType(null); setInsertAfterPlayId(null); }}
           onAddOpponentPlayer={async (player) => {
             // Persist quick-added opponent player to DB and update local state
             if (game?.opponent_id) {
@@ -2673,6 +2776,7 @@ export default function GameScreen() {
         <PlayLog
           plays={plays}
           onEdit={p => { setShowLog(false); setEditPlay(p); }}
+          onInsertAfter={p => { setShowLog(false); setInsertAfterPlayId(p.id); }}
           onUndo={() => { handleUndo(); setShowLog(false); }}
           onClose={() => setShowLog(false)}
           pendingPlayIds={pendingPlayIds}

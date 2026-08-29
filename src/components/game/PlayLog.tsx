@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { X, Pencil, RotateCcw, CloudOff } from "lucide-react";
+import { X, Pencil, RotateCcw, CloudOff, Plus } from "lucide-react";
 import { fmtClock, quarterLabel, yardLabel, type PlayRecord, type TaggedPlayer } from "./types";
 
 type LogFilter = "all" | "off" | "def" | "k";
@@ -53,6 +53,9 @@ const FILTERS: Array<{ id: LogFilter; label: string }> = [
 interface Props {
   plays: PlayRecord[];
   onEdit: (play: PlayRecord) => void;
+  /** Record a play that belongs immediately after this one - a snap missed
+   *  live and noticed a few downs later. */
+  onInsertAfter?: (play: PlayRecord) => void;
   onUndo: () => void;
   onClose: () => void;
   /** Play ids that are still in the sync queue (haven't pushed to server yet). */
@@ -93,7 +96,7 @@ const PLAY_ICON_COLORS: Record<string, string> = {
   timeout: "text-amber-300",
 };
 
-export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds }: Props) {
+export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose, pendingPlayIds }: Props) {
   const [filter, setFilter] = useState<LogFilter>("all");
 
   /* Number by RECORDING order, before any filtering or reversing, so a play
@@ -225,11 +228,25 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds
                       </span>
                     )}
                   </div>
-                  {/* Timeouts are editable too now - the clock and which side
-                      called it, which the derived remaining counts depend on. */}
-                  <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer">
-                    <Pencil className="w-3 h-3" />
-                  </button>
+                  <div className="flex flex-col items-center gap-0.5 shrink-0">
+                    {/* Timeouts are editable too now - the clock and which side
+                        called it, which the derived remaining counts depend on. */}
+                    <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer" title="Edit play">
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    {/* A missed snap belongs where it happened, not on the end
+                        of the list - everything after it is computed from the
+                        order. */}
+                    {onInsertAfter && (
+                      <button
+                        onClick={() => onInsertAfter(play)}
+                        className="btn-ghost p-1 text-surface-muted/40 cursor-pointer"
+                        title="Add a play after this one"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })
