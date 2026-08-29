@@ -354,6 +354,14 @@ export default function GameReportScreen() {
                 content rather than a z-index on every table. */}
             <div className="relative" style={{ zIndex: 1 }}>
 
+            {/* ── PAGE 1: box score, scoring summary, points ──────────────
+                The sheet prints as four fixed pages, one subject each, the
+                way a handed-out packet reads: game and scoring first, then
+                every individual line, then the team comparison, then the
+                defense. The breaks exist only under print - on screen the
+                wrappers are invisible and the report stays one scroll. */}
+            <div className="print:break-after-page">
+
             {/* ── Header block ────────────────────────────────────────── */}
             <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-black pb-2">
               <div className="flex items-start gap-3 min-w-0">
@@ -461,6 +469,13 @@ export default function GameReportScreen() {
                 total={["Total", report.pointsTotal]}
               />
             </div>
+            </div>
+
+            {/* ── PAGE 2: individual stats - offense, punting, returns,
+                kickoffs. SectionTitle's first:mt-0 now matches the first
+                title of each page, so the wrapper carries the on-screen gap
+                and drops it at the top of a printed page. */}
+            <div className="mt-4 print:mt-0 print:break-after-page">
 
             {/* ── Offensive stats ─────────────────────────────────────── */}
             <SectionTitle>Offensive Stats</SectionTitle>
@@ -582,6 +597,10 @@ export default function GameReportScreen() {
                 Onside Recovered: <span className="tabular-nums">{report.onsideRecovered}</span>
               </div>
             </div>
+            </div>
+
+            {/* ── PAGE 3: the team comparison ── */}
+            <div className="mt-4 print:mt-0 print:break-after-page">
 
             {/* ── Team stats ──────────────────────────────────────────── */}
             <SectionTitle>Team Stats</SectionTitle>
@@ -623,6 +642,11 @@ export default function GameReportScreen() {
                 ))}
               </tbody>
             </table>
+            </div>
+
+            {/* ── PAGE 4: the defense. No break after - a trailing break
+                would print a blank fifth page. */}
+            <div className="mt-4 print:mt-0">
 
             {/* ── Defensive stats ─────────────────────────────────────── */}
             <SectionTitle>Defensive Stats</SectionTitle>
@@ -678,6 +702,7 @@ export default function GameReportScreen() {
                   </tr>
                 </tbody>
               </table>
+            </div>
             </div>
             </div>
           </div>
