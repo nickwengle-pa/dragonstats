@@ -25,6 +25,10 @@ import type {
   PlayRecord,
   TaggedPlayer,
 } from "./types";
+// The parser lives in a service: the engine transformer and the stats
+// supplement need the same two numbers, and none of them should own a
+// private copy of how to read them back.
+import { kickInfoFromDescription } from "../../services/kickSpots.ts";
 
 export type FieldTeam = "program" | "opponent";
 export type KickOutcome = "returned" | "fair_catch" | "downed" | "out_of_bounds" | "touchback";
@@ -78,42 +82,6 @@ const num = (v: unknown): number | null => {
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
-
-/**
- * Kick distance and return yardage, read back out of the play description.
- *
- * Plays recorded before the kick spots were stored do not carry them as
- * numbers, and the numeric columns cannot give them back: yards_gained holds
- * the NET kick, distance minus return, so landing and return are one equation
- * in two unknowns. Substituting end_yard_line collapses to an identity - it
- * adds no information, only rearranges the same fact.
- *
- * The description does carry both, because buildDescription was already
- * writing them out in full: "Punt #21 Smith 38 yds to OPP 12, ret #3 Jones 10
- * yds". Distance and return are each printed immediately before the word
- * "yds", so both come straight back. A prose field is a poor source of truth
- * and this is not one - stored numbers win whenever a play has them - but it
- * is a great deal better than opening every historical kick on the 5.
- *
- * Returns null when the play predates even that (the older branch of
- * buildDescription wrote no distance at all).
- */
-function kickInfoFromDescription(description: string): { kickDistance: number; returnYards: number } | null {
-  // The distance is the number immediately before "yds to <spot>" or
-  // "yds Touchback". A jersey in a player label cannot match: those are
-  // written "#21 Smith", so the number is followed by a name, not by "yds".
-  const distance = /(\d+)\s+yds\s+(?:to\b|Touchback\b)/.exec(description);
-  if (!distance) return null;
-
-  // "…, ret #3 Jones 10 yds" — the return is the last number before "yds" in
-  // the return clause, and the clause only exists when there was a return.
-  const returnClause = /,\s*ret\b([^]*?)(-?\d+)\s+yds/.exec(description);
-
-  return {
-    kickDistance: Number(distance[1]),
-    returnYards: returnClause ? Number(returnClause[2]) : 0,
-  };
-}
 
 /** Offense-relative ball position to the program-perspective side + yard line. */
 function toFieldSpot(possession: "us" | "them", offenseBallOn: number): {
