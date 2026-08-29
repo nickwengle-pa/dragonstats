@@ -1043,6 +1043,16 @@ export default function PlayEntryModal({
     setReturnYardsRaw("");
   }, [isKickPlay, kickedToYard, receivingFieldSide]);
 
+  /* Same for an interception: the return starts where it was picked off. Seeding
+     it means a pick with no return is zero taps rather than re-entering the spot
+     chosen one control above. Re-seeds if the catch spot is changed on the way
+     back through, exactly as the kick return does. */
+  useEffect(() => {
+    if (!isInterception) return;
+    setIntReturnTeam(intCaughtTeam);
+    setIntReturnYardLine(intCaughtYardLine);
+  }, [isInterception, intCaughtTeam, intCaughtYardLine]);
+
   const steps: Step[] = [];
   if (isKickPlay) {
     // Kickoff/Punt specific flow
