@@ -27,6 +27,7 @@ import type {
 } from "football-stats-engine";
 import type { GameStatsBundle } from "./statsService";
 import type { PlayWithPlayers } from "./gameService";
+import { netKickYards, resolveKickSpots } from "./kickSpots";
 
 /* ── Play-type groupings ──────────────────────────────────────────────────── */
 
@@ -565,7 +566,24 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     .filter(([id]) => ours.has(id))
     .reduce((s, [, k]) => s + (k.onsideKickRecoveries ?? 0), 0);
 
-  /* ── Defense, plus blocked kicks the engine credits to nobody ─────────── */
+  /* ── Defense, plus what the engine does not model ─────────────────────── */
+  /* Yards lost on a tackle for loss. The engine keeps a TFL count and no
+     yardage, so the report was printing the count in the yards column and
+     reading "2-2" for two stops that lost eleven. Summed off the plays: a
+     tackle on a play that lost ground is in for the yards it lost, shared or
+     not, which is how the count is credited too. */
+  const tflYardsById = new Map<string, number>();
+  for (const play of plays) {
+    const lost = num(play.yards_gained);
+    if (lost >= 0) continue;
+    if (!["rush", "pass_comp", "scramble", "sack"].includes(play.play_type)) continue;
+    for (const pp of play.play_players ?? []) {
+      if (pp.role !== "tackler" && pp.role !== "sacker") continue;
+      if (!ours.has(pp.player_id)) continue;
+      tflYardsById.set(pp.player_id, (tflYardsById.get(pp.player_id) ?? 0) + Math.abs(lost));
+    }
+  }
+
   const blocksById = new Map<string, number>();
   for (const play of plays) {
     if (play.play_type !== "blocked_kick") continue;
@@ -584,7 +602,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     name: names.get(id) ?? s.playerName,
     solo: s.soloTackles, ast: s.assistedTackles, total: s.totalTackles,
     sacks: s.sacks, sackYds: s.sackYards,
-    tfl: s.tacklesForLoss, tflYds: s.tacklesForLoss,
+    tfl: s.tacklesForLoss, tflYds: tflYardsById.get(id) ?? 0,
     ff: s.forcedFumbles, fr: s.fumbleRecoveries, frYds: s.fumbleRecoveryYards,
     int: s.interceptions, intYds: s.interceptionYards,
     brUp: s.passesDefended, blocks: blocksById.get(id) ?? 0, qbh: s.qbHits,
@@ -654,6 +672,33 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     .filter(p => p.play_type === "int" && p.possession === "us")
     .reduce((s, p) => s + num(p.play_data?.interception_return_yards), 0);
 
+  /* Net kicking yardage: kick spot to where the receiving team actually
+     starts. Gross minus the return, except on a touchback, where the return
+     never happened and the ball is placed by rule - which is what makes a
+     touchback a poor kickoff rather than a 65-yard one. The engine models
+     gross only, so both nets are summed here. */
+  const touchbackLine = 20;
+  const netKickFor = (side: "us" | "them", types: string[]): { yards: number; count: number } =>
+    plays
+      .filter(p => p.possession === side && types.includes(p.play_type))
+      .reduce((acc, p) => {
+        const spots = resolveKickSpots({
+          ballOn: p.yard_line ?? 0,
+          playData: p.play_data,
+          description: p.description,
+        });
+        if (!spots) return acc;
+        return {
+          yards: acc.yards + netKickYards(spots, p.yard_line ?? 0, Boolean(p.play_data?.is_touchback), touchbackLine),
+          count: acc.count + 1,
+        };
+      }, { yards: 0, count: 0 });
+
+  const netPuntUs = netKickFor("us", ["punt", "fair_catch"]);
+  const netPuntThem = netKickFor("them", ["punt", "fair_catch"]);
+  const netKoUs = netKickFor("us", ["kickoff"]);
+  const netKoThem = netKickFor("them", ["kickoff"]);
+
   const rushTdUs = countPlays("us", p => p.is_touchdown && RUSH_TYPES.has(p.play_type));
   const rushTdThem = countPlays("them", p => p.is_touchdown && RUSH_TYPES.has(p.play_type));
   const passTdUs = countPlays("us", p => p.is_touchdown && p.play_type === "pass_comp");
@@ -711,11 +756,15 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       dash(theirPunts, theirPuntYards), "head"),
     row("Average Yards Per Punt", puntingTotal.avg.toFixed(1),
       avg(theirPuntYards, theirPunts).toFixed(1), "sub"),
+    row("Net Average Per Punt", avg(netPuntUs.yards, netPuntUs.count).toFixed(1),
+      avg(netPuntThem.yards, netPuntThem.count).toFixed(1), "sub"),
     row("Inside 20", puntingTotal.inside20, theirPuntsInside20, "sub"),
     row("KICKOFF-YARDS", dash(kickoffsTotal.no, kickoffsTotal.yds),
       dash(theirKickoffs, theirKickoffYards), "head"),
     row("Average Yards Per Kickoff", kickoffsTotal.avg.toFixed(1),
       avg(theirKickoffYards, theirKickoffs).toFixed(1), "sub"),
+    row("Net Average Per Kickoff", avg(netKoUs.yards, netKoUs.count).toFixed(1),
+      avg(netKoThem.yards, netKoThem.count).toFixed(1), "sub"),
     row("Touchbacks", kickoffsTotal.tb, theirKickoffTBs, "sub"),
     row("Punt returns: Number-Yards-TD",
       `${returnsTotal.punt.no}-${returnsTotal.punt.yds}-${puntReturnTdUs}`,
