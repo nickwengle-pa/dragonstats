@@ -2733,6 +2733,15 @@ export default function PlayEntryModal({
                         offenseDirection={offenseDirection}
                         accentColor={offenseColor}
                         formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                        /* Only where the offense keeps the ball and the chains
+                           are the question. A pick or a lost fumble ends the
+                           series, so a first-down call on it is noise. */
+                        firstDownBallOn={
+                          ["int", "blocked_kick"].includes(playType.id)
+                            || (isFumblePlay && !fumbleRecoveredByUs)
+                            ? null
+                            : gameState.ballOn + gameState.distance
+                        }
                       />
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] text-slate-500">Or type:</span>

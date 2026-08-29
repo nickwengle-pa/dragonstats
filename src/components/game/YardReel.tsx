@@ -9,7 +9,14 @@ interface Props {
   /** Full spot label for the centre readout, e.g. "OPP 30". */
   formatSpot: (ballOn: number) => string;
   accentColor: string;
+  /** Where the chains are, possession-relative. Draws the marker on the ruler
+   *  and says whether the spot under it actually moves them. Omitted on the
+   *  plays where a first down is not the question. */
+  firstDownBallOn?: number | null;
 }
+
+/** Blue - same as the 1st Down toggle and the chain marker on the field. */
+const FIRST_DOWN_COLOR = "#3b82f6";
 
 /**
  * Pitch between yard lines, in pixels — and therefore also the drag distance
@@ -47,7 +54,7 @@ function yardNumber(ballOn: number) {
  * old −1/+1 buttons handled without needing the buttons back.
  */
 export default function YardReel({
-  value, onChange, offenseDirection, formatSpot, accentColor,
+  value, onChange, offenseDirection, formatSpot, accentColor, firstDownBallOn,
 }: Props) {
   // Sub-yard drag remainder, purely for smooth motion between snap points.
   const [offsetPx, setOffsetPx] = useState(0);
@@ -107,6 +114,16 @@ export default function YardReel({
   // Downfield is whichever screen edge the offense is driving toward.
   const downfieldOnRight = offenseDirection === "right";
 
+  /* Stopped a yard short is a different play from converting, and the ruler gave
+     no way to see which one was about to be recorded - the distance had to be
+     carried across from the readout above. Reaching the marker IS the first
+     down, so at-or-past converts. Goal-to-go has no marker short of the end
+     zone, so it draws none. */
+  const chainsShown = firstDownBallOn != null && firstDownBallOn < 100;
+  const chains = firstDownBallOn ?? 0;
+  const convertsFirstDown = chainsShown && value >= chains;
+  const yardsToGo = chains - value;
+
   return (
     <div className="select-none">
       <div
@@ -125,8 +142,8 @@ export default function YardReel({
           className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 rounded-lg pointer-events-none z-10"
           style={{
             width: YARD_PITCH_PX,
-            backgroundColor: `${accentColor}22`,
-            border: `2px solid ${accentColor}`,
+            backgroundColor: `${convertsFirstDown ? FIRST_DOWN_COLOR : accentColor}22`,
+            border: `2px solid ${convertsFirstDown ? FIRST_DOWN_COLOR : accentColor}`,
           }}
         />
 
@@ -150,33 +167,55 @@ export default function YardReel({
             width: (rendered * 2 + 1) * YARD_PITCH_PX,
           }}
         >
-          {ticks.map(({ step, ballOn }) => (
+          {ticks.map(({ step, ballOn }) => {
+            const isChains = chainsShown && ballOn != null && ballOn === chains;
+            const pastChains = chainsShown && ballOn != null && ballOn >= chains;
+            return (
             <div
               key={step}
               onClick={() => { if (ballOn != null && step !== 0 && !moved.current) onChange(ballOn); }}
-              className="shrink-0 flex flex-col items-center justify-center gap-1"
+              className="relative shrink-0 flex flex-col items-center justify-center gap-1"
               style={{ width: YARD_PITCH_PX }}
             >
+              {/* The chains themselves - a full-height line through the ruler,
+                  reading the same way as the marker on the field above it. */}
+              {isChains && (
+                <span
+                  className="absolute top-0 bottom-0 w-0.5 pointer-events-none opacity-70"
+                  style={{ backgroundColor: FIRST_DOWN_COLOR }}
+                />
+              )}
               {ballOn == null ? (
                 <span className="text-lg font-black text-slate-800">·</span>
               ) : (
                 <>
                   <span
-                    className={`font-display font-black tabular-nums leading-none ${
+                    className={`relative font-display font-black tabular-nums leading-none ${
                       step === 0 ? "text-2xl" : Math.abs(step) === 1 ? "text-base text-slate-400" : "text-sm text-slate-600"
                     }`}
-                    style={step === 0 ? { color: accentColor } : undefined}
+                    style={
+                      step === 0
+                        ? { color: convertsFirstDown ? FIRST_DOWN_COLOR : accentColor }
+                        : pastChains
+                          ? { color: FIRST_DOWN_COLOR, opacity: Math.abs(step) === 1 ? 0.9 : 0.6 }
+                          : undefined
+                    }
                   >
                     {yardNumber(ballOn)}
                   </span>
                   <span
-                    className={`w-px ${step === 0 ? "h-4" : "h-2.5"}`}
-                    style={{ backgroundColor: step === 0 ? accentColor : "rgba(255,255,255,0.25)" }}
+                    className={`relative w-px ${step === 0 ? "h-4" : "h-2.5"}`}
+                    style={{
+                      backgroundColor: step === 0
+                        ? (convertsFirstDown ? FIRST_DOWN_COLOR : accentColor)
+                        : "rgba(255,255,255,0.25)",
+                    }}
                   />
                 </>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -196,7 +235,7 @@ export default function YardReel({
         ))}
         <span
           className="flex-1 text-center text-sm font-display font-black tabular-nums"
-          style={{ color: accentColor }}
+          style={{ color: convertsFirstDown ? FIRST_DOWN_COLOR : accentColor }}
         >
           {formatSpot(value)}
         </span>
@@ -210,6 +249,21 @@ export default function YardReel({
           </button>
         ))}
       </div>
+
+      {/* Which side of the sticks this spot is on, in words. "Short by 1" is the
+          call that has to be right and the one hardest to eyeball from two yard
+          numbers while the next play is being signalled in. */}
+      {chainsShown && (
+        <div
+          className={`mt-2 rounded-lg px-2 py-1.5 text-center text-[11px] font-display font-black uppercase tracking-wide ${
+            convertsFirstDown
+              ? "border border-blue-500/50 bg-blue-500/15 text-blue-400"
+              : "border border-surface-border bg-surface-bg text-slate-500"
+          }`}
+        >
+          {convertsFirstDown ? "1st Down" : `Short by ${yardsToGo}`}
+        </div>
+      )}
 
       <div className="text-[10px] text-slate-600 text-center mt-1">
         Drag the ruler, tap a yard line, or nudge
