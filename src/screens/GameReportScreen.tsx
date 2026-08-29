@@ -113,14 +113,29 @@ function Crest({
  * aria-hidden and pointer-events-none: it is decoration, and it must never
  * take a tap meant for the table on top of it.
  */
-function Watermark({ logoUrl }: { logoUrl: string | null }) {
+function Watermark({ logoUrl, page = false }: { logoUrl: string | null; page?: boolean }) {
   const img = useLoadable(logoUrl);
   if (!img.show) return null;
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-0 print:fixed print:inset-0 flex items-center justify-center overflow-hidden"
-      style={{ zIndex: 0 }}
+      className={page
+        /* One per printed page, absolutely positioned INSIDE that page's
+           wrapper. position: fixed is supposed to repeat on every printed
+           page, and does in Chrome - but Safari, which is what an iPad
+           prints through, has a long history of painting fixed elements on
+           page one only. Anchoring a copy inside each page needs no such
+           behavior from the browser. Hidden on screen: the single variant
+           below covers the scroll view. */
+        ? "pointer-events-none absolute inset-0 hidden print:flex items-center justify-center overflow-hidden"
+        /* The screen singleton, centred over the whole scroll. Hidden in
+           print, where the per-page copies take over. */
+        : "pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden print:hidden"}
+      /* -1, not 0: the per-page copies live INSIDE the zIndex-1 content
+         layer, and any positioned sibling at 0 would paint over the tables.
+         A negative index sits behind its in-flow siblings but still in
+         front of the white card, which is an ancestor background. */
+      style={{ zIndex: page ? -1 : 0 }}
     >
       <img
         src={logoUrl as string}
@@ -360,7 +375,8 @@ export default function GameReportScreen() {
                 every individual line, then the team comparison, then the
                 defense. The breaks exist only under print - on screen the
                 wrappers are invisible and the report stays one scroll. */}
-            <div className="print:break-after-page">
+            <div className="relative print:break-after-page">
+            <Watermark logoUrl={report.us.logoUrl} page />
 
             {/* ── Header block ────────────────────────────────────────── */}
             <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-black pb-2">
@@ -475,7 +491,8 @@ export default function GameReportScreen() {
                 kickoffs. SectionTitle's first:mt-0 now matches the first
                 title of each page, so the wrapper carries the on-screen gap
                 and drops it at the top of a printed page. */}
-            <div className="mt-4 print:mt-0 print:break-after-page">
+            <div className="relative mt-4 print:mt-0 print:break-after-page">
+            <Watermark logoUrl={report.us.logoUrl} page />
 
             {/* ── Offensive stats ─────────────────────────────────────── */}
             <SectionTitle>Offensive Stats</SectionTitle>
@@ -600,7 +617,8 @@ export default function GameReportScreen() {
             </div>
 
             {/* ── PAGE 3: the team comparison ── */}
-            <div className="mt-4 print:mt-0 print:break-after-page">
+            <div className="relative mt-4 print:mt-0 print:break-after-page">
+            <Watermark logoUrl={report.us.logoUrl} page />
 
             {/* ── Team stats ──────────────────────────────────────────── */}
             <SectionTitle>Team Stats</SectionTitle>
@@ -646,7 +664,8 @@ export default function GameReportScreen() {
 
             {/* ── PAGE 4: the defense. No break after - a trailing break
                 would print a blank fifth page. */}
-            <div className="mt-4 print:mt-0">
+            <div className="relative mt-4 print:mt-0">
+            <Watermark logoUrl={report.us.logoUrl} page />
 
             {/* ── Defensive stats ─────────────────────────────────────── */}
             <SectionTitle>Defensive Stats</SectionTitle>
