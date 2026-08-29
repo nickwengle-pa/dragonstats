@@ -11,6 +11,7 @@ import { transformPlays, collectOpponentPlayerIds, type TransformContext } from 
 import { opponentPlayerService } from "./opponentService";
 import { getPregameConfig } from "./gameFlow";
 import { resolveDriveResults } from "./driveResults";
+import { isInsideTwenty, resolveKickSpots } from "./kickSpots";
 import {
   FootballStatsEngine,
   CoinTossChoice,
@@ -252,8 +253,13 @@ export async function computeGameStatsBundle(
   // 8. Supplement defensive stats with PBU/hurry from app's own calculator
   supplementDefenseStats(summary, plays, rosterPlayers);
 
-  // 9. Correct drive results — the engine labels every non-touchdown drive a
-  //    punt, field goals and turnovers included. See driveResults.ts.
+  // 9. Punts inside the 20. The engine has no logic for this at all - its own
+  //    comment says it would need the landing spot, which it was never given -
+  //    so the column read zero however well anyone punted.
+  supplementPuntsInside20(summary, plays);
+
+  // 10. Correct drive results — the engine labels every non-touchdown drive a
+  //     punt, field goals and turnovers included. See driveResults.ts.
   summary.drives = resolveDriveResults(summary.drives, plays.map(p => ({
     possession: p.possession,
     playType: p.play_type,
@@ -303,6 +309,37 @@ function initDefStats(playerId: string, playerName: string): DefensiveStats {
 }
 
 /**
+ * Count the punts that pinned them inside their own 20.
+ *
+ * Attributed to the punter who kicked it, which is why it cannot simply be
+ * counted off the play list at the point of display: the stat belongs on his
+ * line, beside his average.
+ */
+function supplementPuntsInside20(
+  summary: GameSummary,
+  plays: PlayWithPlayers[],
+): void {
+  for (const stat of Object.values(summary.punting)) stat.puntsInside20 = 0;
+
+  for (const play of plays) {
+    if (play.play_type !== "punt" && play.play_type !== "fair_catch") continue;
+    const punter = play.play_players?.find(p => p.role === "punter" || p.role === "kicker");
+    if (!punter) continue;
+    const stat = summary.punting[punter.player_id];
+    if (!stat) continue;
+    const spots = resolveKickSpots({
+      ballOn: play.yard_line ?? 0,
+      playData: play.play_data,
+      description: play.description,
+    });
+    if (!spots) continue;
+    if (isInsideTwenty(spots, Boolean(play.play_data?.is_touchback))) {
+      stat.puntsInside20 += 1;
+    }
+  }
+}
+
+/**
  * Merge PBU and hurry counts from the app's own calcDefenseStats into
  * the engine's defense output, since the engine can't attribute those directly.
  */
@@ -321,6 +358,15 @@ function supplementDefenseStats(
       engineStats = initDefStats(playerId, name);
       summary.defense[playerId] = engineStats;
     }
+
+    /* Tackles for loss.
+       The engine credits a TFL only inside its tackledBy loop, and a shared
+       tackle now travels in assistedTackle so the engine can give it the half
+       credit it is worth - which would otherwise cost both players the TFL
+       they were both in on. The app calculator credits it to tacklers and
+       assisters alike, and applies the stricter test: a stop AT the line is
+       not a loss, where the engine counts any gain of zero or less. */
+    engineStats.tacklesForLoss = appStats.tfl;
 
     // PBUs → passesDefended
     if (appStats.pbus > 0) {
