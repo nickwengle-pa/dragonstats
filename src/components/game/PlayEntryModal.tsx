@@ -903,6 +903,18 @@ export default function PlayEntryModal({
      the conversion in one place stops the field and the number boxes drifting
      apart. */
   const kickLandingBallOn = 100 - kickedToYard;
+  /* Where the return ended, offense-relative, so the field graphic and the
+     ruler can drive it the same way the run/pass spot picker does. The
+     team + yard-line pair stays the source of truth; this is a view of it. */
+  const returnSpotBallOn = toOffensePerspectiveBallOn(returnToTeam, returnToYardLine);
+  const setReturnSpotFromBallOn = (ballOn: number) => {
+    const spot = toFieldSpot(ballOn);
+    setReturnToTeam(spot.side);
+    setReturnToYardLine(spot.yardLine);
+    // The typed alternatives are now stale — they described a different spot.
+    setReturnToRaw("");
+    setReturnYardsRaw("");
+  };
   const setKickedToYardFromBallOn = (ballOn: number) => {
     setKickedToYard(Math.max(0, Math.min(100, 100 - ballOn)));
     // Both typed boxes are now stale — they described a different spot.
@@ -2434,6 +2446,52 @@ export default function PlayEntryModal({
             <>
               <div>
                 <label className="label block mb-2">Returned To (Yard Line)</label>
+
+                {/* Tap the field where he was brought down, or drag the ruler.
+                    Every other spot in this modal is picked this way; the
+                    return was the one place still asking for a yard line to be
+                    stepped to a button at a time. The ghost marker sits on the
+                    catch, so the return is visible as a distance. */}
+                <div className="mb-3">
+                  <FieldVisualizer
+                    compact
+                    ballOn={returnSpotBallOn}
+                    ballPosition={toFieldDisplay(returnSpotBallOn)}
+                    firstDownPosition={toFieldDisplay(kickLandingBallOn)}
+                    possession={gameState.possession}
+                    ourEndZoneSide={ourEndZoneSide}
+                    primaryColor={progColor}
+                    oppColor={oppColor}
+                    progName={progName}
+                    oppName={oppName}
+                    progAbbr={progTag}
+                    oppAbbr={oppTag}
+                    progLogoUrl={progLogoUrl}
+                    oppLogoUrl={oppLogoUrl}
+                    onPickSpot={(displayPosition) => {
+                      if (isTD) setIsTD(false);
+                      setReturnSpotFromBallOn(toFieldDisplay(displayPosition));
+                    }}
+                  />
+                  <div className="text-[10px] text-slate-600 text-center mt-1">
+                    {isTD
+                      ? "Returned for a score - tap the field if he was stopped short"
+                      : `Tap the field where he was brought down - caught at ${landingLabel}`}
+                  </div>
+                </div>
+
+                <YardReel
+                  value={returnSpotBallOn}
+                  onChange={(ballOn) => {
+                    if (isTD) setIsTD(false);
+                    setReturnSpotFromBallOn(ballOn);
+                  }}
+                  offenseDirection={offenseDirection}
+                  accentColor={defenseColor}
+                  formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                />
+
+                <div className="h-3" />
 
                 {/* Side selector */}
                 <div className="flex gap-1.5 mb-3">
