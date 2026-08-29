@@ -973,6 +973,7 @@ export default function PostGameReview() {
                   <Th className="w-8">R/P</Th>
                   <Th className="w-10 text-right">Gn</Th>
                   <Th className="w-14">Flags</Th>
+                  <Th className="w-10">{""}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -1013,6 +1014,15 @@ export default function PostGameReview() {
                           {p.is_turnover && <Flag text="TO" cls="bg-red-900/50 text-red-400" />}
                           {p.is_penalty && <Flag text="PEN" cls="bg-yellow-900/40 text-yellow-400" />}
                         </span>
+                      </Td>
+                      <Td>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditRecord(rowToPlayRecord(p)); }}
+                          className="btn-ghost p-1 text-surface-muted/50 hover:text-dragon-primary cursor-pointer"
+                          title="Edit this play"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
                       </Td>
                     </tr>
                   );
