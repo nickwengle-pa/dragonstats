@@ -6,6 +6,7 @@ import {
   normalizeQuarter,
   type PregameConfig,
 } from "./gameFlow";
+import { TEAM_PLAYER_ID } from "@/components/game/types";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "./programService";
 import { mergeQueuedPlays } from "./mergeQueuedPlays";
 
@@ -882,7 +883,19 @@ export function calcDefenseStats(
        Credit is the fact. A tag under full credit is a solo; anything less is
        a share. The explicit role is still honoured in case a play somewhere
        carries one. */
-    const allTacklerTags = play.play_players.filter(p => p.role === "tackler");
+    /* TEAM tags have no players row and ride in play_data, so this list has
+       to be widened the same way the engine transformer's was - otherwise the
+       TFL count this calculator supplies back to the summary omits every
+       team-credited stop that the engine now does count. */
+    const teamTacklerTags = ((Array.isArray(play.play_data?.team_tagged)
+      ? play.play_data.team_tagged
+      : []) as Array<{ role?: string; credit?: number | null }>)
+      .filter(t => t.role === "tackler")
+      .map(t => ({ player_id: TEAM_PLAYER_ID, role: "tackler", credit: t.credit ?? null }));
+    const allTacklerTags = [
+      ...play.play_players.filter(p => p.role === "tackler"),
+      ...teamTacklerTags,
+    ];
     const sharedTags = allTacklerTags.filter(p => (p.credit ?? 1) < 1);
     const soloTags = allTacklerTags.filter(p => (p.credit ?? 1) >= 1);
     const assists = [

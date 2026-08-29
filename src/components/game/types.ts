@@ -116,6 +116,10 @@ export function normalizeOppTagId(id: string, jersey: number | null): string {
 }
 
 export const TEAM_PLAYER_ID = "our_team";
+/** Jersey the TEAM placeholder wears on a stat sheet. 100 is the convention
+ *  the printed reports coaches already read use for a team-credited stop, so
+ *  a "#100 TEAM" line needs no explaining. */
+export const TEAM_JERSEY = 100;
 
 export function isTeamId(id: string | null | undefined): boolean {
   return id === TEAM_PLAYER_ID;

@@ -28,6 +28,7 @@ import type {
 import type { GameStatsBundle } from "./statsService";
 import type { PlayWithPlayers } from "./gameService";
 import { netKickYards, resolveKickSpots } from "./kickSpots";
+import { TEAM_JERSEY, TEAM_PLAYER_ID } from "@/components/game/types";
 
 /* ── Play-type groupings ──────────────────────────────────────────────────── */
 
@@ -298,7 +299,24 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     jerseys.set(r.player_id, r.jersey_number);
     names.set(r.player_id, `${r.first_name} ${r.last_name}`.trim());
   }
-  const ours = new Set(roster.map(r => r.player_id));
+  /* Unrostered jerseys are our players too - a number seen on the field that
+     nobody had added to the roster yet. They carry their own number. */
+  for (const play of plays) {
+    for (const raw of (Array.isArray(play.play_data?.pending_tagged)
+      ? play.play_data.pending_tagged
+      : []) as Array<{ id?: string; jersey_number?: number | null }>) {
+      if (!raw.id || names.has(String(raw.id))) continue;
+      jerseys.set(String(raw.id), raw.jersey_number ?? null);
+      names.set(String(raw.id), `#${raw.jersey_number ?? "?"} (unrostered)`);
+    }
+  }
+  /* TEAM is one of ours for reporting purposes: it holds stats our players
+     earned that nobody got a number on. Leaving it out of this set was why a
+     team-credited tackle appeared nowhere on the sheet - not under a name, and
+     not in the totals either. */
+  jerseys.set(TEAM_PLAYER_ID, TEAM_JERSEY);
+  names.set(TEAM_PLAYER_ID, "TEAM");
+  const ours = new Set([...roster.map(r => r.player_id), TEAM_PLAYER_ID]);
 
   const usTeam: TeamStats = summary.homeTeamStats.teamId === program.id
     ? summary.homeTeamStats

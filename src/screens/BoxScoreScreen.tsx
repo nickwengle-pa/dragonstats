@@ -5,6 +5,7 @@ import { useProgramContext } from "@/hooks/useProgramContext";
 import TeamCrest from "@/components/TeamCrest";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
+import { TEAM_JERSEY, TEAM_PLAYER_ID } from "@/components/game/types";
 import type {
   GameSummary, PassingStats, RushingStats, ReceivingStats, DefensiveStats, KickingStats,
 } from "football-stats-engine";
@@ -42,6 +43,7 @@ function shortName(full: string): string {
 
 /** "#22 M.Webb" when the jersey is known, otherwise "M.Webb". */
 function playerLabel(id: string, name: string, roster: Map<string, RosterEntry>) {
+  if (id === TEAM_PLAYER_ID) return `#${TEAM_JERSEY} TEAM`;
   const jersey = roster.get(id)?.jersey;
   return jersey != null ? `#${jersey} ${shortName(name)}` : shortName(name);
 }
@@ -200,7 +202,13 @@ export default function BoxScoreScreen() {
     return () => { cancelled = true; };
   }, [gameId, program, season]);
 
-  const rosterIds = useMemo(() => new Set(roster.keys()), [roster]);
+  /* TEAM holds our stats that nobody got a number on, so it belongs in the
+     box score alongside the named players - the same way it does on the
+     printed report. */
+  const rosterIds = useMemo(
+    () => new Set([...roster.keys(), TEAM_PLAYER_ID]),
+    [roster],
+  );
 
   // Our team vs theirs, engine-side
   const ourStats = summary && program

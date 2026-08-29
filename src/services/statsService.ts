@@ -12,6 +12,7 @@ import { opponentPlayerService } from "./opponentService";
 import { getPregameConfig } from "./gameFlow";
 import { resolveDriveResults } from "./driveResults";
 import { isInsideTwenty, resolveKickSpots } from "./kickSpots";
+import { TEAM_JERSEY, TEAM_PLAYER_ID } from "@/components/game/types";
 import {
   FootballStatsEngine,
   CoinTossChoice,
@@ -242,7 +243,11 @@ export async function computeGameStatsBundle(
     name: `${r.first_name} ${r.last_name}`.trim(),
   }));
   const oppPlayers = collectOpponentPlayerIds(plays, realOppPlayers);
-  engine.registerPlayers([...rosterPlayers, ...oppPlayers]);
+  /* The placeholders hold real stats and need real names, or every TEAM
+     tackle comes back as "Unknown". Jersey 100 is the convention the printed
+     sheets already use for a team-credited stop. */
+  const placeholders = collectPlaceholderPlayers(plays);
+  engine.registerPlayers([...rosterPlayers, ...oppPlayers, ...placeholders]);
 
   // 6. Process plays
   engine.processPlays(enginePlays);
@@ -306,6 +311,32 @@ function initDefStats(playerId: string, playerName: string): DefensiveStats {
     yardsAllowedInCoverage: 0,
     touchdownsAllowedInCoverage: 0,
   };
+}
+
+/**
+ * Names for the tags that have no players row.
+ *
+ * TEAM is our own "somebody made that, I could not see who"; the unrostered
+ * jerseys are ours too, by number. Without a registration the engine files
+ * their stats under an id with no name and the reports print "Unknown".
+ */
+function collectPlaceholderPlayers(
+  plays: PlayWithPlayers[],
+): Array<{ id: string; name: string }> {
+  const found = new Map<string, string>();
+  for (const play of plays) {
+    const pd = play.play_data as Record<string, unknown> | null | undefined;
+    if (Array.isArray(pd?.team_tagged) && pd.team_tagged.length > 0) {
+      found.set(TEAM_PLAYER_ID, `#${TEAM_JERSEY} TEAM`);
+    }
+    for (const raw of (Array.isArray(pd?.pending_tagged) ? pd.pending_tagged : []) as Array<{
+      id?: string; jersey_number?: number | null;
+    }>) {
+      if (!raw.id) continue;
+      found.set(String(raw.id), `#${raw.jersey_number ?? "?"} (unrostered)`);
+    }
+  }
+  return [...found].map(([id, name]) => ({ id, name }));
 }
 
 /**

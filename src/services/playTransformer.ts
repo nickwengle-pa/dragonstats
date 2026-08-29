@@ -12,6 +12,7 @@ import {
   grantsAutoFirstDown,
   type PenaltySide,
 } from "@/components/game/types";
+import { TEAM_PLAYER_ID } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import { resolveKickSpots } from "./kickSpots";
 import {
@@ -239,24 +240,63 @@ function tackleCredits(play: PlayWithPlayers): {
   tackledBy: string[];
   assistedTackle: string[];
 } {
-  const tags = play.play_players.filter(pp => pp.role === "tackler");
-  const isShared = (pp: { credit?: number | null }) => (pp.credit ?? 1) < 1;
+  const tags = allTagsForRole(play, "tackler");
+  const isShared = (t: { credit: number | null }) => (t.credit ?? 1) < 1;
   return {
-    tackledBy: tags.filter(pp => !isShared(pp)).map(pp => pp.player_id),
+    tackledBy: tags.filter(t => !isShared(t)).map(t => t.id),
     assistedTackle: [
       ...playersByRole(play, "assist"),
-      ...tags.filter(isShared).map(pp => pp.player_id),
+      ...tags.filter(isShared).map(t => t.id),
     ],
   };
 }
+/**
+ * Every tag on a play, with its credit — including the ones that cannot be
+ * foreign keys.
+ *
+ * play_players only holds our own rostered players. The TEAM placeholder, the
+ * opponent's players and unrostered jerseys have no players row, so they ride
+ * in play_data (see CLAUDE.md). Nothing here ever read those lists, which
+ * meant the engine never saw them: a tackle credited to TEAM, a catch by an
+ * opponent, a carry by a jersey nobody had added yet — all of it was recorded
+ * faithfully, rebuilt into the play log, shown in the editor, and then
+ * silently dropped on the way to every stat in the app.
+ *
+ * They are stats about somebody. Whether we know his name is a separate
+ * question from whether the tackle happened.
+ */
+function allTagsForRole(
+  play: PlayWithPlayers,
+  role: string,
+): Array<{ id: string; credit: number | null }> {
+  const pd = play.play_data as Record<string, unknown> | null | undefined;
+  const loose = (key: string) => (Array.isArray(pd?.[key]) ? pd?.[key] : []) as Array<{
+    id?: string; role?: string; credit?: number | null;
+  }>;
+
+  return [
+    ...play.play_players
+      .filter((pp) => pp.role === role)
+      .map((pp) => ({ id: pp.player_id, credit: pp.credit ?? null })),
+    // Our side's "somebody did this, I could not see who".
+    ...loose("team_tagged")
+      .filter((t) => t.role === role)
+      .map(() => ({ id: TEAM_PLAYER_ID, credit: null as number | null })),
+    ...loose("opp_tagged")
+      .filter((t) => t.role === role && t.id)
+      .map((t) => ({ id: String(t.id), credit: t.credit ?? null })),
+    ...loose("pending_tagged")
+      .filter((t) => t.role === role && t.id)
+      .map((t) => ({ id: String(t.id), credit: t.credit ?? null })),
+  ];
+}
+
 function playersByRole(play: PlayWithPlayers, role: string): string[] {
-  return play.play_players
-    .filter((pp) => pp.role === role)
-    .map((pp) => pp.player_id);
+  return allTagsForRole(play, role).map((t) => t.id);
 }
 
 function firstPlayerByRole(play: PlayWithPlayers, role: string): string | undefined {
-  return play.play_players.find((pp) => pp.role === role)?.player_id;
+  return allTagsForRole(play, role)[0]?.id;
 }
 
 function getOppPlayerId(play: PlayWithPlayers): string {
