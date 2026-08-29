@@ -6,7 +6,7 @@
  */
 
 import { supabase } from "@/lib/supabase";
-import { loadGamePlays, calcDefenseStats } from "./gameService";
+import { loadGamePlays, calcDefenseStats, type PlayWithPlayers } from "./gameService";
 import { transformPlays, collectOpponentPlayerIds, type TransformContext } from "./playTransformer";
 import { opponentPlayerService } from "./opponentService";
 import { getPregameConfig } from "./gameFlow";
@@ -106,6 +106,23 @@ async function loadRoster(seasonId: string): Promise<RosterPlayer[]> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Everything one pass over a game produces.
+ *
+ * The engine's GameSummary does not carry every number a printed stat sheet
+ * asks for - rushing gain and loss are only kept as a net, an interception
+ * return has no long, and a blocked kick has no defender credited. Those come
+ * back out of the plays, so the report needs the plays that produced the
+ * summary rather than a second round trip to fetch them again on press-box
+ * wifi. Roster comes along for jersey numbers, which the engine has no use for.
+ */
+export interface GameStatsBundle {
+  summary: GameSummary;
+  plays: PlayWithPlayers[];
+  roster: RosterPlayer[];
+  game: GameRecord;
+}
+
+/**
  * Compute full game stats by running all plays through the engine.
  * Returns the engine's GameSummary with defensive stats supplemented
  * for PBU/hurry counts that the engine doesn't natively track.
@@ -114,6 +131,15 @@ export async function computeGameStats(
   gameId: string,
   program: ProgramInfo,
 ): Promise<GameSummary | null> {
+  const bundle = await computeGameStatsBundle(gameId, program);
+  return bundle?.summary ?? null;
+}
+
+/** As computeGameStats, but keeps the inputs the summary was built from. */
+export async function computeGameStatsBundle(
+  gameId: string,
+  program: ProgramInfo,
+): Promise<GameStatsBundle | null> {
   // 1. Load game, plays, roster in parallel
   const [game, plays] = await Promise.all([
     loadGame(gameId),
@@ -225,7 +251,7 @@ export async function computeGameStats(
   // 8. Supplement defensive stats with PBU/hurry from app's own calculator
   supplementDefenseStats(summary, plays, rosterPlayers);
 
-  return summary;
+  return { summary, plays, roster, game };
 }
 
 // ---------------------------------------------------------------------------
