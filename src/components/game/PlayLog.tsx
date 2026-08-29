@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { X, Pencil, RotateCcw, CloudOff } from "lucide-react";
-import { fmtClock, quarterLabel, yardLabel, type PlayRecord } from "./types";
+import { fmtClock, quarterLabel, yardLabel, type PlayRecord, type TaggedPlayer } from "./types";
 
 type LogFilter = "all" | "off" | "def" | "k";
 
@@ -17,6 +17,30 @@ function unitOf(play: PlayRecord): LogFilter | "none" {
   if (play.type === "timeout") return "none";
   if (KICKING_TYPES.has(play.type)) return "k";
   return play.possession === "us" ? "off" : "def";
+}
+
+/** The two roles that carry defensive stop credit. */
+const TACKLE_ROLES = new Set(["tackler", "sacker"]);
+
+/**
+ * Our tacklers on this play, or none.
+ *
+ * Opponent tags are filtered out rather than greyed: the log is read to check
+ * OUR defense, and a list of their tacklers on our own runs is exactly the
+ * noise that kept this line off the play row before. Opponent tags carry
+ * isOpponent, so this needs no possession test and reads the same on a kickoff
+ * cover team as on a defensive snap.
+ */
+function ourTacklers(play: PlayRecord): TaggedPlayer[] {
+  return (play.tagged ?? []).filter(t => TACKLE_ROLES.has(t.role) && !t.isOpponent);
+}
+
+/** "#42 Smith", or "TEAM" for a stop nobody got a number on. Jersey numbers
+ *  come back null from the play_players join, so the surname carries it. */
+function tacklerLabel(t: TaggedPlayer): string {
+  if (t.isTeam) return "TEAM";
+  const surname = t.name.trim().split(/\s+/).slice(-1)[0] || t.name;
+  return t.jersey_number != null ? `#${t.jersey_number} ${surname}` : surname;
 }
 
 const FILTERS: Array<{ id: LogFilter; label: string }> = [
@@ -141,6 +165,7 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds
               // "Last" means the most recent play overall, not the most recent
               // one passing the filter.
               const isLast = number === plays.length;
+              const tacklers = ourTacklers(play);
               return (
                 <div
                   key={play.id}
@@ -164,6 +189,17 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds
                     </div>
                     {play.offensiveFormation && (
                       <div className="text-[10px] text-blue-500/70 mt-0.5 font-body">{play.offensiveFormation} vs {play.defensiveFormation ?? "\u2014"}</div>
+                    )}
+                    {/* Who made the stop, on the play row itself. The bracketed
+                        number is split credit - two names at 0.5 each is one
+                        shared tackle, not two. */}
+                    {tacklers.length > 0 && (
+                      <div className="text-[10px] text-red-400/80 mt-0.5 font-body truncate">
+                        {play.type === "sack" ? "Sack: " : "Tkl: "}
+                        {tacklers
+                          .map(t => `${tacklerLabel(t)}${t.credit != null && t.credit !== 1 ? ` (${t.credit})` : ""}`)
+                          .join(", ")}
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-0.5 shrink-0">
