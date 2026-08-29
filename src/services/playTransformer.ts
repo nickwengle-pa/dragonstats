@@ -13,6 +13,7 @@ import {
   type PenaltySide,
 } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
+import { resolveKickSpots } from "./kickSpots";
 import {
   type Play,
   type PassPlay,
@@ -197,6 +198,57 @@ function returnTacklers(play: PlayWithPlayers): string[] | undefined {
 }
 
 // Extract player IDs by role from play_players
+/**
+ * The two numbers special-teams stats are made of.
+ *
+ * Gross kick distance and return yardage were never passed to the engine. It
+ * guards on kickDistance being present, so punt yards, punt long, punt
+ * average, net punt average and average kickoff distance sat at zero for every
+ * game ever recorded. returnYards was passed play.yards_gained, which on a
+ * kick is the NET - distance minus return - so return yardage was the wrong
+ * quantity rather than a missing one, and it fed netPuntAverage as well.
+ *
+ * Both come back off the play now; see kickSpots.ts for where from. Null when
+ * the play carries neither, in which case the fields stay undefined and the
+ * engine leaves the stat alone rather than recording a guess.
+ */
+function kickSpotsFor(play: PlayWithPlayers) {
+  return resolveKickSpots({
+    ballOn: play.yard_line ?? 0,
+    playData: play.play_data,
+    description: play.description,
+  });
+}
+
+/**
+ * Who made the tackle, and who shared it.
+ *
+ * The modal records a shared tackle as several "tackler" tags carrying
+ * credit 0.5 each - tapping a second name is what splits it. It has never
+ * written the role "assist", which is the role this file used to read, so
+ * assistedTackle was always empty and the engine scored every shared tackle
+ * as a set of full solo tackles: two names came out 0 solo, 0 assists,
+ * 2.0 total instead of 0 solo, 2 assists, 1.0 total.
+ *
+ * Credit is the fact, so credit decides. Full credit is a solo and goes in
+ * tackledBy; anything less is a share and goes in assistedTackle, where the
+ * engine gives it the half-tackle it is worth. An explicitly tagged assist
+ * still counts, in case any play anywhere carries one.
+ */
+function tackleCredits(play: PlayWithPlayers): {
+  tackledBy: string[];
+  assistedTackle: string[];
+} {
+  const tags = play.play_players.filter(pp => pp.role === "tackler");
+  const isShared = (pp: { credit?: number | null }) => (pp.credit ?? 1) < 1;
+  return {
+    tackledBy: tags.filter(pp => !isShared(pp)).map(pp => pp.player_id),
+    assistedTackle: [
+      ...playersByRole(play, "assist"),
+      ...tags.filter(isShared).map(pp => pp.player_id),
+    ],
+  };
+}
 function playersByRole(play: PlayWithPlayers, role: string): string[] {
   return play.play_players
     .filter((pp) => pp.role === role)
@@ -305,8 +357,7 @@ function convertPlay(
         result,
         yardsGained: play.yards_gained,
         isTouchdown: play.is_touchdown,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        ...tackleCredits(play),
         fumble: buildFumble(play, rusher, ctx),
         returnTackledBy: returnTacklers(play),
         penalties,
@@ -329,8 +380,7 @@ function convertPlay(
         yardsGained: play.yards_gained,
         isTouchdown: play.is_touchdown,
         isQBScramble: true,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        ...tackleCredits(play),
         fumble: buildFumble(play, rusher, ctx),
         returnTackledBy: returnTacklers(play),
         penalties,
@@ -351,8 +401,7 @@ function convertPlay(
         receiver,
         yardsGained: play.yards_gained,
         isTouchdown: play.is_touchdown,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        ...tackleCredits(play),
         fumble: buildFumble(play, receiver ?? passer, ctx),
         returnTackledBy: returnTacklers(play),
         penalties,
@@ -469,8 +518,7 @@ function convertPlay(
         result: RushResult.Fumble,
         yardsGained: play.yards_gained,
         isTouchdown: play.is_touchdown,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        ...tackleCredits(play),
         fumble: buildFumble(play, rusher, ctx),
         returnTackledBy: returnTacklers(play),
         penalties,
@@ -512,6 +560,7 @@ function convertPlay(
       const kicker = firstPlayerByRole(play, "kicker");
       const returner = firstPlayerByRole(play, "returner");
       const isTouchback = !!(pd?.is_touchback);
+      const spots = kickSpotsFor(play);
       let stResult: SpecialTeamsResult = SpecialTeamsResult.Normal;
       if (isTouchback) stResult = SpecialTeamsResult.Touchback;
       if (play.is_touchdown) stResult = SpecialTeamsResult.ReturnTouchdown;
@@ -520,10 +569,11 @@ function convertPlay(
         kicker,
         returner,
         result: stResult,
-        returnYards: returner ? play.yards_gained : undefined,
+        kickDistance: spots?.kickDistance,
+        returnYards: returner ? spots?.returnYards : undefined,
         isTouchback,
         isTouchdown: play.is_touchdown,
-        tackledBy: playersByRole(play, "tackler"),
+        ...tackleCredits(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -534,6 +584,7 @@ function convertPlay(
       const punter = firstPlayerByRole(play, "punter");
       const returner = firstPlayerByRole(play, "returner");
       const isTouchback = !!(pd?.is_touchback);
+      const spots = kickSpotsFor(play);
       let stResult: SpecialTeamsResult = SpecialTeamsResult.Normal;
       if (isTouchback) stResult = SpecialTeamsResult.Touchback;
       if (play.is_touchdown) stResult = SpecialTeamsResult.ReturnTouchdown;
@@ -542,10 +593,11 @@ function convertPlay(
         punter,
         returner,
         result: stResult,
-        returnYards: returner ? play.yards_gained : undefined,
+        kickDistance: spots?.kickDistance,
+        returnYards: returner ? spots?.returnYards : undefined,
         isTouchback,
         isTouchdown: play.is_touchdown,
-        tackledBy: playersByRole(play, "tackler"),
+        ...tackleCredits(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -555,15 +607,17 @@ function convertPlay(
     case "onside_kick": {
       const kicker = firstPlayerByRole(play, "kicker");
       const recoverer = firstPlayerByRole(play, "recoverer") ?? firstPlayerByRole(play, "returner");
+      const spots = kickSpotsFor(play);
       return {
         type: PlayType.Kickoff,
         kicker,
         returner: recoverer,
         result: SpecialTeamsResult.Normal,
-        returnYards: recoverer ? play.yards_gained : undefined,
+        kickDistance: spots?.kickDistance,
+        returnYards: recoverer ? spots?.returnYards : undefined,
         isOnsideKick: true,
         isTouchdown: play.is_touchdown,
-        tackledBy: playersByRole(play, "tackler"),
+        ...tackleCredits(play),
         penalties,
         description: play.description ?? "Onside kick",
         context,
@@ -571,14 +625,17 @@ function convertPlay(
     }
 
     case "fair_catch": {
-      // Treat as a punt with no return; returner caught and signaled.
+      // Treat as a punt with no return; returner caught and signaled. The
+      // distance still counts - a fair catch is a punt that travelled.
       const punter = firstPlayerByRole(play, "punter") ?? firstPlayerByRole(play, "kicker");
       const returner = firstPlayerByRole(play, "returner");
+      const spots = kickSpotsFor(play);
       return {
         type: PlayType.Punt,
         punter,
         returner,
         result: SpecialTeamsResult.FairCatch,
+        kickDistance: spots?.kickDistance,
         returnYards: 0,
         isFairCatch: true,
         isTouchdown: false,
@@ -707,8 +764,7 @@ function convertPlay(
         result: play.is_touchdown ? RushResult.Touchdown : RushResult.Normal,
         yardsGained: play.yards_gained,
         isTouchdown: play.is_touchdown,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        ...tackleCredits(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -723,8 +779,7 @@ function convertPlay(
         result: RushResult.Normal,
         yardsGained: play.yards_gained, // negative
         isTouchdown: false,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        ...tackleCredits(play),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -741,7 +796,7 @@ function convertPlay(
         result: RushResult.Fumble,
         yardsGained: play.yards_gained,
         isTouchdown: play.is_touchdown,
-        tackledBy: playersByRole(play, "tackler"),
+        ...tackleCredits(play),
         fumble: {
           fumbledBy: oppRusher,
           forcedBy: forcer,
@@ -764,8 +819,7 @@ function convertPlay(
         result: RushResult.Normal,
         yardsGained: play.yards_gained,
         isTouchdown: false,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        ...tackleCredits(play),
         penalties,
         description: play.description ?? undefined,
         context,
