@@ -52,6 +52,7 @@ import FieldVisualizer from "@/components/game/FieldVisualizer";
 import PregameSetupSheet from "@/components/game/PregameSetupSheet";
 import QuickActions from "@/components/game/QuickActions";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
+import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import PlayLog from "@/components/game/PlayLog";
 import LiveStatsPanel from "@/components/game/LiveStatsPanel";
 import SyncBadge from "@/components/game/SyncBadge";
@@ -2179,6 +2180,48 @@ export default function GameScreen() {
     }
   };
 
+  /* ── Edit a timeout: when it was called, and by whom ──────────────────
+     The remaining-timeout counts are derived by counting these plays, so
+     correcting the team here corrects the scoreboard for both sides. */
+  const handleSaveTimeoutEdit = async (playId: string, edit: TimeoutEdit) => {
+    const idx = plays.findIndex(p => p.id === playId);
+    if (idx === -1) return;
+    const original = plays[idx];
+    const label = edit.team === "us"
+      ? (program?.name ?? "Team")
+      : (game?.opponent?.name ?? "Opponent");
+
+    const nextPlayData = {
+      ...(original.playData ?? {}),
+      recorded_start_clock: fmtClock(edit.clock),
+      recorded_start_clock_seconds: edit.clock,
+      recorded_end_clock: fmtClock(edit.clock),
+      recorded_end_clock_seconds: edit.clock,
+      timeout_team: edit.team,
+      timeout_label: label,
+    };
+
+    const ok = await updatePlayFull(playId, {
+      clock: fmtClock(edit.clock),
+      description: `${label} timeout`,
+      play_data: nextPlayData,
+    }, [], gameId);
+    if (!ok) {
+      window.alert("Couldn't save that timeout. It stays open so you can retry — check the sync badge.");
+      return;
+    }
+
+    const newPlays = [...plays];
+    newPlays[idx] = {
+      ...original,
+      clock: edit.clock,
+      description: `${label} timeout`,
+      playData: nextPlayData,
+    };
+    setEditPlay(null);
+    await recalcScoreAndState(newPlays);
+  };
+
   /* ── Delete play from edit modal ── */
   const handleDeletePlay = async (playId: string) => {
     const deleted = await deletePlay(playId, gameId);
@@ -2750,10 +2793,24 @@ export default function GameScreen() {
       )}
 
       {/* Play Edit */}
+      {/* A timeout has no play type, no roles and no spot, so it gets a sheet
+          with the only two facts it carries: when, and who. */}
+      {editPlay && editPlay.type === "timeout" && (
+        <TimeoutEditModal
+          play={editPlay}
+          progName={progName}
+          oppName={oppName}
+          quarterLengthSecs={gc.quarter_length_secs}
+          onSave={(edit) => { void handleSaveTimeoutEdit(editPlay.id, edit); }}
+          onDelete={() => { void handleDeletePlay(editPlay.id); }}
+          onClose={() => setEditPlay(null)}
+        />
+      )}
+
       {/* Editing IS entering, against the play's own starting situation.
           The same steps in the same order with the same field and the same
           ruler, so a play can be corrected exactly the way it was put in. */}
-      {editPlay && (() => {
+      {editPlay && editPlay.type !== "timeout" && (() => {
         const editType = findPlayTypeDef(editPlay.type);
         if (!editType) return null;
         return (

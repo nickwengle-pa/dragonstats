@@ -21,6 +21,7 @@ import {
 } from "@/services/chartingService";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import { formatClockValue } from "@/components/game/ClockInput";
+import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import {
   findPlayTypeDef,
   isRosterTag,
@@ -658,6 +659,9 @@ interface GameMeta {
   opponent_id: string | null;
   opponent_name: string;
   game_date: string;
+  /** Quarter length in seconds, so the clock editor bounds a typo at the
+   *  actual period rather than at a guess. */
+  quarter_length_secs: number;
 }
 
 type SituationDraft = {
@@ -711,7 +715,7 @@ export default function PostGameReview() {
         loadGameCharting(gameId),
         supabase
           .from("games")
-          .select("season_id, opponent_id, is_home, game_date, opponent:opponents(*)")
+          .select("season_id, opponent_id, is_home, game_date, rules_config, opponent:opponents(*)")
           .eq("id", gameId)
           .single(),
       ]);
@@ -721,11 +725,15 @@ export default function PostGameReview() {
 
       const g = gRes.data as any;
       const opp = g?.opponent;
+      const quarterMinutes = Number((g?.rules_config ?? {})?.quarterLengthMinutes);
       setMeta({
         season_id: g?.season_id ?? null,
         opponent_id: g?.opponent_id ?? null,
         opponent_name: opp?.name ?? "Opponent",
         game_date: g?.game_date ?? "",
+        quarter_length_secs: Number.isFinite(quarterMinutes) && quarterMinutes > 0
+          ? Math.round(quarterMinutes * 60)
+          : 12 * 60,
       });
 
       // Roster + opponent players (needed by the play editor)
@@ -892,6 +900,40 @@ export default function PostGameReview() {
     setEditingPlay(row);
     if (row) setSitDraft(situationFromPlay(row));
   }, [plays, load]);
+
+  /* Same two facts as the live screen, written the same way. */
+  const handleSaveTimeoutEdit = useCallback(async (playId: string, edit: TimeoutEdit) => {
+    const original = plays.find((p) => p.id === playId);
+    const pd = (original?.play_data ?? {}) as Record<string, any>;
+    const label = edit.team === "us"
+      ? (program?.name ?? "Team")
+      : (meta?.opponent_name ?? "Opponent");
+
+    const ok = await updatePlayFull(
+      playId,
+      {
+        clock: formatClockValue(edit.clock),
+        description: `${label} timeout`,
+        play_data: {
+          ...pd,
+          recorded_start_clock: formatClockValue(edit.clock),
+          recorded_start_clock_seconds: edit.clock,
+          recorded_end_clock: formatClockValue(edit.clock),
+          recorded_end_clock_seconds: edit.clock,
+          timeout_team: edit.team,
+          timeout_label: label,
+        },
+      },
+      [],
+      gameId,
+    );
+    if (!ok) {
+      setError("Couldn't save the timeout — check your connection and try again.");
+      return;
+    }
+    setEditRecord(null);
+    await load();
+  }, [plays, program, meta, gameId, load]);
 
   const handleDeletePlayEdit = useCallback(async (playId: string) => {
     if (!window.confirm("Delete this play? Game and season stats will update to match.")) return;
@@ -1068,9 +1110,24 @@ export default function PostGameReview() {
         />
       )}
 
+      {/* A timeout carries two facts and no play type, so it gets its own
+          sheet here as well - a timeout charged to the wrong side is exactly
+          the kind of thing film review is for. */}
+      {editRecord && editRecord.type === "timeout" && (
+        <TimeoutEditModal
+          play={editRecord}
+          progName={program?.name ?? "Team"}
+          oppName={meta?.opponent_name ?? "Opponent"}
+          quarterLengthSecs={meta?.quarter_length_secs ?? 12 * 60}
+          onSave={(edit) => { void handleSaveTimeoutEdit(editRecord.id, edit); }}
+          onDelete={() => { void handleDeletePlayEdit(editRecord.id); }}
+          onClose={() => setEditRecord(null)}
+        />
+      )}
+
       {/* Play editor - the same screen that recorded the play, so film review
           corrects a play through the controls it was entered with. */}
-      {editRecord && (() => {
+      {editRecord && editRecord.type !== "timeout" && (() => {
         const editType = findPlayTypeDef(editRecord.type);
         if (!editType) return null;
         return (

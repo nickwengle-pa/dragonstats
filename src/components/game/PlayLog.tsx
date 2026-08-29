@@ -225,11 +225,11 @@ export default function PlayLog({ plays, onEdit, onUndo, onClose, pendingPlayIds
                       </span>
                     )}
                   </div>
-                  {play.type !== "timeout" && (
-                    <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer">
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                  )}
+                  {/* Timeouts are editable too now - the clock and which side
+                      called it, which the derived remaining counts depend on. */}
+                  <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer">
+                    <Pencil className="w-3 h-3" />
+                  </button>
                 </div>
               );
             })
