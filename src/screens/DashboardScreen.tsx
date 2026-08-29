@@ -6,7 +6,7 @@ import { readSeasonGames, readSeasonRoster } from "@/services/offlineCache";
 import { supabase } from "@/lib/supabase";
 import {
   Calendar, Users, BarChart3, Settings, ChevronRight, Trophy, SlidersHorizontal,
-  Home, LogOut, ClipboardList, FileText, Film, ChevronDown,
+  Home, LogOut, ClipboardList, FileText, Film, ChevronDown, ClipboardPen,
 } from "lucide-react";
 
 interface LiveGame {
@@ -34,6 +34,11 @@ const GAME_VIEWS = [
   { label: "Box Score", desc: "Line & team stats", icon: FileText, path: "boxscore" },
   { label: "Summary", desc: "Drives & leaders", icon: BarChart3, path: "summary" },
   { label: "Play by Play", desc: "Every play", icon: Film, path: "review" },
+  /* Back into the recording screen itself. A finished game still gets plays
+     added and corrected - a missed snap spotted on film, a tackler nobody
+     caught live - and the entry screen is the only place that can do it with
+     the clock, the field and the play log all in front of you. */
+  { label: "Open Game", desc: "Add or fix plays", icon: ClipboardPen, path: "" },
 ] as const;
 
 interface QuickStats {
@@ -320,7 +325,7 @@ export default function DashboardScreen() {
                         {GAME_VIEWS.map(view => (
                           <button
                             key={view.path}
-                            onClick={() => navigate(`/game/${g.id}/${view.path}`)}
+                            onClick={() => navigate(view.path ? `/game/${g.id}/${view.path}` : `/game/${g.id}`)}
                             className="rounded-xl border border-surface-border bg-surface-bg p-3 text-left active:scale-[0.97] transition-transform cursor-pointer"
                           >
                             <view.icon className="w-4 h-4 mb-2" style={{ color: primaryColor }} />
