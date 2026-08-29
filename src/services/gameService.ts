@@ -873,15 +873,31 @@ export function calcDefenseStats(
   };
 
   for (const play of plays) {
+    /* Shared tackles are recorded as several "tackler" tags carrying credit
+       0.5 each - that is what tapping a second name in the modal does. The
+       role "assist" is read here and by the engine transformer, and NOTHING
+       has ever written it, so every shared tackle was scored as a set of solos
+       and the assist column stayed empty on every report.
+
+       Credit is the fact. A tag under full credit is a solo; anything less is
+       a share. The explicit role is still honoured in case a play somewhere
+       carries one. */
     const allTacklerTags = play.play_players.filter(p => p.role === "tackler");
-    const assists  = play.play_players.filter(p => p.role === "assist");
+    const sharedTags = allTacklerTags.filter(p => (p.credit ?? 1) < 1);
+    const soloTags = allTacklerTags.filter(p => (p.credit ?? 1) >= 1);
+    const assists = [
+      ...play.play_players.filter(p => p.role === "assist"),
+      ...sharedTags,
+    ];
     // Derived credit: a tackler tagged on an incompletion is a pass breakup,
     // not a tackle — nobody got tackled on an incomplete pass.
     const isIncompletion = ["pass_inc", "drop"].includes(play.play_type);
     if (isIncompletion) {
       for (const t of allTacklerTags) get(t.player_id).pbus += 1;
     }
-    const tacklers = isIncompletion ? [] : allTacklerTags;
+    // Only the full-credit tags are solo candidates; the shared ones are
+    // counted in the assists loop below so they are never counted twice.
+    const tacklers = isIncompletion ? [] : soloTags;
     const isAssisted = tacklers.length > 0 && assists.length > 0;
     // TFL is derived from play context, not a special play type: any tackle
     // on a scrimmage play that lost yardage is a tackle for loss.
@@ -904,8 +920,8 @@ export function calcDefenseStats(
       if (play.play_type === "safety") s.safeties += 1;
     }
 
-    // Assists
-    for (const a of assists) {
+    // Assists — the explicitly tagged ones and the shared-credit tacklers.
+    for (const a of (isIncompletion ? [] : assists)) {
       const s = get(a.player_id);
       s.assistTackles += 1;
       s.totalTackles  += assistCredit;
