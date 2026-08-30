@@ -53,6 +53,31 @@
     border-radius: 4px !important;
   }
 
+  /* ── The app frame is not a page frame ────────────────────────────────
+     .screen is max-w-app, which is 28rem - 448px. That is the right width
+     for a phone and it survived into print, so the whole report was being
+     squeezed into 448 points of a 768-point page: everything crushed into
+     the left half of the paper with the wide tables unreadable. The
+     lg:max-w-none escape does not fire either, because print media measures
+     about 768px and Tailwind's lg breakpoint is 1024px.
+
+     It is also a min-h-dvh flex column wrapping a flex-1 scroll region.
+     Viewport heights and flex sizing mean nothing on paper, and a scroll
+     region clips rather than scrolls, so the height constraint had to go
+     with the width. */
+  .screen {
+    display: block !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .screen > * {
+    overflow: visible !important;
+  }
+
   /* Surface utility colors → readable ink */
   .text-surface-muted,
   .text-slate-400,
