@@ -507,13 +507,18 @@ export default function GameReportScreen() {
             <div className="text-[11px] font-black uppercase tracking-wide mt-2 mb-1">Rushing</div>
             <Table
               minWidth={520}
-              head={["Player", "Att.", "Gain", "Loss", "Net", "TD", "Lg", "Avg", "FUM."]}
+              /* Net sits next to the attempts because it is the number anyone
+                 reads first - carries and what they were worth. Gain and loss
+                 follow as the breakdown of it, which is the order they get
+                 asked about in. */
+              head={["Player", "Att.", "Net", "Gain", "Loss", "TD", "Lg", "Avg", "FUM."]}
               rows={report.rushing.map(r => [
-                r.name, r.att, r.gain, signed(r.loss), signed(r.net), r.td, r.long, r.avg.toFixed(1), r.fum,
+                r.name, r.att, signed(r.net), r.gain, signed(r.loss), r.td, r.long, r.avg.toFixed(1), r.fum,
               ])}
               total={[
-                "Total", report.rushingTotal.att, report.rushingTotal.gain,
-                signed(report.rushingTotal.loss), signed(report.rushingTotal.net),
+                "Total", report.rushingTotal.att,
+                signed(report.rushingTotal.net), report.rushingTotal.gain,
+                signed(report.rushingTotal.loss),
                 report.rushingTotal.td, report.rushingTotal.long,
                 report.rushingTotal.avg.toFixed(1), report.rushingTotal.fum,
               ]}
