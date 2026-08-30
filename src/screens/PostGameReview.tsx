@@ -24,6 +24,7 @@ import { formatClockValue } from "@/components/game/ClockInput";
 import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import {
   findPlayTypeDef,
+  type PlayCategory,
   isRosterTag,
   makePendingId,
   makeTeamTag,
@@ -962,6 +963,11 @@ export default function PostGameReview() {
      touch a back had. Ninety rows in recording order answers neither without
      scrolling the whole thing. */
   const [unitFilter, setUnitFilter] = useState<Unit | "all">("all");
+  /* The third axis. Unit says which side of the ball, this says what kind of
+     play - so "his offensive passing plays" is a unit, a category and a name,
+     each narrowing the others rather than replacing them. Categories come off
+     PlayTypeDef, so a play type added later files itself. */
+  const [categoryFilter, setCategoryFilter] = useState<PlayCategory | "all">("all");
   const [playerQuery, setPlayerQuery] = useState("");
 
   /* Everything about a play that names a player, flattened once per play.
@@ -994,6 +1000,29 @@ export default function PostGameReview() {
     return index;
   }, [plays, roster]);
 
+  /**
+   * Does a play belong under a filter chip.
+   *
+   * Not a straight category match, because PlayTypeDef's categories answer a
+   * different question than a coach does. An interception is filed under
+   * turnover, but it is a pass attempt and belongs in "his passing plays" -
+   * leaving it out means a quarterback's pass filter hides the throws that
+   * hurt most. A standalone fumble is a runner losing it, so it is a run.
+   *
+   * Turnover keeps them both, and reads off the flag rather than the type, so
+   * a sack-fumble counts as the turnover it was.
+   */
+  const matchesCategory = (p: PlayWithPlayers, want: PlayCategory | "all"): boolean => {
+    if (want === "all") return true;
+    const category = findPlayTypeDef(p.play_type)?.category ?? null;
+    if (want === "pass") return category === "pass" || p.play_type === "int";
+    if (want === "run") return category === "run" || p.play_type === "fumble";
+    if (want === "turnover") {
+      return category === "turnover" || p.is_turnover === true;
+    }
+    return category === want;
+  };
+
   const visiblePlays = useMemo(() => {
     const q = playerQuery.trim().toLowerCase();
     /* A bare number means a jersey, and a jersey matches at a word boundary:
@@ -1003,11 +1032,13 @@ export default function PostGameReview() {
 
     return plays.filter((p) => {
       if (unitFilter !== "all" && unitFor(p) !== unitFilter) return false;
+      if (!matchesCategory(p, categoryFilter)) return false;
       if (!q) return true;
       const hay = searchIndex.get(p.id) ?? "";
       return jerseyRe ? jerseyRe.test(hay) : hay.includes(q);
     });
-  }, [plays, unitFilter, playerQuery, searchIndex]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plays, unitFilter, categoryFilter, playerQuery, searchIndex]);
 
   const chartedCount = useMemo(
     () => plays.filter((p) => hasChartingDetail(charting[p.id])).length,
@@ -1073,6 +1104,31 @@ export default function PostGameReview() {
               ))}
             </div>
 
+            {/* What kind of play, independent of which side had the ball.
+                Unit and category narrow each other rather than compete, so
+                Offense + Pass + a name is one query, not three views. */}
+            <div className="flex gap-1.5">
+              {([
+                { id: "all", label: "Any" },
+                { id: "run", label: "Run" },
+                { id: "pass", label: "Pass" },
+                { id: "kicking", label: "Kick" },
+                { id: "turnover", label: "TO" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setCategoryFilter(opt.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                    categoryFilter === opt.id
+                      ? "border-blue-500 bg-blue-500/15 text-blue-400"
+                      : "border-surface-border bg-surface-bg text-surface-muted"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
             <div className="relative flex-1 min-w-[9rem]">
               <input
                 type="text"
@@ -1125,7 +1181,7 @@ export default function PostGameReview() {
           <div className="card p-8 mx-3 text-center text-slate-500 text-sm">
             No plays match that filter.
             <button
-              onClick={() => { setUnitFilter("all"); setPlayerQuery(""); }}
+              onClick={() => { setUnitFilter("all"); setCategoryFilter("all"); setPlayerQuery(""); }}
               className="block mx-auto mt-3 text-dragon-primary font-bold text-xs uppercase tracking-wider cursor-pointer"
             >
               Clear filters

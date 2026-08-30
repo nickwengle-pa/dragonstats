@@ -189,11 +189,14 @@ export interface GameState {
   ballOn: number;
 }
 
+/** What kind of play it is, independent of which side had the ball. */
+export type PlayCategory = "run" | "pass" | "scoring" | "kicking" | "turnover" | "other";
+
 export interface PlayTypeDef {
   id: string;
   label: string;
   color: string;
-  category: "run" | "pass" | "scoring" | "kicking" | "turnover" | "other";
+  category: PlayCategory;
   roles: string[];
 }
 
