@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { X, Pencil, RotateCcw, CloudOff, Plus } from "lucide-react";
-import { fmtClock, quarterLabel, yardLabel, type PlayRecord, type TaggedPlayer } from "./types";
+import { fmtClock, quarterLabel, yardLabel, TEAM_JERSEY, type PlayRecord, type TaggedPlayer } from "./types";
 
 type LogFilter = "all" | "off" | "def" | "k";
 
@@ -98,6 +98,7 @@ const PLAY_ICON_COLORS: Record<string, string> = {
 
 export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose, pendingPlayIds }: Props) {
   const [filter, setFilter] = useState<LogFilter>("all");
+  const [playerQuery, setPlayerQuery] = useState("");
 
   /* Number by RECORDING order, before any filtering or reversing, so a play
      keeps the same number whichever filter is on. Derived from position rather
@@ -106,10 +107,38 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
     () => plays.map((play, idx) => ({ play, number: idx + 1 })),
     [plays],
   );
-  const visible = useMemo(
-    () => [...numbered].reverse().filter(({ play }) => filter === "all" || unitOf(play) === filter),
-    [numbered, filter],
-  );
+  /* Everything on a play that names somebody, flattened once per play. The
+     tags are already rebuilt with their jersey numbers by the time they reach
+     here, so this is just a join - and TEAM answers to the word or to the
+     number it wears on a stat sheet, which is what somebody looking for
+     uncredited stops would type. */
+  const searchIndex = useMemo(() => {
+    const index = new Map<string, string>();
+    for (const play of plays) {
+      const parts = (play.tagged ?? []).map(t => (
+        t.isTeam
+          ? `team ${TEAM_JERSEY}`
+          : `${t.jersey_number ?? ""} ${t.name ?? ""}`
+      ).toLowerCase());
+      index.set(play.id, parts.join(" | "));
+    }
+    return index;
+  }, [plays]);
+
+  const visible = useMemo(() => {
+    const q = playerQuery.trim().toLowerCase();
+    /* A bare number is a jersey, and a jersey matches at a word boundary:
+       typing 2 must not return every 12, 20 and 42 in the log. */
+    const numeric = /^\d+$/.test(q);
+    const jerseyRe = numeric ? new RegExp(`(^|[^0-9])${q}([^0-9]|$)`) : null;
+
+    return [...numbered].reverse().filter(({ play }) => {
+      if (filter !== "all" && unitOf(play) !== filter) return false;
+      if (!q) return true;
+      const hay = searchIndex.get(play.id) ?? "";
+      return jerseyRe ? jerseyRe.test(hay) : hay.includes(q);
+    });
+  }, [numbered, filter, playerQuery, searchIndex]);
   const counts = useMemo(() => {
     const c: Record<LogFilter, number> = { all: plays.length, off: 0, def: 0, k: 0 };
     for (const play of plays) {
@@ -155,13 +184,53 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
           </div>
         )}
 
+        {/* Find a player's snaps without scrolling the game. Number or name;
+            the chips above narrow by unit at the same time. */}
+        {plays.length > 0 && (
+          <div className="px-4 pb-2 shrink-0">
+            <div className="relative">
+              <input
+                type="text"
+                value={playerQuery}
+                onChange={(e) => setPlayerQuery(e.target.value)}
+                placeholder="Player # or name…"
+                className="input w-full text-xs py-1.5 pr-7"
+              />
+              {playerQuery && (
+                <button
+                  onClick={() => setPlayerQuery("")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-surface-muted cursor-pointer"
+                  title="Clear"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {/* A filtered log reading "12 plays" is indistinguishable from a
+                game with 12 plays in it. */}
+            {(playerQuery.trim() !== "" || filter !== "all") && (
+              <div className="text-[10px] text-surface-muted mt-1.5 tabular-nums">
+                {visible.length} of {plays.length} plays
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1">
           {plays.length === 0 ? (
             <div className="text-sm text-surface-muted text-center py-8 font-body">No plays recorded yet.</div>
           ) : (
             visible.length === 0 ? (
               <div className="text-sm text-surface-muted text-center py-8 font-body">
-                No {FILTERS.find(f => f.id === filter)?.label.toLowerCase()} plays yet.
+                {playerQuery.trim()
+                  ? `No plays with "${playerQuery.trim()}".`
+                  : `No ${FILTERS.find(f => f.id === filter)?.label.toLowerCase()} plays yet.`}
+                <button
+                  onClick={() => { setFilter("all"); setPlayerQuery(""); }}
+                  className="block mx-auto mt-3 text-dragon-primary font-bold text-xs uppercase tracking-wider cursor-pointer"
+                >
+                  Clear filters
+                </button>
               </div>
             ) :
             visible.map(({ play, number }) => {
