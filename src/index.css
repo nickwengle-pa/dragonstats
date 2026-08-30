@@ -117,8 +117,14 @@
      th background is not its design, the blanket th/td border draws lines it
      already draws on the rows, and page-break-inside: avoid on every table
      fights its own four-page layout. */
+  /* No font-size here. Setting one - even "inherit" - is a class selector and
+     outranks the text-[8.5pt] utility ON the table, so the tables fell back to
+     inheriting 16px from the body: nearly half again the size they are laid
+     out for, which is what kept making the printed sheet a mess. The global
+     table { font-size: 10pt } above never needed overriding in the first
+     place; it is a bare element selector and loses to the utility class on its
+     own. */
   .game-report-sheet table {
-    font-size: inherit;
     page-break-inside: auto;
   }
   .game-report-sheet th,
@@ -127,6 +133,13 @@
   }
   .game-report-sheet th {
     background: transparent !important;
+  }
+  /* The app screens are white-on-dark, so the rules above flip .text-white to
+     black for paper. This document is the other way round: its section bands
+     are white type on a black bar, and that flip printed them black on black -
+     an invisible heading on every section. */
+  .game-report-sheet .text-white {
+    color: #fff !important;
   }
   /* A scroll container does not scroll on paper - it clips. Any table wider
      than the page silently lost its right-hand columns, which is the other

@@ -1,22 +1,35 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStatsBundle } from "@/services/statsService";
-import { buildGameReport, type GameReport } from "@/services/gameReport";
+import { buildGameReport, type GameReport, type TeamStatRow } from "@/services/gameReport";
 
-/* ═══════════════════════════════════════════════
-   GAME REPORT — the full printed stat sheet.
+/* ═══════════════════════════════════════════════════════════════════════════
+   GAME REPORT — a letter-sized document, laid out in inches.
 
-   Deliberately NOT themed. This renders as a white
-   document on screen and on paper alike, because
-   its whole job is to be printed, saved as a PDF or
-   handed to somebody, and a coach proofing it on an
-   iPad should be looking at the thing that comes
-   out of the printer. The app chrome around it
-   keeps the dark theme; the sheet does not.
-   ═══════════════════════════════════════════════ */
+   The previous version was a fluid web page that @media print then tried to
+   talk into being a sheet of paper, and it lost that argument repeatedly: the
+   app frame's phone width survived into print, scroll containers clipped
+   instead of scrolling, and a global stylesheet restyled the tables on the way
+   out. Every fix was one more override fighting the last.
+
+   So this does not do that. A page here is a box 8 inches wide and 10.5 inches
+   tall — letter minus the quarter-inch margins the @page rule sets — and it is
+   that same box on screen. Nothing in the layout depends on the viewport, a
+   breakpoint or a media query, so what is on screen is what comes out of the
+   printer by construction rather than by correction. Print only removes the
+   gap and the shadow between sheets.
+
+   Everything the old report carried is still here: line score, scoring
+   summary, points by player, rushing, passing, receiving, punting, returns,
+   kickoffs, the team comparison, and the full defensive table.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Printable area of a letter page at the quarter-inch margins @page sets. */
+const PAGE_W = "8in";
+const PAGE_H = "10.5in";
 
 interface GameInfo {
   our_score: number;
@@ -36,36 +49,26 @@ function n(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
 
-/** A negative yardage total reads better with the sign than in brackets here,
- *  because the Gain and Loss columns sit right beside it. */
-function signed(v: number): string {
-  return v > 0 ? String(v) : String(v);
-}
-
 /* ── Identity ─────────────────────────────────────────────────────────────── */
 
-/**
- * Keep the image out of the printed page when it will not load.
- *
- * A logo lives on remote storage. Printing a report from a press box with no
- * service would otherwise put a broken-image glyph on the sheet, which is worse
- * than the initials it replaced.
- */
+/** Keep a logo that will not load off the printed page: a broken-image glyph
+ *  on a handout is worse than the initials it replaces. */
 function useLoadable(url: string | null) {
   const [failed, setFailed] = useState(false);
   useEffect(() => { setFailed(false); }, [url]);
   return { show: Boolean(url) && !failed, onError: () => setFailed(true) };
 }
 
-/** Team mark, falling back to initials in the team's colour. */
+/** Images and background ink are dropped from a print by default; every mark
+ *  here opts back in, because the crest is what says whose sheet this is. */
+const PRINT_INK = {
+  printColorAdjust: "exact",
+  WebkitPrintColorAdjust: "exact",
+} as const;
+
 function Crest({
-  logoUrl, abbr, color, size = 20,
-}: {
-  logoUrl: string | null;
-  abbr: string;
-  color: string;
-  size?: number;
-}) {
+  logoUrl, abbr, color, size = 18,
+}: { logoUrl: string | null; abbr: string; color: string; size?: number }) {
   const img = useLoadable(logoUrl);
   if (img.show) {
     return (
@@ -74,28 +77,16 @@ function Crest({
         alt=""
         onError={img.onError}
         className="object-contain shrink-0"
-        style={{
-          width: size,
-          height: size,
-          // Browsers drop images and background colour from a print by
-          // default. The crest is the one thing on the sheet that says whose
-          // it is, so it prints.
-          printColorAdjust: "exact",
-          WebkitPrintColorAdjust: "exact",
-        }}
+        style={{ width: size, height: size, ...PRINT_INK }}
       />
     );
   }
   return (
     <span
-      className="shrink-0 rounded-sm flex items-center justify-center font-black text-white"
+      className="shrink-0 flex items-center justify-center font-black text-white"
       style={{
-        width: size,
-        height: size,
-        fontSize: Math.max(7, Math.round(size * 0.38)),
-        backgroundColor: color,
-        printColorAdjust: "exact",
-        WebkitPrintColorAdjust: "exact",
+        width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.36)),
+        backgroundColor: color, ...PRINT_INK,
       }}
     >
       {abbr.slice(0, 3)}
@@ -103,144 +94,218 @@ function Crest({
   );
 }
 
+/* ── Page ─────────────────────────────────────────────────────────────────── */
+
 /**
- * The program's mark, ghosted behind the sheet.
+ * One sheet of paper.
  *
- * position: fixed rather than absolute under print, because a fixed element
- * repeats on every printed page while an absolute one appears once and then
- * pages two through four come out blank behind the tables.
- *
- * aria-hidden and pointer-events-none: it is decoration, and it must never
- * take a tap meant for the table on top of it.
+ * Fixed inches, not a percentage of anything, so it is the same box on screen
+ * and on paper. The footer is pushed down by the flex column rather than
+ * positioned absolutely, so a page that overruns its 10.5 inches spills onto
+ * the next sheet with the footer still after the content instead of printed
+ * across the middle of it.
  */
-function Watermark({ logoUrl, page = false }: { logoUrl: string | null; page?: boolean }) {
-  const img = useLoadable(logoUrl);
-  if (!img.show) return null;
+function Page({
+  report, pageNo, pageCount, last, children,
+}: {
+  report: GameReport;
+  pageNo: number;
+  pageCount: number;
+  last?: boolean;
+  children: React.ReactNode;
+}) {
+  const img = useLoadable(report.us.logoUrl);
+  return (
+    <section
+      /* game-report-sheet is the hook the print stylesheet uses to leave this
+         document alone - without it the app's global print rules restyle the
+         tables at 10pt on the way to paper, which is a fifth wider than they
+         are laid out for. */
+      className={`game-report-sheet relative bg-white text-black mx-auto flex flex-col px-[0.34in] py-[0.3in] shadow-xl print:shadow-none ${
+        last ? "" : "print:break-after-page"
+      }`}
+      style={{ width: PAGE_W, minHeight: PAGE_H, ...PRINT_INK }}
+    >
+      {/* The program's mark, ghosted. One copy per sheet, anchored inside it,
+          so it asks nothing special of the print engine — Safari does not
+          reliably repeat a fixed element across printed pages. */}
+      {img.show && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
+          style={{ zIndex: 0 }}
+        >
+          <img
+            src={report.us.logoUrl as string}
+            alt=""
+            onError={img.onError}
+            className="object-contain"
+            style={{ width: "62%", opacity: 0.045, ...PRINT_INK }}
+          />
+        </div>
+      )}
+
+      <div className="relative flex-1" style={{ zIndex: 1 }}>{children}</div>
+
+      <footer
+        className="relative mt-3 pt-1 border-t border-neutral-300 flex items-center justify-between text-[7pt] text-neutral-500"
+        style={{ zIndex: 1 }}
+      >
+        <span className="uppercase tracking-wider font-semibold">
+          {report.us.abbr} vs {report.them.abbr} · {report.dateLabel}
+        </span>
+        <span className="tabular-nums">Page {pageNo} of {pageCount}</span>
+      </footer>
+    </section>
+  );
+}
+
+/** Section heading: a black band, which reads as structure at a glance on a
+ *  sheet that is otherwise all numbers. */
+function Band({ children, note }: { children: React.ReactNode; note?: string }) {
   return (
     <div
-      aria-hidden
-      className={page
-        /* One per printed page, absolutely positioned INSIDE that page's
-           wrapper. position: fixed is supposed to repeat on every printed
-           page, and does in Chrome - but Safari, which is what an iPad
-           prints through, has a long history of painting fixed elements on
-           page one only. Anchoring a copy inside each page needs no such
-           behavior from the browser. Hidden on screen: the single variant
-           below covers the scroll view. */
-        ? "pointer-events-none absolute inset-0 hidden print:flex items-center justify-center overflow-hidden"
-        /* The screen singleton, centred over the whole scroll. Hidden in
-           print, where the per-page copies take over. */
-        : "pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden print:hidden"}
-      /* -1, not 0: the per-page copies live INSIDE the zIndex-1 content
-         layer, and any positioned sibling at 0 would paint over the tables.
-         A negative index sits behind its in-flow siblings but still in
-         front of the white card, which is an ancestor background. */
-      style={{ zIndex: page ? -1 : 0 }}
+      className="flex items-baseline justify-between px-2 py-[3px] mt-3 first:mt-0 mb-1"
+      style={{ backgroundColor: "#000", ...PRINT_INK }}
     >
-      <img
-        src={logoUrl as string}
-        alt=""
-        onError={img.onError}
-        className="object-contain"
-        style={{
-          width: "70%",
-          maxWidth: "6in",
-          opacity: 0.05,
-          printColorAdjust: "exact",
-          WebkitPrintColorAdjust: "exact",
-        }}
-      />
+      <h2 className="text-[8pt] font-black uppercase tracking-[0.16em] text-white">{children}</h2>
+      {note && <span className="text-[7pt] uppercase tracking-wider text-neutral-300">{note}</span>}
     </div>
   );
 }
 
-/* ── Document primitives ──────────────────────────────────────────────────── */
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
+/** Sub-heading within a band, for the stacked tables on the offense page. */
+function SubHead({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-[13px] font-black uppercase tracking-[0.12em] text-black border-b-2 border-black pb-0.5 mb-1.5 mt-4 first:mt-0">
+    <div className="text-[7.5pt] font-black uppercase tracking-[0.12em] text-neutral-700 mt-2 mb-0.5">
       {children}
-    </h2>
+    </div>
   );
 }
 
+type Col = {
+  key: string;
+  /** Left-aligned name column; every other column is numeric and right-set. */
+  name?: boolean;
+  /** Set the value in bold — the number the table is actually asked for. */
+  bold?: boolean;
+  width?: string;
+};
+
 /**
- * One stat table.
+ * A stat table.
  *
- * `align` marks which columns are numeric so they can be right-aligned and
- * tabular; the first column is always the name and stays left. A `total` row
- * gets the rule above it that a stat sheet uses to say "this is the sum".
+ * No horizontal scroll container anywhere: at this width every table fits the
+ * page, and a scroll container clips on paper rather than scrolling, which is
+ * how columns used to disappear off the right-hand edge.
  */
-function Table({
-  head,
-  rows,
-  total,
-  minWidth,
-  emphasize,
+function StatTable({
+  cols, rows, total,
 }: {
-  head: string[];
+  cols: Col[];
   rows: Array<Array<string | number>>;
   total?: Array<string | number>;
-  minWidth?: number;
-  /** Column indexes to set in bold - the number the table is really about,
-   *  so it carries down the page without having to be counted across to. */
-  emphasize?: number[];
 }) {
-  const bold = new Set(emphasize ?? []);
+  if (rows.length === 0) {
+    return <div className="text-[8pt] text-neutral-500 py-1">None recorded.</div>;
+  }
   return (
-    <div className="overflow-x-auto">
-      <table
-        className="w-full text-[11px] border-collapse"
-        style={minWidth ? { minWidth } : undefined}
-      >
-        <thead>
-          <tr className="border-b border-black">
-            {head.map((h, i) => (
-              <th
-                key={h + i}
-                className={`py-1 px-1.5 font-black uppercase tracking-wide text-[10px] whitespace-nowrap ${
-                  i === 0 ? "text-left" : "text-right"
-                }`}
+    <table className="w-full border-collapse text-[8.5pt] tabular-nums">
+      <thead>
+        <tr className="border-b border-black">
+          {cols.map((c, i) => (
+            <th
+              key={c.key + i}
+              className={`py-[3px] px-[3px] text-[6.5pt] font-black uppercase tracking-[0.08em] whitespace-nowrap ${
+                c.name ? "text-left" : "text-right"
+              }`}
+              style={c.width ? { width: c.width } : undefined}
+            >
+              {c.key}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, ri) => (
+          <tr key={ri} className="border-b border-neutral-200">
+            {r.map((cell, ci) => (
+              <td
+                key={ci}
+                className={`py-[2.5px] px-[3px] whitespace-nowrap ${
+                  cols[ci]?.name ? "text-left font-semibold" : "text-right"
+                } ${cols[ci]?.bold ? "font-black" : ""}`}
               >
-                {h}
-              </th>
+                {cell}
+              </td>
             ))}
           </tr>
-        </thead>
-        <tbody className="tabular-nums">
-          {rows.map((r, ri) => (
-            <tr key={ri} className="border-b border-neutral-300">
-              {r.map((c, ci) => (
-                <td
-                  key={ci}
-                  className={`py-1 px-1.5 whitespace-nowrap ${
-                    ci === 0 ? "text-left font-semibold" : "text-right"
-                  } ${bold.has(ci) ? "font-black" : ""}`}
-                >
-                  {c}
-                </td>
-              ))}
-            </tr>
-          ))}
-          {total && (
-            <tr className="border-t-2 border-black font-black">
-              {total.map((c, ci) => (
-                <td
-                  key={ci}
-                  className={`py-1 px-1.5 whitespace-nowrap ${
-                    ci === 0 ? "text-left" : "text-right"
-                  }`}
-                >
-                  {c}
-                </td>
-              ))}
-            </tr>
-          )}
-        </tbody>
-      </table>
-      {rows.length === 0 && (
-        <div className="text-[11px] text-neutral-500 py-1.5 px-1.5">None recorded.</div>
-      )}
+        ))}
+        {total && (
+          <tr className="border-t-2 border-black font-black">
+            {total.map((cell, ci) => (
+              <td
+                key={ci}
+                className={`py-[3px] px-[3px] whitespace-nowrap ${
+                  cols[ci]?.name ? "text-left" : "text-right"
+                }`}
+              >
+                {cell}
+              </td>
+            ))}
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+/** One half of the team comparison, so 37 rows fit a single page in two
+ *  columns instead of running onto a second sheet and leaving this one half
+ *  empty. */
+function TeamStatColumn({
+  rows, usAbbr, themAbbr,
+}: { rows: TeamStatRow[]; usAbbr: string; themAbbr: string }) {
+  return (
+    <table className="w-full border-collapse text-[8pt] tabular-nums">
+      <thead>
+        <tr className="border-b border-black">
+          <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase tracking-[0.08em]">
+            Team Stat
+          </th>
+          <th className="text-right py-[3px] px-[3px] text-[6.5pt] font-black uppercase w-[0.5in]">{usAbbr}</th>
+          <th className="text-right py-[3px] px-[3px] text-[6.5pt] font-black uppercase w-[0.5in]">{themAbbr}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i} className="border-b border-neutral-200">
+            <td className={`py-[2px] px-[3px] ${
+              r.emphasis === "head"
+                ? "font-black uppercase text-[7.5pt]"
+                : r.emphasis === "sub"
+                  ? "pl-3 text-neutral-600"
+                  : "font-semibold"
+            }`}>
+              {r.label}
+            </td>
+            <td className={`py-[2px] px-[3px] text-right ${r.emphasis === "head" ? "font-black" : ""}`}>{r.us}</td>
+            <td className={`py-[2px] px-[3px] text-right ${r.emphasis === "head" ? "font-black" : ""}`}>{r.them}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** One side of the final score. */
+function ScoreBlock({ abbr, score, won }: { abbr: string; score: number; won: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[9pt] font-black uppercase tracking-widest text-neutral-600">{abbr}</span>
+      <span className={`text-[22pt] font-black leading-none tabular-nums ${won ? "" : "text-neutral-500"}`}>
+        {score}
+      </span>
     </div>
   );
 }
@@ -253,7 +318,6 @@ export default function GameReportScreen() {
   const { program, season } = useProgramContext();
 
   const [report, setReport] = useState<GameReport | null>(null);
-  const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -296,7 +360,6 @@ export default function GameReportScreen() {
             opponent_logo_url: opp?.logo_url ?? null,
           }
         : null;
-      setGameInfo(info);
 
       if (bundle && info) {
         setReport(buildGameReport({
@@ -332,14 +395,13 @@ export default function GameReportScreen() {
     return () => { cancelled = true; };
   }, [gameId, program, season]);
 
-  const scoreHeader = useMemo(() => {
-    if (!report) return "";
-    return `${report.them.abbr}-${report.us.abbr}`;
-  }, [report]);
+  const PAGES = 4;
 
   return (
-    <div className="screen safe-top safe-bottom print:bg-white">
-      {/* App chrome — keeps the dark theme, never prints. */}
+    /* Deliberately NOT .screen: that class is max-w-app (28rem) below the lg
+       breakpoint, and print lays out at about 768px, so the app frame used to
+       squeeze the whole document into a phone-width column on paper. */
+    <div className="min-h-dvh flex flex-col bg-surface-bg print:bg-white">
       <div className="flex items-center gap-3 px-5 pt-5 pb-2 print:hidden">
         <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
@@ -356,239 +418,239 @@ export default function GameReportScreen() {
       </div>
       <div className="mx-5 mt-1 mb-4 accent-line print:hidden" />
 
-      <div className="flex-1 overflow-y-auto px-3 pb-8 print:overflow-visible print:px-0 print:pb-0">
+      {/* The pages are a fixed 8 inches. Narrower than that on screen and this
+          scrolls sideways rather than reflowing — reflowing is exactly how the
+          printed version stopped matching what was on screen. */}
+      <div className="flex-1 overflow-auto print:overflow-visible pb-10 print:pb-0">
         {loading && (
-          <div className="card p-8 text-center text-slate-500 animate-pulse print:hidden">
-            Building report...
+          <div className="card p-8 mx-5 text-center text-slate-500 animate-pulse print:hidden">
+            Building report…
           </div>
         )}
 
         {!loading && !report && (
-          <div className="card p-8 text-center text-slate-500 text-sm print:hidden">
+          <div className="card p-8 mx-5 text-center text-slate-500 text-sm print:hidden">
             No plays recorded for this game yet.
           </div>
         )}
 
-        {!loading && report && gameInfo && (
-          /* max-w-none under print: the paper's printable width is the page
-             minus the margins, and a container insisting on 8.5in inside 8in
-             of printable width is exactly a half inch of clipped tables. On
-             screen the 8.5in cap stays - it is what makes it read as paper. */
-          <div className="game-report-sheet relative mx-auto max-w-[8.5in] print:max-w-none bg-white text-black rounded-lg print:rounded-none shadow-lg print:shadow-none p-5 print:p-0 font-body">
-            <Watermark logoUrl={report.us.logoUrl} />
+        {!loading && report && (
+          <div className="flex flex-col items-center gap-6 print:gap-0 px-4 print:px-0">
 
-            {/* Everything above the ghosted mark. One stacking context on the
-                content rather than a z-index on every table. */}
-            <div className="relative" style={{ zIndex: 1 }}>
-
-            {/* ── PAGE 1: box score, scoring summary, points ──────────────
-                The sheet prints as four fixed pages, one subject each, the
-                way a handed-out packet reads: game and scoring first, then
-                every individual line, then the team comparison, then the
-                defense. The breaks exist only under print - on screen the
-                wrappers are invisible and the report stays one scroll. */}
-            <div className="relative print:break-after-page">
-            <Watermark logoUrl={report.us.logoUrl} page />
-
-            {/* ── Header block ────────────────────────────────────────── */}
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-black pb-2">
-              <div className="flex items-start gap-3 min-w-0">
-                {/* Whose sheet this is, answered before anything is read. */}
-                <Crest
-                  logoUrl={report.us.logoUrl}
-                  abbr={report.us.abbr}
-                  color={report.us.color}
-                  size={46}
-                />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-bold uppercase tracking-wide">
-                    DATE: {report.dateLabel}
-                    {report.occasion ? ` - ${report.occasion}` : ""}
+            {/* ══ PAGE 1 — the game ══════════════════════════════════════ */}
+            <Page report={report} pageNo={1} pageCount={PAGES}>
+              <div className="flex items-center gap-3 pb-2 border-b-[3px] border-black">
+                <Crest logoUrl={report.us.logoUrl} abbr={report.us.abbr} color={report.us.color} size={44} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[15pt] font-black uppercase leading-none tracking-tight">
+                    {report.us.name} <span className="text-neutral-400">vs</span> {report.them.name}
                   </div>
-                  <div className="text-[17px] font-black uppercase leading-tight tracking-wide mt-0.5">
-                    {report.title}
+                  <div className="text-[7.5pt] font-bold uppercase tracking-[0.14em] text-neutral-600 mt-1">
+                    {report.dateLabel}
+                    {report.kickoffLabel ? ` · ${report.kickoffLabel}` : ""}
+                    {report.occasion ? ` · ${report.occasion}` : ""}
                   </div>
-                  {report.kickoffLabel && (
-                    <div className="text-[11px] font-bold mt-0.5">{report.kickoffLabel}</div>
-                  )}
                 </div>
+                <Crest logoUrl={report.them.logoUrl} abbr={report.them.abbr} color={report.them.color} size={44} />
               </div>
 
-              {/* Line score */}
-              <table className="text-[11px] border-collapse tabular-nums">
-                <thead>
-                  <tr>
-                    <th className="text-left px-1.5 py-0.5 font-black uppercase text-[10px]">Team</th>
-                    {report.quarters.map(q => (
-                      <th key={q} className="px-2 py-0.5 font-black uppercase text-[10px] text-center">
-                        QTR {q}
-                      </th>
-                    ))}
-                    <th className="px-2 py-0.5 font-black uppercase text-[10px] text-center">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-t border-black">
-                    <td className="px-1.5 py-0.5 font-bold uppercase whitespace-nowrap">
-                      <span className="flex items-center gap-1.5">
-                        <Crest logoUrl={report.us.logoUrl} abbr={report.us.abbr} color={report.us.color} size={16} />
-                        {report.us.name}
-                      </span>
-                    </td>
-                    {report.lineScore.us.map((v, i) => (
-                      <td key={i} className="px-2 py-0.5 text-center">{v}</td>
-                    ))}
-                    <td className="px-2 py-0.5 text-center font-black">{report.lineScore.usTotal}</td>
-                  </tr>
-                  <tr className="border-t border-neutral-300">
-                    <td className="px-1.5 py-0.5 font-bold uppercase whitespace-nowrap">
-                      <span className="flex items-center gap-1.5">
-                        <Crest logoUrl={report.them.logoUrl} abbr={report.them.abbr} color={report.them.color} size={16} />
-                        {report.them.name}
-                      </span>
-                    </td>
-                    {report.lineScore.them.map((v, i) => (
-                      <td key={i} className="px-2 py-0.5 text-center">{v}</td>
-                    ))}
-                    <td className="px-2 py-0.5 text-center font-black">{report.lineScore.themTotal}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+              <div className="flex items-stretch justify-center gap-4 py-2 border-b border-neutral-300">
+                <ScoreBlock
+                  abbr={report.us.abbr}
+                  score={report.lineScore.usTotal}
+                  won={report.lineScore.usTotal > report.lineScore.themTotal}
+                />
+                <div className="self-center text-[9pt] font-bold text-neutral-400 uppercase">Final</div>
+                <ScoreBlock
+                  abbr={report.them.abbr}
+                  score={report.lineScore.themTotal}
+                  won={report.lineScore.themTotal > report.lineScore.usTotal}
+                />
+              </div>
 
-            {/* ── Scoring summary ─────────────────────────────────────── */}
-            <SectionTitle>Scoring Summary</SectionTitle>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse" style={{ minWidth: 520 }}>
+              <Band>Line Score</Band>
+              <table className="w-full border-collapse text-[9pt] tabular-nums">
                 <thead>
                   <tr className="border-b border-black">
-                    <th className="text-left py-1 px-1.5 font-black uppercase text-[10px] w-10">Qtr</th>
-                    <th className="text-left py-1 px-1.5 font-black uppercase text-[10px] w-14">Time</th>
-                    <th className="text-left py-1 px-1.5 font-black uppercase text-[10px] w-16">Team</th>
-                    <th className="text-left py-1 px-1.5 font-black uppercase text-[10px]">Scoring Play</th>
-                    <th className="text-right py-1 px-1.5 font-black uppercase text-[10px] w-16">{scoreHeader}</th>
+                    <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase tracking-[0.08em]">Team</th>
+                    {report.quarters.map(q => (
+                      <th key={q} className="text-center py-[3px] px-[3px] text-[6.5pt] font-black uppercase w-[0.7in]">{q}</th>
+                    ))}
+                    <th className="text-center py-[3px] px-[3px] text-[6.5pt] font-black uppercase w-[0.7in]">Final</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {report.scoring.map((s, i) => (
-                    <tr key={i} className="border-b border-neutral-300 align-top">
-                      <td className="py-1 px-1.5 tabular-nums">{s.quarter}</td>
-                      <td className="py-1 px-1.5 tabular-nums">{s.clock}</td>
-                      <td className="py-1 px-1.5 font-bold">{s.team}</td>
-                      <td className="py-1 px-1.5">
-                        {s.play}{s.conversion ? ` ${s.conversion}` : ""}
+                  {[
+                    { side: report.us, line: report.lineScore.us, total: report.lineScore.usTotal },
+                    { side: report.them, line: report.lineScore.them, total: report.lineScore.themTotal },
+                  ].map((row, i) => (
+                    <tr key={i} className="border-b border-neutral-200">
+                      <td className="py-[3px] px-[3px] font-bold uppercase whitespace-nowrap">
+                        <span className="flex items-center gap-1.5">
+                          <Crest logoUrl={row.side.logoUrl} abbr={row.side.abbr} color={row.side.color} size={13} />
+                          {row.side.name}
+                        </span>
                       </td>
-                      <td className="py-1 px-1.5 text-right tabular-nums font-bold">{s.score}</td>
+                      {row.line.map((v, qi) => (
+                        <td key={qi} className="text-center py-[3px] px-[3px]">{v}</td>
+                      ))}
+                      <td className="text-center py-[3px] px-[3px] font-black">{row.total}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {report.scoring.length === 0 && (
-                <div className="text-[11px] text-neutral-500 py-1.5 px-1.5">No scoring plays recorded.</div>
+
+              <Band note={`${report.them.abbr} — ${report.us.abbr}`}>Scoring Summary</Band>
+              {report.scoring.length === 0 ? (
+                <div className="text-[8pt] text-neutral-500 py-1">No scoring plays recorded.</div>
+              ) : (
+                <table className="w-full border-collapse text-[8.5pt]">
+                  <thead>
+                    <tr className="border-b border-black">
+                      <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase w-[0.35in]">Qtr</th>
+                      <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase w-[0.5in]">Time</th>
+                      <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase w-[0.45in]">Team</th>
+                      <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase">Scoring Play</th>
+                      <th className="text-right py-[3px] px-[3px] text-[6.5pt] font-black uppercase w-[0.6in]">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.scoring.map((s, i) => (
+                      <tr key={i} className="border-b border-neutral-200 align-top">
+                        <td className="py-[3px] px-[3px] tabular-nums">{s.quarter}</td>
+                        <td className="py-[3px] px-[3px] tabular-nums">{s.clock}</td>
+                        <td className="py-[3px] px-[3px] font-black">{s.team}</td>
+                        <td className="py-[3px] px-[3px] leading-snug">
+                          {s.play}{s.conversion ? ` ${s.conversion}` : ""}
+                        </td>
+                        <td className="py-[3px] px-[3px] text-right tabular-nums font-black">{s.score}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
-            </div>
 
-            {/* ── Points by player ────────────────────────────────────── */}
-            <SectionTitle>{report.us.abbr} - Points - Player</SectionTitle>
-            <div className="max-w-xs">
-              <Table
-                head={["Player", "PTS"]}
-                rows={report.points.map(p => [p.name, p.points])}
-                total={["Total", report.pointsTotal]}
+              <Band>{report.us.abbr} Scoring — Points by Player</Band>
+              <div className="w-[3.2in]">
+                <StatTable
+                  cols={[{ key: "Player", name: true }, { key: "Pts", bold: true }]}
+                  rows={report.points.map(p => [p.name, p.points])}
+                  total={["Total", report.pointsTotal]}
+                />
+              </div>
+            </Page>
+
+            {/* ══ PAGE 2 — offense ═══════════════════════════════════════ */}
+            <Page report={report} pageNo={2} pageCount={PAGES}>
+              <Band note={report.us.name}>Individual Offense</Band>
+
+              <SubHead>Rushing</SubHead>
+              <StatTable
+                cols={[
+                  { key: "Player", name: true },
+                  { key: "Att" }, { key: "Net", bold: true }, { key: "Gain" }, { key: "Loss" },
+                  { key: "TD" }, { key: "Lg" }, { key: "Avg" }, { key: "Fum" },
+                ]}
+                rows={report.rushing.map(r => [
+                  r.name, r.att, r.net, r.gain, r.loss, r.td, r.long, r.avg.toFixed(1), r.fum,
+                ])}
+                total={[
+                  "Total", report.rushingTotal.att, report.rushingTotal.net,
+                  report.rushingTotal.gain, report.rushingTotal.loss, report.rushingTotal.td,
+                  report.rushingTotal.long, report.rushingTotal.avg.toFixed(1), report.rushingTotal.fum,
+                ]}
               />
-            </div>
-            </div>
 
-            {/* ── PAGE 2: individual stats - offense, punting, returns,
-                kickoffs. SectionTitle's first:mt-0 now matches the first
-                title of each page, so the wrapper carries the on-screen gap
-                and drops it at the top of a printed page. */}
-            <div className="relative mt-4 print:mt-0 print:break-after-page">
-            <Watermark logoUrl={report.us.logoUrl} page />
+              <SubHead>Passing</SubHead>
+              <StatTable
+                cols={[
+                  { key: "Player", name: true },
+                  { key: "Att" }, { key: "Comp" }, { key: "Int" },
+                  { key: "Yds", bold: true }, { key: "Long" }, { key: "Sack" }, { key: "TD" },
+                ]}
+                rows={report.passing.map(r => [
+                  r.name, r.att, r.comp, r.int, r.yds, r.long, r.sack, r.td,
+                ])}
+                total={[
+                  "Total", report.passingTotal.att, report.passingTotal.comp, report.passingTotal.int,
+                  report.passingTotal.yds, report.passingTotal.long, report.passingTotal.sack,
+                  report.passingTotal.td,
+                ]}
+              />
 
-            {/* ── Offensive stats ─────────────────────────────────────── */}
-            <SectionTitle>Offensive Stats</SectionTitle>
+              <SubHead>Receiving</SubHead>
+              <StatTable
+                cols={[
+                  { key: "Player", name: true },
+                  { key: "Rec" }, { key: "Yds", bold: true }, { key: "TD" }, { key: "Long" },
+                ]}
+                rows={report.receiving.map(r => [r.name, r.rec, r.yds, r.td, r.long])}
+                total={[
+                  "Total", report.receivingTotal.rec, report.receivingTotal.yds,
+                  report.receivingTotal.td, report.receivingTotal.long,
+                ]}
+              />
+            </Page>
 
-            <div className="text-[11px] font-black uppercase tracking-wide mt-2 mb-1">Rushing</div>
-            <Table
-              minWidth={520}
-              /* Net sits next to the attempts because it is the number anyone
-                 reads first - carries and what they were worth. Gain and loss
-                 follow as the breakdown of it, which is the order they get
-                 asked about in. */
-              /* Net is the answer the rushing table is asked for; gain and
-                 loss are how it got there. */
-              emphasize={[2]}
-              head={["Player", "Att.", "Net", "Gain", "Loss", "TD", "Lg", "Avg", "FUM."]}
-              rows={report.rushing.map(r => [
-                r.name, r.att, signed(r.net), r.gain, signed(r.loss), r.td, r.long, r.avg.toFixed(1), r.fum,
-              ])}
-              total={[
-                "Total", report.rushingTotal.att,
-                signed(report.rushingTotal.net), report.rushingTotal.gain,
-                signed(report.rushingTotal.loss),
-                report.rushingTotal.td, report.rushingTotal.long,
-                report.rushingTotal.avg.toFixed(1), report.rushingTotal.fum,
-              ]}
-            />
+            {/* ══ PAGE 3 — special teams + team comparison ═══════════════ */}
+            <Page report={report} pageNo={3} pageCount={PAGES}>
+              <Band note={report.us.name}>Special Teams</Band>
 
-            <div className="text-[11px] font-black uppercase tracking-wide mt-3 mb-1">Passing</div>
-            <Table
-              minWidth={480}
-              head={["Player", "Att.", "Comp", "Int", "Yds", "Long", "Sack", "TD"]}
-              rows={report.passing.map(r => [
-                r.name, r.att, r.comp, r.int, r.yds, r.long, r.sack, r.td,
-              ])}
-              total={[
-                "Total", report.passingTotal.att, report.passingTotal.comp,
-                report.passingTotal.int, report.passingTotal.yds,
-                report.passingTotal.long, report.passingTotal.sack, report.passingTotal.td,
-              ]}
-            />
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <SubHead>Punting</SubHead>
+                  <StatTable
+                    cols={[
+                      { key: "Player", name: true },
+                      { key: "No" }, { key: "Yds", bold: true }, { key: "Avg" },
+                      { key: "Lg" }, { key: "In20" }, { key: "TB" },
+                    ]}
+                    rows={report.punting.map(r => [
+                      r.name, r.att, r.yds, r.avg.toFixed(1), r.long, r.inside20, r.tb,
+                    ])}
+                    total={[
+                      "Total", report.puntingTotal.att, report.puntingTotal.yds,
+                      report.puntingTotal.avg.toFixed(1), report.puntingTotal.long,
+                      report.puntingTotal.inside20, report.puntingTotal.tb,
+                    ]}
+                  />
+                </div>
+                <div className="flex-1">
+                  <SubHead>Kickoffs</SubHead>
+                  <StatTable
+                    cols={[
+                      { key: "Player", name: true },
+                      { key: "No" }, { key: "Yds", bold: true }, { key: "Avg" }, { key: "TB" },
+                    ]}
+                    rows={report.kickoffs.map(r => [r.name, r.no, r.yds, r.avg.toFixed(1), r.tb])}
+                    total={[
+                      "Total", report.kickoffsTotal.no, report.kickoffsTotal.yds,
+                      report.kickoffsTotal.avg.toFixed(1), report.kickoffsTotal.tb,
+                    ]}
+                  />
+                  <div className="text-[7.5pt] font-bold uppercase tracking-wider mt-1">
+                    Onside recovered: <span className="tabular-nums">{report.onsideRecovered}</span>
+                  </div>
+                </div>
+              </div>
 
-            <div className="text-[11px] font-black uppercase tracking-wide mt-3 mb-1">Receiving</div>
-            <Table
-              minWidth={380}
-              emphasize={[2]}
-              head={["Player", "Att.", "Yards", "TD", "Long"]}
-              rows={report.receiving.map(r => [r.name, r.rec, r.yds, r.td, r.long])}
-              total={[
-                "Total", report.receivingTotal.rec, report.receivingTotal.yds,
-                report.receivingTotal.td, report.receivingTotal.long,
-              ]}
-            />
-
-            <div className="text-[11px] font-black uppercase tracking-wide mt-3 mb-1">Punting</div>
-            <Table
-              minWidth={460}
-              head={["Player", "Att.", "Yards", "Avg", "Long", "Ind20", "TB"]}
-              rows={report.punting.map(r => [
-                r.name, r.att, r.yds, r.avg.toFixed(1), r.long, r.inside20, r.tb,
-              ])}
-              total={[
-                "Total", report.puntingTotal.att, report.puntingTotal.yds,
-                report.puntingTotal.avg.toFixed(1), report.puntingTotal.long,
-                report.puntingTotal.inside20, report.puntingTotal.tb,
-              ]}
-            />
-
-            {/* ── Returns ─────────────────────────────────────────────── */}
-            <SectionTitle>Returns</SectionTitle>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse" style={{ minWidth: 560 }}>
+              <SubHead>Returns</SubHead>
+              <table className="w-full border-collapse text-[8.5pt] tabular-nums">
                 <thead>
                   <tr>
-                    <th className="text-left py-1 px-1.5 font-black uppercase text-[10px]">Player</th>
-                    <th colSpan={3} className="py-1 px-1.5 font-black uppercase text-[10px] text-center border-l border-neutral-400">Kickoff</th>
-                    <th colSpan={3} className="py-1 px-1.5 font-black uppercase text-[10px] text-center border-l border-neutral-400">Punt</th>
-                    <th colSpan={3} className="py-1 px-1.5 font-black uppercase text-[10px] text-center border-l border-neutral-400">Intercept</th>
+                    <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase">Player</th>
+                    {["Kickoff", "Punt", "Intercept"].map(g => (
+                      <th key={g} colSpan={3} className="py-[3px] px-[3px] text-[6.5pt] font-black uppercase text-center border-l border-neutral-400">
+                        {g}
+                      </th>
+                    ))}
                   </tr>
                   <tr className="border-b border-black">
                     <th />
                     {["No", "Yds", "Lg", "No", "Yds", "Lg", "No", "Yds", "Lg"].map((h, i) => (
                       <th
                         key={i}
-                        className={`py-0.5 px-1.5 font-bold uppercase text-[10px] text-right ${
+                        className={`py-[2px] px-[3px] text-[6.5pt] font-bold uppercase text-right ${
                           i % 3 === 0 ? "border-l border-neutral-400" : ""
                         }`}
                       >
@@ -597,154 +659,89 @@ export default function GameReportScreen() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="tabular-nums">
+                <tbody>
                   {report.returns.map((r, i) => (
-                    <tr key={i} className="border-b border-neutral-300">
-                      <td className="py-1 px-1.5 font-semibold">{r.name}</td>
+                    <tr key={i} className="border-b border-neutral-200">
+                      <td className="py-[2.5px] px-[3px] font-semibold">{r.name}</td>
                       {[r.ko, r.punt, r.int].flatMap((g, gi) => [
-                        <td key={`${gi}n`} className="py-1 px-1.5 text-right border-l border-neutral-400">{g.no || ""}</td>,
-                        <td key={`${gi}y`} className="py-1 px-1.5 text-right">{g.no ? g.yds : ""}</td>,
-                        <td key={`${gi}l`} className="py-1 px-1.5 text-right">{g.no ? g.long : ""}</td>,
+                        <td key={`${gi}n`} className="py-[2.5px] px-[3px] text-right border-l border-neutral-400">{g.no || ""}</td>,
+                        <td key={`${gi}y`} className="py-[2.5px] px-[3px] text-right font-black">{g.no ? g.yds : ""}</td>,
+                        <td key={`${gi}l`} className="py-[2.5px] px-[3px] text-right">{g.no ? g.long : ""}</td>,
                       ])}
                     </tr>
                   ))}
                   <tr className="border-t-2 border-black font-black">
-                    <td className="py-1 px-1.5">Total</td>
+                    <td className="py-[3px] px-[3px]">Total</td>
                     {[report.returnsTotal.ko, report.returnsTotal.punt, report.returnsTotal.int].flatMap((g, gi) => [
-                      <td key={`${gi}n`} className="py-1 px-1.5 text-right border-l border-neutral-400">{g.no}</td>,
-                      <td key={`${gi}y`} className="py-1 px-1.5 text-right">{g.yds}</td>,
-                      <td key={`${gi}l`} className="py-1 px-1.5 text-right">{g.long}</td>,
+                      <td key={`${gi}n`} className="py-[3px] px-[3px] text-right border-l border-neutral-400">{g.no}</td>,
+                      <td key={`${gi}y`} className="py-[3px] px-[3px] text-right">{g.yds}</td>,
+                      <td key={`${gi}l`} className="py-[3px] px-[3px] text-right">{g.long}</td>,
                     ])}
                   </tr>
                 </tbody>
               </table>
-            </div>
 
-            {/* ── Kickoffs ────────────────────────────────────────────── */}
-            <SectionTitle>Kickoff</SectionTitle>
-            <div className="max-w-md">
-              <Table
-                head={["Player", "No", "Yds", "Avg", "TB"]}
-                rows={report.kickoffs.map(r => [r.name, r.no, r.yds, r.avg.toFixed(1), r.tb])}
+              <Band note={`${report.us.abbr} vs ${report.them.abbr}`}>Team Statistics</Band>
+              {/* Two columns: 37 rows down one side would run onto a second
+                  sheet and leave this one half empty. */}
+              <div className="flex gap-4 items-start">
+                <div className="flex-1">
+                  <TeamStatColumn
+                    rows={report.teamStats.slice(0, Math.ceil(report.teamStats.length / 2))}
+                    usAbbr={report.us.abbr}
+                    themAbbr={report.them.abbr}
+                  />
+                </div>
+                <div className="flex-1">
+                  <TeamStatColumn
+                    rows={report.teamStats.slice(Math.ceil(report.teamStats.length / 2))}
+                    usAbbr={report.us.abbr}
+                    themAbbr={report.them.abbr}
+                  />
+                </div>
+              </div>
+            </Page>
+
+            {/* ══ PAGE 4 — defense ═══════════════════════════════════════ */}
+            <Page report={report} pageNo={4} pageCount={PAGES} last>
+              <Band note={report.us.name}>Individual Defense</Band>
+              <StatTable
+                cols={[
+                  { key: "#", name: true, width: "0.3in" },
+                  { key: "Name", name: true },
+                  { key: "Solo" }, { key: "Ast" }, { key: "Total", bold: true },
+                  { key: "Sack" }, { key: "Yds" },
+                  { key: "TFL" }, { key: "Yds" },
+                  { key: "FF" }, { key: "FR" }, { key: "Yds" },
+                  { key: "Int" }, { key: "Yds" },
+                  { key: "BrUp" }, { key: "Blk" }, { key: "QBH" },
+                ]}
+                rows={report.defense.map(r => [
+                  r.jersey ?? "", r.name,
+                  n(r.solo), n(r.ast), n(r.total),
+                  n(r.sacks), n(r.sackYds),
+                  n(r.tfl), n(r.tflYds),
+                  n(r.ff), n(r.fr), n(r.frYds),
+                  n(r.int), n(r.intYds),
+                  n(r.brUp), n(r.blocks), n(r.qbh),
+                ])}
                 total={[
-                  "Total", report.kickoffsTotal.no, report.kickoffsTotal.yds,
-                  report.kickoffsTotal.avg.toFixed(1), report.kickoffsTotal.tb,
+                  "", "Total",
+                  n(report.defenseTotal.solo), n(report.defenseTotal.ast), n(report.defenseTotal.total),
+                  n(report.defenseTotal.sacks), n(report.defenseTotal.sackYds),
+                  n(report.defenseTotal.tfl), n(report.defenseTotal.tflYds),
+                  n(report.defenseTotal.ff), n(report.defenseTotal.fr), n(report.defenseTotal.frYds),
+                  n(report.defenseTotal.int), n(report.defenseTotal.intYds),
+                  n(report.defenseTotal.brUp), n(report.defenseTotal.blocks), n(report.defenseTotal.qbh),
                 ]}
               />
-              <div className="text-[11px] font-bold uppercase tracking-wide mt-1.5">
-                Onside Recovered: <span className="tabular-nums">{report.onsideRecovered}</span>
+              <div className="text-[7pt] text-neutral-500 mt-2 leading-snug">
+                Sacks, TFL, fumble recoveries and interceptions each show count then yards.
+                A shared tackle counts half to each player, so Total can carry a half.
+                {" "}#100 TEAM holds stops credited to the defense when no jersey was identified.
               </div>
-            </div>
-            </div>
+            </Page>
 
-            {/* ── PAGE 3: the team comparison ── */}
-            <div className="relative mt-4 print:mt-0 print:break-after-page">
-            <Watermark logoUrl={report.us.logoUrl} page />
-
-            {/* ── Team stats ──────────────────────────────────────────── */}
-            <SectionTitle>Team Stats</SectionTitle>
-            <table className="w-full text-[11px] border-collapse">
-              <thead>
-                <tr className="border-b border-black">
-                  <th className="text-left py-1 px-1.5 font-black uppercase text-[10px]">Action Name</th>
-                  <th className="py-1 px-1.5 font-black uppercase text-[10px] w-16">
-                    <span className="flex items-center justify-end gap-1">
-                      <Crest logoUrl={report.us.logoUrl} abbr={report.us.abbr} color={report.us.color} size={14} />
-                      {report.us.abbr}
-                    </span>
-                  </th>
-                  <th className="py-1 px-1.5 font-black uppercase text-[10px] w-16">
-                    <span className="flex items-center justify-end gap-1">
-                      <Crest logoUrl={report.them.logoUrl} abbr={report.them.abbr} color={report.them.color} size={14} />
-                      {report.them.abbr}
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="tabular-nums">
-                {report.teamStats.map((r, i) => (
-                  <tr key={i} className="border-b border-neutral-200">
-                    <td
-                      className={`py-0.5 px-1.5 ${
-                        r.emphasis === "head"
-                          ? "font-black uppercase"
-                          : r.emphasis === "sub"
-                            ? "pl-4 text-neutral-700"
-                            : "font-semibold"
-                      }`}
-                    >
-                      {r.label}
-                    </td>
-                    <td className={`py-0.5 px-1.5 text-right ${r.emphasis === "head" ? "font-black" : ""}`}>{r.us}</td>
-                    <td className={`py-0.5 px-1.5 text-right ${r.emphasis === "head" ? "font-black" : ""}`}>{r.them}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-
-            {/* ── PAGE 4: the defense. No break after - a trailing break
-                would print a blank fifth page. */}
-            <div className="relative mt-4 print:mt-0">
-            <Watermark logoUrl={report.us.logoUrl} page />
-
-            {/* ── Defensive stats ─────────────────────────────────────── */}
-            <SectionTitle>Defensive Stats</SectionTitle>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse" style={{ minWidth: 700 }}>
-                <thead>
-                  <tr className="border-b border-black">
-                    {["#", "Name", "Solo", "Ast", "Total", "Sacks-Yds", "TFL-Yds", "FF", "FR-Yds", "Int-Yds", "BrUp", "Blks", "QBH"]
-                      .map((h, i) => (
-                        <th
-                          key={h}
-                          className={`py-1 px-1.5 font-black uppercase text-[10px] whitespace-nowrap ${
-                            i <= 1 ? "text-left" : "text-right"
-                          }`}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                  </tr>
-                </thead>
-                <tbody className="tabular-nums">
-                  {report.defense.map((r, i) => (
-                    <tr key={i} className="border-b border-neutral-300">
-                      <td className="py-1 px-1.5">{r.jersey ?? ""}</td>
-                      <td className="py-1 px-1.5 font-semibold whitespace-nowrap">{r.name}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.solo)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.ast)}</td>
-                      <td className="py-1 px-1.5 text-right font-bold">{n(r.total)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.sacks)}-{n(r.sackYds)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.tfl)}-{n(r.tflYds)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.ff)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.fr)}-{n(r.frYds)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.int)}-{n(r.intYds)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.brUp)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.blocks)}</td>
-                      <td className="py-1 px-1.5 text-right">{n(r.qbh)}</td>
-                    </tr>
-                  ))}
-                  <tr className="border-t-2 border-black font-black">
-                    <td className="py-1 px-1.5" />
-                    <td className="py-1 px-1.5">Total</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.solo)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.ast)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.total)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.sacks)}-{n(report.defenseTotal.sackYds)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.tfl)}-{n(report.defenseTotal.tflYds)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.ff)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.fr)}-{n(report.defenseTotal.frYds)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.int)}-{n(report.defenseTotal.intYds)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.brUp)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.blocks)}</td>
-                    <td className="py-1 px-1.5 text-right">{n(report.defenseTotal.qbh)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            </div>
-            </div>
           </div>
         )}
       </div>
@@ -752,7 +749,7 @@ export default function GameReportScreen() {
   );
 }
 
-/** "19:00" or "19:00:00" from the DB reads as "7:00PM" on the sheet. */
+/** "19:00" or "19:00:00" from the DB reads as "7:00 PM" on the sheet. */
 function formatKickoff(raw: string | null): string | null {
   if (!raw) return null;
   const m = /^(\d{1,2}):(\d{2})/.exec(raw);
@@ -761,5 +758,5 @@ function formatKickoff(raw: string | null): string | null {
   const minute = m[2];
   const suffix = hour24 >= 12 ? "PM" : "AM";
   const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-  return `${hour12}:${minute}${suffix}`;
+  return `${hour12}:${minute} ${suffix}`;
 }
