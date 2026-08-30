@@ -88,6 +88,17 @@ function taggedSummary(play: PlayWithPlayers): { role: string; name: string }[] 
   }));
 }
 
+/** Ways a player can be involved, grouped the way a coach would ask.
+ *  "target" rides with receiver: he was thrown at, caught or not. */
+const ROLE_GROUPS = {
+  pass: ["passer"],
+  rush: ["rusher"],
+  receive: ["receiver", "target"],
+  tackle: ["tackler", "sacker", "assist"],
+  kick: ["kicker", "punter", "returner", "recoverer", "blocker"],
+} as const;
+type RoleGroup = keyof typeof ROLE_GROUPS | "any";
+
 const UNIT_COLOR: Record<Unit, string> = {
   O: "#3b82f6",
   D: "#ef4444",
@@ -969,6 +980,11 @@ export default function PostGameReview() {
      PlayTypeDef, so a play type added later files itself. */
   const [categoryFilter, setCategoryFilter] = useState<PlayCategory | "all">("all");
   const [playerQuery, setPlayerQuery] = useState("");
+  /* How the named player was involved. Without this, "his passing plays" means
+     every pass he was anywhere near - a quarterback's own throws, the ones he
+     caught, and the ones he tackled somebody after. With it, it means the ones
+     he threw. */
+  const [roleFilter, setRoleFilter] = useState<RoleGroup>("any");
 
   /* Everything about a play that names a player, flattened once per play.
      Rostered tags carry no jersey on the join, so the number comes off the
@@ -982,20 +998,28 @@ export default function PostGameReview() {
       byId.set(r.player_id, `${r.jersey_number ?? ""} ${name}`.toLowerCase());
     }
 
-    const index = new Map<string, string>();
+    /* One entry per tag rather than one string per play, because the role a
+       name was tagged in is half the question: the same man appears on a play
+       as the passer and on the next as the tackler. */
+    const index = new Map<string, Array<{ text: string; role: string }>>();
     for (const play of plays) {
-      const parts: string[] = [];
+      const entries: Array<{ text: string; role: string }> = [];
       for (const pp of play.play_players ?? []) {
-        parts.push(byId.get(pp.player_id) ?? "");
+        entries.push({ text: byId.get(pp.player_id) ?? "", role: pp.role });
       }
       const pd = (play.play_data ?? {}) as Record<string, any>;
       for (const key of ["opp_tagged", "pending_tagged"]) {
         for (const t of (Array.isArray(pd[key]) ? pd[key] : []) as any[]) {
-          parts.push(`${t.jersey_number ?? ""} ${t.name ?? ""}`.toLowerCase());
+          entries.push({
+            text: `${t.jersey_number ?? ""} ${t.name ?? ""}`.toLowerCase(),
+            role: String(t.role ?? ""),
+          });
         }
       }
-      if (Array.isArray(pd.team_tagged) && pd.team_tagged.length > 0) parts.push("team 100");
-      index.set(play.id, parts.join(" | "));
+      for (const t of (Array.isArray(pd.team_tagged) ? pd.team_tagged : []) as any[]) {
+        entries.push({ text: "team 100", role: String(t.role ?? "") });
+      }
+      index.set(play.id, entries);
     }
     return index;
   }, [plays, roster]);
@@ -1034,11 +1058,18 @@ export default function PostGameReview() {
       if (unitFilter !== "all" && unitFor(p) !== unitFilter) return false;
       if (!matchesCategory(p, categoryFilter)) return false;
       if (!q) return true;
-      const hay = searchIndex.get(p.id) ?? "";
-      return jerseyRe ? jerseyRe.test(hay) : hay.includes(q);
+      /* The named player has to match AND have been involved the way the role
+         chips ask - both on the same tag, or "his passing plays" would match a
+         play where he tackled somebody and a different man threw it. */
+      return (searchIndex.get(p.id) ?? []).some(entry => {
+        const named = jerseyRe ? jerseyRe.test(entry.text) : entry.text.includes(q);
+        if (!named) return false;
+        if (roleFilter === "any") return true;
+        return (ROLE_GROUPS[roleFilter] as readonly string[]).includes(entry.role);
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plays, unitFilter, categoryFilter, playerQuery, searchIndex]);
+  }, [plays, unitFilter, categoryFilter, playerQuery, roleFilter, searchIndex]);
 
   const chartedCount = useMemo(
     () => plays.filter((p) => hasChartingDetail(charting[p.id])).length,
@@ -1139,7 +1170,7 @@ export default function PostGameReview() {
               />
               {playerQuery && (
                 <button
-                  onClick={() => setPlayerQuery("")}
+                  onClick={() => { setPlayerQuery(""); setRoleFilter("any"); }}
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 text-surface-muted cursor-pointer"
                   title="Clear"
                 >
@@ -1148,6 +1179,37 @@ export default function PostGameReview() {
               )}
             </div>
           </div>
+
+          {/* Only once a player is named: on their own these would ask "every
+              play with a passer on it", which is every pass. Against a name
+              they ask the question worth asking. */}
+          {playerQuery.trim() !== "" && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-surface-muted/70 mr-0.5">
+                As
+              </span>
+              {([
+                { id: "any", label: "Any" },
+                { id: "pass", label: "Passer" },
+                { id: "rush", label: "Rusher" },
+                { id: "receive", label: "Receiver" },
+                { id: "tackle", label: "Tackler" },
+                { id: "kick", label: "Kicker" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setRoleFilter(opt.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                    roleFilter === opt.id
+                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-400"
+                      : "border-surface-border bg-surface-bg text-surface-muted"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center gap-2 text-[11px] font-semibold text-surface-muted">
             <Film className="w-3.5 h-3.5" />
@@ -1181,7 +1243,12 @@ export default function PostGameReview() {
           <div className="card p-8 mx-3 text-center text-slate-500 text-sm">
             No plays match that filter.
             <button
-              onClick={() => { setUnitFilter("all"); setCategoryFilter("all"); setPlayerQuery(""); }}
+              onClick={() => {
+                setUnitFilter("all");
+                setCategoryFilter("all");
+                setPlayerQuery("");
+                setRoleFilter("any");
+              }}
               className="block mx-auto mt-3 text-dragon-primary font-bold text-xs uppercase tracking-wider cursor-pointer"
             >
               Clear filters
