@@ -715,37 +715,24 @@ function convertPlay(
     }
 
     case "two_pt": {
-      // Two-point can be rush or pass — check for passer role
-      const passer = firstPlayerByRole(play, "passer");
-      const receiver = firstPlayerByRole(play, "receiver");
-      const rusher = firstPlayerByRole(play, "rusher");
-      const isGood = pd?.result === "Good";
+      /* A conversion attempt is not a scrimmage play and is kept out of
+         passing and rushing statistics by every rule set there is - NFHS,
+         NCAA and the NFL all record conversions separately.
 
-      if (passer) {
-        return {
-          type: PlayType.Pass,
-          passer,
-          result: receiver && isGood ? PassResult.Complete : PassResult.Incomplete,
-          target: receiver,
-          receiver: isGood ? receiver : undefined,
-          yardsGained: isGood ? 3 : 0, // 2pt is from 3-yard line
-          isTouchdown: isGood,
-          isTwoPointConversion: true,
-          description: play.description ?? undefined,
-          context,
-        } satisfies PassPlay & { context: PlayContext } as Play;
-      }
-      // Rush 2pt
-      return {
-        type: PlayType.Rush,
-        rusher: rusher ?? play.primary_player_id ?? "opp_unknown",
-        result: isGood ? RushResult.Touchdown : RushResult.Normal,
-        yardsGained: isGood ? 3 : 0,
-        isTouchdown: isGood,
-        isTwoPointConversion: true,
-        description: play.description ?? undefined,
-        context,
-      } satisfies RushPlay & { context: PlayContext } as Play;
+         The engine does not know that. It declares twoPointConversionAttempts
+         and twoPointConversionsMade and never increments either, and its
+         passing calculator never looks at isTwoPointConversion - so a
+         two-point pass was landing in a quarterback's line as an attempt, a
+         completion, three yards and a PASSING TOUCHDOWN, and a two-point run
+         as a carry and a rushing touchdown. That is where a passer's attempts
+         came out one higher than the number of passing plays he actually
+         threw on.
+
+         So it does not go to the engine at all. Conversions are reported from
+         the plays themselves - the PAT Kicks and Field Goals rows and points
+         by player in gameReport.ts all read them directly, which is also why
+         nothing is lost by leaving them out here. */
+      return null;
     }
 
     case "blocked_kick": {
