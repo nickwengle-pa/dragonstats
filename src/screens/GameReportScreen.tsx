@@ -176,12 +176,17 @@ function Table({
   rows,
   total,
   minWidth,
+  emphasize,
 }: {
   head: string[];
   rows: Array<Array<string | number>>;
   total?: Array<string | number>;
   minWidth?: number;
+  /** Column indexes to set in bold - the number the table is really about,
+   *  so it carries down the page without having to be counted across to. */
+  emphasize?: number[];
 }) {
+  const bold = new Set(emphasize ?? []);
   return (
     <div className="overflow-x-auto">
       <table
@@ -210,7 +215,7 @@ function Table({
                   key={ci}
                   className={`py-1 px-1.5 whitespace-nowrap ${
                     ci === 0 ? "text-left font-semibold" : "text-right"
-                  }`}
+                  } ${bold.has(ci) ? "font-black" : ""}`}
                 >
                   {c}
                 </td>
@@ -511,6 +516,9 @@ export default function GameReportScreen() {
                  reads first - carries and what they were worth. Gain and loss
                  follow as the breakdown of it, which is the order they get
                  asked about in. */
+              /* Net is the answer the rushing table is asked for; gain and
+                 loss are how it got there. */
+              emphasize={[2]}
               head={["Player", "Att.", "Net", "Gain", "Loss", "TD", "Lg", "Avg", "FUM."]}
               rows={report.rushing.map(r => [
                 r.name, r.att, signed(r.net), r.gain, signed(r.loss), r.td, r.long, r.avg.toFixed(1), r.fum,
@@ -541,6 +549,7 @@ export default function GameReportScreen() {
             <div className="text-[11px] font-black uppercase tracking-wide mt-3 mb-1">Receiving</div>
             <Table
               minWidth={380}
+              emphasize={[2]}
               head={["Player", "Att.", "Yards", "TD", "Long"]}
               rows={report.receiving.map(r => [r.name, r.rec, r.yds, r.td, r.long])}
               total={[
