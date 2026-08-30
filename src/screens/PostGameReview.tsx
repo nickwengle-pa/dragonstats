@@ -957,6 +957,58 @@ export default function PostGameReview() {
     await load();
   }, [gameId, load]);
 
+  /* ── Filtering ────────────────────────────────────────────────────────
+     A film chart is read looking for something: our defensive snaps, or every
+     touch a back had. Ninety rows in recording order answers neither without
+     scrolling the whole thing. */
+  const [unitFilter, setUnitFilter] = useState<Unit | "all">("all");
+  const [playerQuery, setPlayerQuery] = useState("");
+
+  /* Everything about a play that names a player, flattened once per play.
+     Rostered tags carry no jersey on the join, so the number comes off the
+     roster; opponent and unrostered tags carry their own. TEAM is searchable
+     by the word, which is what somebody looking for uncredited stops types. */
+  const searchIndex = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const r of roster as any[]) {
+      const p = r?.player;
+      const name = p ? `${p.first_name ?? ""} ${p.last_name ?? ""}` : "";
+      byId.set(r.player_id, `${r.jersey_number ?? ""} ${name}`.toLowerCase());
+    }
+
+    const index = new Map<string, string>();
+    for (const play of plays) {
+      const parts: string[] = [];
+      for (const pp of play.play_players ?? []) {
+        parts.push(byId.get(pp.player_id) ?? "");
+      }
+      const pd = (play.play_data ?? {}) as Record<string, any>;
+      for (const key of ["opp_tagged", "pending_tagged"]) {
+        for (const t of (Array.isArray(pd[key]) ? pd[key] : []) as any[]) {
+          parts.push(`${t.jersey_number ?? ""} ${t.name ?? ""}`.toLowerCase());
+        }
+      }
+      if (Array.isArray(pd.team_tagged) && pd.team_tagged.length > 0) parts.push("team 100");
+      index.set(play.id, parts.join(" | "));
+    }
+    return index;
+  }, [plays, roster]);
+
+  const visiblePlays = useMemo(() => {
+    const q = playerQuery.trim().toLowerCase();
+    /* A bare number means a jersey, and a jersey matches at a word boundary:
+       typing 2 should not return every 12, 20 and 42 on the sheet. */
+    const numeric = /^d+$/.test(q);
+    const jerseyRe = numeric ? new RegExp(`(^|[^0-9])${q}([^0-9]|$)`) : null;
+
+    return plays.filter((p) => {
+      if (unitFilter !== "all" && unitFor(p) !== unitFilter) return false;
+      if (!q) return true;
+      const hay = searchIndex.get(p.id) ?? "";
+      return jerseyRe ? jerseyRe.test(hay) : hay.includes(q);
+    });
+  }, [plays, unitFilter, playerQuery, searchIndex]);
+
   const chartedCount = useMemo(
     () => plays.filter((p) => hasChartingDetail(charting[p.id])).length,
     [plays, charting],
@@ -994,14 +1046,66 @@ export default function PostGameReview() {
       </div>
       <div className="mx-5 mt-1 mb-3 accent-line" />
 
-      {/* Summary strip */}
+      {/* Filters. A film chart is read looking for something - our defensive
+          snaps, every touch a back had - and ninety rows in recording order
+          answers neither without scrolling all of it. */}
       {!loading && plays.length > 0 && (
-        <div className="px-5 pb-2 flex items-center gap-2 text-[11px] font-semibold text-surface-muted">
-          <Film className="w-3.5 h-3.5" />
-          <span>{plays.length} plays</span>
-          <span className="text-surface-border">·</span>
-          <span className="text-emerald-400">{chartedCount} charted</span>
-          <span className="ml-auto text-surface-muted/70">Tap a row to chart</span>
+        <div className="px-5 pb-2 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1.5">
+              {([
+                { id: "all", label: "All" },
+                { id: "O", label: "Offense" },
+                { id: "D", label: "Defense" },
+                { id: "K", label: "Kicking" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setUnitFilter(opt.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                    unitFilter === opt.id
+                      ? "border-dragon-primary bg-dragon-primary/15 text-dragon-primary"
+                      : "border-surface-border bg-surface-bg text-surface-muted"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative flex-1 min-w-[9rem]">
+              <input
+                type="text"
+                value={playerQuery}
+                onChange={(e) => setPlayerQuery(e.target.value)}
+                placeholder="Player # or name…"
+                className="input w-full text-xs py-1.5 pr-7"
+              />
+              {playerQuery && (
+                <button
+                  onClick={() => setPlayerQuery("")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-surface-muted cursor-pointer"
+                  title="Clear"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-surface-muted">
+            <Film className="w-3.5 h-3.5" />
+            {/* Say what is being hidden. A filtered sheet that reads "24 plays"
+                is indistinguishable from a game with 24 plays in it. */}
+            <span>
+              {visiblePlays.length === plays.length
+                ? `${plays.length} plays`
+                : `${visiblePlays.length} of ${plays.length} plays`}
+            </span>
+            <span className="text-surface-border">·</span>
+            <span className="text-emerald-400">{chartedCount} charted</span>
+            <span className="ml-auto text-surface-muted/70">Tap a row to chart</span>
+          </div>
         </div>
       )}
 
@@ -1014,11 +1118,26 @@ export default function PostGameReview() {
           <div className="card p-4 mx-3 border border-red-500/30 text-red-400 text-sm">{error}</div>
         )}
 
+        {/* Filtered down to nothing. Without this the table renders its
+            headers over an empty body, which reads as a broken screen rather
+            than as a filter that matched no plays. */}
+        {!loading && !error && plays.length > 0 && visiblePlays.length === 0 && (
+          <div className="card p-8 mx-3 text-center text-slate-500 text-sm">
+            No plays match that filter.
+            <button
+              onClick={() => { setUnitFilter("all"); setPlayerQuery(""); }}
+              className="block mx-auto mt-3 text-dragon-primary font-bold text-xs uppercase tracking-wider cursor-pointer"
+            >
+              Clear filters
+            </button>
+          </div>
+        )}
+
         {!loading && !error && plays.length === 0 && (
           <div className="card p-8 mx-3 text-center text-slate-500 text-sm">No plays recorded for this game.</div>
         )}
 
-        {!loading && plays.length > 0 && (
+        {!loading && visiblePlays.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
@@ -1042,7 +1161,7 @@ export default function PostGameReview() {
                 </tr>
               </thead>
               <tbody>
-                {plays.map((p) => {
+                {visiblePlays.map((p) => {
                   const c = charting[p.id];
                   const charted = hasChartingDetail(c);
                   const unit = unitFor(p);
