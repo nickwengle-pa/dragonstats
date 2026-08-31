@@ -132,7 +132,12 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
     const numeric = /^\d+$/.test(q);
     const jerseyRe = numeric ? new RegExp(`(^|[^0-9])${q}([^0-9]|$)`) : null;
 
-    return [...numbered].reverse().filter(({ play }) => {
+    /* Oldest first, unlike the inline list on the game screen, which stays
+       newest-first because live entry cares about the last snap. This log is
+       where you review and where you insert, and both of those read forwards:
+       "add a play after this one" means the row BELOW, the way the game
+       actually ran. Reversed, that instruction pointed at the row above. */
+    return numbered.filter(({ play }) => {
       if (filter !== "all" && unitOf(play) !== filter) return false;
       if (!q) return true;
       const hay = searchIndex.get(play.id) ?? "";
@@ -159,6 +164,9 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
                 <RotateCcw className="w-3 h-3" /> Undo
               </button>
             )}
+            <span className="text-[9px] font-display font-bold uppercase tracking-[0.14em] text-surface-muted/60">
+              Oldest first
+            </span>
             <button onClick={onClose} className="btn-ghost p-1.5 cursor-pointer">
               <X className="w-5 h-5" />
             </button>
@@ -258,6 +266,22 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
                     <div className="text-[10px] text-surface-muted mt-0.5 font-body">
                       {quarterLabel(play.quarter)} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance} · {yardLabel(play.ballOn)}
                       {play.possession === "them" && " (DEF)"}
+                      {/* Everything left of the arrow is the situation the play
+                          STARTED from; everything right of it is what the play
+                          left behind. Without the second half you can only read
+                          a play's result by finding the next one down the list -
+                          which in a newest-first log is the row ABOVE it. */}
+                      {play.nextDown != null && play.nextBallOn != null && (
+                        <span className="text-surface-muted/70">
+                          {" → "}
+                          {play.nextPossession && play.nextPossession !== play.possession && (
+                            <span className="text-orange-400/90">{"⇄ "}</span>
+                          )}
+                          {play.nextDown}{play.nextDown === 1 ? "st" : play.nextDown === 2 ? "nd" : play.nextDown === 3 ? "rd" : "th"}&{play.nextDistance}
+                          {" · "}
+                          {yardLabel(play.nextBallOn)}
+                        </span>
+                      )}
                     </div>
                     {play.offensiveFormation && (
                       <div className="text-[10px] text-blue-500/70 mt-0.5 font-body">{play.offensiveFormation} vs {play.defensiveFormation ?? "\u2014"}</div>
@@ -310,7 +334,7 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
                       <button
                         onClick={() => onInsertAfter(play)}
                         className="btn-ghost p-1 text-surface-muted/40 cursor-pointer"
-                        title="Add a play after this one"
+                        title={`Insert a play between #${number} and #${number + 1}`}
                       >
                         <Plus className="w-3 h-3" />
                       </button>
