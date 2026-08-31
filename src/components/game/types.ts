@@ -189,8 +189,14 @@ export interface GameState {
   ballOn: number;
 }
 
-/** What kind of play it is, independent of which side had the ball. */
-export type PlayCategory = "run" | "pass" | "scoring" | "kicking" | "turnover" | "other";
+/* What kind of play it is, independent of which side had the ball.
+
+   Four groups, matching how a press-box operator actually thinks about a
+   snap: it was a run, it was a pass, the kicking unit was on, or nothing was
+   snapped at all. The old six split hairs the operator does not - an
+   interception IS a pass play and a fumble IS a run play, which is why every
+   consumer of this type had to special-case them back together again. */
+export type PlayCategory = "run" | "pass" | "special" | "penalty";
 
 export interface PlayTypeDef {
   id: string;
@@ -203,13 +209,19 @@ export interface PlayTypeDef {
 /* ── Play type definitions (FSA-style quick action grid) ── */
 
 export const PLAY_TYPES: PlayTypeDef[] = [
-  // Run plays
+  // ── Run ──────────────────────────────────────────────────────────────
   { id: "rush", label: "Run", color: "emerald", category: "run", roles: ["rusher"] },
   { id: "scramble", label: "Scramble", color: "emerald", category: "run", roles: ["passer"] },
   { id: "kneel", label: "Kneel", color: "neutral", category: "run", roles: ["rusher"] },
-  { id: "spike", label: "Spike", color: "neutral", category: "other", roles: ["passer"] },
+  /* A fumble files under the play it happened ON, which for a standalone
+     fumble is the run. (Most fumbles never reach this button at all - they
+     ride the "+ Fumble" modifier on rush/scramble/pass_comp/sack/kneel.) */
+  { id: "fumble", label: "Fumble", color: "orange", category: "run", roles: ["rusher", "forced_fumble", "fumble_recovery"] },
+  // A safety is a tackle in the end zone, so it sits with the scrimmage plays
+  // rather than with the scoring ones.
+  { id: "safety", label: "Safety", color: "red", category: "run", roles: ["tackler"] },
 
-  // Pass plays
+  // ── Pass ─────────────────────────────────────────────────────────────
   { id: "pass_comp", label: "Complete", color: "blue", category: "pass", roles: ["passer", "receiver"] },
   { id: "pass_inc", label: "Incomplete", color: "neutral", category: "pass", roles: ["passer", "target"] },
   { id: "throwaway", label: "Throw Away", color: "neutral", category: "pass", roles: ["passer"] },
@@ -220,32 +232,35 @@ export const PLAY_TYPES: PlayTypeDef[] = [
      single-select role it could only ever hold one name, and it also made the
      operator name the same player twice: sacker, then tackler. */
   { id: "sack", label: "Sack", color: "red", category: "pass", roles: ["passer"] },
+  // An interception is a pass play. It was filed under "turnover", which is
+  // why every consumer had to add it back to the passes by hand.
+  { id: "int", label: "INT", color: "red", category: "pass", roles: ["passer", "interceptor"] },
+  // A spike is a deliberate incompletion, not a category of its own.
+  { id: "spike", label: "Spike", color: "neutral", category: "pass", roles: ["passer"] },
 
-  // Scoring
-  { id: "pat", label: "PAT Kick", color: "amber", category: "scoring", roles: ["kicker"] },
-  { id: "two_pt", label: "2PT", color: "amber", category: "scoring", roles: ["passer", "receiver"] },
-  { id: "fg", label: "Field Goal", color: "amber", category: "scoring", roles: ["kicker"] },
-
-  // Kicking
-  { id: "kickoff", label: "Kickoff", color: "purple", category: "kicking", roles: ["kicker", "returner"] },
-  { id: "onside_kick", label: "Onside", color: "purple", category: "kicking", roles: ["kicker", "recoverer"] },
-  { id: "punt", label: "Punt", color: "purple", category: "kicking", roles: ["punter", "returner"] },
-  { id: "fair_catch", label: "Fair Catch", color: "purple", category: "kicking", roles: ["punter", "returner"] },
+  // ── Special teams ────────────────────────────────────────────────────
+  // Scoring and kicking merged: the kicking unit is on the field for all of
+  // it, which is the question an operator is actually answering. The lone
+  // exception is a 2PT, a scrimmage snap that lives here because it sits
+  // beside the PAT in every operator's head — noted in PostGameReview.unitFor.
+  { id: "pat", label: "PAT Kick", color: "amber", category: "special", roles: ["kicker"] },
+  { id: "two_pt", label: "2PT", color: "amber", category: "special", roles: ["passer", "receiver"] },
+  { id: "fg", label: "Field Goal", color: "amber", category: "special", roles: ["kicker"] },
+  { id: "kickoff", label: "Kickoff", color: "purple", category: "special", roles: ["kicker", "returner"] },
+  { id: "onside_kick", label: "Onside", color: "purple", category: "special", roles: ["kicker", "recoverer"] },
+  { id: "punt", label: "Punt", color: "purple", category: "special", roles: ["punter", "returner"] },
+  { id: "fair_catch", label: "Fair Catch", color: "purple", category: "special", roles: ["punter", "returner"] },
   /* Kicker first (it was still his attempt), then who blocked it, then who
      fell on it. Either team can recover a blocked kick, so `recoverer` is
      resolved against a recovered-by toggle rather than a fixed side. */
-  { id: "blocked_kick", label: "Blocked", color: "red", category: "kicking", roles: ["kicker", "blocker", "recoverer"] },
+  { id: "blocked_kick", label: "Blocked", color: "red", category: "special", roles: ["kicker", "blocker", "recoverer"] },
 
-  // Turnovers
-  { id: "fumble", label: "Fumble", color: "orange", category: "turnover", roles: ["rusher", "forced_fumble", "fumble_recovery"] },
-  { id: "int", label: "INT", color: "red", category: "turnover", roles: ["passer", "interceptor"] },
-
-  // Other
-  { id: "safety", label: "Safety", color: "red", category: "other", roles: ["tackler"] },
-  { id: "penalty_only", label: "Penalty", color: "yellow", category: "other", roles: [] },
-  // Pre-snap quick actions (one-tap; bypass the PlayEntry modal in GameScreen)
-  { id: "false_start", label: "False Start", color: "yellow", category: "other", roles: [] },
-  { id: "encroachment", label: "Encroachment", color: "yellow", category: "other", roles: [] },
+  // ── Penalty / pre-snap ───────────────────────────────────────────────
+  // Nothing was snapped. The last two are one-tap and bypass the PlayEntry
+  // modal entirely (see GameScreen.handlePreSnapPenalty).
+  { id: "penalty_only", label: "Penalty", color: "yellow", category: "penalty", roles: [] },
+  { id: "false_start", label: "False Start", color: "yellow", category: "penalty", roles: [] },
+  { id: "encroachment", label: "Encroachment", color: "yellow", category: "penalty", roles: [] },
 ];
 
 export function findPlayTypeDef(typeId: string): PlayTypeDef | undefined {

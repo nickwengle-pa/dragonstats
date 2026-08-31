@@ -1191,18 +1191,42 @@ export default function GameScreen() {
     () => formatTeamYardLabel(ballOn, possession, progAbbr, oppAbbr),
     [ballOn, oppAbbr, possession, progAbbr],
   );
+  /* The situation the NEXT recorded play belongs to. Normally that is the live
+     one, but while an insert is pending it is the spot back where the missed
+     snap happened - which is what the entry controls have to describe, because
+     that is what they will actually save. The Scoreboard above deliberately
+     keeps reading the live spot: it says where the game is, and the amber
+     banner says why the buttons below it disagree. */
+  const entrySituation = useMemo(
+    () =>
+      insertContext
+        ? {
+            possession: insertContext.possession,
+            down: insertContext.down,
+            distance: insertContext.distance,
+            ballOn: insertContext.ballOn,
+          }
+        : { possession, down, distance, ballOn },
+    [ballOn, distance, down, insertContext, possession],
+  );
+  const entryBallLabel = useMemo(
+    () => formatTeamYardLabel(entrySituation.ballOn, entrySituation.possession, progAbbr, oppAbbr),
+    [entrySituation, oppAbbr, progAbbr],
+  );
   const suggestedPhase = useMemo(() => {
-    const isKickState = ballOn === gc.kickoff_yard_line || ballOn === gc.safety_kick_yard_line;
-    const isConversionState = ballOn === 100 - gc.pat_distance && distance <= gc.pat_distance;
+    const { ballOn: entryBallOn, distance: entryDistance, down: entryDown } = entrySituation;
+    const isKickState = entryBallOn === gc.kickoff_yard_line || entryBallOn === gc.safety_kick_yard_line;
+    const isConversionState = entryBallOn === 100 - gc.pat_distance && entryDistance <= gc.pat_distance;
     if (isKickState || isConversionState) return "special" as const;
     // 4th down is a special-teams decision far more often than not, so open on
     // ST. The phase tabs stay tappable — one tap gets back to OFF for a go-for-it.
-    if (down === 4) return "special" as const;
-    // Scrimmage either way: there is no DEF tab, because the snap offers the
-    // same plays whichever sideline is on offense. The possession band says
-    // whose ball it is.
-    return "offense" as const;
-  }, [ballOn, distance, down, gc.kickoff_yard_line, gc.pat_distance, gc.safety_kick_yard_line]);
+    if (entryDown === 4) return "special" as const;
+    // Otherwise open on Run. There is no DEF tab, because the snap offers the
+    // same plays whichever sideline is on offense - the possession band says
+    // whose ball it is. Run over Pass because the fast path above the tabs
+    // already carries Complete and Incomplete, so a pass costs no tab tap.
+    return "run" as const;
+  }, [entrySituation, gc.kickoff_yard_line, gc.pat_distance, gc.safety_kick_yard_line]);
   const timeoutState = useMemo(() => {
     const activeHalf = timeoutHalfForQuarter(quarter);
     let usedUs = 0;
@@ -1540,7 +1564,7 @@ export default function GameScreen() {
       id: "penalty_only",
       label: penaltyLabel,
       color: "yellow",
-      category: "other",
+      category: "penalty",
       roles: [],
     };
     await handlePlaySubmit({
@@ -2618,14 +2642,14 @@ export default function GameScreen() {
         <div className="card p-3">
           <QuickActions
             onSelect={handlePlayTypeSelect}
-            possession={possession}
+            possession={entrySituation.possession}
             progName={progName}
             oppName={oppName}
             suggestedPhase={suggestedPhase}
-            spotLabel={currentBallLabel}
-            down={down}
-            distance={distance}
-            ballOn={ballOn}
+            spotLabel={entryBallLabel}
+            down={entrySituation.down}
+            distance={entrySituation.distance}
+            ballOn={entrySituation.ballOn}
             progColor={primaryColor}
             oppColor={oppColor}
           />
@@ -2813,7 +2837,11 @@ export default function GameScreen() {
         <PlayLog
           plays={plays}
           onEdit={p => { setShowLog(false); setEditPlay(p); }}
-          onInsertAfter={p => { setShowLog(false); setInsertAfterPlayId(p.id); }}
+          /* Back to the play pane as well: the pending-insert banner and the
+             quick actions both live there, and the operator arrives here FROM
+             the plays pane, so without this the tap looks like it did nothing
+             while the screen is quietly armed to splice the next play. */
+          onInsertAfter={p => { setShowLog(false); setInsertAfterPlayId(p.id); setPhonePane("play"); }}
           onUndo={() => { handleUndo(); setShowLog(false); }}
           onClose={() => setShowLog(false)}
           pendingPlayIds={pendingPlayIds}

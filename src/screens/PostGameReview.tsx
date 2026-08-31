@@ -48,9 +48,20 @@ import {
 
 type Unit = "O" | "D" | "K";
 
+/* The film chart's category axis: the four play groups, plus "all", plus
+   "turnover" - which is a flag that cuts across the groups rather than one of
+   them. See matchesCategory. */
+type ChartCategoryFilter = PlayCategory | "all" | "turnover";
+
 function unitFor(play: PlayWithPlayers): Unit {
   const def = findPlayTypeDef(play.play_type);
-  if (def?.category === "kicking") return "K";
+  /* A 2PT is filed under special teams because that is where an operator
+     looks for it, next to the PAT - but no kicking unit is on the field for
+     one, so as a UNIT it is an ordinary scrimmage snap. This is the single
+     place the grid's grouping and the film chart's units disagree.
+     Note this also fixes FG and PAT, which were category "scoring" and so
+     never counted as K here at all. */
+  if (def?.category === "special" && play.play_type !== "two_pt") return "K";
   return play.possession === "us" ? "O" : "D";
 }
 
@@ -978,7 +989,7 @@ export default function PostGameReview() {
      play - so "his offensive passing plays" is a unit, a category and a name,
      each narrowing the others rather than replacing them. Categories come off
      PlayTypeDef, so a play type added later files itself. */
-  const [categoryFilter, setCategoryFilter] = useState<PlayCategory | "all">("all");
+  const [categoryFilter, setCategoryFilter] = useState<ChartCategoryFilter>("all");
   const [playerQuery, setPlayerQuery] = useState("");
   /* How the named player was involved. Without this, "his passing plays" means
      every pass he was anywhere near - a quarterback's own throws, the ones he
@@ -1036,15 +1047,17 @@ export default function PostGameReview() {
    * Turnover keeps them both, and reads off the flag rather than the type, so
    * a sack-fumble counts as the turnover it was.
    */
-  const matchesCategory = (p: PlayWithPlayers, want: PlayCategory | "all"): boolean => {
+  const matchesCategory = (p: PlayWithPlayers, want: ChartCategoryFilter): boolean => {
     if (want === "all") return true;
-    const category = findPlayTypeDef(p.play_type)?.category ?? null;
-    if (want === "pass") return category === "pass" || p.play_type === "int";
-    if (want === "run") return category === "run" || p.play_type === "fumble";
-    if (want === "turnover") {
-      return category === "turnover" || p.is_turnover === true;
-    }
-    return category === want;
+    /* Turnover is the one filter that is not a category: it cuts across all
+       four of them, and it reads off the flag rather than the play type so a
+       sack-fumble counts as the turnover it was - and a fumble the offense
+       fell on top of does not. */
+    if (want === "turnover") return p.is_turnover === true;
+    /* No special cases left. An interception IS category "pass" and a fumble
+       IS category "run", so asking for passes returns the interceptions with
+       them, which is what anyone reviewing film meant by the question. */
+    return findPlayTypeDef(p.play_type)?.category === want;
   };
 
   const visiblePlays = useMemo(() => {
@@ -1143,7 +1156,7 @@ export default function PostGameReview() {
                 { id: "all", label: "Any" },
                 { id: "run", label: "Run" },
                 { id: "pass", label: "Pass" },
-                { id: "kicking", label: "Kick" },
+                { id: "special", label: "ST" },
                 { id: "turnover", label: "TO" },
               ] as const).map((opt) => (
                 <button

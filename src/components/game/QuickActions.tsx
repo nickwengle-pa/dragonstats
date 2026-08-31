@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
-import { PLAY_TYPES, type PlayTypeDef } from "./types";
+import { PLAY_TYPES, type PlayCategory, type PlayTypeDef } from "./types";
 
-type PhaseFilter = "all" | "offense" | "special";
+/* The tabs ARE the four groups now. There used to be a second axis on top of
+   the groups - ALL / OFF / ST filtering a stack of six categories - which
+   meant two different questions ("which phase?" then "which group?") to reach
+   one button, and the ST tab duplicated a group that already existed. One
+   axis: pick the group, tap the play. */
+type PhaseFilter = PlayCategory;
 
 interface Props {
   onSelect: (pt: PlayTypeDef) => void;
@@ -105,55 +110,19 @@ function hueStyle(color: string): React.CSSProperties {
   return { backgroundColor: h.fill, color: h.ink, borderColor: h.edge };
 }
 
-const CATEGORY_ORDER: Record<string, number> = {
-  run: 0,
-  pass: 1,
-  scoring: 2,
-  kicking: 3,
-  turnover: 4,
-  other: 5,
+const CATEGORY_LABELS: Record<PlayCategory, string> = {
+  run: "Run",
+  pass: "Pass",
+  special: "ST",
+  penalty: "Pen",
 };
 
 /** Rail color per group, matched to the play-button color family inside it. */
-const CATEGORY_ACCENT: Record<string, string> = {
-  run: PLAY_HUES.emerald.ink,      // turf
-  pass: PLAY_HUES.blue.ink,        // chalk
-  scoring: PLAY_HUES.amber.ink,    // scoreboard gold
-  kicking: PLAY_HUES.purple.ink,   // upright steel
-  turnover: PLAY_HUES.orange.ink,  // rust
-  other: PLAY_HUES.yellow.ink,     // sand
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  run: "Run",
-  pass: "Pass",
-  scoring: "Scoring",
-  kicking: "Kicking",
-  turnover: "Turnover",
-  other: "Other",
-};
-
-/**
- * Which play groups each tab shows.
- *
- * There is no DEF tab. Every play recorded here is a snap, a kick or a
- * penalty, and a defense is on the field for all of them — a snap produces the
- * same set of outcomes whichever sideline you're on. An interception is a pass
- * play by OUR offense, and a run by THEIR offense is still a run you record.
- *
- * OFF and DEF had already converged on identical contents AND identical order
- * (the sort below keys off possession, not the selected tab), so DEF was a tab
- * that changed nothing on screen. The one thing it still communicated — whose
- * ball it is — is the possession band directly above it.
- *
- * So OFF is the scrimmage tab: it means "someone is snapping it", not "we are".
- */
-const SCRIMMAGE_CATEGORIES = ["run", "pass", "turnover", "other"];
-
-const PHASE_CATEGORIES: Record<PhaseFilter, Set<string>> = {
-  all: new Set(["run", "pass", "scoring", "kicking", "turnover", "other"]),
-  offense: new Set(SCRIMMAGE_CATEGORIES),
-  special: new Set(["kicking", "scoring"]),
+const CATEGORY_ACCENT: Record<PlayCategory, string> = {
+  run: PLAY_HUES.emerald.ink,   // turf
+  pass: PLAY_HUES.blue.ink,     // chalk
+  special: PLAY_HUES.amber.ink, // scoreboard gold
+  penalty: PLAY_HUES.yellow.ink, // sand — the flag on the grass
 };
 
 /** Column count per fast-path size. Literal class strings — Tailwind cannot
@@ -166,10 +135,13 @@ const FAST_PATH_COLS: Record<number, string> = {
   4: "grid-cols-2",
 };
 
+/* Fixed order, never reordered by possession. A tab that moves is a tab you
+   have to look at; these need to be muscle memory by the second quarter. */
 const PHASE_TABS: Array<{ value: PhaseFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "offense", label: "OFF" },
+  { value: "run", label: "Run" },
+  { value: "pass", label: "Pass" },
   { value: "special", label: "ST" },
+  { value: "penalty", label: "Pen" },
 ];
 
 export default function QuickActions({
@@ -187,7 +159,7 @@ export default function QuickActions({
   progColor = "#dc2626",
   oppColor = "#6b7280",
 }: Props) {
-  const [phase, setPhase] = useState<PhaseFilter>(suggestedPhase ?? "all");
+  const [phase, setPhase] = useState<PhaseFilter>(suggestedPhase ?? "run");
   const [manualOverride, setManualOverride] = useState(false);
 
   useEffect(() => {
@@ -208,28 +180,11 @@ export default function QuickActions({
     return acc;
   }, {});
 
-  const allowedCategories = PHASE_CATEGORIES[phase];
-  const categories = Object.keys(grouped)
-    .filter((category) => allowedCategories.has(category))
-    .sort((a, b) => {
-      if (possession === "them") {
-        // Their snaps are still mostly runs and passes, so those lead. What
-        // this actually reorders is the All tab: it lifts turnover above
-        // kicking and scoring, which is what you reach for while they have the
-        // ball. The OFF tab's scrimmage set sorts the same either way.
-        const defensePriority: Record<string, number> = {
-          run: 0,
-          pass: 1,
-          turnover: 2,
-          kicking: 3,
-          other: 4,
-          scoring: 5,
-        };
-        return (defensePriority[a] ?? 99) - (defensePriority[b] ?? 99);
-      }
-
-      return (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99);
-    });
+  /* One group on screen at a time, in the order it is declared in PLAY_TYPES.
+     The possession-based reordering that used to live here is gone with the
+     ALL tab it existed for: it only ever changed which of six stacked groups
+     came first, and there is no stack to reorder any more. */
+  const visible = grouped[phase] ?? [];
 
   // Resolved to real play defs, in the order fastPathIds returns them, so an
   // id that no longer exists just drops out instead of rendering a blank.
@@ -336,37 +291,26 @@ export default function QuickActions({
         </div>
       )}
 
-      {categories.map((category) => {
-        // A colored rail per group, so the boundaries read at a glance instead
-        // of relying on a low-contrast 11px header alone.
-        const accent = CATEGORY_ACCENT[category] ?? "#64748b";
-        return (
-          <div key={category} className="border-l-[3px] pl-2.5" style={{ borderColor: accent }}>
-            <div
-              className="text-[11px] font-display font-bold uppercase tracking-[0.2em] mb-2"
-              style={{ color: accent }}
+      {/* No group header here: the active tab already names the group, and a
+          heading that repeats the control above it is the kind of thing that
+          made this screen feel busy in the first place. The rail keeps the
+          group's color. */}
+      <div className="border-l-[3px] pl-2.5" style={{ borderColor: CATEGORY_ACCENT[phase] }}>
+        <div className="grid grid-cols-4 gap-1.5">
+          {visible.map((playType) => (
+            <button
+              key={playType.id}
+              onClick={() => onSelect(playType)}
+              // A quarter of a 375px row is ~62px; "ENCROACHMENT" needs
+              // the smaller type and tighter padding to sit inside it.
+              className="px-0.5 lg:px-1 py-2.5 rounded-[3px] text-[10px] lg:text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide"
+              style={hueStyle(playType.color)}
             >
-              {CATEGORY_LABELS[category] ?? category}
-            </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {grouped[category].map((playType) => {
-                return (
-                  <button
-                    key={playType.id}
-                    onClick={() => onSelect(playType)}
-                    // A quarter of a 375px row is ~62px; "ENCROACHMENT" needs
-                    // the smaller type and tighter padding to sit inside it.
-                    className="px-0.5 lg:px-1 py-2.5 rounded-[3px] text-[10px] lg:text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide"
-                    style={hueStyle(playType.color)}
-                  >
-                    {playType.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+              {playType.label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
