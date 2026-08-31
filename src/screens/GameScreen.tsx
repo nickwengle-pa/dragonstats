@@ -740,33 +740,6 @@ export default function GameScreen() {
 
   /* ── Derived state ── */
   const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
-  const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
-
-  /* ── Last player per role, for pre-filling the next play's entry ──────────
-     Derived from the play log rather than stored separately, so it survives a
-     reload and can never drift from what was actually recorded. Keyed by side
-     too — their QB must not pre-fill our passer slot after a turnover. */
-  const lastPlayerByRole = useMemo(() => {
-    // Tags rebuilt from the DB carry jersey_number: null — the number lives on
-    // season_rosters, not the play_players join — so re-attach it from the
-    // roster or the carried tag renders as "#null".
-    const jerseyByPlayerId = new Map<string, number | null>();
-    for (const entry of roster) jerseyByPlayerId.set(entry.player_id, entry.jersey_number);
-    for (const opp of oppPlayers) jerseyByPlayerId.set(opp.id, opp.jersey_number);
-
-    const map: Record<string, TaggedPlayer> = {};
-    for (const play of plays) {
-      for (const tag of play.tagged ?? []) {
-        // Pending tags carry their own jersey and keep their own slot, so the
-        // same unrostered back carries forward like any other player.
-        map[`${tag.role}:${tag.isOpponent ? "opp" : "us"}`] = {
-          ...tag,
-          jersey_number: tag.jersey_number ?? jerseyByPlayerId.get(tag.player_id) ?? null,
-        };
-      }
-    }
-    return map;
-  }, [plays, roster, oppPlayers]);
 
   /* The game state a play inserted here would start from: the situation the
      NEXT play began with, which is the anchor play's own after-situation. The
@@ -794,6 +767,71 @@ export default function GameScreen() {
       ...situation,
     };
   }, [insertAfterPlayId, plays]);
+
+  /* The situation the NEXT recorded play belongs to. Normally that is the live
+     one, but while an insert is pending it is the spot back where the missed
+     snap happened - which is what the entry controls have to describe, because
+     that is what they will actually save. The Scoreboard above deliberately
+     keeps reading the live spot: it says where the game is, and the amber
+     banner says why the buttons below it disagree. */
+  const entrySituation = useMemo(
+    () =>
+      insertContext
+        ? {
+            quarter: insertContext.quarter,
+            clock: insertContext.clock,
+            possession: insertContext.possession,
+            down: insertContext.down,
+            distance: insertContext.distance,
+            ballOn: insertContext.ballOn,
+          }
+        : { quarter, clock, possession, down, distance, ballOn },
+    [ballOn, clock, distance, down, insertContext, possession, quarter],
+  );
+  /* The same situation as a GameState, for the surfaces that take one whole:
+     the scoreboard, the field, and the entry modal. While an insert is
+     pending the entire pinned block therefore describes the snap being
+     recorded rather than the end of the game - the clock it happened on, the
+     down and distance it was, and the spot the ball was actually on. */
+  const entryGameState: GameState = {
+    ...entrySituation,
+    ourScore,
+    theirScore,
+  };
+  const firstDownMarker = useMemo(() => Math.min(ballOn + distance, 100), [ballOn, distance]);
+  /* Field markers follow the entry situation, so the ball and the chain move
+     back to where the missed snap happened along with the numbers. */
+  const entryFirstDownMarker = useMemo(
+    () => Math.min(entrySituation.ballOn + entrySituation.distance, 100),
+    [entrySituation],
+  );
+
+  /* ── Last player per role, for pre-filling the next play's entry ──────────
+     Derived from the play log rather than stored separately, so it survives a
+     reload and can never drift from what was actually recorded. Keyed by side
+     too — their QB must not pre-fill our passer slot after a turnover. */
+  const lastPlayerByRole = useMemo(() => {
+    // Tags rebuilt from the DB carry jersey_number: null — the number lives on
+    // season_rosters, not the play_players join — so re-attach it from the
+    // roster or the carried tag renders as "#null".
+    const jerseyByPlayerId = new Map<string, number | null>();
+    for (const entry of roster) jerseyByPlayerId.set(entry.player_id, entry.jersey_number);
+    for (const opp of oppPlayers) jerseyByPlayerId.set(opp.id, opp.jersey_number);
+
+    const map: Record<string, TaggedPlayer> = {};
+    for (const play of plays) {
+      for (const tag of play.tagged ?? []) {
+        // Pending tags carry their own jersey and keep their own slot, so the
+        // same unrostered back carries forward like any other player.
+        map[`${tag.role}:${tag.isOpponent ? "opp" : "us"}`] = {
+          ...tag,
+          jersey_number: tag.jersey_number ?? jerseyByPlayerId.get(tag.player_id) ?? null,
+        };
+      }
+    }
+    return map;
+  }, [plays, roster, oppPlayers]);
+
 
   /* ── Live engine summary (re-derives per play change) ── */
   const liveSummary = useMemo(() => {
@@ -843,17 +881,19 @@ export default function GameScreen() {
   const [directionFlipped, setDirectionFlipped] = useState(() => readFieldFlip(gameId));
   const ballDisplayPosition = useMemo(
     () => {
-      const displayPosition = toDisplayFieldPosition(ballOn, possession, quarter, pregame);
+      const displayPosition = toDisplayFieldPosition(
+        entrySituation.ballOn, entrySituation.possession, entrySituation.quarter, pregame);
       return directionFlipped ? 100 - displayPosition : displayPosition;
     },
-    [ballOn, directionFlipped, possession, quarter, pregame],
+    [directionFlipped, entrySituation, pregame],
   );
   const firstDownDisplayPosition = useMemo(
     () => {
-      const displayPosition = toDisplayFieldPosition(firstDownMarker, possession, quarter, pregame);
+      const displayPosition = toDisplayFieldPosition(
+        entryFirstDownMarker, entrySituation.possession, entrySituation.quarter, pregame);
       return directionFlipped ? 100 - displayPosition : displayPosition;
     },
-    [directionFlipped, firstDownMarker, possession, quarter, pregame],
+    [directionFlipped, entryFirstDownMarker, entrySituation, pregame],
   );
   const ourEndZoneSide = useMemo(
     () => {
@@ -1190,24 +1230,6 @@ export default function GameScreen() {
   const currentBallLabel = useMemo(
     () => formatTeamYardLabel(ballOn, possession, progAbbr, oppAbbr),
     [ballOn, oppAbbr, possession, progAbbr],
-  );
-  /* The situation the NEXT recorded play belongs to. Normally that is the live
-     one, but while an insert is pending it is the spot back where the missed
-     snap happened - which is what the entry controls have to describe, because
-     that is what they will actually save. The Scoreboard above deliberately
-     keeps reading the live spot: it says where the game is, and the amber
-     banner says why the buttons below it disagree. */
-  const entrySituation = useMemo(
-    () =>
-      insertContext
-        ? {
-            possession: insertContext.possession,
-            down: insertContext.down,
-            distance: insertContext.distance,
-            ballOn: insertContext.ballOn,
-          }
-        : { possession, down, distance, ballOn },
-    [ballOn, distance, down, insertContext, possession],
   );
   const entryBallLabel = useMemo(
     () => formatTeamYardLabel(entrySituation.ballOn, entrySituation.possession, progAbbr, oppAbbr),
@@ -2503,13 +2525,19 @@ export default function GameScreen() {
       <div className="shrink-0 px-3 lg:px-5 pb-2 lg:pb-3 space-y-2 lg:space-y-3">
         {/* Scoreboard */}
         <Scoreboard
-          state={gameState}
+          state={entryGameState}
           progName={progName}
           oppName={oppName}
           progAbbr={progAbbr}
           oppAbbr={oppAbbr}
           primaryColor={primaryColor}
-          ballLabel={currentBallLabel}
+          ballLabel={entryBallLabel}
+          /* The correction controls edit the LIVE game. While an insert is
+             pending they would be editing a situation the screen is no longer
+             showing, so they lock - and the numbers they correct are derived
+             from the plays either side of the insert anyway, which means a
+             wrong one is a wrong neighbouring play, not a wrong nudge here. */
+          locked={insertContext != null}
           progLogoUrl={progLogoUrl}
           oppLogoUrl={oppLogoUrl}
           oppColor={oppColor}
@@ -2532,10 +2560,10 @@ export default function GameScreen() {
 
         {/* Field */}
         <FieldVisualizer
-          ballOn={ballOn}
+          ballOn={entrySituation.ballOn}
           ballPosition={ballDisplayPosition}
           firstDownPosition={firstDownDisplayPosition}
-          possession={possession}
+          possession={entrySituation.possession}
           ourEndZoneSide={ourEndZoneSide}
           primaryColor={primaryColor}
           progName={progName}
@@ -2785,18 +2813,7 @@ export default function GameScreen() {
           /* Inserting into the middle of the game: the play is entered
              against the situation AT that point, not against the live one,
              which is the end of the game and wrong by everything since. */
-          gameState={insertContext
-            ? {
-                quarter: insertContext.quarter,
-                clock: insertContext.clock,
-                possession: insertContext.possession,
-                ourScore,
-                theirScore,
-                down: insertContext.down,
-                distance: insertContext.distance,
-                ballOn: insertContext.ballOn,
-              }
-            : gameState}
+          gameState={entryGameState}
           roster={roster}
           opponentPlayers={oppPlayers}
           progName={progName}

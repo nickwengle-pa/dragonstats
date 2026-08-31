@@ -28,6 +28,11 @@ interface Props {
   onCorrectScore?: (team: "us" | "them") => void;
   /** Manual possession correction — tapping the possession chip flips it. */
   onFlipPossession?: () => void;
+  /** Read-only: the board is describing a moment other than the live one (a
+   *  pending insert), so the corrections — which all edit the LIVE game —
+   *  would apply to a situation that is not on screen. Values stay fully
+   *  legible; only the controls stand down. */
+  locked?: boolean;
 }
 
 function downLabel(down: number) {
@@ -109,6 +114,7 @@ export default function Scoreboard({
   onTakeTimeout,
   onCorrectScore,
   onFlipPossession,
+  locked = false,
 }: Props) {
   const effOppColor = oppColor ?? "#6b7280";
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
@@ -171,7 +177,7 @@ export default function Scoreboard({
             <div className="flex items-center gap-1">
               <button
                 onClick={onPreviousQuarter}
-                disabled={!canPreviousQuarter}
+                disabled={locked || !canPreviousQuarter}
                 className="border border-surface-border rounded-md p-1 text-surface-muted active:bg-surface-hover cursor-pointer transition-colors disabled:cursor-default disabled:opacity-35"
                 title="Previous quarter"
               >
@@ -182,7 +188,7 @@ export default function Scoreboard({
               </div>
               <button
                 onClick={onNextQuarter}
-                disabled={!canNextQuarter}
+                disabled={locked || !canNextQuarter}
                 className="border border-surface-border rounded-md p-1 text-surface-muted active:bg-surface-hover cursor-pointer transition-colors disabled:cursor-default disabled:opacity-35"
                 title="Next quarter"
               >
@@ -191,7 +197,8 @@ export default function Scoreboard({
             </div>
             <button
               onClick={onEditClock}
-              className="text-xl font-mono font-bold tabular-nums text-amber-400 active:opacity-60 cursor-pointer leading-tight"
+              disabled={locked}
+              className="text-xl font-mono font-bold tabular-nums text-amber-400 active:opacity-60 cursor-pointer leading-tight disabled:cursor-default"
               style={{ textShadow: "0 0 12px rgba(245, 158, 11, 0.4)" }}
             >
               {fmtClock(state.clock)}
@@ -262,7 +269,9 @@ export default function Scoreboard({
             tighten so all three fit one row (~104 + 96 + 120 + 12 = 332).
             Every change here is a <phone> lg:<original> pair, so at 1024px and
             up this renders exactly as it did. */}
-        <div className="mt-2 lg:mt-3 flex flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2">
+        <div className={`mt-2 lg:mt-3 flex flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2 ${
+          locked ? "opacity-45 pointer-events-none" : ""
+        }`}>
           <div className="flex-1 min-w-[104px] lg:min-w-[116px] rounded-[4px] border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
             <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Down</div>
             <div className="mt-0 lg:mt-1 grid grid-cols-4 gap-0.5 lg:gap-1">
