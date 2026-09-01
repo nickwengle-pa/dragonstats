@@ -5,12 +5,18 @@ import { PlayType, PassResult, KickResult, DriveResult, } from "../types";
 import { initTeamStats, isPassPlay, isRushPlay, isSpecialTeamsPlay, isRedZone, isThirdDown, isFourthDown, isFirstDown, isGoalToGo, safeDivide, clockToSeconds, secondsToClock, round, } from "../utils";
 import { isPlayNullifiedByPenalty } from "./penalty";
 export class TeamCalculator {
-    constructor(config, homeTeamId, awayTeamId, homeTeamName, awayTeamName) {
+    constructor(config, homeTeamId, awayTeamId, homeTeamName, awayTeamName, 
+    /** From the active ruleset. Drive timing across a quarter boundary needs
+     *  it, and it is NOT 900 everywhere - high school plays 12 minute
+     *  quarters, which is three minutes of invented possession per crossed
+     *  boundary if you assume the NFL. */
+    quarterLengthSeconds = 900) {
         this.config = config;
         this.homeTeamId = homeTeamId;
         this.awayTeamId = awayTeamId;
         this.homeTeamName = homeTeamName;
         this.awayTeamName = awayTeamName;
+        this.quarterLengthSeconds = quarterLengthSeconds;
         this.stats = new Map();
         this.scoringPlays = [];
         this.drives = [];
@@ -156,6 +162,15 @@ export class TeamCalculator {
     // DRIVE TRACKING
     // ---------------------------------------------------------------------------
     trackDrive(play) {
+        /* A free kick is not part of anybody's drive. It is recorded with the
+           KICKING team in possession, which used to mean one of two wrong things:
+           their kickoff opened a phantom one-play drive for them, or - when they
+           had just scored - it extended the drive that scored, dragging its end
+           clock and end field position onto the kick. Skipping it entirely means a
+           drive ends at the last snap that mattered, and the receiving team's drive
+           starts where the return actually finished. */
+        if (play.type === PlayType.Kickoff || play.type === PlayType.FreeKick)
+            return;
         const teamId = play.context.possessionTeam;
         const driveNum = play.context.driveNumber ?? 0;
         // New drive detected
@@ -220,14 +235,31 @@ export class TeamCalculator {
         if (d.yards > 0 && lastYardLine >= 100) {
             result = DriveResult.Touchdown;
         }
-        // Calculate drive time
-        let driveSec = 0;
-        if (d.startQuarter === d.endQuarter) {
-            driveSec = clockToSeconds(d.startTime) - clockToSeconds(d.endTime);
+        /* A drive ends when the other side snaps it, not at its own last snap.
+           `nextPlay` is the first play of the drive that follows, so its clock is
+           the moment possession actually changed - which is the only way the punt,
+           the score or the turnover that ENDED this drive gets counted. Without it
+           every drive in the game was short by its own final play.
+    
+           The last drive of the game has no next play and falls back to its own
+           last snap. That is genuinely all the information there is. */
+        const endQuarter = nextPlay?.context.quarter ?? d.endQuarter;
+        const endTime = nextPlay?.context.gameClock ?? d.endTime;
+        /* Quarters count down to zero, so a drive crossing a boundary is: what was
+           left when it started, plus a whole quarter for each one fully crossed,
+           plus what has elapsed in the quarter it ended in. The old form hardcoded
+           900 and handled exactly one boundary. */
+        const qLen = this.quarterLengthSeconds;
+        const quartersCrossed = Math.max(0, endQuarter - d.startQuarter);
+        let driveSec;
+        if (quartersCrossed === 0) {
+            driveSec = clockToSeconds(d.startTime) - clockToSeconds(endTime);
         }
         else {
-            // Multi-quarter drive (simplified)
-            driveSec = clockToSeconds(d.startTime) + (900 - clockToSeconds(d.endTime));
+            driveSec =
+                clockToSeconds(d.startTime)
+                    + qLen * (quartersCrossed - 1)
+                    + (qLen - clockToSeconds(endTime));
         }
         driveSec = Math.max(0, driveSec);
         // Add to TOP
@@ -239,8 +271,8 @@ export class TeamCalculator {
             startQuarter: d.startQuarter,
             startTime: d.startTime,
             startYardLine: d.startYardLine,
-            endQuarter: d.endQuarter,
-            endTime: d.endTime,
+            endQuarter,
+            endTime,
             endYardLine: d.endYardLine,
             plays: d.plays,
             yards: d.yards,

@@ -148,6 +148,22 @@ function otherTeam(teamId: string, ctx: TransformContext): string {
   return teamId === ctx.homeTeamId ? ctx.awayTeamId : ctx.homeTeamId;
 }
 
+/**
+ * The clock the play was snapped on, as the engine wants it ("9:42").
+ *
+ * This used to read `play.clock`, a text column the app never writes — the
+ * snap clock is stored in `play_start_time` as seconds. So every play arrived
+ * at the engine reading "0:00", every drive measured zero, and time of
+ * possession has been 0:00 for both teams in every game ever charted. The
+ * text column is still honoured first in case an older row has one.
+ */
+function snapClock(play: PlayWithPlayers): string {
+  if (play.clock) return play.clock;
+  const secs = play.play_start_time;
+  if (typeof secs !== "number" || !Number.isFinite(secs) || secs < 0) return "0:00";
+  return `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, "0")}`;
+}
+
 function buildContext(
   play: PlayWithPlayers,
   ctx: TransformContext,
@@ -160,7 +176,7 @@ function buildContext(
   return {
     gameId: ctx.gameId,
     quarter: q,
-    gameClock: play.clock ?? "0:00",
+    gameClock: snapClock(play),
     down: clampDown(play.down),
     distance: play.distance ?? 10,
     yardLine: play.yard_line ?? 20,

@@ -5,12 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "tsx src/__tests__/engine.test.ts",
-    "lint": "tsc --noEmit"
-  },
+  "_comment": "Vendored PREBUILT copy - dist only, no src. Source and tests live in the football-stats-engine repo; rebuild there and copy dist/ across.",
+  "scripts": {},
   "keywords": [
     "football",
     "nfl",

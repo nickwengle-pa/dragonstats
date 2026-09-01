@@ -168,7 +168,10 @@ export class FootballStatsEngine {
         this.defenseCalc = new DefensiveCalculator(this.config, resolve);
         this.specialTeamsCalc = new SpecialTeamsCalculator(this.config, resolve);
         this.penaltyCalc = new PenaltyCalculator(this.config, resolve, this.gameState.rules.level);
-        this.teamCalc = new TeamCalculator(this.config, this.homeTeam.id, this.awayTeam.id, this.homeTeam.name, this.awayTeam.name);
+        this.teamCalc = new TeamCalculator(this.config, this.homeTeam.id, this.awayTeam.id, this.homeTeam.name, this.awayTeam.name, 
+        // Drive timing across a quarter boundary depends on the level: 12 minute
+        // quarters in high school, 15 in the NFL and college.
+        this.gameState.rules.quarterLengthSeconds);
         this.initialized = true;
         this.finalized = false;
     }
