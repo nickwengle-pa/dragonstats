@@ -150,7 +150,7 @@ export async function insertPlay(
   options: InsertPlayOptions = {}
 ): Promise<PlayRow | null> {
   // Lazy-import to avoid pulling offlineDb into modules that don't need it.
-  const { cachePlay, enqueueInsert, isOfflineSupported } = await import("./offlineDb");
+  const { cachePlayWithIntent, enqueueInsert, markSynced, isOfflineSupported } = await import("./offlineDb");
   const { refreshSyncStatus } = await import("./syncWorker");
 
   const playId = genUuid();
@@ -175,7 +175,38 @@ export async function insertPlay(
     created_at: now,
   };
 
+  /* 1) WRITE-AHEAD: cache the play and the intent to sync it, in ONE
+        transaction, BEFORE touching the network.
+
+        This used to cache first, try the server, and queue only if that call
+        failed — which left a window where the play was on the device and
+        nowhere else, with no record that the server was owed it. A tab closed
+        or reclaimed inside that window lost the play silently, and it is a
+        window that opens on every single snap. Now either both writes land or
+        neither does, and the intent is cleared only once the server has the
+        row. */
+  let intentId: string | null = null;
+  if (isOfflineSupported()) {
+    const cachedShape: PlayWithPlayers = {
+      ...localRow,
+      play_players: playerRows.map((pp) => ({ ...pp, id: genUuid(), player: undefined })),
+    };
+    const intent = await cachePlayWithIntent(cachedShape, {
+      gameId: play.game_id,
+      playId,
+      play: insertData as unknown as PlayInsert,
+      players: playerRows as unknown as Array<Record<string, unknown>>,
+    });
+    intentId = intent.id;
+    await refreshSyncStatus();
+  }
+
+  /* The intent is already queued, so "queueing" on failure is just leaving it
+     alone. Without IndexedDB there is nothing to leave, and the play is lost
+     if the network call fails — which is why the optimistic path below refuses
+     to run in that case. */
   const queueIt = async () => {
+    if (intentId) return;
     await enqueueInsert({
       gameId: play.game_id,
       playId,
@@ -185,14 +216,13 @@ export async function insertPlay(
     await refreshSyncStatus();
   };
 
-  // 1) Cache locally with denormalized player rows so reads work offline.
-  if (isOfflineSupported()) {
-    const cachedShape: PlayWithPlayers = {
-      ...localRow,
-      play_players: playerRows.map((pp) => ({ ...pp, id: genUuid(), player: undefined })),
-    };
-    await cachePlay(cachedShape);
-  }
+  /** The server has it: the debt is settled, so drop the intent. */
+  const clearIntent = async () => {
+    if (!intentId) return;
+    await markSynced(intentId);
+    intentId = null;
+    await refreshSyncStatus();
+  };
 
   // 2) Push to the server. Returns the server row on success, null when the
   //    write failed (or we're offline) and the play went to the sync queue.
@@ -213,12 +243,15 @@ export async function insertPlay(
             // queue, and `pushItem` there does clear tags before re-inserting.
             const { error: ppErr } = await supabase.from("play_players").insert(playerRows);
             if (ppErr) {
-              console.warn("play_players insert failed; queueing for retry:", ppErr);
+              // The play row landed but its credits did not. The intent stays,
+              // and pushItem re-runs the whole op — it clears tags first, so
+              // replaying it cannot duplicate them.
+              console.warn("play_players insert failed; leaving queued for retry:", ppErr);
               await queueIt();
               return playRow as PlayRow;
             }
           }
-          await refreshSyncStatus();
+          await clearIntent();
           return playRow as PlayRow;
         }
         console.warn("insertPlay network failed, queueing:", playErr);

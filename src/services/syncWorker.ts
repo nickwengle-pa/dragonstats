@@ -22,7 +22,8 @@
 
 import { supabase } from "@/lib/supabase";
 import {
-  getQueueForGame,
+  getDrainableForGame,
+  resetStuckForGame,
   markSyncing,
   markSynced,
   markFailed,
@@ -242,13 +243,25 @@ async function pushItem(item: SyncQueueItem): Promise<PushOutcome> {
  * Drain pending ops for a specific game. Returns when the queue is empty or
  * the network stops us.
  */
-export async function drainQueue(gameId: string): Promise<SyncResult> {
+/**
+ * @param opts.includeStuck  Retry the ops the drain has given up on. This is
+ *   the operator tapping the Stuck badge — which previously called this
+ *   function with no way to select the very items it was complaining about, so
+ *   it did nothing at all. Their attempt counts are reset first, because a
+ *   person asking is new information, not a sixth automatic try.
+ */
+export async function drainQueue(
+  gameId: string,
+  opts: { includeStuck?: boolean } = {},
+): Promise<SyncResult> {
   if (!isOfflineSupported() || _draining) {
     return { drained: 0, failed: 0, remaining: await getPendingCount() };
   }
   if (!navigator.onLine) {
     return { drained: 0, failed: 0, remaining: await getPendingCount() };
   }
+
+  if (opts.includeStuck) await resetStuckForGame(gameId);
 
   _draining = true;
   _status.draining = true;
@@ -261,7 +274,7 @@ export async function drainQueue(gameId: string): Promise<SyncResult> {
     // skip past it and keep pushing. It stays queued, and `stuck` surfaces it.
     const skipped = new Set<string>();
     while (navigator.onLine) {
-      const queue = await getQueueForGame(gameId);
+      const queue = await getDrainableForGame(gameId, { includeStuck: opts.includeStuck });
       const item = queue.find((i) => !skipped.has(i.id));
       if (!item) break;
 

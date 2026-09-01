@@ -171,6 +171,47 @@ export async function enqueueInsert(p: EnqueueInsertParams): Promise<SyncQueueIt
   return item;
 }
 
+/**
+ * Cache the play AND its sync intent in one transaction — write-ahead.
+ *
+ * The old order was: cache the play, attempt the network, and only queue if
+ * that attempt failed. Everything between the cache write and the queue write
+ * was a window in which the play existed on the device and nowhere else: close
+ * the tab, reload, run out of memory, have iOS reclaim the tab, and the play
+ * was on screen but had no route to the server and no record that it was owed
+ * one. A later online refresh could then hide it behind the server's list.
+ *
+ * Writing both stores in a single IndexedDB transaction removes the window
+ * entirely: either the play is cached AND owed to the server, or neither
+ * happened. The intent is deleted once the server has actually taken it, which
+ * is the only moment it stops being true.
+ */
+export async function cachePlayWithIntent(
+  play: PlayWithPlayers,
+  params: EnqueueInsertParams,
+): Promise<SyncQueueItem> {
+  const item: SyncQueueItem = {
+    id: newQueueId(),
+    op: "insert",
+    gameId: params.gameId,
+    playId: params.playId,
+    payload: { play: params.play, players: params.players },
+    status: "pending",
+    attempts: 0,
+    createdAt: Date.now(),
+  };
+  if (!isOfflineSupported()) return item;
+
+  const db = await getDb();
+  const tx = db.transaction(["plays_cache", "sync_queue"], "readwrite");
+  await Promise.all([
+    tx.objectStore("plays_cache").put(play),
+    tx.objectStore("sync_queue").put(item),
+  ]);
+  await tx.done;
+  return item;
+}
+
 export interface EnqueueUpdateParams {
   gameId: string;
   playId: string;
@@ -221,8 +262,24 @@ export async function enqueueDelete(p: EnqueueDeleteParams): Promise<SyncQueueIt
   return item;
 }
 
-/** Read all pending+syncing items for a game, oldest first. */
-export async function getQueueForGame(gameId: string): Promise<SyncQueueItem[]> {
+/** Attempts after which automatic retry gives up and a human has to look. */
+export const MAX_AUTO_ATTEMPTS = 5;
+
+/** True once the drain has stopped retrying this on its own. */
+export function isStuck(item: SyncQueueItem): boolean {
+  return item.status === "failed" && item.attempts >= MAX_AUTO_ATTEMPTS;
+}
+
+/**
+ * EVERY item still owed to the server for this game, stuck ones included.
+ *
+ * This is the honest answer to "what has not synced", and it is what the local
+ * overlay must be built from: a play the drain gave up on is still a play that
+ * exists only on this device, and dropping it from the overlay is how it
+ * disappears from the operator's screen on the next refresh — the one failure
+ * mode worse than not syncing.
+ */
+export async function getUnsyncedForGame(gameId: string): Promise<SyncQueueItem[]> {
   if (!isOfflineSupported()) return [];
   const db = await getDb();
   const all = await db.getAllFromIndex("sync_queue", "by-game", gameId);
@@ -230,9 +287,23 @@ export async function getQueueForGame(gameId: string): Promise<SyncQueueItem[]> 
   // could ever match. Ops are keyed by playId and idempotent, so sweep those
   // orphans along with whatever game is open.
   const orphaned = gameId ? await db.getAllFromIndex("sync_queue", "by-game", "") : [];
-  return [...all, ...orphaned]
-    .filter((i) => i.status !== "failed" || i.attempts < 5)
-    .sort((a, b) => a.createdAt - b.createdAt);
+  return [...all, ...orphaned].sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/**
+ * What the drain is allowed to pick up.
+ *
+ * Same list minus the ones it has already given up on — unless `includeStuck`,
+ * which is the operator explicitly asking. The Stuck badge used to call a drain
+ * that could no longer select the very items it was complaining about, so
+ * tapping it did nothing, forever.
+ */
+export async function getDrainableForGame(
+  gameId: string,
+  opts: { includeStuck?: boolean } = {},
+): Promise<SyncQueueItem[]> {
+  const all = await getUnsyncedForGame(gameId);
+  return opts.includeStuck ? all : all.filter((i) => !isStuck(i));
 }
 
 /**
@@ -253,7 +324,7 @@ export async function getQueuedPlayIds(
 
   // Oldest first, so a delete queued after an edit wins — and an insert queued
   // after a delete (same id re-added) wins right back.
-  for (const item of await getQueueForGame(gameId)) {
+  for (const item of await getUnsyncedForGame(gameId)) {
     if (item.op === "delete") {
       deletes.add(item.playId);
       upserts.delete(item.playId);
@@ -265,13 +336,41 @@ export async function getQueuedPlayIds(
   return { upserts, deletes };
 }
 
-/** Count pending/syncing items across all games. */
+/**
+ * Outstanding work across all games, EXCLUDING the stuck ones (which are
+ * reported separately by getStuckCount).
+ *
+ * This used to count only pending+syncing, so a single server rejection moved
+ * an item to `failed` and it vanished: the badge went green, and the retry
+ * timer — which stands down when this reaches zero — stopped. The play was
+ * still on the device, still absent from the server, and nothing said so. A
+ * failed item that has not exhausted its attempts is outstanding work and is
+ * counted here.
+ */
 export async function getPendingCount(): Promise<number> {
   if (!isOfflineSupported()) return 0;
   const db = await getDb();
   const pending = await db.getAllFromIndex("sync_queue", "by-status", "pending");
   const syncing = await db.getAllFromIndex("sync_queue", "by-status", "syncing");
-  return pending.length + syncing.length;
+  const failed = await db.getAllFromIndex("sync_queue", "by-status", "failed");
+  return pending.length + syncing.length + failed.filter((i) => !isStuck(i)).length;
+}
+
+/**
+ * Hand the stuck items one more chance, as a fresh start rather than a sixth
+ * attempt — the operator asking is new information (they may have just fixed
+ * whatever the server was objecting to).
+ */
+export async function resetStuckForGame(gameId: string): Promise<number> {
+  if (!isOfflineSupported()) return 0;
+  const db = await getDb();
+  const items = (await getUnsyncedForGame(gameId)).filter(isStuck);
+  const tx = db.transaction("sync_queue", "readwrite");
+  for (const item of items) {
+    await tx.store.put({ ...item, status: "pending", attempts: 0 });
+  }
+  await tx.done;
+  return items.length;
 }
 
 export async function markSyncing(queueId: string): Promise<void> {
@@ -306,7 +405,7 @@ export async function markFailed(queueId: string, error: string): Promise<void> 
  *
  * Returns the item to `pending` and refunds the attempt `markSyncing` spent.
  * Without the refund a long dead spot burns through the five-attempt cap in a
- * couple of minutes, `getQueueForGame` stops returning the item, and the play
+ * couple of minutes, the drain stops selecting the item, and the play
  * never syncs again even once service is back.
  */
 export async function markRetryable(queueId: string, error: string): Promise<void> {
@@ -330,7 +429,7 @@ export async function getStuckCount(): Promise<number> {
   if (!isOfflineSupported()) return 0;
   const db = await getDb();
   const failed = await db.getAllFromIndex("sync_queue", "by-status", "failed");
-  return failed.filter((i) => i.attempts >= 5).length;
+  return failed.filter(isStuck).length;
 }
 
 /** Manual reset: clears all queue items for a game. Use sparingly — destructive. */

@@ -47,7 +47,10 @@ export default function SyncBadge({ gameId }: Props) {
   const onClick = async () => {
     if (!gameId) return;
     if (!navigator.onLine) return;
-    await drainQueue(gameId);
+    // Tapping the badge while it is complaining about stuck ops has to retry
+    // THOSE ops. It used to call a drain that could not select them, so the
+    // one control offered for the problem did nothing.
+    await drainQueue(gameId, { includeStuck: status.stuck > 0 });
   };
 
   const isOffline = !status.online;

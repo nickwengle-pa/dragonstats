@@ -59,7 +59,7 @@ import SyncBadge from "@/components/game/SyncBadge";
 import { useWakeLock, readKeepAwake, writeKeepAwake } from "@/hooks/useWakeLock";
 import ClockInput from "@/components/game/ClockInput";
 import { setupAutoDrain, drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
-import { getQueueForGame } from "@/services/offlineDb";
+import { getUnsyncedForGame } from "@/services/offlineDb";
 import { cachedRead, cacheKeys, readSeasonRoster } from "@/services/offlineCache";
 import {
   type RosterPlayer,
@@ -618,7 +618,9 @@ export default function GameScreen() {
     let cancelled = false;
     const refresh = async () => {
       try {
-        const queue = await getQueueForGame(gameId);
+        // Unsynced, not merely drainable: a play the drain gave up on is
+        // still only on this device and must keep its marker.
+        const queue = await getUnsyncedForGame(gameId);
         if (cancelled) return;
         setPendingPlayIds(new Set(queue.map((i) => i.playId)));
       } catch { /* ignore */ }
