@@ -337,29 +337,43 @@ export async function insertPlay(
    ───────────────────────────────────────────── */
 
 export async function deletePlay(playId: string, gameId?: string): Promise<boolean> {
-  const { deleteCachedPlay, enqueueDelete } = await import("./offlineDb");
+  const { deleteCachedPlayWithIntent, markSynced } = await import("./offlineDb");
   const { refreshSyncStatus } = await import("./syncWorker");
 
-  // Always remove from local cache first so the UI updates immediately.
-  await deleteCachedPlay(playId);
+  /* WRITE-AHEAD. Dropping the cached play and recording the intent to delete
+     it server-side happen together, before the network. The old order removed
+     it locally, went to the network, and queued only on failure — so a crash
+     in between left the play gone here, still there on the server, and nothing
+     owed. The next load pulled it back: a deleted play reappearing mid-game,
+     which reads as the app inventing a snap. */
+  const intent = await deleteCachedPlayWithIntent({ gameId: gameId ?? "", playId });
+  await refreshSyncStatus();
 
   const goOnline = typeof navigator === "undefined" || navigator.onLine;
   if (goOnline) {
     try {
-      await supabase.from("play_players").delete().eq("play_id", playId);
-      const { error } = await supabase.from("plays").delete().eq("id", playId);
-      if (!error) {
-        await refreshSyncStatus();
-        return true;
+      // Credits first, and the error is NOT ignored: deleting the play while
+      // its attributions survive leaves them orphaned against a play that no
+      // longer exists.
+      const { error: ppErr } = await supabase
+        .from("play_players").delete().eq("play_id", playId);
+      if (!ppErr) {
+        const { error } = await supabase.from("plays").delete().eq("id", playId);
+        if (!error) {
+          await markSynced(intent.id);
+          await refreshSyncStatus();
+          return true;
+        }
+        console.warn("deletePlay network failed, staying queued:", error);
+      } else {
+        console.warn("deletePlay credits delete failed, staying queued:", ppErr);
       }
-      console.warn("deletePlay network failed, queueing:", error);
     } catch (err) {
-      console.warn("deletePlay network threw, queueing:", err);
+      console.warn("deletePlay network threw, staying queued:", err);
     }
   }
 
-  await enqueueDelete({ gameId: gameId ?? "", playId });
-  await refreshSyncStatus();
+  // The intent is already queued; failure just means leaving it alone.
   return true;
 }
 
@@ -376,7 +390,7 @@ export interface PlayWithPlayers extends PlayRow {
 }
 
 export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> {
-  const { cachePlays, getCachedPlays, getQueuedPlayIds, isOfflineSupported } =
+  const { replaceGameCache, getCachedPlays, getQueuedPlayIds, isOfflineSupported } =
     await import("./offlineDb");
 
   const goOnline = typeof navigator === "undefined" || navigator.onLine;
@@ -400,12 +414,15 @@ export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> 
 
         const { upserts, deletes } = await getQueuedPlayIds(gameId);
 
-        // Refresh local cache so offline reads stay fresh — but skip any play
-        // with unpushed work, or the stale server copy clobbers the newer
-        // local one and the edit is lost the moment the queue drains.
-        await cachePlays(
-          serverPlays.filter((p) => !upserts.has(p.id) && !deletes.has(p.id)),
-        );
+        /* Make the cache MATCH this snapshot rather than merely absorb it.
+           Adding without removing meant a play deleted on another device stayed
+           cached here forever and was merged back into the game on every load.
+
+           Plays with unpushed work are protected from both halves: the server
+           has not seen them, so its silence is not evidence they are gone, and
+           its copy is older than the local one. */
+        const unpushed = new Set([...upserts, ...deletes]);
+        await replaceGameCache(gameId, serverPlays, unpushed);
 
         if (upserts.size === 0 && deletes.size === 0) return serverPlays;
         return mergeQueuedPlays(
@@ -447,7 +464,7 @@ export async function updatePlay(
   },
   playDataPatch?: Record<string, unknown>
 ): Promise<boolean> {
-  const { updateCachedPlay, enqueueUpdate, isOfflineSupported, getCachedPlays } = await import("./offlineDb");
+  const { updateCachedPlayWithIntent, markSynced, isOfflineSupported, getCachedPlays } = await import("./offlineDb");
   const { refreshSyncStatus } = await import("./syncWorker");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -486,25 +503,42 @@ export async function updatePlay(
     if (mergedPlayData) updateObj.play_data = mergedPlayData;
   }
 
-  // Apply to cache immediately.
-  await updateCachedPlay(playId, updateObj);
+  // WRITE-AHEAD: cache patch and sync intent together, before the network.
+  const intent = await updateCachedPlayWithIntent(
+    playId,
+    updateObj as unknown as Partial<PlayWithPlayers>,
+    { gameId: "", playId, patch: updateObj, playData: mergedPlayData },
+  );
+  await refreshSyncStatus();
 
   const goOnline = typeof navigator === "undefined" || navigator.onLine;
   if (goOnline) {
     try {
-      const { error } = await supabase.from("plays").update(updateObj).eq("id", playId);
-      if (!error) {
+      // No players argument: this patches result fields, not who was involved.
+      const atomic = await savePlayAtomic({ ...updateObj, id: playId });
+      if (atomic.ok) {
+        await markSynced(intent.id);
         await refreshSyncStatus();
         return true;
       }
-      console.warn("updatePlay network failed, queueing:", error);
+      if (!atomic.unsupported) {
+        console.warn("updatePlay rejected, staying queued:", atomic.error);
+        return true;
+      }
+
+      const { error } = await supabase.from("plays").update(updateObj).eq("id", playId);
+      if (!error) {
+        await markSynced(intent.id);
+        await refreshSyncStatus();
+        return true;
+      }
+      console.warn("updatePlay network failed, staying queued:", error);
     } catch (err) {
-      console.warn("updatePlay network threw, queueing:", err);
+      console.warn("updatePlay network threw, staying queued:", err);
     }
   }
 
-  await enqueueUpdate({ gameId: "", playId, patch: updateObj, playData: mergedPlayData });
-  await refreshSyncStatus();
+  // Already queued by the write-ahead above.
   return true;
 }
 
@@ -537,7 +571,7 @@ export async function updatePlayFull(
   players: { player_id: string; role: string; credit?: number | null }[],
   gameId?: string,
 ): Promise<boolean> {
-  const { updateCachedPlay, enqueueUpdate } = await import("./offlineDb");
+  const { updateCachedPlayWithIntent, markSynced } = await import("./offlineDb");
   const { refreshSyncStatus } = await import("./syncWorker");
 
   // Strip undefined optional fields to avoid missing-column errors.
@@ -553,24 +587,52 @@ export async function updatePlayFull(
     credit: p.credit ?? null,
   }));
 
-  // Patch the local cache first so the corrected play reads back correctly
-  // even with no network — same order insertPlay and deletePlay use.
-  await updateCachedPlay(playId, {
-    ...cleanFields,
-    play_players: rows.map((r) => ({ ...r, id: genUuid(), player: undefined })),
-  } as unknown as Partial<PlayWithPlayers>);
+  /* WRITE-AHEAD: the corrected play and the intent to push it land together,
+     before the network, so an edit cannot be applied locally and then lost
+     before anything records that the server is owed it. */
+  const intent = await updateCachedPlayWithIntent(
+    playId,
+    {
+      ...cleanFields,
+      play_players: rows.map((r) => ({ ...r, id: genUuid(), player: undefined })),
+    } as unknown as Partial<PlayWithPlayers>,
+    {
+      gameId: gameId ?? "",
+      playId,
+      patch: cleanFields,
+      players: rows as unknown as Array<Record<string, unknown>>,
+    },
+  );
+  await refreshSyncStatus();
 
   const goOnline = typeof navigator === "undefined" || navigator.onLine;
   if (goOnline) {
     try {
+      /* One transaction: the play and its replacement tag set together. An
+         edit can add, remove or re-role players, so the set is replaced
+         wholesale — a partial merge leaves stale credit on a player who was
+         edited off the play. */
+      const atomic = await savePlayAtomic(
+        { ...cleanFields, id: playId },
+        rows as unknown as Array<Record<string, unknown>>,
+      );
+      if (atomic.ok) {
+        await markSynced(intent.id);
+        await refreshSyncStatus();
+        return true;
+      }
+      if (!atomic.unsupported) {
+        console.warn("updatePlayFull rejected, staying queued:", atomic.error);
+        return true;
+      }
+
+      // Legacy path, only until the migration is applied.
       const { error: updateErr } = await supabase
         .from("plays")
         .update(cleanFields)
         .eq("id", playId);
 
       if (!updateErr) {
-        // Replace the tag set wholesale — an edit can add, remove, or re-role
-        // players, so a partial merge would leave stale credit behind.
         const { error: deleteErr } = await supabase
           .from("play_players")
           .delete()
@@ -578,37 +640,29 @@ export async function updatePlayFull(
 
         if (!deleteErr) {
           if (rows.length === 0) {
+            await markSynced(intent.id);
             await refreshSyncStatus();
             return true;
           }
           const { error: insertErr } = await supabase.from("play_players").insert(rows);
           if (!insertErr) {
+            await markSynced(intent.id);
             await refreshSyncStatus();
             return true;
           }
-          console.warn("updatePlayFull play_players insert failed, queueing:", insertErr);
+          console.warn("updatePlayFull play_players insert failed, staying queued:", insertErr);
         } else {
-          console.warn("updatePlayFull play_players delete failed, queueing:", deleteErr);
+          console.warn("updatePlayFull play_players delete failed, staying queued:", deleteErr);
         }
       } else {
-        console.warn("updatePlayFull network failed, queueing:", updateErr);
+        console.warn("updatePlayFull network failed, staying queued:", updateErr);
       }
     } catch (err) {
-      console.warn("updatePlayFull threw, queueing:", err);
+      console.warn("updatePlayFull threw, staying queued:", err);
     }
   }
 
-  // Offline, or the write failed partway: queue it. The edit is already in the
-  // local cache, so the UI stays correct and the sync badge shows it pending.
-  // Previously this path returned false and the edit was silently discarded.
-  await enqueueUpdate({
-    gameId: gameId ?? "",
-    playId,
-    patch: cleanFields,
-    players: rows as unknown as Array<Record<string, unknown>>,
-  });
-  await refreshSyncStatus();
-
+  // The intent is already queued; every failure path above just leaves it.
   return true;
 }
 
@@ -640,7 +694,7 @@ export async function updatePlaySituation(
   playData?: Record<string, unknown>,
   options: UpdatePlaySituationOptions = {},
 ): Promise<boolean> {
-  const { updateCachedPlay, enqueueUpdate } = await import("./offlineDb");
+  const { updateCachedPlayWithIntent, markSynced } = await import("./offlineDb");
   const { refreshSyncStatus } = await import("./syncWorker");
 
   const updateObj: Record<string, unknown> = { ...fields };
@@ -654,30 +708,49 @@ export async function updatePlaySituation(
     }
   }
 
-  // Patch the cache so the offline UI shows the corrected situation.
-  await updateCachedPlay(playId, updateObj);
+  /* WRITE-AHEAD, and it matters most here: this runs for every play downstream
+     of an edit or an insert, in the background, while the operator has already
+     moved on. No `players` is supplied because a situation correction must not
+     touch who was involved in the play. */
+  const intent = await updateCachedPlayWithIntent(
+    playId,
+    updateObj as unknown as Partial<PlayWithPlayers>,
+    { gameId: options.gameId ?? "", playId, patch: updateObj, playData },
+  );
+  await refreshSyncStatus();
 
   const push = async (): Promise<boolean> => {
     const goOnline = typeof navigator === "undefined" || navigator.onLine;
     if (goOnline) {
       try {
+        const atomic = await savePlayAtomic({ ...updateObj, id: playId });
+        if (atomic.ok) {
+          await markSynced(intent.id);
+          await refreshSyncStatus();
+          return true;
+        }
+        if (!atomic.unsupported) {
+          console.warn("updatePlaySituation rejected, staying queued:", atomic.error);
+          return true;
+        }
+
         const { error } = await supabase
           .from("plays")
           .update(updateObj)
           .eq("id", playId);
 
         if (!error) {
+          await markSynced(intent.id);
           await refreshSyncStatus();
           return true;
         }
-        console.warn("updatePlaySituation network failed, queueing:", error);
+        console.warn("updatePlaySituation network failed, staying queued:", error);
       } catch (err) {
-        console.warn("updatePlaySituation network threw, queueing:", err);
+        console.warn("updatePlaySituation network threw, staying queued:", err);
       }
     }
 
-    await enqueueUpdate({ gameId: options.gameId ?? "", playId, patch: updateObj, playData });
-    await refreshSyncStatus();
+    // Already queued by the write-ahead above.
     return true;
   };
 

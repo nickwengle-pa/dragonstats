@@ -108,6 +108,46 @@ export async function cachePlay(play: PlayWithPlayers): Promise<void> {
   await db.put("plays_cache", play);
 }
 
+/**
+ * Make the cached play list for a game match the server's, in one transaction.
+ *
+ * `cachePlays` only ever added. A play deleted on another device — or by a
+ * coach on a second tablet — stayed in this device's cache forever, and every
+ * subsequent load merged it straight back into the game. The operator sees a
+ * snap that no longer exists and has no way to get rid of it.
+ *
+ * `protectedIds` are the plays with unpushed local work. They are deliberately
+ * NOT removed and NOT overwritten: the server has not seen them yet, so its
+ * silence about them means nothing.
+ */
+export async function replaceGameCache(
+  gameId: string,
+  serverPlays: PlayWithPlayers[],
+  protectedIds: Set<string>,
+): Promise<void> {
+  if (!isOfflineSupported()) return;
+  const db = await getDb();
+  const tx = db.transaction("plays_cache", "readwrite");
+  const store = tx.store;
+
+  const existing = await store.index("by-game").getAll(gameId);
+  const serverIds = new Set(serverPlays.map((p) => p.id));
+
+  for (const cached of existing) {
+    if (protectedIds.has(cached.id)) continue;
+    // Present locally, absent from a successful server read, and nothing owed
+    // for it: it is gone, and keeping it resurrects a deleted play.
+    if (!serverIds.has(cached.id)) await store.delete(cached.id);
+  }
+
+  for (const play of serverPlays) {
+    if (protectedIds.has(play.id)) continue;
+    await store.put(play);
+  }
+
+  await tx.done;
+}
+
 export async function cachePlays(plays: PlayWithPlayers[]): Promise<void> {
   if (!isOfflineSupported() || plays.length === 0) return;
   const db = await getDb();
@@ -237,6 +277,79 @@ export async function enqueueUpdate(p: EnqueueUpdateParams): Promise<SyncQueueIt
   if (!isOfflineSupported()) return item;
   const db = await getDb();
   await db.put("sync_queue", item);
+  return item;
+}
+
+/**
+ * Patch the cached play AND record the intent to push it, in one transaction.
+ *
+ * Same reasoning as cachePlayWithIntent: an edit applied locally and then lost
+ * before it was queued is an edit the operator watched succeed and the server
+ * never hears about.
+ */
+export async function updateCachedPlayWithIntent(
+  playId: string,
+  patch: Partial<PlayWithPlayers>,
+  params: EnqueueUpdateParams,
+): Promise<SyncQueueItem> {
+  const item: SyncQueueItem = {
+    id: newQueueId(),
+    op: "update",
+    gameId: params.gameId,
+    playId: params.playId,
+    payload: {
+      patch: params.patch,
+      ...(params.playData !== undefined ? { playData: params.playData } : {}),
+      ...(params.players !== undefined ? { players: params.players } : {}),
+    },
+    status: "pending",
+    attempts: 0,
+    createdAt: Date.now(),
+  };
+  if (!isOfflineSupported()) return item;
+
+  const db = await getDb();
+  const tx = db.transaction(["plays_cache", "sync_queue"], "readwrite");
+  const store = tx.objectStore("plays_cache");
+  const existing = await store.get(playId);
+  if (existing) await store.put({ ...existing, ...patch });
+  await tx.objectStore("sync_queue").put(item);
+  await tx.done;
+  return item;
+}
+
+/**
+ * Drop the cached play AND record the intent to delete it on the server, in
+ * one transaction.
+ *
+ * This is the one whose old order could actively resurrect data: the cache
+ * entry was removed, the network call went out, and a crash before the queue
+ * write left the play gone locally, still present on the server, and with
+ * nothing owed. The next load pulled it straight back — a deleted play
+ * reappearing mid-game, which reads as the app inventing a snap.
+ */
+export async function deleteCachedPlayWithIntent(
+  params: EnqueueDeleteParams,
+): Promise<SyncQueueItem> {
+  const item: SyncQueueItem = {
+    id: newQueueId(),
+    op: "delete",
+    gameId: params.gameId,
+    playId: params.playId,
+    payload: { id: params.playId },
+    status: "pending",
+    attempts: 0,
+    createdAt: Date.now(),
+  };
+  if (!isOfflineSupported()) return item;
+
+  const db = await getDb();
+  const tx = db.transaction(["plays_cache", "sync_queue"], "readwrite");
+  await Promise.all([
+    tx.objectStore("plays_cache").delete(params.playId),
+    tx.objectStore("sync_queue").put(item),
+  ]);
+  await tx.done;
   return item;
 }
 
