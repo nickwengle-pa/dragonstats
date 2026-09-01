@@ -144,6 +144,42 @@ export interface InsertPlayOptions {
   optimistic?: boolean;
 }
 
+/**
+ * Write a play and its credits in one server-side transaction.
+ *
+ * Replaces the three separate requests — upsert play, delete credits, insert
+ * credits — any one of which could be the last to succeed, leaving a play with
+ * no credits or with a previous edit's still attached.
+ *
+ * `players === undefined` means "leave the credits alone", for a
+ * situation-only patch such as a down or spot correction. An array, empty
+ * included, replaces them.
+ *
+ * `unsupported` is the deployment seam: the app reaches production before the
+ * SQL does, and a build that could only talk to the new function would break
+ * every write in that gap. Callers fall back to the old path when it comes
+ * back true, and simply stop doing so once the migration is applied.
+ */
+export async function savePlayAtomic(
+  play: Record<string, unknown>,
+  players?: Array<Record<string, unknown>>,
+): Promise<{ ok: boolean; unsupported: boolean; row?: PlayRow; error?: unknown }> {
+  const { data, error } = await supabase.rpc("save_play_with_players", {
+    p_play: play,
+    p_players: players ?? null,
+  });
+
+  if (!error) return { ok: true, unsupported: false, row: (data as PlayRow) ?? undefined };
+
+  // PGRST202: PostgREST could not find the function in its schema cache.
+  const code = (error as { code?: string }).code;
+  const unsupported =
+    code === "PGRST202"
+    || /could not find the function|schema cache/i.test(error.message ?? "");
+
+  return { ok: false, unsupported, error };
+}
+
 export async function insertPlay(
   play: PlayInsert,
   players: Omit<PlayPlayerInsert, "play_id">[],
@@ -230,6 +266,24 @@ export async function insertPlay(
     const goOnline = typeof navigator === "undefined" || navigator.onLine;
     if (goOnline) {
       try {
+        /* One transaction on the server: the play and its credits land
+           together or not at all. Falls back to the old three-request shape
+           only while the function is missing — i.e. between deploying this
+           build and applying its migration. */
+        const atomic = await savePlayAtomic(
+          insertData,
+          playerRows as unknown as Array<Record<string, unknown>>,
+        );
+        if (atomic.ok) {
+          await clearIntent();
+          return (atomic.row ?? localRow) as PlayRow;
+        }
+        if (!atomic.unsupported) {
+          console.warn("insertPlay rejected by save_play_with_players:", atomic.error);
+          await queueIt();
+          return null;
+        }
+
         const { data: playRow, error: playErr } = await supabase
           .from("plays")
           .upsert(insertData, { onConflict: "id" })

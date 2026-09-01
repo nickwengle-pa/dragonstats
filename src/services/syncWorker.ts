@@ -21,6 +21,7 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { savePlayAtomic } from "./gameService";
 import {
   getDrainableForGame,
   resetStuckForGame,
@@ -187,16 +188,31 @@ async function pushItem(item: SyncQueueItem): Promise<PushOutcome> {
 
     if (item.op === "insert") {
       const { play, players } = item.payload;
-      // Upsert by id — duplicates from retries become no-ops.
+      /* One transaction, and idempotent: the id is client-generated, so a
+         replay after a dead spot upserts the same row and replaces the same
+         credits rather than duplicating them. */
+      const atomic = await savePlayAtomic(
+        play as Record<string, unknown>,
+        Array.isArray(players) ? (players as Array<Record<string, unknown>>) : [],
+      );
+      if (atomic.ok) {
+        await markSynced(item.id);
+        return "ok";
+      }
+      if (!atomic.unsupported) return await failItem(item, atomic.error);
+
+      // Legacy path, only until the migration is applied.
       const { error: playErr } = await supabase
         .from("plays")
         .upsert(play, { onConflict: "id" });
       if (playErr) return await failItem(item, playErr);
       if (Array.isArray(players) && players.length > 0) {
-        // play_players: composite (play_id, role, player_id) is generally unique.
-        // We delete existing rows for this play first to avoid stale tags from a
-        // previous half-synced state, then insert fresh.
-        await supabase.from("play_players").delete().eq("play_id", item.playId);
+        // Stale tags from a half-synced state have to go before the fresh set
+        // is inserted, and a refused delete must NOT be followed by an insert:
+        // that is how a play ends up with every credit twice.
+        const { error: delErr } = await supabase
+          .from("play_players").delete().eq("play_id", item.playId);
+        if (delErr) return await failItem(item, delErr);
         const { error: ppErr } = await supabase.from("play_players").insert(players);
         if (ppErr) return await failItem(item, ppErr);
       }
@@ -206,15 +222,30 @@ async function pushItem(item: SyncQueueItem): Promise<PushOutcome> {
 
     if (item.op === "update") {
       const { patch, playData, players } = item.payload;
-      const update: Record<string, unknown> = { ...patch };
+      const update: Record<string, unknown> = { ...patch, id: item.playId };
       if (playData !== undefined) update.play_data = playData;
-      const { error } = await supabase.from("plays").update(update).eq("id", item.playId);
+
+      /* A full play edit can re-tag who was involved, so the queued update
+         carries the replacement set. Absent `players` this was a
+         situation-only patch and the existing tags must survive untouched —
+         which is exactly the distinction the function's NULL argument makes. */
+      const atomic = await savePlayAtomic(
+        update,
+        Array.isArray(players) ? (players as Array<Record<string, unknown>>) : undefined,
+      );
+      if (atomic.ok) {
+        await markSynced(item.id);
+        return "ok";
+      }
+      if (!atomic.unsupported) return await failItem(item, atomic.error);
+
+      // Legacy path, only until the migration is applied.
+      const { error } = await supabase.from("plays").update(patch).eq("id", item.playId);
       if (error) return await failItem(item, error);
-      // A full play edit can re-tag who was involved, so the queued update
-      // carries the replacement roster. Absent `players` this was a
-      // situation-only patch and existing tags must survive untouched.
       if (Array.isArray(players)) {
-        await supabase.from("play_players").delete().eq("play_id", item.playId);
+        const { error: delErr } = await supabase
+          .from("play_players").delete().eq("play_id", item.playId);
+        if (delErr) return await failItem(item, delErr);
         if (players.length > 0) {
           const { error: ppErr } = await supabase.from("play_players").insert(players);
           if (ppErr) return await failItem(item, ppErr);
@@ -225,7 +256,11 @@ async function pushItem(item: SyncQueueItem): Promise<PushOutcome> {
     }
 
     if (item.op === "delete") {
-      await supabase.from("play_players").delete().eq("play_id", item.playId);
+      // A refused credit-delete used to be swallowed, and the play was deleted
+      // anyway — leaving orphaned attributions behind it.
+      const { error: delErr } = await supabase
+        .from("play_players").delete().eq("play_id", item.playId);
+      if (delErr) return await failItem(item, delErr);
       const { error } = await supabase.from("plays").delete().eq("id", item.playId);
       if (error) return await failItem(item, error);
       await markSynced(item.id);

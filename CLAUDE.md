@@ -16,14 +16,17 @@ npx tsc -b        # then
 npm run build     # PWA/service worker regenerates here, so run it
 ```
 
-Dev server: `preview_start` with `dragonstats-dev`, app at
+Dev server: `preview_start` with `dragonstats` (the entry lives in the
+user-level `D:\APPS\.claude\launch.json`, not this repo's), app at
 `http://localhost:5174/` — served from the root since the move to
 dragonstats.app. It used to sit under `/dragonstats/` on github.io, so treat
 any surviving reference to that prefix as stale.
 
-**Claude cannot log in** — Supabase is unreachable from the sandbox. Anything
-behind auth (the whole game screen) has to be verified by the user. Say so
-plainly rather than implying a flow was tested.
+**Claude CAN log in, against the local stack.** `npx supabase start` brings up
+Supabase in Docker and `.env.local` points the app at `127.0.0.1:54321`, so the
+whole game screen is testable end to end — including auth, RLS and email (local
+mail lands in Mailpit on :54324). Production remains unreachable and untestable
+from here. Reset the sandbox with `npx supabase db reset`.
 
 Push to `main` auto-deploys to GitHub Pages. Don't push unless asked.
 
@@ -42,9 +45,24 @@ Push to `main` auto-deploys to GitHub Pages. Don't push unless asked.
   patching state.
 - **Manual overrides must outrank the engine.** A hand-entered spot is flagged
   `next_situation_source: "manual_override"` and wins over the replay result.
-- **Offline-first writes.** `insertPlay`/`deletePlay`/`updatePlayFull` all
-  cache to IndexedDB, try the network, and enqueue on failure. Any new write
-  path must follow that shape or it silently drops work on press-box wifi.
+- **Writes are write-ahead, not enqueue-on-failure.** `insertPlay` caches the
+  play AND its sync intent in ONE IndexedDB transaction *before* touching the
+  network, and deletes the intent only once the server has the row. The old
+  shape — cache, try, enqueue if that failed — left a window on every snap
+  where the play existed only on the device with no record it was owed to the
+  server. Any new write path must write ahead the same way.
+  (`updatePlayFull`/`deletePlay` still use the old order; that is known and
+  queued.)
+- **A play and its credits are one server-side transaction.**
+  `save_play_with_players` (RPC) upserts the play and replaces `play_players`
+  together. Passing no players means "leave the credits alone" — a
+  situation-only patch must not wipe who was involved. Callers fall back to the
+  old three-request path only while the function is missing, which is the gap
+  between deploying a build and applying its migration.
+- **Access is program membership.** Every table is scoped through
+  `program_members`; a signed-in account with no membership sees nothing.
+  Coaches join with an invite code (`redeem_invite_code`). Supabase Auth
+  sign-ups must stay ENABLED — the code is the gate, not the sign-up form.
 
 ## Gotchas — these have each cost real time
 
