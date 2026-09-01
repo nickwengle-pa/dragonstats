@@ -116,13 +116,20 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     // has no program yet", and the router answers that with the first-time
     // setup screen. At a field with no signal that misread is the whole app.
     const programRead = await cachedRead<Program>(cacheKeys.program(user.id), async () => {
+      /* Membership, not ownership. This used to filter on owner_id, which was
+         fine while the only account was the one that created the program - but
+         a coach who joins with an invite code is a MEMBER, and would have been
+         told they had no program at all and shown first-time setup. RLS already
+         restricts this table to programs the caller belongs to, so no filter is
+         needed here; the ordering just makes "first program" deterministic for
+         an account that belongs to more than one. */
       const { data, error } = await supabase
         .from("programs")
         .select("*")
-        .eq("owner_id", user.id)
-        .maybeSingle();
+        .order("created_at", { ascending: true })
+        .limit(1);
       if (error) throw error;
-      return (data as Program | null) ?? null;
+      return ((data as Program[] | null)?.[0]) ?? null;
     });
 
     const prog = programRead.value;

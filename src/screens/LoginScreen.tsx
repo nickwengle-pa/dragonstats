@@ -3,18 +3,18 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import plDragon from "@/assets/pl-dragon.png";
 
-/* Sign-in only, on purpose.
-   This screen used to offer "Need an account? Sign up", which combined with
-   the old catch-all RLS policies meant anyone on the internet could mint an
-   account and read or delete every program's season. Accounts are now created
-   deliberately (Supabase dashboard, or an invite flow when one exists) rather
-   than by anyone who finds the URL. Sign-up must stay disabled in the Supabase
-   Auth settings too - removing the button only closes the front door. */
+/* Sign-up is open, but an account on its own reaches nothing: every table is
+   scoped to program membership, and a new account belongs to no program. The
+   invite code is the thing that grants access, so it is required here rather
+   than offered as a later step - a coach who signs up without one would land
+   on an empty app and assume it was broken. */
 export default function LoginScreen() {
-  const { signIn } = useAuth();
+  const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -23,15 +23,30 @@ export default function LoginScreen() {
     setError("");
     setLoading(true);
 
-    const err = await signIn(email, password);
+    const err = isSignUp
+      ? await signUp(email, password, inviteCode)
+      : await signIn(email, password);
 
     setLoading(false);
 
     if (err) {
       setError(err.message);
-    } else {
-      navigate("/");
+      return;
     }
+    /* Joining is the one case that needs a real reload rather than a client-side
+       navigate. Signing up flips auth state, which makes the program context
+       read "no program" before the invite code has been redeemed — and its
+       refresh closes over a user that is still null at that moment, so calling
+       it again from here clears the program instead of finding it. Rather than
+       sequence three async things that each own part of the answer, start the
+       app over: the membership exists by now, and useAuth dropped the cached
+       "no program" entry, so a fresh boot reads the truth. Costs one reload,
+       once, on the only screen where nobody is mid-game. */
+    if (isSignUp) {
+      window.location.assign("/");
+      return;
+    }
+    navigate("/");
   };
 
   return (
@@ -86,10 +101,32 @@ export default function LoginScreen() {
               onChange={e => setPassword(e.target.value)}
               placeholder="Enter password"
               className="input"
-              autoComplete="current-password"
+              autoComplete={isSignUp ? "new-password" : "current-password"}
               required
             />
           </div>
+
+          {isSignUp && (
+            <div>
+              <label htmlFor="invite-code" className="label block mb-1.5 ml-1">Invite Code</label>
+              <input
+                id="invite-code"
+                type="text"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                placeholder="8-character code"
+                className="input tracking-[0.3em] font-display uppercase"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={8}
+                required
+              />
+              <p className="text-[11px] text-surface-muted/70 mt-1 font-body">
+                From your head coach or program administrator.
+              </p>
+            </div>
+          )}
 
           {error && (
             <p className="text-sm text-red-400 text-center font-medium py-1">{error}</p>
@@ -100,13 +137,16 @@ export default function LoginScreen() {
             disabled={loading}
             className="btn-primary mt-3 text-base tracking-[0.15em]"
           >
-            {loading ? "..." : "Sign In"}
+            {loading ? "..." : isSignUp ? "Join Program" : "Sign In"}
           </button>
         </form>
 
-        <p className="w-full mt-4 text-xs text-center text-surface-muted/60 font-body">
-          Accounts are issued by your program administrator.
-        </p>
+        <button
+          onClick={() => { setIsSignUp(!isSignUp); setError(""); }}
+          className="btn-ghost w-full mt-4 text-sm normal-case tracking-normal font-body"
+        >
+          {isSignUp ? "Already have an account? Sign in" : "Have an invite code? Join your program"}
+        </button>
       </div>
 
       {/* Bottom branding */}

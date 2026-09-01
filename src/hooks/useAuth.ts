@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { cacheKeys, invalidateCache } from "@/services/offlineCache";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthState {
@@ -55,9 +56,52 @@ export function useAuth() {
     await supabase.auth.signOut();
   }, []);
 
-  /* No signUp here by design. Self-service account creation was how an
-     anonymous visitor got an authenticated session, and an authenticated
-     session used to mean full access to every program. Accounts are created
-     out of band; see LoginScreen. */
-  return { ...state, signIn, signOut };
+  /* Declared before signUp, which calls it. Also usable on its own, for an
+     account that already exists and is joining a program (or a second one). */
+  const redeemInviteCode = useCallback(async (inviteCode: string) => {
+    const code = inviteCode.trim().toUpperCase();
+    if (!code) return new Error("Enter the invite code from your program administrator.");
+
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) return new Error("Sign in before redeeming an invite code.");
+
+    const { error } = await supabase.rpc("redeem_invite_code", { submitted_code: code });
+    if (error) return new Error(error.message);
+
+    /* The program context read "no program" moments ago — before this
+       membership existed — and cached that answer under this user's key. Left
+       alone, a coach who just joined is shown the first-time setup screen and
+       invited to create a second program. Drop the entry so the next read goes
+       to the server. */
+    await invalidateCache(cacheKeys.program(user.id));
+    return null;
+  }, []);
+
+  /* Sign-up exists, but an account is worth nothing on its own: RLS scopes
+     every table to program membership, and a fresh account is a member of
+     nothing. The invite code is what grants access, so it is redeemed as part
+     of signing up rather than left as a later step someone forgets.
+  
+     The code is checked AFTER the account exists because redeeming needs an
+     authenticated session - redeem_invite_code writes the membership row on
+     the caller's behalf, which is exactly what the caller cannot do for
+     themselves. A bad code therefore leaves a real but program-less account;
+     the caller reports that so the user can try again from the join screen
+     instead of being stranded on a working login with nothing in it. */
+  const signUp = useCallback(async (email: string, password: string, inviteCode: string) => {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) return error;
+
+    // Email confirmation is on: there is no session yet, so redemption has to
+    // wait until the first real sign-in.
+    if (!data.session) {
+      return new Error(
+        "Account created. Confirm your email, then sign in and enter your code.",
+      );
+    }
+
+    return await redeemInviteCode(inviteCode);
+  }, [redeemInviteCode]);
+
+  return { ...state, signIn, signUp, signOut, redeemInviteCode };
 }

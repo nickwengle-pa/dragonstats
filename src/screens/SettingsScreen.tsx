@@ -18,6 +18,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { TabBar } from "@/screens/DashboardScreen";
 import DangerZone from "@/components/settings/DangerZone";
+import TeamAccess from "@/components/settings/TeamAccess";
+import JoinWithCode from "@/components/settings/JoinWithCode";
 import { supabase } from "@/lib/supabase";
 import {
   SEASON_LEVELS as LEVEL_OPTIONS,
@@ -502,10 +504,13 @@ export default function SettingsScreen({ firstTime = false }: Props) {
       <div className="mx-5 mt-1 mb-4 accent-line" />
 
       {firstTime && (
-        <div className="px-5 pb-4">
+        <div className="px-5 pb-4 space-y-4">
           <p className="text-sm text-surface-muted font-body leading-relaxed">
             Welcome to Dragon Stats. Set up your school and first season so the app has an active year to work from.
           </p>
+          {/* An assistant coach reaching this screen is usually here by mistake
+              - they have an invite code and a typo, not a school to create. */}
+          <JoinWithCode />
         </div>
       )}
 
@@ -811,6 +816,8 @@ export default function SettingsScreen({ firstTime = false }: Props) {
         <button onClick={handleSave} disabled={!name || !abbrev || saving} className="btn-primary w-full">
           {saved ? "Saved!" : saving ? "Saving..." : firstTime ? "Create Program" : "Save Changes"}
         </button>
+
+        {program && !firstTime && <TeamAccess programId={program.id} />}
 
         {program && !firstTime && (
           <DangerZone
