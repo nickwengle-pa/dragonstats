@@ -9,12 +9,16 @@ import plDragon from "@/assets/pl-dragon.png";
    than offered as a later step - a coach who signs up without one would land
    on an empty app and assume it was broken. */
 export default function LoginScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, requestPasswordReset } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
+  /* A third mode rather than a separate route: the only thing it needs is the
+     email box that is already on screen. */
+  const [isReset, setIsReset] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -22,6 +26,19 @@ export default function LoginScreen() {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    if (isReset) {
+      const resetErr = await requestPasswordReset(email);
+      setLoading(false);
+      if (resetErr) {
+        setError(resetErr.message);
+        return;
+      }
+      // Deliberately the same message whether or not that address has an
+      // account — see requestPasswordReset.
+      setResetSent(true);
+      return;
+    }
 
     const err = isSignUp
       ? await signUp(email, password, inviteCode)
@@ -93,18 +110,28 @@ export default function LoginScreen() {
               required
             />
           </div>
-          <div>
-            <label className="label block mb-1.5 ml-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Enter password"
-              className="input"
-              autoComplete={isSignUp ? "new-password" : "current-password"}
-              required
-            />
-          </div>
+          {/* Asking for a reset link needs the email box and nothing else. */}
+          {!isReset && (
+            <div>
+              <label className="label block mb-1.5 ml-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="input"
+                autoComplete={isSignUp ? "new-password" : "current-password"}
+                required
+              />
+            </div>
+          )}
+
+          {isReset && resetSent && (
+            <p className="text-sm text-emerald-400/90 text-center font-body py-1 leading-relaxed">
+              If that address has an account, a reset link is on its way. Check
+              your email — including the junk folder.
+            </p>
+          )}
 
           {isSignUp && (
             <div>
@@ -137,16 +164,35 @@ export default function LoginScreen() {
             disabled={loading}
             className="btn-primary mt-3 text-base tracking-[0.15em]"
           >
-            {loading ? "..." : isSignUp ? "Join Program" : "Sign In"}
+            {loading ? "..." : isReset ? "Send Reset Link" : isSignUp ? "Join Program" : "Sign In"}
           </button>
         </form>
 
-        <button
-          onClick={() => { setIsSignUp(!isSignUp); setError(""); }}
-          className="btn-ghost w-full mt-4 text-sm normal-case tracking-normal font-body"
-        >
-          {isSignUp ? "Already have an account? Sign in" : "Have an invite code? Join your program"}
-        </button>
+        {isReset ? (
+          <button
+            onClick={() => { setIsReset(false); setResetSent(false); setError(""); }}
+            className="btn-ghost w-full mt-4 text-sm normal-case tracking-normal font-body"
+          >
+            Back to sign in
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => { setIsSignUp(!isSignUp); setError(""); }}
+              className="btn-ghost w-full mt-4 text-sm normal-case tracking-normal font-body"
+            >
+              {isSignUp ? "Already have an account? Sign in" : "Have an invite code? Join your program"}
+            </button>
+            {!isSignUp && (
+              <button
+                onClick={() => { setIsReset(true); setError(""); }}
+                className="btn-ghost w-full mt-1 text-xs normal-case tracking-normal font-body text-surface-muted/70"
+              >
+                Forgot your password?
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       {/* Bottom branding */}

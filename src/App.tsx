@@ -36,6 +36,7 @@ const RosterScreen = lazyWithReload(() => import("@/screens/RosterScreen"));
 const GameScreen = lazyWithReload(() => import("@/screens/GameScreen"));
 const GameSummaryScreen = lazyWithReload(() => import("@/screens/GameSummaryScreen"));
 const PostGameReview = lazyWithReload(() => import("@/screens/PostGameReview"));
+const ResetPasswordScreen = lazyWithReload(() => import("@/screens/ResetPasswordScreen"));
 const PlayerScreen = lazyWithReload(() => import("@/screens/PlayerScreen"));
 const SettingsScreen = lazyWithReload(() => import("@/screens/SettingsScreen"));
 const SeasonStatsScreen = lazyWithReload(() => import("@/screens/SeasonStatsScreen"));
@@ -103,6 +104,9 @@ function AppRoutes() {
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
+          {/* A recovery session is a signed-in user with no program, so
+              this has to be routable here too. */}
+          <Route path="/reset-password" element={<ResetPasswordScreen />} />
           <Route path="*" element={<ProtectedRoute><SettingsScreen firstTime /></ProtectedRoute>} />
         </Routes>
       </Suspense>
@@ -114,6 +118,9 @@ function AppRoutes() {
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
+          {/* A recovery session is a signed-in user with no program, so
+              this has to be routable here too. */}
+          <Route path="/reset-password" element={<ResetPasswordScreen />} />
           <Route path="*" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
         </Routes>
       </Suspense>
@@ -125,6 +132,7 @@ function AppRoutes() {
       <Routes>
         {/* Public */}
         <Route path="/login" element={<LoginScreen />} />
+        <Route path="/reset-password" element={<ResetPasswordScreen />} />
 
         {/* Protected */}
         <Route path="/" element={<ProtectedRoute><DashboardScreen /></ProtectedRoute>} />

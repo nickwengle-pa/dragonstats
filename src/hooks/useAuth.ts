@@ -52,6 +52,39 @@ export function useAuth() {
     return error;
   }, []);
 
+  /* Ask for a reset link.
+
+     Always reports success, even for an address with no account. Saying "no
+     such user" would turn this box into a way to test which of a school's
+     coaches have accounts, and the caller has nothing useful to do with the
+     distinction anyway.
+
+     `redirectTo` must be listed under Supabase Auth -> URL Configuration ->
+     Redirect URLs, for production AND for localhost. It is not optional: an
+     unlisted URL makes the emailed link fail in a way that looks like a broken
+     link rather than a misconfiguration. */
+  const requestPasswordReset = useCallback(async (email: string) => {
+    const address = email.trim();
+    if (!address) return new Error("Enter the email address on your account.");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(address, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    // A genuine transport failure is worth surfacing; "user not found" is not,
+    // and Supabase does not distinguish them here by design.
+    if (error && error.status !== 400) return new Error(error.message);
+    return null;
+  }, []);
+
+  /* Set the new password. Called from the reset screen, where the emailed link
+     has already put the browser in a temporary recovery session — which is why
+     this needs no old password and no token of its own. */
+  const updatePassword = useCallback(async (password: string) => {
+    if (password.length < 6) return new Error("Use at least 6 characters.");
+    const { error } = await supabase.auth.updateUser({ password });
+    return error ? new Error(error.message) : null;
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -103,5 +136,5 @@ export function useAuth() {
     return await redeemInviteCode(inviteCode);
   }, [redeemInviteCode]);
 
-  return { ...state, signIn, signUp, signOut, redeemInviteCode };
+  return { ...state, signIn, signUp, signOut, redeemInviteCode, requestPasswordReset, updatePassword };
 }
