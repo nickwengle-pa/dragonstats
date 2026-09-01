@@ -3,12 +3,18 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import plDragon from "@/assets/pl-dragon.png";
 
+/* Sign-in only, on purpose.
+   This screen used to offer "Need an account? Sign up", which combined with
+   the old catch-all RLS policies meant anyone on the internet could mint an
+   account and read or delete every program's season. Accounts are now created
+   deliberately (Supabase dashboard, or an invite flow when one exists) rather
+   than by anyone who finds the URL. Sign-up must stay disabled in the Supabase
+   Auth settings too - removing the button only closes the front door. */
 export default function LoginScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -17,18 +23,14 @@ export default function LoginScreen() {
     setError("");
     setLoading(true);
 
-    const err = isSignUp
-      ? await signUp(email, password)
-      : await signIn(email, password);
+    const err = await signIn(email, password);
 
     setLoading(false);
 
     if (err) {
       setError(err.message);
-    } else if (!isSignUp) {
-      navigate("/");
     } else {
-      setError("Check your email for a confirmation link.");
+      navigate("/");
     }
   };
 
@@ -84,7 +86,7 @@ export default function LoginScreen() {
               onChange={e => setPassword(e.target.value)}
               placeholder="Enter password"
               className="input"
-              autoComplete={isSignUp ? "new-password" : "current-password"}
+              autoComplete="current-password"
               required
             />
           </div>
@@ -98,16 +100,13 @@ export default function LoginScreen() {
             disabled={loading}
             className="btn-primary mt-3 text-base tracking-[0.15em]"
           >
-            {loading ? "..." : isSignUp ? "Create Account" : "Sign In"}
+            {loading ? "..." : "Sign In"}
           </button>
         </form>
 
-        <button
-          onClick={() => { setIsSignUp(!isSignUp); setError(""); }}
-          className="btn-ghost w-full mt-4 text-sm normal-case tracking-normal font-body"
-        >
-          {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
-        </button>
+        <p className="w-full mt-4 text-xs text-center text-surface-muted/60 font-body">
+          Accounts are issued by your program administrator.
+        </p>
       </div>
 
       {/* Bottom branding */}

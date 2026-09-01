@@ -51,14 +51,13 @@ export function useAuth() {
     return error;
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({ email, password });
-    return error;
-  }, []);
-
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
 
-  return { ...state, signIn, signUp, signOut };
+  /* No signUp here by design. Self-service account creation was how an
+     anonymous visitor got an authenticated session, and an authenticated
+     session used to mean full access to every program. Accounts are created
+     out of band; see LoginScreen. */
+  return { ...state, signIn, signOut };
 }
