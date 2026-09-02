@@ -58,12 +58,15 @@ function PosTags({ positions, primary }: { positions: string[]; primary?: string
 /* ─── Import Modal ─── */
 
 function ImportModal({
-  onClose, onImport, seasonYear, importing,
+  onClose, onImport, seasonYear, importing, failures = [],
 }: {
   onClose: () => void;
   onImport: (players: ParsedPlayer[]) => void;
   seasonYear?: number;
   importing: boolean;
+  /** Players the import could not add. Named, because a count is not
+   *  something an operator can act on. */
+  failures?: string[];
 }) {
   const [mode, setMode] = useState<"csv" | "maxpreps">("maxpreps");
   const [text, setText] = useState("");
@@ -180,6 +183,18 @@ function ImportModal({
                   </div>
                 ))}
               </div>
+              {failures.length > 0 && (
+                <div className="card p-3 mb-2 border border-red-500/40 bg-red-500/10">
+                  <p className="text-xs font-bold text-red-400 mb-1">
+                    {failures.length} of {preview.length} could not be added:
+                  </p>
+                  <p className="text-[11px] text-red-300/90 leading-5">{failures.join(", ")}</p>
+                  <p className="text-[11px] text-surface-muted mt-1.5">
+                    The rest are on the roster. Add these by hand, or fix the list and import again —
+                    importing the whole list a second time would duplicate everyone who did save.
+                  </p>
+                </div>
+              )}
               <button onClick={() => onImport(preview)} disabled={importing} className="btn-primary w-full text-sm">
                 {importing ? (
                   <><Loader2 className="w-4 h-4 mr-1.5 inline animate-spin" /> Adding {preview.length} player{preview.length !== 1 && "s"}...</>
@@ -202,10 +217,13 @@ function ImportModal({
 /* ─── Add / Edit Player Modal ─── */
 
 function PlayerFormModal({
-  editing, onClose, onSave,
+  editing, onClose, onSave, saveError,
 }: {
   editing: RosterPlayer | null;
   onClose: () => void;
+  /** Set when the save was refused. The form stays open so the operator can
+   *  retry rather than losing what they typed. */
+  saveError?: string | null;
   onSave: (data: {
     firstName: string; lastName: string; preferredName: string;
     jersey: string; positions: string[]; classification: string;
@@ -307,6 +325,10 @@ function PlayerFormModal({
             </div>
           </div>
 
+          {saveError && (
+            <p className="text-sm text-red-400 text-center font-medium">{saveError}</p>
+          )}
+
           <button
             onClick={() => onSave({ firstName, lastName, preferredName, jersey, positions, classification, gradYear, heightInches, weightLbs })}
             disabled={!firstName || !lastName}
@@ -332,6 +354,8 @@ export default function RosterScreen() {
 
   // Modals
   const [showAdd, setShowAdd] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [importFailures, setImportFailures] = useState<string[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [editingEntry, setEditingEntry] = useState<RosterPlayer | null>(null);
   const [importing, setImporting] = useState(false);
@@ -368,16 +392,22 @@ export default function RosterScreen() {
   }) => {
     if (!program || !season) return;
 
+    /* Every one of these writes used to be fire-and-forget, and the form closed
+       whatever happened. A refused edit looked identical to a saved one, and a
+       failed player insert silently skipped the roster row after it — leaving a
+       player who exists but is on nobody's roster, with nothing said. */
+    setSaveError(null);
+
     if (editingEntry) {
-      // Update existing
-      await supabase.from("players").update({
+      const { error: playerErr } = await supabase.from("players").update({
         first_name: data.firstName.trim(),
         last_name: data.lastName.trim(),
         preferred_name: data.preferredName.trim() || null,
         graduation_year: data.gradYear ? Number(data.gradYear) : null,
       }).eq("id", editingEntry.player_id);
+      if (playerErr) { setSaveError(playerErr.message); return; }
 
-      await supabase.from("season_rosters").update({
+      const { error: rosterErr } = await supabase.from("season_rosters").update({
         jersey_number: data.jersey ? Number(data.jersey) : null,
         position: data.positions[0] ?? null,
         positions: data.positions.length ? data.positions : null,
@@ -385,9 +415,9 @@ export default function RosterScreen() {
         height_inches: data.heightInches ? Number(data.heightInches) : null,
         weight_lbs: data.weightLbs ? Number(data.weightLbs) : null,
       }).eq("id", editingEntry.id);
+      if (rosterErr) { setSaveError(rosterErr.message); return; }
     } else {
-      // Create new player
-      const { data: player } = await supabase.from("players").insert({
+      const { data: player, error: createErr } = await supabase.from("players").insert({
         program_id: program.id,
         first_name: data.firstName.trim(),
         last_name: data.lastName.trim(),
@@ -395,18 +425,30 @@ export default function RosterScreen() {
         graduation_year: data.gradYear ? Number(data.gradYear) : null,
       }).select().single();
 
-      if (player) {
-        await supabase.from("season_rosters").insert({
-          season_id: season.id,
-          player_id: player.id,
-          jersey_number: data.jersey ? Number(data.jersey) : null,
-          position: data.positions[0] ?? null,
-          positions: data.positions.length ? data.positions : null,
-          classification: data.classification || null,
-          is_active: true,
-          height_inches: data.heightInches ? Number(data.heightInches) : null,
-          weight_lbs: data.weightLbs ? Number(data.weightLbs) : null,
-        });
+      if (createErr || !player) {
+        setSaveError(createErr?.message ?? "Could not create the player.");
+        return;
+      }
+
+      const { error: addErr } = await supabase.from("season_rosters").insert({
+        season_id: season.id,
+        player_id: player.id,
+        jersey_number: data.jersey ? Number(data.jersey) : null,
+        position: data.positions[0] ?? null,
+        positions: data.positions.length ? data.positions : null,
+        classification: data.classification || null,
+        is_active: true,
+        height_inches: data.heightInches ? Number(data.heightInches) : null,
+        weight_lbs: data.weightLbs ? Number(data.weightLbs) : null,
+      });
+      if (addErr) {
+        /* The player row landed but the roster row did not. Say so precisely:
+           re-saving would otherwise create a SECOND player with the same name,
+           and the roster would still be missing one. */
+        setSaveError(
+          `${data.firstName} ${data.lastName} was created but could not be added to this season's roster: ${addErr.message}`,
+        );
+        return;
       }
     }
 
@@ -421,34 +463,54 @@ export default function RosterScreen() {
     setImporting(true);
     setImportProgress({ done: 0, total: players.length });
 
+    /* Per-row accounting. This loop discarded every error and then announced
+       completion, so importing forty players and getting thirty-one was
+       indistinguishable from importing forty — until somebody counted the
+       roster. The ones that failed are named, because "9 failed" is not
+       something you can act on. */
+    const failed: string[] = [];
+
     for (const [i, p] of players.entries()) {
       setImportProgress({ done: i, total: players.length });
-      const { data: player } = await supabase.from("players").insert({
+      const who = `${p.firstName} ${p.lastName}`.trim() || "(unnamed)";
+
+      const { data: player, error: createErr } = await supabase.from("players").insert({
         program_id: program.id,
         first_name: p.firstName,
         last_name: p.lastName,
         graduation_year: p.graduationYear,
       }).select().single();
 
-      if (player) {
-        await supabase.from("season_rosters").insert({
-          season_id: season.id,
-          player_id: player.id,
-          jersey_number: p.jerseyNumber,
-          position: p.position,
-          positions: p.positions.length ? p.positions : null,
-          classification: p.classification,
-          is_active: true,
-          height_inches: p.heightInches,
-          weight_lbs: p.weightLbs,
-        });
+      if (createErr || !player) {
+        failed.push(who);
+        continue;
       }
+
+      const { error: addErr } = await supabase.from("season_rosters").insert({
+        season_id: season.id,
+        player_id: player.id,
+        jersey_number: p.jerseyNumber,
+        position: p.position,
+        positions: p.positions.length ? p.positions : null,
+        classification: p.classification,
+        is_active: true,
+        height_inches: p.heightInches,
+        weight_lbs: p.weightLbs,
+      });
+      if (addErr) failed.push(who);
     }
 
     setImportProgress({ done: players.length, total: players.length });
     setImporting(false);
-    setShowImport(false);
     loadRoster();
+
+    if (failed.length > 0) {
+      /* The import sheet stays open holding the list, so the operator can see
+         who is missing before deciding what to do about it. */
+      setImportFailures(failed);
+      return;
+    }
+    setShowImport(false);
   };
 
   /* ── Delete (soft) ── */
@@ -592,15 +654,17 @@ export default function RosterScreen() {
       {showAdd && (
         <PlayerFormModal
           editing={editingEntry}
-          onClose={() => { setShowAdd(false); setEditingEntry(null); }}
+          onClose={() => { setShowAdd(false); setEditingEntry(null); setSaveError(null); }}
           onSave={handleSave}
+          saveError={saveError}
         />
       )}
 
       {/* Import Modal */}
       {showImport && (
         <ImportModal
-          onClose={() => setShowImport(false)}
+          failures={importFailures}
+          onClose={() => { setShowImport(false); setImportFailures([]); }}
           onImport={handleBulkImport}
           seasonYear={season?.year}
           importing={importing}

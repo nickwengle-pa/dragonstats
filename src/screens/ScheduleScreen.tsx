@@ -446,13 +446,17 @@ function AddGameModal({
   const [quarterLength, setQuarterLength] = useState(12);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSave = async () => {
     if (!oppId || !gameDate) return;
     setSaving(true);
 
     const dateStr = kickoff ? `${gameDate}T${kickoff}:00` : `${gameDate}T19:00:00`;
-    await supabase.from("games").insert({
+    /* The result used to be discarded and the modal closed regardless, so a
+       refused insert looked exactly like a saved game — until the schedule
+       came back without it. */
+    const { error } = await supabase.from("games").insert({
       season_id: seasonId,
       opponent_id: oppId,
       game_date: new Date(dateStr).toISOString(),
@@ -467,6 +471,10 @@ function AddGameModal({
     });
 
     setSaving(false);
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
     onSaved();
     onClose();
   };
@@ -556,6 +564,11 @@ function AddGameModal({
                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Homecoming, Senior night, etc." className="input resize-none" />
               </div>
 
+              {saveError && (
+                <p className="text-sm text-red-400 text-center font-medium mt-2">
+                  Could not save: {saveError}
+                </p>
+              )}
               <button onClick={handleSave} disabled={!oppId || !gameDate || saving} className="btn-primary w-full mt-2">
                 {saving ? "Adding..." : "Add Game"}
               </button>
