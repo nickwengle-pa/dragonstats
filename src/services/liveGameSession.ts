@@ -598,95 +598,24 @@ function toEnginePlay(
       } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
     }
     case "two_pt": {
-      const passer = firstTaggedPlayer(play, "passer")?.player_id;
-      const receiver = firstTaggedPlayer(play, "receiver")?.player_id;
-      const rusher = firstTaggedPlayer(play, "rusher")?.player_id ?? genericPlayerId(play, "rusher", config);
-      const isGood = play.result === "Good";
+      /* A conversion is not a scrimmage play and belongs in nobody's passing
+         or rushing line — NFHS, NCAA and the NFL all record conversions
+         separately.
 
-      if (passer) {
-        return {
-          type: PlayType.Pass,
-          passer,
-          result: receiver && isGood ? PassResult.Complete : PassResult.Incomplete,
-          target: receiver,
-          receiver: isGood ? receiver : undefined,
-          yardsGained: isGood ? 3 : 0,
-          isTouchdown: isGood,
-          isTwoPointConversion: true,
-          description: play.description || undefined,
-          context,
-        } satisfies PassPlay & { context: PlayContext } as Play;
-      }
+         The engine does not know that. It declares twoPointConversionAttempts
+         and twoPointConversionsMade and increments neither, and its passing
+         calculator never looks at isTwoPointConversion. So sending one here as
+         a completed pass with isTouchdown gave the quarterback an attempt, a
+         completion, three yards and a PASSING TOUCHDOWN that never happened,
+         and a two-point run gave a carry and a rushing touchdown. Those showed
+         on the Live Stats panel during the game and then disappeared from the
+         report, which has always kept conversions away from the engine.
 
-      return {
-        type: PlayType.Rush,
-        rusher,
-        result: isGood ? RushResult.Touchdown : RushResult.Normal,
-        yardsGained: isGood ? 3 : 0,
-        isTouchdown: isGood,
-        isTwoPointConversion: true,
-        description: play.description || undefined,
-        context,
-      } satisfies RushPlay & { context: PlayContext } as Play;
+         The points are not lost by leaving it out: scoringLedger scores the
+         conversion, and the reports read conversions from the plays. */
+      return null;
     }
-    case "blocked_kick": {
-      const blockedBy = firstTaggedPlayer(play, "blocker")?.player_id;
-      const blockedKickType = play.blockedKickType;
 
-      if (blockedKickType === "punt") {
-        return {
-          type: PlayType.Punt,
-          punter: firstTaggedPlayer(play, "punter")?.player_id,
-          returner: firstTaggedPlayer(play, "returner")?.player_id,
-          result: SpecialTeamsResult.Block,
-          isBlocked: true,
-          blockedBy,
-          isTouchdown: play.isTouchdown,
-          penalties,
-          description: play.description || undefined,
-          context,
-        } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
-      }
-      if (blockedKickType === "kickoff") {
-        return {
-          type: PlayType.Kickoff,
-          kicker: firstTaggedPlayer(play, "kicker")?.player_id,
-          returner: firstTaggedPlayer(play, "returner")?.player_id,
-          result: SpecialTeamsResult.Block,
-          isBlocked: true,
-          blockedBy,
-          isTouchdown: play.isTouchdown,
-          penalties,
-          description: play.description || undefined,
-          context,
-        } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
-      }
-      return {
-        type: blockedKickType === "extra_point" ? PlayType.ExtraPoint : PlayType.FieldGoal,
-        result: KickResult.Blocked,
-        isBlocked: true,
-        blockedBy,
-        isTouchdown: play.isTouchdown,
-        penalties,
-        description: play.description || undefined,
-        context,
-      } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
-    }
-    case "safety": {
-      const defenderRush = genericPlayerId(play, "opponent", config);
-      return {
-        type: PlayType.Rush,
-        rusher: defenderRush,
-        result: RushResult.Normal,
-        yardsGained: play.yards,
-        isTouchdown: false,
-        tackledBy: tackles.tackledBy,
-        assistedTackle: tackles.assistedTackle,
-        penalties,
-        description: play.description || undefined,
-        context,
-      } satisfies RushPlay & { context: PlayContext } as Play;
-    }
     case "penalty_only": {
       if (!penalties || penalties.length === 0) return null;
       return {

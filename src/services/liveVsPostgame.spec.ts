@@ -173,6 +173,29 @@ const PUNT_DB = [
   }),
 ];
 
+/* A two-point conversion, caught for the score. A conversion is not a
+   scrimmage play and belongs in nobody's passing line — NFHS, NCAA and the NFL
+   all record conversions separately. */
+const TWO_PT_APP = [
+  appPlay({
+    id: "t1",
+    type: "two_pt",
+    possession: "us",
+    result: "Good",
+    tagged: [{ id: "qb1", role: "passer" }, { id: "wr1", role: "receiver" }],
+  }),
+];
+
+const TWO_PT_DB = [
+  dbPlay({
+    id: "t1",
+    play_type: "two_pt",
+    possession: "us",
+    play_data: { result: "Good" },
+    credits: [{ id: "qb1", role: "passer" }, { id: "wr1", role: "receiver" }],
+  }),
+];
+
 const SHARED_TACKLE_DB = [
   dbPlay({
     id: "p1",
@@ -220,6 +243,8 @@ function postgameSummary(plays: PlayWithPlayers[]): GameSummary {
     { id: "lb2", name: "LB Two" },
     { id: "pu1", name: "Punter One" },
     { id: "rt1", name: "Returner One" },
+    { id: "qb1", name: "QB One" },
+    { id: "wr1", name: "WR One" },
   ]);
   engine.processPlays(
     transformPlays(plays, {
@@ -297,5 +322,26 @@ describe("live stats equal postgame stats", () => {
     // 38 the play as a whole was worth.
     expect(ret(post, "rt1")).toBe(12);
     expect(ret(live, "rt1")).toBe(ret(post, "rt1"));
+  });
+
+  /* A two-point conversion must not land in a quarterback's passing line.
+     The live path sent it to the engine as a completed pass carrying
+     isTouchdown, so during a game a successful two-pointer added an attempt, a
+     completion, three yards and a PASSING TOUCHDOWN that never happened — and
+     then disappeared from the report, which keeps conversions away from the
+     engine entirely. */
+  it("keeps a two-point conversion out of the passing line", () => {
+    const live = livesummary(TWO_PT_APP);
+    const post = postgameSummary(TWO_PT_DB);
+
+    const pass = (s: typeof post | null, id: string) =>
+      (s?.passing as Record<string, { attempts?: number; touchdowns?: number; yards?: number }> | undefined)?.[id];
+
+    expect(pass(post, "qb1")?.attempts ?? 0).toBe(0);
+    expect(pass(post, "qb1")?.touchdowns ?? 0).toBe(0);
+
+    expect(pass(live, "qb1")?.attempts ?? 0).toBe(pass(post, "qb1")?.attempts ?? 0);
+    expect(pass(live, "qb1")?.touchdowns ?? 0).toBe(pass(post, "qb1")?.touchdowns ?? 0);
+    expect(pass(live, "qb1")?.yards ?? 0).toBe(pass(post, "qb1")?.yards ?? 0);
   });
 });
