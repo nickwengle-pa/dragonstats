@@ -39,6 +39,8 @@ import {
 import type { GameConfig } from "./programService";
 import { resolveDriveResults } from "./driveResults";
 import { splitTackleCredit } from "./tackleCredit";
+import { grantsAutoFirstDown } from "@/components/game/types";
+import { resolveKickSpots } from "./kickSpots";
 import { scoringEventsForPlay } from "./scoringLedger";
 
 export interface LiveSessionConfig {
@@ -222,6 +224,24 @@ function playersByRole(play: PlayRecord, role: string): string[] {
  * of credit. A shared tackle therefore came out as two full solos live and one
  * split tackle in the report: the same snap, two different defensive lines.
  */
+/**
+ * Kick distance and return yardage, from the same resolver the report uses.
+ *
+ * This path used to report the play's TOTAL yardage as the return, and never
+ * reported a kick distance at all — so a punt's return yards were wrong live
+ * and its distance was missing, while the report computed both properly from
+ * the recorded spots. resolveKickSpots knows that kicked_to_yard and
+ * return_to_ball_on are measured from opposite goal lines; guessing with
+ * play.yards does not.
+ */
+function liveKickSpots(play: PlayRecord) {
+  return resolveKickSpots({
+    ballOn: play.ballOn,
+    playData: play.playData,
+    description: play.description,
+  });
+}
+
 function liveTackleCredits(play: PlayRecord) {
   return splitTackleCredit(
     play.tagged.map((t) => ({ id: t.player_id, role: t.role, credit: t.credit ?? null })),
@@ -241,11 +261,24 @@ function buildPenalties(play: PlayRecord, config: LiveSessionConfig): PenaltyEve
     ? otherTeamId(possTeamId, config)
     : possTeamId;
 
+  /* Enforcement, not "assume accepted".
+  
+     Every flag used to reach the engine as accepted with its full yardage, so
+     a penalty the other side DECLINED was still charged against the team
+     during the game — count and yards — and then vanished from the report,
+     which reads the same field the transformer does. A declined flag costs
+     nobody anything: the down stands as it was played. */
+  const enforcement: PenaltyEnforcement =
+    play.penaltyEnforcement === "declined" ? PenaltyEnforcement.Declined
+    : play.penaltyEnforcement === "offset" ? PenaltyEnforcement.Offset
+    : PenaltyEnforcement.Accepted;
+
   return [{
     penaltyType: getPenaltyEngineCode(play.penalty) ?? play.penalty.toLowerCase().replace(/\s+/g, "_"),
     team,
-    yards: play.flagYards || 5,
-    enforcement: PenaltyEnforcement.Accepted,
+    yards: enforcement === PenaltyEnforcement.Accepted ? (play.flagYards || 5) : 0,
+    enforcement,
+    isAutoFirstDown: grantsAutoFirstDown(play.penalty, explicitSide),
   }];
 }
 
@@ -297,6 +330,7 @@ function toEnginePlay(
   const context = buildPlayContext(stateBefore, scoreBefore, config, driveNumber);
   const penalties = buildPenalties(play, config);
   const tackles = liveTackleCredits(play);
+  const kickSpots = liveKickSpots(play);
 
   switch (play.type) {
     case "rush": {
@@ -481,7 +515,10 @@ function toEnginePlay(
         kicker: firstTaggedPlayer(play, "kicker")?.player_id,
         returner: firstTaggedPlayer(play, "returner")?.player_id,
         result: play.isTouchback ? SpecialTeamsResult.Touchback : (play.isTouchdown ? SpecialTeamsResult.ReturnTouchdown : SpecialTeamsResult.Normal),
-        returnYards: firstTaggedPlayer(play, "returner") ? play.yards : undefined,
+        kickDistance: kickSpots?.kickDistance,
+        returnYards: firstTaggedPlayer(play, "returner")
+          ? (kickSpots?.returnYards ?? play.yards)
+          : undefined,
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
         tackledBy: tackles.tackledBy,
@@ -496,7 +533,10 @@ function toEnginePlay(
         punter: firstTaggedPlayer(play, "punter")?.player_id,
         returner: firstTaggedPlayer(play, "returner")?.player_id,
         result: play.isTouchback ? SpecialTeamsResult.Touchback : (play.isTouchdown ? SpecialTeamsResult.ReturnTouchdown : SpecialTeamsResult.Normal),
-        returnYards: firstTaggedPlayer(play, "returner") ? play.yards : undefined,
+        kickDistance: kickSpots?.kickDistance,
+        returnYards: firstTaggedPlayer(play, "returner")
+          ? (kickSpots?.returnYards ?? play.yards)
+          : undefined,
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
         tackledBy: tackles.tackledBy,

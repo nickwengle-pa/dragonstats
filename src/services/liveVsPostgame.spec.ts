@@ -115,6 +115,64 @@ const SHARED_TACKLE_APP = [
   }),
 ];
 
+/* A holding flag the other side DECLINED. Nobody is charged a penalty for a
+   flag that was waved off — the down stands as played. */
+const DECLINED_APP = [
+  appPlay({
+    id: "d1",
+    type: "rush",
+    yards: 9,
+    possession: "us",
+    penalty: "Holding-OFF",
+    penaltyCategory: "offense",
+    penaltyEnforcement: "declined",
+    flagYards: 10,
+  }),
+];
+
+const DECLINED_DB = [
+  dbPlay({
+    id: "d1",
+    play_type: "rush",
+    yards_gained: 9,
+    possession: "us",
+    is_penalty: true,
+    play_data: {
+      penalty_type: "Holding-OFF",
+      penalty_enforcement: "declined",
+      penalty_yards: 10,
+      play_category: "offense",
+    },
+  }),
+];
+
+/* A punt from our own 30, fielded on their 20, returned out to their 32.
+   kicked_to_yard counts from the RECEIVING goal line; return_to_ball_on counts
+   from the KICKING one, which is exactly the confusion play.yards papers over. */
+const PUNT_APP = [
+  appPlay({
+    id: "k1",
+    type: "punt",
+    possession: "us",
+    ballOn: 30,
+    yards: 38,
+    tagged: [{ id: "pu1", role: "punter" }, { id: "rt1", role: "returner" }],
+    playData: { kicked_to_yard: 20, return_to_ball_on: 68 },
+  }),
+];
+
+const PUNT_DB = [
+  dbPlay({
+    id: "k1",
+    play_type: "punt",
+    possession: "us",
+    yard_line: 30,
+    yards_gained: 38,
+    credits: [{ id: "pu1", role: "punter" }, { id: "rt1", role: "returner" }],
+    play_data: { kicked_to_yard: 20, return_to_ball_on: 68 },
+  }),
+];
+
 const SHARED_TACKLE_DB = [
   dbPlay({
     id: "p1",
@@ -160,6 +218,8 @@ function postgameSummary(plays: PlayWithPlayers[]): GameSummary {
   engine.registerPlayers([
     { id: "lb1", name: "LB One" },
     { id: "lb2", name: "LB Two" },
+    { id: "pu1", name: "Punter One" },
+    { id: "rt1", name: "Returner One" },
   ]);
   engine.processPlays(
     transformPlays(plays, {
@@ -203,5 +263,39 @@ describe("live stats equal postgame stats", () => {
     ).toBe(
       (def(post, "lb1").totalTackles ?? 0) + (def(post, "lb2").totalTackles ?? 0),
     );
+  });
+
+  /* A flag that was declined is not a penalty against anybody. The live path
+     sent every flag to the engine as accepted and always charged the yardage,
+     so a team's penalty count and penalty yards were higher during the game
+     than in the report afterwards. */
+  it("agrees that a declined penalty costs nobody anything", () => {
+    const live = livesummary(DECLINED_APP);
+    const post = postgameSummary(DECLINED_DB);
+
+    const lp = (live?.homeTeamStats as unknown as { penalties: number; penaltyYards: number });
+    const pp = (post.homeTeamStats as unknown as { penalties: number; penaltyYards: number });
+
+    expect(pp.penalties).toBe(0);
+    expect(pp.penaltyYards).toBe(0);
+    expect(lp.penalties).toBe(pp.penalties);
+    expect(lp.penaltyYards).toBe(pp.penaltyYards);
+  });
+
+  /* Return yardage on a kick. The live path reported the play's TOTAL yardage
+     as the return and no kick distance at all, while the report worked both
+     out from the recorded spots. A returner's line therefore read differently
+     during the game than after it. */
+  it("agrees on punt return yardage", () => {
+    const live = livesummary(PUNT_APP);
+    const post = postgameSummary(PUNT_DB);
+
+    const ret = (s: typeof post | null, id: string) =>
+      (s?.returns as Record<string, { puntReturnYards?: number }> | undefined)?.[id]?.puntReturnYards ?? 0;
+
+    // Fielded on their 20 and returned to their 32 is a 12-yard return, not the
+    // 38 the play as a whole was worth.
+    expect(ret(post, "rt1")).toBe(12);
+    expect(ret(live, "rt1")).toBe(ret(post, "rt1"));
   });
 });
