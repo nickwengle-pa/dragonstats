@@ -4,8 +4,21 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import TeamCrest from "@/components/TeamCrest";
 import { supabase } from "@/lib/supabase";
-import { computeGameStats } from "@/services/statsService";
-import { TEAM_JERSEY, TEAM_PLAYER_ID } from "@/components/game/types";
+import { computeGameStatsBundle } from "@/services/statsService";
+import { scoringEvents, scoreByQuarter, type ScoringKind } from "@/services/scoringLedger";
+
+/** Fallback wording when a play carries no description of its own. */
+const SCORING_LABEL: Record<ScoringKind, string> = {
+  touchdown: "Touchdown",
+  return_touchdown: "Return touchdown",
+  pat: "PAT good",
+  two_point: "Two-point conversion",
+  field_goal: "Field goal",
+  safety: "Safety",
+  conversion_return: "Conversion return",
+  correction: "Score correction",
+};
+import { TEAM_JERSEY, TEAM_PLAYER_ID, fmtClock } from "@/components/game/types";
 import type {
   GameSummary, PassingStats, RushingStats, ReceivingStats, DefensiveStats, KickingStats,
 } from "football-stats-engine";
@@ -143,6 +156,9 @@ export default function BoxScoreScreen() {
   const { program, season } = useProgramContext();
 
   const [summary, setSummary] = useState<GameSummary | null>(null);
+  /* The line score is derived from the plays, not from the engine ledger — see
+     the comment on lineScore below. */
+  const [scorePlays, setScorePlays] = useState<Array<Record<string, unknown>>>([]);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const [roster, setRoster] = useState<Map<string, RosterEntry>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -163,7 +179,7 @@ export default function BoxScoreScreen() {
           .from("season_rosters")
           .select("player_id, jersey_number, player:players(first_name, last_name, preferred_name)")
           .eq("season_id", season.id),
-        computeGameStats(gameId, {
+        computeGameStatsBundle(gameId, {
           id: program.id,
           name: program.name,
           abbreviation: program.abbreviation,
@@ -195,7 +211,8 @@ export default function BoxScoreScreen() {
         });
       }
       setRoster(map);
-      setSummary(result);
+      setSummary(result?.summary ?? null);
+      setScorePlays((result?.plays ?? []) as unknown as Array<Record<string, unknown>>);
       setLoading(false);
     })();
 
@@ -218,19 +235,36 @@ export default function BoxScoreScreen() {
     ? (ourStats === summary.homeTeamStats ? summary.awayTeamStats : summary.homeTeamStats)
     : null;
 
-  // Line score: points per quarter per team, from scoring plays.
+  /* Line score: points per quarter, from the plays via the scoring ledger.
+     
+     It used to come from the engine's scoringPlays, which never scored a
+     two-point conversion or a safety at all and credited every score to
+     whoever had the ball at the snap — so a pick-six landed in the wrong
+     team's column. The final score beside it comes from the games row, so the
+     quarters did not add up to the total on a sheet a coach hands out. Both
+     now derive from the same events. */
+  const scoreEvents = useMemo(
+    () => scoringEvents(
+      scorePlays.map((p) => ({
+        quarter: Number(p.quarter ?? 1),
+        type: String(p.play_type ?? ""),
+        possession: (p.possession === "them" ? "them" : "us") as "us" | "them",
+        isTouchdown: Boolean(p.is_touchdown),
+        turnover: Boolean(p.is_turnover),
+        result: String((p.play_data as Record<string, unknown> | null)?.result ?? ""),
+        playData: (p.play_data as Record<string, unknown> | null) ?? null,
+        clock: fmtClock(Number(p.play_start_time ?? 0)),
+        description: String(p.description ?? ""),
+      })),
+    ),
+    [scorePlays],
+  );
+
   const lineScore = useMemo(() => {
-    const us: Record<number, number> = {};
-    const them: Record<number, number> = {};
-    let hasOT = false;
-    for (const sp of summary?.scoringPlays ?? []) {
-      const q = Number(sp.quarter);
-      if (q > 4) hasOT = true;
-      const bucket = program && sp.team === program.id ? us : them;
-      bucket[q] = (bucket[q] ?? 0) + sp.pointsScored;
-    }
+    const { us, them } = scoreByQuarter(scoreEvents);
+    const hasOT = scoreEvents.some((e) => e.quarter > 4);
     return { us, them, hasOT };
-  }, [summary, program]);
+  }, [scoreEvents]);
 
   const quarterCols = lineScore.hasOT ? [...QUARTER_COLS, "OT"] : QUARTER_COLS;
   const qPoints = (bucket: Record<number, number>, col: string, idx: number) =>
@@ -368,14 +402,20 @@ export default function BoxScoreScreen() {
               </tbody>
             </table>
 
-            {/* Scoring plays */}
-            {summary.scoringPlays.length > 0 && (
+            {/* Scoring plays — the same events as the line score above, so the
+                list and the columns can never tell different stories. It used
+                to come from the engine ledger, which omitted two-point
+                conversions and safeties entirely. */}
+            {scoreEvents.length > 0 && (
               <div className="mb-2">
                 <div className="text-[10px] font-black uppercase tracking-wider text-dragon-primary print:text-black mb-1">Scoring</div>
-                {summary.scoringPlays.map((sp, i) => (
+                {scoreEvents.map((e, i) => (
                   <div key={i} className="text-[11px] leading-5 text-slate-300 print:text-black">
-                    <span className="text-slate-500 print:text-neutral-600">Q{Number(sp.quarter)} {sp.gameClock}</span>
-                    {" — "}{sp.description}
+                    <span className="text-slate-500 print:text-neutral-600">Q{e.quarter} {e.clock}</span>
+                    {" — "}
+                    <span className="font-bold">{e.side === "us" ? progAbbr : oppAbbr}</span>
+                    {" "}{e.description || SCORING_LABEL[e.kind]}
+                    <span className="text-slate-500 print:text-neutral-600"> ({e.points > 0 ? "+" : ""}{e.points})</span>
                   </div>
                 ))}
               </div>

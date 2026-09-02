@@ -39,6 +39,7 @@ import {
 import type { GameConfig } from "./programService";
 import { resolveDriveResults } from "./driveResults";
 import { splitTackleCredit } from "./tackleCredit";
+import { scoringEventsForPlay } from "./scoringLedger";
 
 export interface LiveSessionConfig {
   gameId: string;
@@ -661,67 +662,25 @@ function toEnginePlay(
 }
 
 function applyScoreDelta(play: PlayRecord, before: LiveSessionScore): LiveSessionScore {
+  /* The scoring rules — who scores a return touchdown, what a safety is worth,
+     which side a returned conversion goes to — now live in scoringLedger.ts,
+     because the box score's line score needs exactly the same answers. Three
+     copies of these rules disagreed, and the one that showed on a printed box
+     score was the wrong one. */
   const next = { ...before };
-
-  if (play.isTouchdown) {
-    /* Return touchdowns (pick-six, fumble-six, kick/punt/blocked-kick returns)
-       are scored by the team that did NOT have possession at the snap.
-
-       This used to ask whether the play TYPE was a turnover, which missed the
-       way most fumbles are recorded: a fumble on a run, a sack or a completed
-       pass rides the "+ Fumble" modifier and keeps its own play type, so only
-       the standalone Fumble button produced type "fumble". A strip-sack
-       returned for a score therefore failed the check and six points went to
-       the offence that had just lost the ball — on the live scoreboard and in
-       the score written to the game row.
-
-       `turnover` is the honest signal. The modal sets it from whether the
-       offence recovered its own fumble, so it is true for a strip-sack and
-       false for a fumble the offence fell on, whatever the play type says. */
-    const isReturnTd =
-      play.turnover === true ||
-      play.type === "kickoff" ||
-      play.type === "punt" ||
-      play.type === "blocked_kick";
-    const scoringSide: "us" | "them" = isReturnTd
-      ? (play.possession === "us" ? "them" : "us")
-      : play.possession;
-    if (scoringSide === "us") next.us += 6;
-    else next.them += 6;
+  for (const event of scoringEventsForPlay({
+    quarter: play.quarter,
+    type: play.type,
+    possession: play.possession,
+    isTouchdown: play.isTouchdown,
+    turnover: play.turnover,
+    result: play.result,
+    playData: play.playData ?? null,
+  })) {
+    // Corrections can be negative; a score cannot.
+    if (event.side === "us") next.us = Math.max(0, next.us + event.points);
+    else next.them = Math.max(0, next.them + event.points);
   }
-  if (play.type === "pat" && play.result === "Good") {
-    if (play.possession === "us") next.us += 1;
-    else next.them += 1;
-  }
-  if (play.type === "fg" && play.result === "Good") {
-    if (play.possession === "us") next.us += 3;
-    else next.them += 3;
-  }
-  if (play.type === "two_pt" && play.result === "Good") {
-    if (play.possession === "us") next.us += 2;
-    else next.them += 2;
-  }
-  if (play.type === "safety") {
-    if (play.possession === "us") next.them += 2;
-    else next.us += 2;
-  }
-  // Defensive conversion return ("Returned" PAT/2pt): defense scores 2.
-  if ((play.type === "pat" || play.type === "two_pt") && play.result === "Returned") {
-    if (play.possession === "us") next.them += 2;
-    else next.us += 2;
-  }
-  // Manual score corrections are recorded as plays — without this, any replay
-  // (edit/delete recompute, resume) silently drops the operator's fix.
-  if (play.type === "score_correction") {
-    const pd = (play.playData ?? {}) as Record<string, unknown>;
-    const team = pd.score_delta_team;
-    const delta = Number(pd.score_delta ?? 0);
-    if (delta !== 0 && (team === "us" || team === "them")) {
-      if (team === "us") next.us = Math.max(0, next.us + delta);
-      else next.them = Math.max(0, next.them + delta);
-    }
-  }
-
   return next;
 }
 
