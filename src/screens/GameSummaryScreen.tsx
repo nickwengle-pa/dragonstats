@@ -535,17 +535,12 @@ export default function GameSummaryScreen() {
           </div>
         )}
 
-        {/* Export actions */}
-        <div className="flex gap-3">
-          <button className="btn-primary flex-1 gap-2">
-            <Download className="w-4 h-4" />
-            Export Excel
-          </button>
-          <button className="btn-secondary flex-1 gap-2">
-            <Share2 className="w-4 h-4" />
-            Share
-          </button>
-        </div>
+        {/* "Export Excel" and "Share" used to sit here with no onClick at all —
+            two of the most prominent controls on the screen, both inert. The
+            capability is not lost by removing them: the header carries a real
+            CSV export and a real print/save-as-PDF, both of which work. A
+            button that does nothing is worse than no button, because it costs
+            the operator a tap and their confidence in the rest of the screen. */}
       </div>
     </div>
   );
