@@ -325,9 +325,7 @@ export const PENALTY_RULES: Record<string, PenaltyRule> = {
   "False Start": { engineCode: "false_start", defaultSide: "offense", yards: 5 },
   "Holding-OFF": { engineCode: "holding_offense", defaultSide: "offense", yards: 10 },
   "Holding-DEF": { engineCode: "holding_defense", defaultSide: "defense", yards: 5 },
-  // 10 is what this app has always used. NFHS is 15 from the previous spot;
-  // flagged for confirmation rather than changed underneath a live season.
-  "PI-OFF": { engineCode: "offensive_pass_interference", defaultSide: "offense", yards: 10 },
+  "PI-OFF": { engineCode: "offensive_pass_interference", defaultSide: "offense", yards: 15 },
   "PI-DEF": { engineCode: "defensive_pass_interference", defaultSide: "defense", yards: 15 },
   Facemask: { engineCode: "face_mask", yards: 15 },
   Unsportsmanlike: { engineCode: "unsportsmanlike_conduct", yards: 15 },
@@ -376,23 +374,25 @@ export function isPenaltyOnOffense(
 }
 
 /**
- * Defensive penalties that grant an automatic first down regardless of yardage.
- * NFHS rules: defensive holding (5 + auto 1st) and defensive pass interference
- * (15 + auto 1st) are the most common; major facemask, roughing the passer, and
- * unsportsmanlike on defense also carry auto-1st. The user's catalog covers the
- * first two cleanly; the rest fall back to "no auto 1st" until explicitly added.
+ * Automatic first downs, which under NFHS do not exist.
+ *
+ * This granted one for defensive holding and defensive pass interference,
+ * which is the NCAA and NFL rule, not the NFHS one. NFHS enforces the distance
+ * and replays the down; the offence gets a new series only if the yardage
+ * itself reaches the line to gain. Confirmed with the coach who uses this app
+ * before changing it, because it decides fourth downs: a 4th-and-20 defensive
+ * pass interference used to hand over a first down and now correctly leaves
+ * 4th-and-5 after the 15-yard walk-off.
+ *
+ * The flag lives on the rule table rather than in a Set, so a ruleset that DOES
+ * award them is a data change and not a code change.
  */
-export const AUTO_FIRST_DOWN_DEFENSIVE_PENALTIES = new Set([
-  "Holding-DEF",
-  "PI-DEF",
-]);
-
 export function grantsAutoFirstDown(
   label: string | null | undefined,
   side: PenaltySide | null,
 ): boolean {
   if (!label || side !== "defense") return false;
-  return AUTO_FIRST_DOWN_DEFENSIVE_PENALTIES.has(label);
+  return PENALTY_RULES[label]?.autoFirstDown === true;
 }
 
 export const OFFENSIVE_FORMATIONS = [
