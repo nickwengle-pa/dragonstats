@@ -15,7 +15,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Nothing reaches production without passing this first.
+  #
+  # The deploy used to run `npx vite build`, which skips the `tsc -b` half of
+  # the build script, and no tests ran at all — so a type error or a failing
+  # test shipped to the app a coach uses on a Friday night, and the first
+  # anyone knew was in the press box.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 24, not 20. The script-style suites are run with `node file.ts` and
+          # rely on native type stripping, which Node 20 does not have — pinning
+          # 20 would make this job fail on its first test rather than on a real
+          # problem. Matches the machine the app is developed on.
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -b
+
+      - name: Tests
+        run: npm test
+
   build-and-deploy:
+    needs: verify
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -25,12 +54,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
 
-      - run: npx vite build
+      # `npm run build`, not `npx vite build`: the build script is
+      # `tsc -b && vite build`, and calling vite directly was skipping the
+      # typecheck. It also regenerates the PWA service worker, which a bare
+      # vite invocation still does but which is worth stating, because a stale
+      # service worker is how a tablet keeps serving last week's app.
+      - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
