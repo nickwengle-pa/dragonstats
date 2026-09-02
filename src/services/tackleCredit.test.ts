@@ -10,26 +10,26 @@
  * shared tackle came out as a set of full solo tackles and the assist column
  * stayed empty on every game ever recorded.
  *
- * calcDefenseStats is imported through gameService, which pulls in Supabase, so
- * the credit rule is exercised here against the same shapes rather than through
- * that import. If the rule in gameService.ts changes, this has to change with
- * it — it is a guard on the decision, not on the call.
+ * This used to re-declare the rule locally, because reaching it meant importing
+ * gameService and therefore Supabase — "a guard on the decision, not on the
+ * call". The rule now lives in tackleCredit.ts on its own, so this tests the
+ * real function.
+ *
+ * calcDefenseStats in gameService.ts still carries its own copy: there the
+ * split is interleaved with pass-breakup and tackle-for-loss derivation, which
+ * needs the tag objects rather than ids. It agrees with this one today.
  */
 import assert from "node:assert/strict";
+import { splitTackleCredit } from "./tackleCredit.ts";
 
 type Tag = { player_id: string; role: string; credit?: number | null };
 
-/** The rule as it now stands in calcDefenseStats and in playTransformer. */
+/** Adapts the stored tag shape to the shared rule's. */
 function splitTackles(tags: Tag[]) {
-  const tacklers = tags.filter(t => t.role === "tackler");
-  const shared = (t: Tag) => (t.credit ?? 1) < 1;
-  return {
-    solo: tacklers.filter(t => !shared(t)).map(t => t.player_id),
-    assists: [
-      ...tags.filter(t => t.role === "assist").map(t => t.player_id),
-      ...tacklers.filter(shared).map(t => t.player_id),
-    ],
-  };
+  const { tackledBy, assistedTackle } = splitTackleCredit(
+    tags.map(t => ({ id: t.player_id, role: t.role, credit: t.credit ?? null })),
+  );
+  return { solo: tackledBy, assists: assistedTackle };
 }
 
 /** What the engine does with those two arrays, from defense.js. */

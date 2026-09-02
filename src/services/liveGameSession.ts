@@ -38,6 +38,7 @@ import {
 } from "./gameFlow";
 import type { GameConfig } from "./programService";
 import { resolveDriveResults } from "./driveResults";
+import { splitTackleCredit } from "./tackleCredit";
 
 export interface LiveSessionConfig {
   gameId: string;
@@ -212,6 +213,20 @@ function playersByRole(play: PlayRecord, role: string): string[] {
   return play.tagged.filter((tag) => tag.role === role).map((tag) => tag.player_id);
 }
 
+/**
+ * Who gets the tackle, by the same rule the box score uses.
+ *
+ * This path used to read the role "assist" for assists — a role the modal has
+ * never written — and hand everything tagged "tackler" to tackledBy regardless
+ * of credit. A shared tackle therefore came out as two full solos live and one
+ * split tackle in the report: the same snap, two different defensive lines.
+ */
+function liveTackleCredits(play: PlayRecord) {
+  return splitTackleCredit(
+    play.tagged.map((t) => ({ id: t.player_id, role: t.role, credit: t.credit ?? null })),
+  );
+}
+
 function genericPlayerId(play: PlayRecord, role: string, config: LiveSessionConfig): string {
   return `${getTeamId(play.possession, config)}:${role}`;
 }
@@ -280,6 +295,7 @@ function toEnginePlay(
 ): Play | null {
   const context = buildPlayContext(stateBefore, scoreBefore, config, driveNumber);
   const penalties = buildPenalties(play, config);
+  const tackles = liveTackleCredits(play);
 
   switch (play.type) {
     case "rush": {
@@ -290,8 +306,8 @@ function toEnginePlay(
         result: play.isTouchdown ? RushResult.Touchdown : RushResult.Normal,
         yardsGained: play.yards,
         isTouchdown: play.isTouchdown,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        tackledBy: tackles.tackledBy,
+        assistedTackle: tackles.assistedTackle,
         fumble: buildFumble(play, rusher, config),
         penalties,
         description: play.description || undefined,
@@ -311,8 +327,8 @@ function toEnginePlay(
         yardsGained: play.yards,
         isTouchdown: play.isTouchdown,
         isQBScramble: true,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        tackledBy: tackles.tackledBy,
+        assistedTackle: tackles.assistedTackle,
         fumble: buildFumble(play, rusher, config),
         penalties,
         description: play.description || undefined,
@@ -386,8 +402,8 @@ function toEnginePlay(
         receiver,
         yardsGained: play.yards,
         isTouchdown: play.isTouchdown,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        tackledBy: tackles.tackledBy,
+        assistedTackle: tackles.assistedTackle,
         fumble: buildFumble(play, receiver ?? passer, config),
         penalties,
         description: play.description || undefined,
@@ -450,8 +466,8 @@ function toEnginePlay(
         result: RushResult.Fumble,
         yardsGained: play.yards,
         isTouchdown: play.isTouchdown,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        tackledBy: tackles.tackledBy,
+        assistedTackle: tackles.assistedTackle,
         fumble: buildFumble(play, rusher, config),
         penalties,
         description: play.description || undefined,
@@ -467,7 +483,7 @@ function toEnginePlay(
         returnYards: firstTaggedPlayer(play, "returner") ? play.yards : undefined,
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
-        tackledBy: playersByRole(play, "tackler"),
+        tackledBy: tackles.tackledBy,
         penalties,
         description: play.description || undefined,
         context,
@@ -482,7 +498,7 @@ function toEnginePlay(
         returnYards: firstTaggedPlayer(play, "returner") ? play.yards : undefined,
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
-        tackledBy: playersByRole(play, "tackler"),
+        tackledBy: tackles.tackledBy,
         penalties,
         description: play.description || undefined,
         context,
@@ -498,7 +514,7 @@ function toEnginePlay(
         returnYards: recoverer ? play.yards : undefined,
         isOnsideKick: true,
         isTouchdown: play.isTouchdown,
-        tackledBy: playersByRole(play, "tackler"),
+        tackledBy: tackles.tackledBy,
         penalties,
         description: play.description || "Onside kick",
         context,
@@ -623,8 +639,8 @@ function toEnginePlay(
         result: RushResult.Normal,
         yardsGained: play.yards,
         isTouchdown: false,
-        tackledBy: playersByRole(play, "tackler"),
-        assistedTackle: playersByRole(play, "assist"),
+        tackledBy: tackles.tackledBy,
+        assistedTackle: tackles.assistedTackle,
         penalties,
         description: play.description || undefined,
         context,

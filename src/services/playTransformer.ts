@@ -14,6 +14,7 @@ import {
 } from "@/components/game/types";
 import { TEAM_PLAYER_ID } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
+import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
 import { resolveKickSpots } from "./kickSpots";
 import {
   type Play,
@@ -252,19 +253,13 @@ function kickSpotsFor(play: PlayWithPlayers) {
  * engine gives it the half-tackle it is worth. An explicitly tagged assist
  * still counts, in case any play anywhere carries one.
  */
-function tackleCredits(play: PlayWithPlayers): {
-  tackledBy: string[];
-  assistedTackle: string[];
-} {
-  const tags = allTagsForRole(play, "tackler");
-  const isShared = (t: { credit: number | null }) => (t.credit ?? 1) < 1;
-  return {
-    tackledBy: tags.filter(t => !isShared(t)).map(t => t.id),
-    assistedTackle: [
-      ...playersByRole(play, "assist"),
-      ...tags.filter(isShared).map(t => t.id),
-    ],
-  };
+function tackleCredits(play: PlayWithPlayers): TackleCredit {
+  // The rule itself lives in tackleCredit.ts so the live path applies exactly
+  // the same one; it used to exist only here.
+  return splitTackleCredit([
+    ...allTagsForRole(play, "tackler").map((t) => ({ ...t, role: "tackler" })),
+    ...playersByRole(play, "assist").map((id) => ({ id, role: "assist" })),
+  ]);
 }
 /**
  * Every tag on a play, with its credit — including the ones that cannot be
