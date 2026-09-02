@@ -67,6 +67,7 @@ export default function GameSettingsScreen() {
   const { program, refresh } = useProgramContext();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [config, setConfig] = useState<GameConfig>({ ...DEFAULT_GAME_CONFIG });
 
@@ -80,7 +81,25 @@ export default function GameSettingsScreen() {
   const handleSave = async () => {
     if (!program) return;
     setSaving(true);
-    await supabase.from("programs").update({ game_config: config as any }).eq("id", program.id);
+    setSaveError(null);
+
+    /* The result used to be discarded, so this said "Saved!" whatever
+       happened — including for the entire period when the column it writes to
+       did not exist and every one of these failed. Rules that quietly do not
+       save are worse than rules you cannot change: the operator sets a
+       12-minute quarter, is told it saved, and the clock keeps using the
+       default. */
+    const { error } = await supabase
+      .from("programs")
+      .update({ game_config: config as unknown as Record<string, unknown> })
+      .eq("id", program.id);
+
+    if (error) {
+      setSaving(false);
+      setSaveError(error.message);
+      return;
+    }
+
     await refresh();
     setSaving(false);
     setSaved(true);
@@ -221,6 +240,11 @@ export default function GameSettingsScreen() {
         </div>
 
         {/* ── Save ── */}
+        {saveError && (
+          <p className="text-sm text-red-400 text-center font-medium">
+            Could not save: {saveError}
+          </p>
+        )}
         <button onClick={handleSave} disabled={saving} className="btn-primary w-full">
           {saved ? "Saved!" : saving ? "Saving..." : "Save Settings"}
         </button>
