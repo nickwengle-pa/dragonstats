@@ -297,35 +297,67 @@ export const BLOCKED_KICK_TYPES: Array<{ value: BlockedKickType; label: string }
   { value: "kickoff", label: "Kickoff" },
 ];
 
-const PENALTY_METADATA: Record<string, { engineCode: string; defaultSide?: PenaltySide }> = {
-  Offsides: { engineCode: "offsides", defaultSide: "defense" },
-  "False Start": { engineCode: "false_start", defaultSide: "offense" },
-  "Holding-OFF": { engineCode: "holding_offense", defaultSide: "offense" },
-  "Holding-DEF": { engineCode: "holding_defense", defaultSide: "defense" },
-  "PI-OFF": { engineCode: "offensive_pass_interference", defaultSide: "offense" },
-  "PI-DEF": { engineCode: "defensive_pass_interference", defaultSide: "defense" },
-  Facemask: { engineCode: "face_mask" },
-  Unsportsmanlike: { engineCode: "unsportsmanlike_conduct" },
-  "Delay of Game": { engineCode: "delay_of_game", defaultSide: "offense" },
-  "Illegal Formation": { engineCode: "illegal_formation", defaultSide: "offense" },
-  "Block in Back": { engineCode: "illegal_block_in_back" },
-  Clipping: { engineCode: "clipping" },
-  Encroachment: { engineCode: "encroachment", defaultSide: "defense" },
-  "Illegal Shift": { engineCode: "illegal_shift", defaultSide: "offense" },
-  "Illegal Motion": { engineCode: "illegal_motion", defaultSide: "offense" },
+/**
+ * What each foul costs and does, in one table.
+ *
+ * This used to be split across a metadata map that knew only the engine code
+ * and the side, a hardcoded Set of two fouls that granted a first down, and a
+ * flat default of 5 yards in the entry modal — so every flag started at 5
+ * whether it was a false start or a personal foul, and the operator retyped
+ * the real number every time.
+ *
+ * `yards` is the standard NFHS distance and is only a DEFAULT: the operator
+ * still sets the actual number, because a foul can be enforced from a spot
+ * that changes it, and half-distance situations are common.
+ */
+export interface PenaltyRule {
+  engineCode: string;
+  defaultSide?: PenaltySide;
+  /** Standard NFHS distance. Pre-fills the modal; always overridable. */
+  yards: number;
+  /** Grants a first down regardless of the distance gained. See the note on
+   *  AUTO_FIRST_DOWN below — NFHS is not NCAA here. */
+  autoFirstDown?: boolean;
+}
+
+export const PENALTY_RULES: Record<string, PenaltyRule> = {
+  Offsides: { engineCode: "offsides", defaultSide: "defense", yards: 5 },
+  "False Start": { engineCode: "false_start", defaultSide: "offense", yards: 5 },
+  "Holding-OFF": { engineCode: "holding_offense", defaultSide: "offense", yards: 10 },
+  "Holding-DEF": { engineCode: "holding_defense", defaultSide: "defense", yards: 5 },
+  // 10 is what this app has always used. NFHS is 15 from the previous spot;
+  // flagged for confirmation rather than changed underneath a live season.
+  "PI-OFF": { engineCode: "offensive_pass_interference", defaultSide: "offense", yards: 10 },
+  "PI-DEF": { engineCode: "defensive_pass_interference", defaultSide: "defense", yards: 15 },
+  Facemask: { engineCode: "face_mask", yards: 15 },
+  Unsportsmanlike: { engineCode: "unsportsmanlike_conduct", yards: 15 },
+  "Delay of Game": { engineCode: "delay_of_game", defaultSide: "offense", yards: 5 },
+  "Illegal Formation": { engineCode: "illegal_formation", defaultSide: "offense", yards: 5 },
+  "Block in Back": { engineCode: "illegal_block_in_back", yards: 10 },
+  Clipping: { engineCode: "clipping", yards: 15 },
+  Encroachment: { engineCode: "encroachment", defaultSide: "defense", yards: 5 },
+  "Illegal Shift": { engineCode: "illegal_shift", defaultSide: "offense", yards: 5 },
+  "Illegal Motion": { engineCode: "illegal_motion", defaultSide: "offense", yards: 5 },
 };
+
+/** The standard distance for a foul, for pre-filling the entry modal. */
+export function penaltyDefaultYards(label: string | null | undefined): number {
+  if (!label) return 5;
+  return PENALTY_RULES[label]?.yards ?? 5;
+}
+
+const PENALTY_METADATA = PENALTY_RULES;
 
 export const OFFENSE_PENALTIES = new Set([
   "False Start", "Holding-OFF", "PI-OFF", "Illegal Formation",
   "Delay of Game", "Illegal Shift", "Illegal Motion", "Clipping",
 ]);
 
-export const PENALTY_DEFAULT_YARDS: Record<string, number> = {
-  "Offsides": 5, "False Start": 5, "Holding-OFF": 10, "Holding-DEF": 5,
-  "PI-OFF": 10, "PI-DEF": 15, "Facemask": 15, "Unsportsmanlike": 15,
-  "Delay of Game": 5, "Illegal Formation": 5, "Block in Back": 10,
-  "Clipping": 15, "Encroachment": 5, "Illegal Shift": 5, "Illegal Motion": 5,
-};
+/** Derived from PENALTY_RULES so the distances cannot drift from the table.
+ *  This was a second hand-maintained copy of the same numbers. */
+export const PENALTY_DEFAULT_YARDS: Record<string, number> = Object.fromEntries(
+  Object.entries(PENALTY_RULES).map(([label, rule]) => [label, rule.yards]),
+);
 
 export function getPenaltyEngineCode(label: string | null | undefined): string | undefined {
   return label ? PENALTY_METADATA[label]?.engineCode : undefined;
