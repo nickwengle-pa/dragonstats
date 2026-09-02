@@ -664,12 +664,22 @@ function applyScoreDelta(play: PlayRecord, before: LiveSessionScore): LiveSessio
   const next = { ...before };
 
   if (play.isTouchdown) {
-    // Return touchdowns (pick-six, fumble-six, kick/punt/blocked-kick returns)
-    // are scored by the team that did NOT have possession at the snap.
-    const fumbleLost = play.type === "fumble" && play.turnover !== false;
+    /* Return touchdowns (pick-six, fumble-six, kick/punt/blocked-kick returns)
+       are scored by the team that did NOT have possession at the snap.
+
+       This used to ask whether the play TYPE was a turnover, which missed the
+       way most fumbles are recorded: a fumble on a run, a sack or a completed
+       pass rides the "+ Fumble" modifier and keeps its own play type, so only
+       the standalone Fumble button produced type "fumble". A strip-sack
+       returned for a score therefore failed the check and six points went to
+       the offence that had just lost the ball — on the live scoreboard and in
+       the score written to the game row.
+
+       `turnover` is the honest signal. The modal sets it from whether the
+       offence recovered its own fumble, so it is true for a strip-sack and
+       false for a fumble the offence fell on, whatever the play type says. */
     const isReturnTd =
-      play.type === "int" ||
-      fumbleLost ||
+      play.turnover === true ||
       play.type === "kickoff" ||
       play.type === "punt" ||
       play.type === "blocked_kick";
