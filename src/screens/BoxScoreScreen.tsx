@@ -5,19 +5,9 @@ import { useProgramContext } from "@/hooks/useProgramContext";
 import TeamCrest from "@/components/TeamCrest";
 import { supabase } from "@/lib/supabase";
 import { computeGameStatsBundle } from "@/services/statsService";
-import { scoringEvents, scoreByQuarter, type ScoringKind } from "@/services/scoringLedger";
+import { scoringEvents, scoreByQuarter } from "@/services/scoringLedger";
+import { buildGameReport, type ScoringRow } from "@/services/gameReport";
 
-/** Fallback wording when a play carries no description of its own. */
-const SCORING_LABEL: Record<ScoringKind, string> = {
-  touchdown: "Touchdown",
-  return_touchdown: "Return touchdown",
-  pat: "PAT good",
-  two_point: "Two-point conversion",
-  field_goal: "Field goal",
-  safety: "Safety",
-  conversion_return: "Conversion return",
-  correction: "Score correction",
-};
 import { TEAM_JERSEY, TEAM_PLAYER_ID, fmtClock } from "@/components/game/types";
 import type {
   GameSummary, PassingStats, RushingStats, ReceivingStats, DefensiveStats, KickingStats,
@@ -159,6 +149,11 @@ export default function BoxScoreScreen() {
   /* The line score is derived from the plays, not from the engine ledger — see
      the comment on lineScore below. */
   const [scorePlays, setScorePlays] = useState<Array<Record<string, unknown>>>([]);
+  /* The scoring summary is the report's, verbatim — same narrative, same
+     conversion folded into the touchdown line, same running score. It used to
+     be a second, thinner rendering of the same events, which is how a box
+     score and a report end up describing the same game differently. */
+  const [scoringRows, setScoringRows] = useState<ScoringRow[]>([]);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const [roster, setRoster] = useState<Map<string, RosterEntry>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -213,6 +208,38 @@ export default function BoxScoreScreen() {
       setRoster(map);
       setSummary(result?.summary ?? null);
       setScorePlays((result?.plays ?? []) as unknown as Array<Record<string, unknown>>);
+
+      if (result && gData && program) {
+        const opp = gData.opponent as unknown as {
+          name?: string; abbreviation?: string; logo_url?: string | null; primary_color?: string;
+        } | null;
+        const cfg = (program.game_config ?? null) as Record<string, unknown> | null;
+        const report = buildGameReport({
+          bundle: result,
+          program: {
+            id: program.id,
+            name: program.name,
+            abbreviation: program.abbreviation,
+            logoUrl: program.logo_url ?? null,
+            color: program.primary_color,
+          },
+          opponent: {
+            name: opp?.name ?? "Opponent",
+            abbreviation: opp?.abbreviation ?? "OPP",
+            logoUrl: opp?.logo_url ?? null,
+            color: opp?.primary_color ?? "#6b7280",
+          },
+          gameDate: gData.game_date ?? null,
+          kickoffLabel: null,
+          occasion: null,
+          ourScore: gData.our_score,
+          theirScore: gData.opponent_score,
+          touchbackYardLine: Number(cfg?.touchback_yard_line) || 20,
+          fgSnapAdd: Number(cfg?.fg_snap_add) || 17,
+        });
+        setScoringRows(report.scoring);
+      }
+
       setLoading(false);
     })();
 
@@ -402,20 +429,25 @@ export default function BoxScoreScreen() {
               </tbody>
             </table>
 
-            {/* Scoring plays — the same events as the line score above, so the
-                list and the columns can never tell different stories. It used
-                to come from the engine ledger, which omitted two-point
-                conversions and safeties entirely. */}
-            {scoreEvents.length > 0 && (
+            {/* Scoring summary, rendered from the report's rows so the two
+                documents describe the game in the same words — including the
+                conversion folded into the touchdown line and the running
+                score. This used to be a thinner second rendering of the same
+                events. */}
+            {scoringRows.length > 0 && (
               <div className="mb-2">
                 <div className="text-[10px] font-black uppercase tracking-wider text-dragon-primary print:text-black mb-1">Scoring</div>
-                {scoreEvents.map((e, i) => (
-                  <div key={i} className="text-[11px] leading-5 text-slate-300 print:text-black">
-                    <span className="text-slate-500 print:text-neutral-600">Q{e.quarter} {e.clock}</span>
-                    {" — "}
-                    <span className="font-bold">{e.side === "us" ? progAbbr : oppAbbr}</span>
-                    {" "}{e.description || SCORING_LABEL[e.kind]}
-                    <span className="text-slate-500 print:text-neutral-600"> ({e.points > 0 ? "+" : ""}{e.points})</span>
+                {scoringRows.map((row, i) => (
+                  <div key={i} className="text-[11px] leading-5 text-slate-300 print:text-black flex gap-2">
+                    <span className="text-slate-500 print:text-neutral-600 tabular-nums shrink-0 w-20">
+                      Q{row.quarter} {row.clock}
+                    </span>
+                    <span className="font-bold shrink-0 w-10">{row.team}</span>
+                    <span className="flex-1">
+                      {row.play}
+                      {row.conversion && <span className="text-slate-400 print:text-neutral-600"> {row.conversion}</span>}
+                    </span>
+                    <span className="tabular-nums text-slate-400 print:text-neutral-600 shrink-0">{row.score}</span>
                   </div>
                 ))}
               </div>

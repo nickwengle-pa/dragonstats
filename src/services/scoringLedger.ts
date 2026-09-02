@@ -72,8 +72,13 @@ const other = (side: "us" | "them"): "us" | "them" => (side === "us" ? "them" : 
  * `turnover` is set by the modal from whether the offence recovered its own
  * fumble, so it is the honest signal. Kicks are listed because a return there
  * is not a turnover — nobody lost the ball, it was kicked away on purpose.
+ *
+ * Exported because the report's scoring summary has to reach the same verdict:
+ * it carried its own list, differing on blocked kicks, and a box score whose
+ * quarter columns and scoring list disagree about who scored is exactly the
+ * problem this module exists to end.
  */
-function isReturnTouchdown(play: ScorablePlay): boolean {
+export function isReturnTouchdown(play: ScorablePlay): boolean {
   return (
     play.turnover === true
     || play.type === "kickoff"

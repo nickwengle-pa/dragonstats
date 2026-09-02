@@ -29,6 +29,7 @@ import type { GameStatsBundle } from "./statsService";
 import type { PlayWithPlayers } from "./gameService";
 import { netKickYards, resolveKickSpots } from "./kickSpots";
 import { TEAM_JERSEY, TEAM_PLAYER_ID } from "@/components/game/types";
+import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
 
 /* ── Play-type groupings ──────────────────────────────────────────────────── */
 
@@ -209,7 +210,20 @@ function tagWithRole(
 /* ── Scoring narrative ────────────────────────────────────────────────────── */
 
 /** "run", "pass from #7 Smith", "kickoff return"... — how it was scored. */
-function scoringVerb(play: PlayWithPlayers, jerseys: Map<string, number | null>): string {
+function scoringVerb(
+  play: PlayWithPlayers,
+  jerseys: Map<string, number | null>,
+  /** The ball changed hands before it reached the end zone. */
+  isReturn = false,
+): string {
+  /* A fumble on a run, a sack or a completed pass keeps its own play type —
+     only the standalone Fumble button produces type "fumble" — so the switch
+     below misses the commonest way a defensive score happens, and a strip-sack
+     six was narrated as a "run". If the ball changed hands and the play type
+     does not already say how, it was a fumble. */
+  if (isReturn && !["kickoff", "onside_kick", "punt", "fair_catch", "int", "fumble", "blocked_kick"].includes(play.play_type)) {
+    return "fumble return";
+  }
   switch (play.play_type) {
     case "rush":
     case "kneel":
@@ -287,10 +301,14 @@ export interface BuildReportInput {
    *  yardage measures to it, so a program playing a 25 would have had every
    *  net figure off by five. */
   touchbackYardLine: number;
+  /** Yards added to the distance-to-goal to get the kick's length: the ten of
+   *  the end zone plus the snap. Same figure the engine is given. */
+  fgSnapAdd?: number;
 }
 
 export function buildGameReport(input: BuildReportInput): GameReport {
   const { bundle, program, opponent } = input;
+  const fgSnapAdd = input.fgSnapAdd ?? 17;
   const { summary, plays, roster } = bundle;
 
   const jerseys = new Map<string, number | null>();
@@ -326,15 +344,24 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     : summary.homeTeamStats;
 
   /* ── Line score ───────────────────────────────────────────────────────── */
-  const usQ: Record<number, number> = {};
-  const themQ: Record<number, number> = {};
-  let sawOT = false;
-  for (const sp of summary.scoringPlays) {
-    const q = Number(sp.quarter);
-    if (q > 4) sawOT = true;
-    const bucket = sp.team === program.id ? usQ : themQ;
-    bucket[q] = (bucket[q] ?? 0) + sp.pointsScored;
-  }
+  /* From the plays via the scoring ledger, NOT from the engine's scoringPlays.
+     The engine's ledger never scored a two-point conversion or a safety at all
+     and credited every score to whoever had the ball at the snap, so the
+     quarters did not add up to the FINAL column printed beside them — on the
+     sheet a coach hands out. */
+  const events = scoringEvents(plays.map((p) => ({
+    quarter: p.quarter,
+    type: p.play_type,
+    possession: p.possession === "them" ? "them" : "us",
+    isTouchdown: Boolean(p.is_touchdown),
+    turnover: Boolean(p.is_turnover),
+    result: String((p.play_data as Record<string, unknown> | null)?.result ?? ""),
+    playData: (p.play_data as Record<string, unknown> | null) ?? null,
+  })));
+  const byQuarter = scoreByQuarter(events);
+  const usQ = byQuarter.us;
+  const themQ = byQuarter.them;
+  const sawOT = events.some((e) => e.quarter > 4);
   const quarters = sawOT ? ["1", "2", "3", "4", "OT"] : ["1", "2", "3", "4"];
   const perQuarter = (bucket: Record<number, number>) =>
     quarters.map((col, i) => col === "OT"
@@ -347,12 +374,16 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   let runningThem = 0;
   plays.forEach((play, idx) => {
     const isUs = play.possession === "us";
-    // A return touchdown is scored by the team that did NOT have the ball.
-    // A kick that always changes hands is one case; every other case is just
-    // the turnover flag, which is what separates an onside kick the kicking
-    // team recovered and ran in from one the receivers took back.
-    const kickChangesHands = ["kickoff", "punt", "fair_catch"].includes(play.play_type);
-    const returnScore = kickChangesHands || play.is_turnover;
+    /* A return touchdown is scored by the team that did NOT have the ball.
+       The rule lives in scoringLedger so this and the box score's quarter
+       columns cannot reach different verdicts — this file used to carry its
+       own list, which differed on blocked kicks. */
+    const returnScore = isReturnTouchdown({
+      quarter: play.quarter,
+      type: play.play_type,
+      possession: play.possession === "them" ? "them" : "us",
+      turnover: play.is_turnover ?? false,
+    });
     const scoredByUs = play.is_touchdown && returnScore ? !isUs : isUs;
 
     if (play.is_touchdown) {
@@ -375,7 +406,25 @@ export function buildGameReport(input: BuildReportInput): GameReport {
         clock: play.clock ?? "",
         team: scoredByUs ? program.abbreviation : opponent.abbreviation,
         isUs: scoredByUs,
-        play: `${who} ${scoringVerb(play, jerseys)} for ${play.yards_gained} yds to the ${endZone} End Zone. Touchdown!`,
+        /* On a return, the yardage that matters is how far it was carried
+           back, not what the play itself was worth — a strip-sack six read
+           "run for -6 yds" because it used the sack's yardage.
+        
+           If the return distance was never recorded, the phrase is dropped
+           rather than filled with the play's own yardage. This is a sheet a
+           coach hands to people; a made-up number on it is worse than a
+           missing one. */
+        play: (() => {
+          const verb = scoringVerb(play, jerseys, returnScore);
+          const returnYards = Number(
+            (play.play_data as Record<string, unknown> | null)?.fumble_return_yards,
+          );
+          const yards = returnScore
+            ? (Number.isFinite(returnYards) && returnYards > 0 ? returnYards : null)
+            : play.yards_gained;
+          const distance = yards != null ? ` for ${yards} yds` : "";
+          return `${who} ${verb}${distance} to the ${endZone} End Zone. Touchdown!`;
+        })(),
         conversion: conversionText(tryPlay, jerseys),
         score: `${runningThem}-${runningUs}`,
       });
@@ -390,11 +439,19 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       const who = kicker && kicker.name
         ? labelFor(kicker, jerseys)
         : (isUs ? program.abbreviation : opponent.abbreviation);
+      /* How long the kick was, which is what anybody reading a scoring summary
+         wants to know about a field goal: the distance to the goal line plus
+         the end zone and the snap. Same arithmetic the engine is given. */
+      const fgYards = play.yard_line != null
+        ? (100 - play.yard_line) + fgSnapAdd
+        : null;
       scoring.push({
         quarter: play.quarter, clock: play.clock ?? "",
         team: isUs ? program.abbreviation : opponent.abbreviation,
         isUs,
-        play: `${who} field goal. Good!`,
+        play: fgYards != null
+          ? `${who} ${fgYards} yd field goal. Good!`
+          : `${who} field goal. Good!`,
         conversion: "",
         score: `${runningThem}-${runningUs}`,
       });

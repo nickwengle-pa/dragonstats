@@ -385,6 +385,9 @@ export default function GameReportScreen() {
           touchbackYardLine: Number(
             (program.game_config as Record<string, unknown> | null | undefined)?.touchback_yard_line,
           ) || 20,
+          fgSnapAdd: Number(
+            (program.game_config as Record<string, unknown> | null | undefined)?.fg_snap_add,
+          ) || 17,
         }));
       } else {
         setReport(null);
