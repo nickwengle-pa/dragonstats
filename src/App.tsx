@@ -1,7 +1,8 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { ProgramProvider, useProgramContext } from "@/hooks/useProgramContext";
+import { setupAutoDrain } from "@/services/syncWorker";
 
 // Eagerly loaded (small, always needed)
 import LoginScreen from "@/screens/LoginScreen";
@@ -88,6 +89,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return user ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
+function SyncCoordinator() {
+  /* One coordinator for the whole app. It used to be mounted by GameScreen,
+     which meant the online/visible triggers and the retry timer only existed
+     while a game was open: finalising a game and closing the tablet left the
+     queue untouched until someone reopened that exact screen. */
+  useEffect(() => setupAutoDrain(), []);
+  return null;
+}
+
 function AppRoutes() {
   const { program, season, loading, offline, refresh } = useProgramContext();
 
@@ -158,6 +168,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <ProgramProvider>
+      <SyncCoordinator />
       <AppRoutes />
     </ProgramProvider>
   );

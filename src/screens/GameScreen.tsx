@@ -58,7 +58,7 @@ import LiveStatsPanel from "@/components/game/LiveStatsPanel";
 import SyncBadge from "@/components/game/SyncBadge";
 import { useWakeLock, readKeepAwake, writeKeepAwake } from "@/hooks/useWakeLock";
 import ClockInput from "@/components/game/ClockInput";
-import { setupAutoDrain, drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
+import { drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
 import { getUnsyncedForGame } from "@/services/offlineDb";
 import { cachedRead, cacheKeys, readSeasonRoster } from "@/services/offlineCache";
 import {
@@ -601,14 +601,14 @@ export default function GameScreen() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  /* ── Offline sync: auto-drain queue on online/visible, and try once at load
-     so any leftover offline plays from a prior session get pushed. */
+  /* ── Offline sync: one push on entry for this game. The online/visible
+     triggers and the retry timer live at the app root now, so the queue keeps
+     draining after the operator leaves this screen — marking a game final and
+     walking away used to strand it until they wandered back in. */
   useEffect(() => {
-    const teardown = setupAutoDrain(() => gameId ?? null);
     if (gameId && navigator.onLine) {
       void drainQueue(gameId);
     }
-    return teardown;
   }, [gameId]);
 
   /* ── Track which plays are still pending in the queue (for per-row icons). */
@@ -2415,9 +2415,22 @@ export default function GameScreen() {
   }, [changeQuarter]);
 
   /* ── End game ── */
+  const [finalizing, setFinalizing] = useState(false);
   const handleEndGame = async () => {
     if (!gameId) return;
+    setFinalizing(true);
+    /* Finalising is now durable either way: false means the server has not
+       taken it yet, not that it was lost. Navigating regardless is therefore
+       safe — but the operator has to be told, because "Final" that only exists
+       on this tablet looks identical to "Final" that reached the server, and
+       the difference matters when the coach opens the app on his phone. */
+    /* Finalising is durable either way now — false means the server has not
+       taken it YET, not that it was lost — so navigating is safe. The summary
+       is what tells the operator which of the two happened, because "Final"
+       that exists only on this tablet looks identical to "Final" the server
+       has, and the difference matters the moment a coach opens his phone. */
     await updateGameScore(gameId, ourScore, theirScore, "completed");
+    setFinalizing(false);
     navigate(`/game/${gameId}/summary`);
   };
 
@@ -3219,7 +3232,9 @@ export default function GameScreen() {
             <p className="text-sm text-neutral-400 text-center">
               Final score: {progName} {ourScore} — {oppName} {theirScore}
             </p>
-            <button onClick={handleEndGame} className="btn-primary w-full">Mark as Final</button>
+            <button onClick={handleEndGame} disabled={finalizing} className="btn-primary w-full">
+              {finalizing ? "Saving…" : "Mark as Final"}
+            </button>
             <button onClick={() => setShowEndGame(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Continue Playing</button>
           </div>
         </div>

@@ -24,6 +24,7 @@ import { supabase } from "@/lib/supabase";
 import { savePlayAtomic } from "./gameService";
 import {
   getDrainableForGame,
+  getGamesWithUnsynced,
   resetStuckForGame,
   markSyncing,
   markSynced,
@@ -105,9 +106,9 @@ const RETRY_MAX_MS = 2 * 60_000;
 
 let _retryTimer: ReturnType<typeof setTimeout> | null = null;
 let _retryDelay = RETRY_BASE_MS;
-/** Set by setupAutoDrain — the timer has no other way to know which game is
- *  open, and drains are per-game. */
-let _getGameId: (() => string | null) | null = null;
+/** Armed by setupAutoDrain. The timer drains every game that owes something,
+ *  so it no longer depends on a particular screen being mounted. */
+let _armed = false;
 
 function clearRetry() {
   if (_retryTimer) {
@@ -119,17 +120,16 @@ function clearRetry() {
 /** (Re)arm the retry while work is outstanding; stand down when it is not. */
 function scheduleRetry() {
   clearRetry();
-  if (!_getGameId || _status.pending === 0) {
+  if (!_armed || _status.pending === 0) {
     _retryDelay = RETRY_BASE_MS;
     return;
   }
   _retryTimer = setTimeout(() => {
     _retryTimer = null;
     void (async () => {
-      const gameId = _getGameId?.() ?? null;
-      if (gameId) {
+      {
         const before = _status.pending;
-        const result = await drainQueue(gameId);
+        const result = await drainAll();
         // Progress resets the cadence; a stall backs it off, so a long dead
         // spot is not a doomed request every 20s for an entire quarter.
         _retryDelay = result.drained > 0 || result.remaining < before
@@ -255,6 +255,21 @@ async function pushItem(item: SyncQueueItem): Promise<PushOutcome> {
       return "ok";
     }
 
+    if (item.op === "game") {
+      /* The games row: score, live situation, final status. The patch holds
+         absolute values, so replaying a stale one cannot corrupt anything —
+         and enqueueGameUpdate has already merged newer values into it. */
+      const patch = item.payload?.patch as Record<string, unknown> | undefined;
+      if (!patch || Object.keys(patch).length === 0) {
+        await markSynced(item.id);
+        return "ok";
+      }
+      const { error } = await supabase.from("games").update(patch).eq("id", item.gameId);
+      if (error) return await failItem(item, error);
+      await markSynced(item.id);
+      return "ok";
+    }
+
     if (item.op === "delete") {
       // A refused credit-delete used to be swallowed, and the play was deleted
       // anyway — leaving orphaned attributions behind it.
@@ -333,14 +348,30 @@ export async function drainQueue(
   return { drained, failed, remaining: _status.pending };
 }
 
-/** Wire up automatic drain triggers. Call once from a top-level effect. */
-export function setupAutoDrain(getGameId: () => string | null) {
-  _getGameId = getGameId;
+/**
+ * Drain every game that owes the server something, not just the open one.
+ *
+ * Drains are per-game and the trigger used to be "whatever GameScreen is
+ * mounted", so walking off the game screen — to the summary, to the roster,
+ * or by closing the tablet after marking a game final — left the queue
+ * untouched until the operator wandered back in.
+ */
+export async function drainAll(opts: { includeStuck?: boolean } = {}): Promise<SyncResult> {
+  const totals: SyncResult = { drained: 0, failed: 0, remaining: 0 };
+  for (const gameId of await getGamesWithUnsynced()) {
+    const result = await drainQueue(gameId, opts);
+    totals.drained += result.drained;
+    totals.failed += result.failed;
+  }
+  totals.remaining = _status.pending;
+  return totals;
+}
 
-  const trigger = () => {
-    const gameId = getGameId();
-    if (gameId) void drainQueue(gameId);
-  };
+/** Wire up automatic drain triggers. Call once from a top-level effect. */
+export function setupAutoDrain() {
+  _armed = true;
+
+  const trigger = () => { void drainAll(); };
 
   const onOnline = () => {
     _status.online = true;
@@ -368,7 +399,7 @@ export function setupAutoDrain(getGameId: () => string | null) {
     window.removeEventListener("offline", onOffline);
     document.removeEventListener("visibilitychange", onVisibility);
     clearRetry();
-    _getGameId = null;
+    _armed = false;
   };
 }
 

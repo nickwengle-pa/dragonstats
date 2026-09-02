@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
 import { exportGameSummaryCsv } from "@/services/csvExport";
 import { loadGamePlays } from "@/services/gameService";
+import { subscribeSyncStatus } from "@/services/syncWorker";
 import DrivesList from "@/components/game/DrivesList";
 import TeamCrest from "@/components/TeamCrest";
 import { type GameSummary, type TeamStats, type PassingStats, type RushingStats, type ReceivingStats, type DefensiveStats } from "football-stats-engine";
@@ -143,7 +144,34 @@ export default function GameSummaryScreen() {
 
   const [summary, setSummary] = useState<GameSummary | null>(null);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
+  /* "Final" written on a tablet with no signal looks exactly like "Final" the
+     server has. It is not the same thing, and the operator is the only person
+     who can keep the app open long enough to fix it.
+
+     This holds the status from a QUEUED game patch, which outranks the one on
+     the server row: the server has not been told yet, so its "live" is stale,
+     not authoritative. Reading the server alone told an operator who had just
+     marked the game final that it was still live. */
+  const [queuedStatus, setQueuedStatus] = useState<string | null>(null);
   const [roster, setRoster] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!gameId) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const { getUnsyncedForGame } = await import("@/services/offlineDb");
+        const owed = (await getUnsyncedForGame(gameId)).filter((i) => i.op === "game");
+        // Newest wins, same as the merge that produced it.
+        const status = owed.length
+          ? (owed[owed.length - 1].payload?.patch?.status as string | undefined) ?? null
+          : null;
+        if (!cancelled) setQueuedStatus(status ?? null);
+      } catch { /* offline storage unavailable — assume nothing owed */ }
+    };
+    void check();
+    const unsub = subscribeSyncStatus(() => { void check(); });
+    return () => { cancelled = true; unsub(); };
+  }, [gameId]);
   const [offFormations, setOffFormations] = useState<FormationBreakdown[]>([]);
   const [defFormations, setDefFormations] = useState<FormationBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
@@ -357,7 +385,10 @@ export default function GameSummaryScreen() {
         {gameInfo && (
           <div className="card p-6 text-center">
             <div className="text-xs font-bold text-slate-500 uppercase mb-3">
-              {gameInfo.status === "completed" ? "Final" : gameInfo.status === "live" ? "Live" : "Score"}
+              {queuedStatus === "completed"
+                ? "Final — pending sync"
+                : gameInfo.status === "completed" ? "Final"
+                : gameInfo.status === "live" ? "Live" : "Score"}
             </div>
             <div className="flex items-center justify-center gap-8">
               <div>

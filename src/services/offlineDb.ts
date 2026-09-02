@@ -19,7 +19,10 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { PlayWithPlayers, PlayInsert } from "./gameService";
 
-export type SyncOp = "insert" | "update" | "delete";
+/* "game" patches the games row itself — score, live situation, final status.
+   Those were direct network writes with no queue at all, so a scoreboard
+   correction or a "Mark as Final" made on press-box wifi simply evaporated. */
+export type SyncOp = "insert" | "update" | "delete" | "game";
 export type SyncStatus = "pending" | "syncing" | "failed";
 
 export interface SyncQueueItem {
@@ -375,6 +378,59 @@ export async function enqueueDelete(p: EnqueueDeleteParams): Promise<SyncQueueIt
   return item;
 }
 
+/**
+ * Queue a patch to the games row, COALESCED into any patch already waiting.
+ *
+ * Unlike a play, game state is a single moving row: the score, the live
+ * situation and the status all live on it, and every one of these values is
+ * absolute rather than a delta. Appending would put one queue entry per snap
+ * behind a dead spot and then replay them all in order to reach the state the
+ * last one already described. Merging into the pending entry keeps exactly one
+ * per game, holding the newest value for each field.
+ *
+ * Ordering is safe precisely because the values are absolute — a later patch
+ * always wins, which is what the merge does.
+ */
+export async function enqueueGameUpdate(
+  gameId: string,
+  patch: Record<string, unknown>,
+): Promise<SyncQueueItem> {
+  const fresh: SyncQueueItem = {
+    id: newQueueId(),
+    op: "game",
+    gameId,
+    // Not a play id. Kept distinct so nothing mistakes this for one.
+    playId: `game:${gameId}`,
+    payload: { patch },
+    status: "pending",
+    attempts: 0,
+    createdAt: Date.now(),
+  };
+  if (!isOfflineSupported()) return fresh;
+
+  const db = await getDb();
+  const tx = db.transaction("sync_queue", "readwrite");
+  const forGame = await tx.store.index("by-game").getAll(gameId);
+  const existing = forGame.find((i) => i.op === "game" && i.status !== "syncing");
+
+  if (existing) {
+    const merged: SyncQueueItem = {
+      ...existing,
+      payload: { patch: { ...(existing.payload?.patch ?? {}), ...patch } },
+      // A merge is new work: give a previously failed entry its retries back.
+      status: "pending",
+      attempts: 0,
+    };
+    await tx.store.put(merged);
+    await tx.done;
+    return merged;
+  }
+
+  await tx.store.put(fresh);
+  await tx.done;
+  return fresh;
+}
+
 /** Attempts after which automatic retry gives up and a human has to look. */
 export const MAX_AUTO_ATTEMPTS = 5;
 
@@ -438,6 +494,7 @@ export async function getQueuedPlayIds(
   // Oldest first, so a delete queued after an edit wins — and an insert queued
   // after a delete (same id re-added) wins right back.
   for (const item of await getUnsyncedForGame(gameId)) {
+    if (item.op === "game") continue;
     if (item.op === "delete") {
       deletes.add(item.playId);
       upserts.delete(item.playId);
@@ -460,6 +517,26 @@ export async function getQueuedPlayIds(
  * failed item that has not exhausted its attempts is outstanding work and is
  * counted here.
  */
+/**
+ * Every game that still owes the server something.
+ *
+ * The drain is per-game, and the only thing that knew which game to drain was
+ * the open GameScreen — so leaving that screen stranded the queue until the
+ * operator happened to walk back into it. Finalising a game and closing the
+ * tablet is exactly that sequence.
+ */
+export async function getGamesWithUnsynced(): Promise<string[]> {
+  if (!isOfflineSupported()) return [];
+  const db = await getDb();
+  const all = await db.getAll("sync_queue");
+  const ids = new Set<string>();
+  for (const item of all) {
+    // Ops filed under "" are orphans that any per-game drain sweeps along.
+    if (item.gameId) ids.add(item.gameId);
+  }
+  return [...ids];
+}
+
 export async function getPendingCount(): Promise<number> {
   if (!isOfflineSupported()) return 0;
   const db = await getDb();

@@ -780,35 +780,68 @@ export async function updateCurrentGameState(
     updateObj.rules_config = withManagedLiveState(rulesConfig);
   }
 
-  const { error } = await supabase
-    .from("games")
-    .update(updateObj)
-    .eq("id", gameId);
-
-  if (error) {
-    console.error("Failed to update current game state:", error);
-    return false;
-  }
-
-  return true;
+  return await saveGamePatch(gameId, updateObj, "current game state");
 }
 
+/**
+ * Patch the games row, write-ahead like every play write.
+ *
+ * The score, the live situation and the final status were direct network
+ * writes with no queue behind them: on press-box wifi they returned an error
+ * that was logged to a console nobody is reading, and the value was gone. The
+ * queue entry is coalesced, so this staying in step with live entry costs one
+ * row per game rather than one per snap.
+ */
+async function saveGamePatch(
+  gameId: string,
+  patch: Record<string, unknown>,
+  label: string,
+): Promise<boolean> {
+  const { enqueueGameUpdate, markSynced } = await import("./offlineDb");
+  const { refreshSyncStatus } = await import("./syncWorker");
+
+  const intent = await enqueueGameUpdate(gameId, patch);
+  await refreshSyncStatus();
+
+  const goOnline = typeof navigator === "undefined" || navigator.onLine;
+  if (goOnline) {
+    try {
+      const { error } = await supabase.from("games").update(patch).eq("id", gameId);
+      if (!error) {
+        /* Only clear the entry if nothing merged into it while the request was
+           in flight. A newer patch arriving mid-request means this one no
+           longer describes what is owed, and dropping it would lose that. */
+        const { getUnsyncedForGame } = await import("./offlineDb");
+        const still = (await getUnsyncedForGame(gameId))
+          .find((i) => i.id === intent.id && i.op === "game");
+        if (still && still.createdAt === intent.createdAt) {
+          await markSynced(intent.id);
+        }
+        await refreshSyncStatus();
+        return true;
+      }
+      console.warn(`Failed to update ${label}, staying queued:`, error);
+    } catch (err) {
+      console.warn(`Failed to update ${label}, staying queued:`, err);
+    }
+  }
+
+  // Queued by the write-ahead above; the drain will carry it.
+  return false;
+}
+
+/** @returns true once the server has it; false means it is queued, not lost. */
 export async function updateGameScore(
   gameId: string,
   ourScore: number,
   theirScore: number,
   status: "scheduled" | "live" | "completed" | "cancelled" = "live"
-): Promise<void> {
-  const { error } = await supabase
-    .from("games")
-    .update({
-      our_score: ourScore,
-      opponent_score: theirScore,
-      status,
-    })
-    .eq("id", gameId);
-
-  if (error) console.error("Failed to update game score:", error);
+): Promise<boolean> {
+  return await saveGamePatch(
+    gameId,
+    { our_score: ourScore, opponent_score: theirScore, status },
+    "game score",
+  );
 }
 
 /* ─────────────────────────────────────────────
