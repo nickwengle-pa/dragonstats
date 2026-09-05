@@ -807,6 +807,12 @@ export default function PlayEntryModal({
   // governs the optional flag on a normal play.
   // A play that already carries a flag opens with the picker open, or the
   // penalty on it is invisible until something is tapped.
+  /* True when the flag was typed rather than picked. Re-derived on open so
+     editing a play recorded with a custom flag comes back in the same mode
+     instead of showing an empty picker with a name it cannot highlight. */
+  const [customFlag, setCustomFlag] = useState(
+    edit?.penalty != null && !PENALTIES.includes(edit.penalty),
+  );
   const [showPenalties, setShowPenalties] = useState(edit?.penalty != null);
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(
     () => edit?.blockedKickType ?? defaultBlockedKickType(gameState),
@@ -1234,7 +1240,9 @@ export default function PlayEntryModal({
     // A penalty-only play with no flag chosen is meaningless — this is the one
     // step worth hard-blocking on, since there's nothing else to record.
     if (currentStep === "penalty") {
-      return !!penalty && !!penaltyCategory;
+      // trim(), because a custom flag starts as an empty string and a name
+      // of spaces would otherwise sail through and record an unnamed foul.
+      return !!penalty?.trim() && !!penaltyCategory;
     }
     if (currentStep === "review" && penalty) {
       return !!penaltyCategory;
@@ -1716,7 +1724,7 @@ export default function PlayEntryModal({
       fumbleRecoveredAt: isFumblePlay ? fumbleRecoveredAtBallOn : undefined,
       onsideRecoveredByKicker: playType.id === "onside_kick" ? onsideRecoveredByKicker : undefined,
       result: finalResult,
-      penalty,
+      penalty: penalty ? penalty.trim() : null,
       penaltyCategory,
       penaltyEnforcement: penalty ? penaltyEnforcement : "accepted",
       flagYards: penalty && penaltyEnforcement === "accepted" ? flagYards : 0,
@@ -2018,6 +2026,7 @@ export default function PlayEntryModal({
   };
 
   const selectPenalty = (label: string) => {
+    setCustomFlag(false);
     setPenalty(label);
     setPenaltyCategory(defaultFlagSide(label));
     setFlagYards(PENALTY_DEFAULT_YARDS[label] ?? 5);
@@ -2030,7 +2039,32 @@ export default function PlayEntryModal({
     setFoulSpotBallOn(isSpotFoul(label) ? playEndBallOn : gameState.ballOn);
   };
 
+  /* A foul the officials called that is not on the list.
+
+     The typed name is stored AS the penalty rather than behind a sentinel, so
+     the play-by-play, the film chart and every report read it back the way it
+     was announced instead of saying "Other".
+
+     It is deliberately not added to PENALTIES. That table is the rulebook the
+     app actually knows - default sides, standard distances, engine codes - and
+     a free-text entry has none of those, so listing it there would put a row
+     in the table that lies about all three. Both engine-code call sites
+     already fall back to a snake_case version of the label for anything
+     unmapped, which is exactly what a custom flag gets.
+
+     No default side is knowable either, so it prefills the same way the four
+     either-team fouls do and shows the same "check this" warning. */
+  const startCustomPenalty = () => {
+    setCustomFlag(true);
+    setPenalty("");
+    setPenaltyCategory(flagSideDefault("", isKickPlay));
+    setFlagYards(5);
+    setFlagYardsRaw("5");
+    setFoulSpotBallOn(gameState.ballOn);
+  };
+
   const clearPenalty = () => {
+    setCustomFlag(false);
     setPenalty(null);
     setPenaltyCategory(null);
     setFoulSpotBallOn(null);
@@ -2186,6 +2220,27 @@ export default function PlayEntryModal({
             </button>
           ))}
         </div>
+        <button
+          onClick={startCustomPenalty}
+          className={`mt-1.5 w-full text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-all duration-200 ${
+            customFlag
+              ? "border-orange-500 bg-orange-500/15 text-orange-400"
+              : "border-surface-border text-slate-400"
+          }`}
+        >
+          Other — type what they called
+        </button>
+        {customFlag && (
+          <input
+            value={penalty ?? ""}
+            onChange={(e) => setPenalty(e.target.value)}
+            placeholder="e.g. Illegal Kicking"
+            autoFocus
+            autoCapitalize="words"
+            autoCorrect="off"
+            className="mt-1.5 w-full bg-surface-bg border border-orange-500/50 rounded-lg px-3 py-2 text-sm font-bold text-orange-400 placeholder:text-slate-600 focus:outline-none focus:border-orange-500"
+          />
+        )}
       </div>
 
       {penalty && (
