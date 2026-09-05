@@ -36,6 +36,7 @@ interface Props {
   onOffFormation: (value: string | null) => void;
   onDefFormation: (value: string | null) => void;
   onHash: (value: string | null) => void;
+  attachedDetails?: string;
   onSubmit: () => void | Promise<void>;
   onClose: () => void;
 }
@@ -137,7 +138,7 @@ export default function FastPlayEntry(p: Props) {
                   <button onClick={() => changeYards(0)} className={`${button} ${idle} flex-1`}>No gain</button>
                   {!sack && <button onClick={() => { setSpotTouched(true); p.onTouchdown(); }} aria-pressed={p.isTD} className={`${button} ${p.isTD ? selected : idle} flex-1`}>Touchdown</button>}
                 </div>
-                <details className="mt-2 text-sm text-slate-400"><summary className="py-2 cursor-pointer">Field ruler</summary>
+                <details open className="mt-2 text-sm text-slate-400"><summary className="py-2 cursor-pointer">Field ruler</summary>
                   <YardReel value={Math.max(1, Math.min(99, endSpot))} onChange={spot => changeYards(spot - p.situation.ballOn)}
                     offenseDirection={p.offenseDirection} formatSpot={p.formatSpot} accentColor={p.accentColor}
                     firstDownBallOn={p.situation.ballOn + p.situation.distance} />
@@ -196,6 +197,7 @@ export default function FastPlayEntry(p: Props) {
           </div>
         </div>
         <footer className="p-3 border-t border-surface-border shrink-0 safe-bottom space-y-2">
+          {p.attachedDetails && <p className="text-sm text-amber-300">{p.attachedDetails} · review before saving</p>}
           <div className="text-sm" aria-live="polite">
             <span className="font-bold">{p.playType.label}{!incomplete ? ` · ${p.yards > 0 ? "+" : ""}${p.yards} yds` : ""}</span>
             <span className="text-slate-300"> · Next: {nextLabel}</span>
@@ -205,7 +207,7 @@ export default function FastPlayEntry(p: Props) {
           <button disabled={!ready || saving} onClick={async () => {
             setSaving(true); setSaveError("");
             try { await p.onSubmit(); } catch { setSaveError("Could not save. Try again."); } finally { setSaving(false); }
-          }} className="btn-primary w-full min-h-12 text-base font-black disabled:opacity-40">{saving ? "Saving…" : "Save Play"}</button>
+          }} className="btn-primary w-full min-h-12 text-base font-black disabled:opacity-40">{saving ? "Saving…" : p.attachedDetails ? "Review details" : "Save Play"}</button>
         </footer>
       </div>
     </div>

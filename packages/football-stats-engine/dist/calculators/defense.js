@@ -116,8 +116,9 @@ export class DefensiveCalculator {
             if (p.interceptionReturnYards != null) {
                 stat.interceptionYards += p.interceptionReturnYards;
             }
-            // INT return TD check: if return yards bring past the end zone
-            // (This is simplified; real TD detection should come from play data)
+            if (p.isTouchdown) {
+                stat.interceptionTouchdowns++;
+            }
         }
         // --- PASSES DEFENDED (incomplete where a defender was near) ---
         if (p.result === PassResult.BattedDown && p.tackledBy) {

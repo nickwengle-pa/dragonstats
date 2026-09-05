@@ -581,12 +581,19 @@ export function advanceSituationAfterPlay(
     };
   }
 
-  if (play.firstDown) {
+  // Keep the original carrier's yards separate from where a retained fumble
+  // finishes. The recovery and advance determine the next spot and distance.
+  const retainedFumble = play.fumbleRecoveredAt != null || play.fumbleReturnYards != null;
+  const finalBallOn = retainedFumble
+    ? clampBallOn((play.fumbleRecoveredAt ?? newBallOn) + (play.fumbleReturnYards ?? 0))
+    : newBallOn;
+  const situationGain = retainedFumble ? finalBallOn - before.ballOn : play.yards;
+  if (retainedFumble ? situationGain >= before.distance : play.firstDown) {
     return {
       possession,
       down: 1,
-      distance: Math.max(1, Math.min(config.first_down_distance, 100 - newBallOn)),
-      ballOn: newBallOn,
+      distance: Math.max(1, Math.min(config.first_down_distance, 100 - finalBallOn)),
+      ballOn: finalBallOn,
     };
   }
 
@@ -595,7 +602,7 @@ export function advanceSituationAfterPlay(
       possession: oppositeTeam(possession),
       down: 1,
       distance: config.first_down_distance,
-      ballOn: flipFieldPosition(newBallOn),
+      ballOn: flipFieldPosition(finalBallOn),
     };
   }
 
@@ -604,8 +611,8 @@ export function advanceSituationAfterPlay(
   return {
     possession,
     down: before.down + 1,
-    distance: Math.max(1, Math.min(before.distance - play.yards, 100 - newBallOn)),
-    ballOn: newBallOn,
+    distance: Math.max(1, Math.min(before.distance - situationGain, 100 - finalBallOn)),
+    ballOn: finalBallOn,
   };
 }
 

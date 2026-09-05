@@ -31,6 +31,48 @@ import { DEFAULT_GAME_CONFIG } from "./programService";
 import { describe, it, expect } from "vitest";
 
 const PROGRAM = "team-us";
+describe("turnover player credits in live and postgame reports", () => {
+  for (const type of ["rush", "pass_comp", "sack"]) {
+    it(`${type} fumble return retains the return tackler in both reports`, () => {
+      const tags = [{ id: "qb1", role: "passer" }, { id: "wr1", role: "rusher" }, { id: "wr1", role: "receiver" }, { id: "lb1", role: "fumble_recovery" }, { id: "pu1", role: "recovery_tackler" }];
+      const live = livesummary([appPlay({ id: "ft", type, yards: -7, possession: "us", turnover: true, fumbleReturnYards: 12, tagged: tags })]);
+      const post = postgameSummary([dbPlay({ id: "ft", play_type: type, yards_gained: -7, possession: "us", is_turnover: true, play_data: { fumble_return_yards: 12 }, credits: tags })]);
+      for (const summary of [live, post]) {
+        expect(summary?.defense.pu1).toMatchObject({ soloTackles: 1, totalTackles: 1, sacks: 0, tacklesForLoss: 0 });
+        expect(summary?.defense.lb1).toMatchObject({ fumbleRecoveryYards: 12, fumbleRecoveryTouchdowns: 0 });
+      }
+    });
+    it(`${type} fumble return preserves carrier yards and credits the defense`, () => {
+      const tags = [{ id: "qb1", role: "passer" }, { id: "wr1", role: "receiver" }, { id: "wr1", role: "rusher" }, { id: "lb1", role: "fumble_recovery" }, { id: "lb2", role: "forced_fumble" }];
+      const yards = type === "sack" ? -7 : 12;
+      const live = livesummary([appPlay({ id: "fr", type, yards, possession: "us", turnover: true, isTouchdown: true, fumbleReturnYards: 42, tagged: tags })]);
+      const post = postgameSummary([dbPlay({ id: "fr", play_type: type, yards_gained: yards, possession: "us", is_turnover: true, is_touchdown: true, play_data: { fumble_return_yards: 42 }, credits: tags })]);
+      for (const summary of [live, post]) {
+        expect(summary?.defense.lb1).toMatchObject({ fumbleRecoveries: 1, fumbleRecoveryYards: 42, fumbleRecoveryTouchdowns: 1 });
+        expect(summary?.defense.lb2).toMatchObject({ forcedFumbles: 1 });
+        if (type === "rush") expect(summary?.rushing.wr1).toMatchObject({ yards: 12, touchdowns: 0 });
+        if (type === "pass_comp") {
+          expect(summary?.passing.qb1).toMatchObject({ yards: 12, touchdowns: 0 });
+          expect(summary?.receiving.wr1).toMatchObject({ yards: 12, touchdowns: 0 });
+        }
+      }
+    });
+  }
+  for (const returnYards of [0, 15, 65]) {
+    it(`interception with ${returnYards} return yards credits the passer and interceptor separately`, () => {
+      const tags = [{ id: "qb1", role: "passer" }, { id: "lb1", role: "interceptor" }];
+      const td = returnYards === 65;
+      if (!td) tags.push({ id: "wr1", role: "tackler" });
+      const live = livesummary([appPlay({ id: "i", type: "int", yards: 35 - returnYards, possession: "us", turnover: true, isTouchdown: td, playData: { interception_return_yards: returnYards }, tagged: tags })]);
+      const post = postgameSummary([dbPlay({ id: "i", play_type: "int", yards_gained: 35 - returnYards, possession: "us", is_turnover: true, is_touchdown: td, play_data: { interception_return_yards: returnYards }, credits: tags })]);
+      for (const summary of [live, post]) {
+        expect(summary?.passing.qb1).toMatchObject({ attempts: 1, completions: 0, yards: 0, touchdowns: 0, interceptions: 1 });
+        expect(summary?.defense.lb1).toMatchObject({ interceptions: 1, interceptionYards: returnYards, interceptionTouchdowns: td ? 1 : 0 });
+        if (!td) expect(summary?.defense.wr1).toMatchObject({ soloTackles: 1, totalTackles: 1, tacklesForLoss: 0 });
+      }
+    });
+  }
+});
 const OPPONENT = "team-them";
 const GAME = "game-1";
 

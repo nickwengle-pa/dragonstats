@@ -15,6 +15,7 @@ interface Props {
   progName: string;
   oppName: string;
   suggestedPhase?: PhaseFilter;
+  kickoffDue?: boolean;
   /** Current down — drives which buttons get the oversized hit target. */
   down?: number;
   /** Yards to go, shown alongside the down in the possession band. */
@@ -148,6 +149,7 @@ export default function QuickActions({
   progName,
   oppName,
   suggestedPhase,
+  kickoffDue = false,
   down,
   distance,
   spotLabel,
@@ -159,6 +161,7 @@ export default function QuickActions({
 }: Props) {
   const [phase, setPhase] = useState<PhaseFilter>(suggestedPhase ?? "run");
   const [manualOverride, setManualOverride] = useState(false);
+  const specialPrompt = kickoffDue ? "kickoff" : down === 4 ? "punt" : null;
 
   useEffect(() => {
     if (!manualOverride && suggestedPhase) {
@@ -172,6 +175,13 @@ export default function QuickActions({
   useEffect(() => {
     setManualOverride(false);
   }, [possession]);
+
+  // Enter ST once when a new kicking situation arrives, even if the operator
+  // previously chose Run or Pass. They can still change tabs afterwards.
+  useEffect(() => {
+    setManualOverride(false);
+    if (specialPrompt) setPhase("special");
+  }, [specialPrompt, possession]);
 
   const grouped = PLAY_TYPES.reduce<Record<string, PlayTypeDef[]>>((acc, pt) => {
     (acc[pt.category] ??= []).push(pt);
@@ -189,7 +199,9 @@ export default function QuickActions({
   const fastPath = fastPathIds(down, ballOn)
     .map((id) => PLAY_TYPES.find((pt) => pt.id === id))
     .filter((pt): pt is PlayTypeDef => pt !== undefined && pt.category === phase);
-  const otherPlays = visible.filter(pt => !fastPath.some(primary => primary.id === pt.id));
+  const spotlight = phase !== "penalty" && (specialPrompt === "punt" || phase === "special")
+    ? PLAY_TYPES.find(pt => pt.id === specialPrompt) : undefined;
+  const otherPlays = visible.filter(pt => pt.id !== spotlight?.id && !fastPath.some(primary => primary.id === pt.id));
 
   const offenseName = possession === "us" ? progName : oppName;
   const offenseColor = possession === "us" ? progColor : oppColor;
@@ -273,6 +285,12 @@ export default function QuickActions({
           ))}
         </div>
       </div>
+
+      {spotlight && <div className="space-y-1.5">
+        <div className="text-xs font-bold text-slate-300">{specialPrompt === "kickoff" ? "Kickoff due" : "Fourth down · Special teams"}</div>
+        <button onClick={() => onSelect(spotlight)} className="w-full min-h-24 rounded-lg border-2 text-2xl font-display font-black uppercase tracking-wide active:scale-[0.99]"
+          style={hueStyle(spotlight.color)}>{spotlight.label}</button>
+      </div>}
 
       {/* Common plays within the selected category only. */}
       {fastPath.length > 0 && (

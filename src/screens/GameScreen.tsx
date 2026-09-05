@@ -51,6 +51,7 @@ import Scoreboard from "@/components/game/Scoreboard";
 import FieldVisualizer from "@/components/game/FieldVisualizer";
 import PregameSetupSheet from "@/components/game/PregameSetupSheet";
 import QuickActions from "@/components/game/QuickActions";
+import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import PlayLog from "@/components/game/PlayLog";
@@ -1249,11 +1250,15 @@ export default function GameScreen() {
     () => formatTeamYardLabel(entrySituation.ballOn, entrySituation.possession, progAbbr, oppAbbr),
     [entrySituation, oppAbbr, progAbbr],
   );
+  const kickoffDue = useMemo(() => {
+    const preceding = insertContext ? plays.slice(0, insertContext.index + 1) : plays;
+    const previous = [...preceding].reverse().find(p => !["timeout", "penalty_only"].includes(p.type));
+    return isKickoffDue(entrySituation, previous, gc);
+  }, [entrySituation, insertContext, plays, gc]);
   const suggestedPhase = useMemo(() => {
     const { ballOn: entryBallOn, distance: entryDistance, down: entryDown } = entrySituation;
-    const isKickState = entryBallOn === gc.kickoff_yard_line || entryBallOn === gc.safety_kick_yard_line;
     const isConversionState = entryBallOn === 100 - gc.pat_distance && entryDistance <= gc.pat_distance;
-    if (isKickState || isConversionState) return "special" as const;
+    if (kickoffDue || isConversionState) return "special" as const;
     // 4th down is a special-teams decision far more often than not, so open on
     // ST. The phase tabs stay tappable — one tap gets back to OFF for a go-for-it.
     if (entryDown === 4) return "special" as const;
@@ -1262,7 +1267,7 @@ export default function GameScreen() {
     // whose ball it is. Run over Pass because the fast path above the tabs
     // already carries Complete and Incomplete, so a pass costs no tab tap.
     return "run" as const;
-  }, [entrySituation, gc.kickoff_yard_line, gc.pat_distance, gc.safety_kick_yard_line]);
+  }, [entrySituation, kickoffDue, gc.pat_distance]);
   const timeoutState = useMemo(() => {
     const activeHalf = timeoutHalfForQuarter(quarter);
     let usedUs = 0;
@@ -2711,6 +2716,7 @@ export default function GameScreen() {
             progName={progName}
             oppName={oppName}
             suggestedPhase={suggestedPhase}
+            kickoffDue={kickoffDue}
             spotLabel={entryBallLabel}
             down={entrySituation.down}
             distance={entrySituation.distance}

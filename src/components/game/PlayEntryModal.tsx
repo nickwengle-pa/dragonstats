@@ -1682,6 +1682,9 @@ export default function PlayEntryModal({
       playYards = kickDistance - computedReturnYards;
     } else if (isInterception && interceptionReturnBallOn != null) {
       playYards = interceptionNetYards;
+    } else if (isFumblePlay) {
+      // A recovery return must not overwrite the original carrier's yardage.
+      playYards = yards;
     } else if (isTD) {
       // TD: yards = distance from line of scrimmage to endzone
       // Turnovers (int/fumble) score in the opposite direction, so yards go negative (towards LOS endzone)
@@ -1692,7 +1695,9 @@ export default function PlayEntryModal({
     }
     const newBallOn = Math.min(100, Math.max(0, gameState.ballOn + playYards));
     const earnedFirst = isFirstDown || (!isKickPlay && playYards >= gameState.distance && gameState.down <= 4);
-    const scored = isTD || (!isKickPlay && newBallOn >= 100);
+    const scored = isFumblePlay
+      ? (fumbleRecoveredByUs ? fumbleReturnBallOn >= 100 : fumbleReturnBallOn <= 0)
+      : isTD || (!isKickPlay && newBallOn >= 100);
 
     const desc = buildDescription(playType, allTagged, playYards, scored, penalty, finalResult, isKickPlay ? {
       kickDistance,
@@ -2384,7 +2389,7 @@ export default function PlayEntryModal({
         setUseDetailedEntry(true);
         if (section === "penalty") {
           setShowPenalties(true);
-          setStepIdx(steps.indexOf("review")); // The new penalty step precedes review.
+          setStepIdx(steps.includes("penalty") ? steps.indexOf("penalty") : steps.indexOf("review"));
         } else if (section === "fumble") {
           setHasFumble(true); setIsTD(false);
           setStepIdx(steps.indexOf("yards"));
@@ -2392,9 +2397,39 @@ export default function PlayEntryModal({
       }}
       offFormation={offFormation} defFormation={defFormation} hashMark={hashMark}
       onOffFormation={setOffFormation} onDefFormation={setDefFormation} onHash={setHashMark}
-      onSubmit={handleSubmit} onClose={onClose}
+      attachedDetails={[showPenalties || penalty ? `Flag: ${penalty ?? "not selected"}` : "", hasFumble ? "Fumble" : ""].filter(Boolean).join(" · ")}
+      onSubmit={() => {
+        // A compact summary must not bypass the flag or recovery questions.
+        if (showPenalties || penalty || hasFumble) {
+          setUseDetailedEntry(true);
+          setStepIdx(steps.indexOf(hasFumble ? "yards" : "penalty"));
+          return;
+        }
+        return handleSubmit();
+      }} onClose={onClose}
     />;
   }
+
+  const playerStepNames: Record<string, string> = {
+    passer: "Passer / QB", rusher: "Runner", receiver: "Receiver", target: "Pass target",
+    interceptor: "Interceptor", forced_fumble: "Forced fumble", fumble_recovery: "Fumble recovery",
+    recoverer: "Recoverer", blocker: "Kick blocker", tackler: "Tackler", sacker: "Sacker",
+    kicker: "Kicker", punter: "Punter", returner: "Returner", defender: "Pass defender",
+  };
+  const detailHeadings: Record<Step, { title: string; hint: string }> = {
+    players: { title: playerStepNames[currentRole] ?? "Players", hint: `${activeTeamName} · Choose the ${playerStepNames[currentRole]?.toLowerCase() ?? "player"}.` },
+    yards: { title: isDeadBall ? "Play options" : needsResult ? "Play result" : "Ending spot", hint: isDeadBall ? "Add any flag or other play details." : "Record where the play ended and its result." },
+    penalty: { title: "Penalty", hint: "Choose the foul, the team, and enforcement." },
+    formations: { title: "Formations & hash", hint: "Optional charting for this play." },
+    defense: { title: playType.id === "sack" ? "Sackers" : "Tacklers", hint: `${tacklersAreOurs ? progName : oppName} · Who stopped the ball carrier?` },
+    review: { title: "Review & save", hint: "Check the play before recording it." },
+    kick_kicker: { title: kickerRole === "punter" ? "Punter" : "Kicker", hint: `${fieldTeamLabel(kickingFieldSide)} · Who kicked the ball?` },
+    kick_location: { title: "Kick location", hint: "Where did the kick land, and what happened there?" },
+    kick_returner: { title: playType.id === "onside_kick" ? "Recoverer" : "Returner", hint: `${playType.id === "onside_kick" && onsideRecoveredByKicker ? fieldTeamLabel(kickingFieldSide) : receivingTeamLabel} · Who fielded the kick?` },
+    kick_return_yards: { title: "Return ending spot", hint: "Where was the returner stopped?" },
+    fumble_return: { title: "Recovery & return", hint: "Who recovered the fumble, and where did the return end?" },
+  };
+  const detailHeading = detailHeadings[currentStep];
 
   return (
     <div className="sheet bg-black/60 backdrop-blur-sm">
@@ -2415,27 +2450,27 @@ export default function PlayEntryModal({
                 </span>
               )}
             </div>
-            <div className="text-[10px] text-slate-500">
-              Step {stepIdx + 1} of {steps.length}: {
-                ({
-                  players: "Players", yards: "Yards", penalty: "Penalty",
-                  formations: "Formations", defense: "Tacklers", review: "Review",
-                  kick_kicker: (playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicker" : "Punter",
-                  kick_location: "Kick Location", kick_returner: "Returner",
-                  kick_return_yards: "Return To",
-                } as Record<string, string>)[currentStep] ?? currentStep
-              }
-              {isTheirBall && currentStep === "players" && (
-                <span className="text-red-400 ml-1">({oppName} ball)</span>
-              )}
+            <div className="text-xs text-slate-400">
+              Step {stepIdx + 1} of {steps.length}
             </div>
           </div>
+          {!isEditing && FAST_PLAY_IDS.has(playType.id) && (
+            <button onClick={() => { setUseDetailedEntry(false); setSkipWarning(null); }}
+              className="btn-ghost min-h-11 px-3 text-sm font-bold border border-surface-border rounded-lg shrink-0">
+              Simple view
+            </button>
+          )}
           {/* Step dots */}
           <div className="flex gap-1">
             {steps.map((_, i) => (
               <div key={i} className={`w-2 h-2 rounded-full ${i === stepIdx ? "bg-dragon-primary" : i < stepIdx ? "bg-emerald-500" : "bg-slate-700"}`} />
             ))}
           </div>
+        </div>
+
+        <div className="shrink-0 px-4 py-3 border-b border-surface-border bg-surface-bg/40" aria-live="polite" aria-atomic="true">
+          <h2 className="text-2xl sm:text-3xl leading-tight font-display font-black uppercase tracking-wide text-white">{detailHeading.title}</h2>
+          <p className="mt-1 text-sm text-slate-300">{detailHeading.hint}</p>
         </div>
 
         {/* Content */}
@@ -2998,6 +3033,7 @@ export default function PlayEntryModal({
                 value={fumbleReturnBallOn}
                 onChange={setFumbleReturnFromBallOn}
                 offenseDirection={offenseDirection}
+                advancing={fumbleRecoveredByUs ? "offense" : "returner"}
                 accentColor="#fb923c"
                 formatSpot={(b) => formatFieldSpot(b, gameState.possession)}
               />
@@ -3543,7 +3579,10 @@ export default function PlayEntryModal({
                   engine would then have to be argued out of. */}
               {!needsResult && !isDeadBall && (
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setIsTD(t => !t)}
+                  <button onClick={() => {
+                    if (isFumblePlay) setFumbleReturnRaw(isTD ? "0" : String(fumbleRecoveredByUs ? 100 - fumbleRecoveredAtBallOn : fumbleRecoveredAtBallOn));
+                    setIsTD(t => !t);
+                  }}
                     className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                       isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
                     }`}>TD</button>
@@ -3559,13 +3598,19 @@ export default function PlayEntryModal({
                 <div>
                   <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setFumbleRecoveredByUs(false)}
+                    <button onClick={() => {
+                      if (fumbleRecoveredByUs) setTagged(prev => prev.filter(t => !["fumble_recovery", "recovery_tackler"].includes(t.role)));
+                      setFumbleRecoveredByUs(false);
+                    }}
                       className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
                         !fumbleRecoveredByUs ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
                       }`}>
                       {gameState.possession === "us" ? oppName : progName} (turnover)
                     </button>
-                    <button onClick={() => setFumbleRecoveredByUs(true)}
+                    <button onClick={() => {
+                      if (!fumbleRecoveredByUs) setTagged(prev => prev.filter(t => !["fumble_recovery", "recovery_tackler"].includes(t.role)));
+                      setFumbleRecoveredByUs(true);
+                    }}
                       className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
                         fumbleRecoveredByUs ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
                       }`}>
@@ -3995,7 +4040,7 @@ export default function PlayEntryModal({
                           </div>
                         )}
                         {(() => {
-                          const displayYards = isTD
+                          const displayYards = isTD && !isFumblePlay
                             ? (["int", "fumble"].includes(playType.id) ? -gameState.ballOn : 100 - gameState.ballOn)
                             : yards;
                           return (
@@ -4044,6 +4089,22 @@ export default function PlayEntryModal({
                       </div>
                     )}
                   </>
+                )}
+                {isFumblePlay && (
+                  <div className="space-y-2 border-t border-orange-500/30 pt-3">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Fumble</span>
+                      <span className="font-bold text-orange-400">{fumbleRecoveredByUs ? "Possession kept" : "Turnover"}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Recovered At</span>
+                      <span className="font-bold">{formatFieldSpot(fumbleRecoveredAtBallOn, gameState.possession)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Return / Final Spot</span>
+                      <span className="font-bold">{fumbleReturnYards} yds / {formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</span>
+                    </div>
+                  </div>
                 )}
                 {needsResult && result && (
                   <div className="flex justify-between">
