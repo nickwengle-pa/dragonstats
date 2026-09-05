@@ -35,8 +35,13 @@ import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedge
 
 /** Play types the engine counts as a rushing attempt. Kept in step with
  *  playTransformer — a type here that it does not treat as a rush would make
- *  gain/loss disagree with the net beside it. */
-const RUSH_TYPES = new Set(["rush", "scramble", "kneel"]);
+ *  gain/loss disagree with the net beside it.
+ *
+ *  bad_snap belongs here even though it is almost always a loss: a snap the
+ *  quarterback chases down and turns into positive yardage would otherwise
+ *  contribute nothing to gain, and loss is derived as net minus gain, so the
+ *  sheet would print a POSITIVE number in the Loss column. */
+const RUSH_TYPES = new Set(["rush", "scramble", "kneel", "bad_snap"]);
 
 /** Roles that can be the one who reached the end zone, most specific first.
  *  A fumble return TD has both a rusher (who lost it) and a recoverer (who
