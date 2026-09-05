@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readableAccent } from "@/utils/teamColor";
 import { PLAY_TYPES, type PlayCategory, type PlayTypeDef } from "./types";
 
 /* The tabs ARE the four groups now. There used to be a second axis on top of
@@ -194,6 +195,10 @@ export default function QuickActions({
 
   const offenseName = possession === "us" ? progName : oppName;
   const offenseColor = possession === "us" ? progColor : oppColor;
+  /* The band's rule and its label are ink on a dark ground, so a team wearing
+     black rendered them invisible. The dot and the active tab below keep the
+     raw colour - they are fills, and a fill still reads as a shape. */
+  const offenseAccent = readableAccent(offenseColor);
 
   return (
     <div className="space-y-3">
@@ -206,7 +211,7 @@ export default function QuickActions({
         className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-[4px] border-b"
         style={{
           background: `linear-gradient(180deg, ${offenseColor}26, #111820)`,
-          borderColor: `${offenseColor}59`,
+          borderColor: `${offenseAccent}59`,
         }}
       >
         {/* Tier 1 of the type scale: the situation is the one thing that has
@@ -220,7 +225,7 @@ export default function QuickActions({
           />
           <span
             className="text-[10px] font-display font-bold uppercase tracking-[0.18em] truncate opacity-90 min-w-0"
-            style={{ color: offenseColor }}
+            style={{ color: offenseAccent }}
           >
             {offenseName}
           </span>

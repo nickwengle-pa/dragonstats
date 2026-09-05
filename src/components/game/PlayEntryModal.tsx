@@ -26,6 +26,7 @@ import {
 } from "./types";
 import { buildEditSeed } from "./playEntrySeed";
 import ClockInput from "./ClockInput";
+import { readableAccent } from "@/utils/teamColor";
 import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
@@ -1740,16 +1741,28 @@ export default function PlayEntryModal({
     blockedRecoveredByKicking,
   });
 
+  /* Two versions of each team colour, on purpose.
+     The raw colour fills crests and chips, where it sits on its own ground and
+     IS the identity. The accent is the same colour lifted far enough to be
+     seen against this app's near-black surfaces, and is what borders, labels
+     and the yard ruler use - a team that wears black turned the whole ruler
+     into a black marker with black numbers inside it. */
+  const progAccent = readableAccent(progColor);
+  const oppAccent = readableAccent(oppColor);
+
   // Identity of whichever team's roster is on screen right now.
   const activeTeamColor = showOpponentRoster ? oppColor : progColor;
+  const activeTeamAccent = showOpponentRoster ? oppAccent : progAccent;
   const activeTeamName = showOpponentRoster ? oppName : progName;
   const activeTeamTag = showOpponentRoster ? oppTag : progTag;
   const activeTeamLogo = showOpponentRoster ? oppLogoUrl : progLogoUrl;
   // The offense owns the ball-spot field, so it's tinted to whoever has it.
   const offenseColor = isTheirBall ? oppColor : progColor;
+  const offenseAccent = isTheirBall ? oppAccent : progAccent;
   // An interception belongs to the defense — they caught it and they're
   // returning it — so those reels wear the defending team's color.
   const defenseColor = isTheirBall ? progColor : oppColor;
+  const defenseAccent = isTheirBall ? progAccent : oppAccent;
 
   /* ── Field spot picking ───────────────────────────────────────────────────
      ballOn is possession-relative (0 = offense's own goal). The field draws
@@ -2152,8 +2165,8 @@ export default function PlayEntryModal({
               <div
                 className="flex items-center gap-2 px-3 py-2 rounded-xl border"
                 style={{
-                  borderColor: `${activeTeamColor}66`,
-                  background: `linear-gradient(90deg, ${activeTeamColor}22, transparent)`,
+                  borderColor: `${activeTeamAccent}66`,
+                  background: `linear-gradient(90deg, ${activeTeamAccent}22, transparent)`,
                 }}
               >
                 {activeTeamLogo ? (
@@ -2166,7 +2179,7 @@ export default function PlayEntryModal({
                     {activeTeamTag}
                   </span>
                 )}
-                <span className="text-sm font-display font-black uppercase tracking-wide" style={{ color: activeTeamColor }}>
+                <span className="text-sm font-display font-black uppercase tracking-wide" style={{ color: activeTeamAccent }}>
                   {activeTeamName}
                 </span>
                 <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-slate-500">
@@ -2192,7 +2205,7 @@ export default function PlayEntryModal({
                   search={searches[currentRole] ?? ""}
                   onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
                   onQuickAdd={handleQuickAddOpponent}
-                  accentColor={oppColor}
+                  accentColor={oppAccent}
                 />
               ) : (
                 <PlayerGrid
@@ -2202,7 +2215,7 @@ export default function PlayEntryModal({
                   selectedId={tagged.find(t => t.role === currentRole)?.player_id ?? null}
                   search={searches[currentRole] ?? ""}
                   onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
-                  accentColor={progColor}
+                  accentColor={progAccent}
                   onSelectPending={handlePendingSelect}
                   selectedPendingId={tagged.find(t => t.role === currentRole && t.isPending)?.player_id ?? null}
                   selectionIsCarried={carriedRoles.has(currentRole)}
@@ -2228,7 +2241,7 @@ export default function PlayEntryModal({
                   search={kickerSearch}
                   onSearch={setKickerSearch}
                   onQuickAdd={handleQuickAddOpponent}
-                  accentColor={oppColor}
+                  accentColor={oppAccent}
                 />
               ) : (
                 <PlayerGrid
@@ -2238,7 +2251,7 @@ export default function PlayEntryModal({
                   selectedId={tagged.find(t => t.role === kickerRole)?.player_id ?? null}
                   search={kickerSearch}
                   onSearch={setKickerSearch}
-                  accentColor={progColor}
+                  accentColor={progAccent}
                   selectionIsCarried={carriedRoles.has(kickerRole)}
                 />
               )}
@@ -2449,7 +2462,7 @@ export default function PlayEntryModal({
                   selectedId={tagged.find(t => t.role === "returner")?.player_id ?? null}
                   search={returnerSearch}
                   onSearch={setReturnerSearch}
-                  accentColor={progColor}
+                  accentColor={progAccent}
                   selectionIsCarried={carriedRoles.has("returner")}
                 />
               ) : (
@@ -2461,7 +2474,7 @@ export default function PlayEntryModal({
                   search={returnerSearch}
                   onSearch={setReturnerSearch}
                   onQuickAdd={handleQuickAddOpponent}
-                  accentColor={oppColor}
+                  accentColor={oppAccent}
                 />
               )}
             </>
@@ -2486,7 +2499,7 @@ export default function PlayEntryModal({
                   search={recoverySearch}
                   onSearch={setRecoverySearch}
                   onQuickAdd={handleQuickAddOpponent}
-                  accentColor={oppColor}
+                  accentColor={oppAccent}
                 />
               ) : (
                 <PlayerGrid
@@ -2500,7 +2513,7 @@ export default function PlayEntryModal({
                      unpicked one: PlayerGrid paints the selection through an
                      inline style gated on accentColor. The tap registered and
                      showed nothing, which reads as a dead button. */
-                  accentColor={fumbleRecoveredByUs ? offenseColor : defenseColor}
+                  accentColor={fumbleRecoveredByUs ? offenseAccent : defenseAccent}
                 />
               )}
 
@@ -2575,7 +2588,7 @@ export default function PlayEntryModal({
                     selectedId={tagged.find(t => t.role === "recovery_tackler")?.player_id ?? null}
                     search={recoveryTacklerSearch}
                     onSearch={setRecoveryTacklerSearch}
-                    accentColor={progColor}
+                    accentColor={progAccent}
                   />
                 ) : (
                   <OpponentPlayerGrid
@@ -2586,7 +2599,7 @@ export default function PlayEntryModal({
                     search={recoveryTacklerSearch}
                     onSearch={setRecoveryTacklerSearch}
                     onQuickAdd={handleQuickAddOpponent}
-                    accentColor={oppColor}
+                    accentColor={oppAccent}
                   />
                 )}
               </div>
@@ -2639,7 +2652,7 @@ export default function PlayEntryModal({
                     setReturnSpotFromBallOn(ballOn);
                   }}
                   offenseDirection={offenseDirection}
-                  accentColor={defenseColor}
+                  accentColor={defenseAccent}
                   formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
                 />
 
@@ -2805,7 +2818,7 @@ export default function PlayEntryModal({
                             setIntCaughtYardLine(spot.yardLine);
                           }}
                           offenseDirection={offenseDirection}
-                          accentColor={defenseColor}
+                          accentColor={defenseAccent}
                           formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
                         />
                       </div>
@@ -2842,7 +2855,7 @@ export default function PlayEntryModal({
                               setIntReturnYardLine(spot.yardLine);
                             }}
                             offenseDirection={offenseDirection}
-                            accentColor={defenseColor}
+                            accentColor={defenseAccent}
                             formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
                           />
                         )}
@@ -2938,9 +2951,9 @@ export default function PlayEntryModal({
                             className="flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer border-surface-border bg-surface-bg text-slate-500"
                             style={resultSide === side
                               ? {
-                                  borderColor: offenseColor,
-                                  backgroundColor: `${offenseColor}33`,
-                                  color: offenseColor,
+                                  borderColor: offenseAccent,
+                                  backgroundColor: `${offenseAccent}33`,
+                                  color: offenseAccent,
                                 }
                               : undefined}
                         >
@@ -2953,7 +2966,7 @@ export default function PlayEntryModal({
                         value={resultBallOn}
                         onChange={applySpotBallOn}
                         offenseDirection={offenseDirection}
-                        accentColor={offenseColor}
+                        accentColor={offenseAccent}
                         formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
                         /* Only where the offense keeps the ball and the chains
                            are the question. A pick or a lost fumble ends the

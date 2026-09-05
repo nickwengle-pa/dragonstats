@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { readableAccent } from "@/utils/teamColor";
 import { fmtClock, quarterLabel, type GameState } from "./types";
 
 interface Props {
@@ -116,7 +117,12 @@ export default function Scoreboard({
   onFlipPossession,
   locked = false,
 }: Props) {
-  const effOppColor = oppColor ?? "#6b7280";
+  /* Lifted where a team's colour is too dark to read on the board. A school
+     that wears black had an invisible score and possession flag. Every use of
+     these is ink on the dark surface - never a fill with its own text on top -
+     so there is no identity swatch to protect here. */
+  const effOppColor = readableAccent(oppColor);
+  const effPrimaryColor = readableAccent(primaryColor);
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
 
 
@@ -154,7 +160,7 @@ export default function Scoreboard({
               <div className="flex items-center gap-2">
                 <span
                   className="text-3xl font-display font-extrabold tabular-nums leading-none score-glow cursor-pointer select-none"
-                  style={{ color: primaryColor }}
+                  style={{ color: effPrimaryColor }}
                   onClick={() => onCorrectScore?.("us")}
                   title="Tap to correct score"
                 >
@@ -206,7 +212,7 @@ export default function Scoreboard({
             <button
               onClick={onFlipPossession}
               className="text-[8px] font-display font-bold uppercase tracking-[0.18em] cursor-pointer"
-              style={{ color: state.possession === "us" ? primaryColor : effOppColor }}
+              style={{ color: state.possession === "us" ? effPrimaryColor : effOppColor }}
               title="Tap to flip possession (manual correction)"
             >
               {possessionLabel}
