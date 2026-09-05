@@ -1866,6 +1866,15 @@ export default function PlayEntryModal({
 
   const overrideBallOn = spotToBallOn(spotSide, spotYardLine);
 
+  /** Who is carrying the ball on this play, which decides which way the reels
+   *  call "downfield". A kick is caught and run back by the receiving team; a
+   *  pick and a lost fumble are run back by the defense. All three advance by
+   *  DECREASING ballOn, because ballOn is measured from the offense's goal. */
+  const ballCarrier: "offense" | "returner" =
+    isKickPlay || isInterception || (isFumblePlay && !fumbleRecoveredByUs)
+      ? "returner"
+      : "offense";
+
   /** Where the ball finished, offense-relative: the return spot on a kick,
    *  the interception return on a pick, the spotted ball otherwise. A spot
    *  foul happened somewhere along that, so it is the seed worth offering. */
@@ -1912,6 +1921,85 @@ export default function PlayEntryModal({
      its standard NFHS yardage so you don't have to remember them mid-drive;
      the yardage is a starting point, not a lock — override it by tapping a
      chip or typing the number. */
+  /**
+   * Ball on / down / distance, set by hand.
+   *
+   * Shared by both flavours of flag: a dead-ball foul, where it corrects a
+   * computed enforcement, and a live-ball one, where there is no computed
+   * enforcement to correct because the app does not pretend to know it.
+   */
+  const manualSpotEditor = (
+                  <div className="space-y-3 pt-1">
+                    <div>
+                      <span className="text-xs text-slate-500 block mb-1">Ball on</span>
+                      <div className="flex items-center gap-2">
+                        {(["our", "opp"] as const).map(s => (
+                          <button
+                            key={s}
+                            onClick={() => setSpotSide(s)}
+                            className={`px-3 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 ${
+                              spotSide === s
+                                ? "border-amber-500 bg-amber-500/15 text-amber-400"
+                                : "border-surface-border bg-surface-bg text-slate-500"
+                            }`}
+                          >
+                            {perspectiveSideTag(s)}
+                          </button>
+                        ))}
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          max={50}
+                          value={spotYardRaw}
+                          onChange={e => {
+                            const raw = e.target.value;
+                            setSpotYardRaw(raw);
+                            if (raw === "") return;
+                            const n = Number(raw);
+                            if (!Number.isNaN(n)) setSpotYardLine(Math.max(1, Math.min(50, n)));
+                          }}
+                          onBlur={() => setSpotYardRaw(String(spotYardLine))}
+                          className="input flex-1 text-center text-sm font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-xs text-slate-500 block mb-1">Down</span>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4].map(d => (
+                            <button
+                              key={d}
+                              onClick={() => setSpotDown(d)}
+                              className={`flex-1 py-2 rounded-lg text-xs font-black border-2 transition-all duration-200 ${
+                                spotDown === d
+                                  ? "border-amber-500 bg-amber-500/15 text-amber-400"
+                                  : "border-surface-border bg-surface-bg text-slate-500"
+                              }`}
+                            >
+                              {d}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-xs text-slate-500 block mb-1">To go</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          max={99}
+                          value={spotDistance}
+                          onChange={e => setSpotDistance(Math.max(1, Math.min(99, Number(e.target.value) || 1)))}
+                          className="input w-full text-center text-sm font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+  );
+
   const penaltyPicker = (
     <div className="space-y-3">
       <div>
@@ -2043,6 +2131,7 @@ export default function PlayEntryModal({
                 value={foulSpotBallOn}
                 onChange={setFoulSpotBallOn}
                 offenseDirection={offenseDirection}
+                advancing={ballCarrier}
                 accentColor="#fb923c"
                 formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
               />
@@ -2749,6 +2838,7 @@ export default function PlayEntryModal({
                     setReturnSpotFromBallOn(ballOn);
                   }}
                   offenseDirection={offenseDirection}
+                  advancing="returner"
                   accentColor={defenseAccent}
                   formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
                 />
@@ -2978,6 +3068,7 @@ export default function PlayEntryModal({
                               setIntReturnYardLine(spot.yardLine);
                             }}
                             offenseDirection={offenseDirection}
+                            advancing="returner"
                             accentColor={defenseAccent}
                             formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
                           />
@@ -3288,8 +3379,66 @@ export default function PlayEntryModal({
                 </button>
               )}
 
-              {/* ── Resulting spot ── */}
-              {penalty && penaltyProjection && (
+              {/* Where the ball ends up on a LIVE-ball flag is not something
+                  this app can compute, and it should not pretend to.
+
+                  The projection below enforces from the PRE-SNAP spot with the
+                  play worth zero yards, which is exactly right for a dead-ball
+                  foul - there was no play - and nonsense the moment there was
+                  one. On a kickoff from the 40 a ten-yard flag came out at the
+                  50, ignoring a thirty-yard return entirely. NFHS enforcement
+                  on a live ball turns on the all-but-one principle, the spot of
+                  the foul and where the run ended; half-computing that puts a
+                  confident wrong number in front of the operator, which is
+                  worse than no number.
+
+                  So a live-ball flag gets the honest version: record what
+                  happened, and place the ball afterwards - either here, by
+                  hand, or on the Adjust Next Situation sheet that a flag
+                  already pops. */}
+              {penalty && !isPenaltyOnly && (
+                <div className="card p-3 space-y-2 border border-surface-border">
+                  <div className="text-xs text-slate-400 font-bold">Where the ball ends up</div>
+                  <div className="text-[11px] text-slate-500 leading-snug">
+                    Set after the play — the enforcement depends on the spot of
+                    the foul and where the run ended, so the app asks rather
+                    than guesses. Recording this flag opens the spot sheet as
+                    soon as the play is saved.
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = !overrideSpot;
+                      if (next) {
+                        // The end of the play is the right neighbourhood to
+                        // start nudging from, whichever way it gets enforced.
+                        seedSpotFromBallOn(playEndBallOn);
+                        setSpotDown(gameState.down);
+                        setSpotDistance(gameState.distance);
+                      }
+                      setOverrideSpot(next);
+                    }}
+                    className={`w-full py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 ${
+                      overrideSpot
+                        ? "border-amber-500 bg-amber-500/15 text-amber-400"
+                        : "border-surface-border bg-surface-bg text-slate-500"
+                    }`}
+                  >
+                    {overrideSpot ? "Setting it here" : "Set it here instead"}
+                  </button>
+                  {overrideSpot && (
+                    <>
+                      <div className="text-center text-sm font-black tabular-nums text-amber-400">
+                        {formatFieldSpot(overrideBallOn, gameState.possession)}
+                        {" · "}{spotDown} & {spotDistance}
+                      </div>
+                      {manualSpotEditor}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── Resulting spot (dead-ball flags only) ── */}
+              {penalty && isPenaltyOnly && penaltyProjection && (
                 <div className="card p-3 space-y-3 border border-surface-border">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-500">Ball spotted at</span>
@@ -3339,77 +3488,7 @@ export default function PlayEntryModal({
                     {overrideSpot ? "Using my spot" : "Set the spot myself"}
                   </button>
 
-                  {overrideSpot && (
-                    <div className="space-y-3 pt-1">
-                      <div>
-                        <span className="text-xs text-slate-500 block mb-1">Ball on</span>
-                        <div className="flex items-center gap-2">
-                          {(["our", "opp"] as const).map(s => (
-                            <button
-                              key={s}
-                              onClick={() => setSpotSide(s)}
-                              className={`px-3 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 ${
-                                spotSide === s
-                                  ? "border-amber-500 bg-amber-500/15 text-amber-400"
-                                  : "border-surface-border bg-surface-bg text-slate-500"
-                              }`}
-                            >
-                              {perspectiveSideTag(s)}
-                            </button>
-                          ))}
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            min={1}
-                            max={50}
-                            value={spotYardRaw}
-                            onChange={e => {
-                              const raw = e.target.value;
-                              setSpotYardRaw(raw);
-                              if (raw === "") return;
-                              const n = Number(raw);
-                              if (!Number.isNaN(n)) setSpotYardLine(Math.max(1, Math.min(50, n)));
-                            }}
-                            onBlur={() => setSpotYardRaw(String(spotYardLine))}
-                            className="input flex-1 text-center text-sm font-bold"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <span className="text-xs text-slate-500 block mb-1">Down</span>
-                          <div className="flex gap-1">
-                            {[1, 2, 3, 4].map(d => (
-                              <button
-                                key={d}
-                                onClick={() => setSpotDown(d)}
-                                className={`flex-1 py-2 rounded-lg text-xs font-black border-2 transition-all duration-200 ${
-                                  spotDown === d
-                                    ? "border-amber-500 bg-amber-500/15 text-amber-400"
-                                    : "border-surface-border bg-surface-bg text-slate-500"
-                                }`}
-                              >
-                                {d}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-xs text-slate-500 block mb-1">To go</span>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            min={1}
-                            max={99}
-                            value={spotDistance}
-                            onChange={e => setSpotDistance(Math.max(1, Math.min(99, Number(e.target.value) || 1)))}
-                            className="input w-full text-center text-sm font-bold"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  {overrideSpot && manualSpotEditor}
                 </div>
               )}
             </>

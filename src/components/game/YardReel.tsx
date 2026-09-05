@@ -13,6 +13,20 @@ interface Props {
    *  and says whether the spot under it actually moves them. Omitted on the
    *  plays where a first down is not the question. */
   firstDownBallOn?: number | null;
+  /**
+   * Who is carrying the ball, which decides which way "downfield" points.
+   *
+   * The offense advances by INCREASING ballOn; a returner runs the other way
+   * and advances by decreasing it. So on a kick return or an interception the
+   * arrow and the nudge buttons have to invert, or plus five moves the ball
+   * five yards back down the field he just came up.
+   *
+   * Note this does NOT touch the screen mapping, which stays tied to
+   * offenseDirection. The reel sits directly under a picture of the field and
+   * the two have to agree: flipping the mapping would mean dragging right
+   * moved the ball left on the field above it.
+   */
+  advancing?: "offense" | "returner";
 }
 
 /** Blue - same as the 1st Down toggle and the chain marker on the field. */
@@ -55,7 +69,11 @@ function yardNumber(ballOn: number) {
  */
 export default function YardReel({
   value, onChange, offenseDirection, formatSpot, accentColor, firstDownBallOn,
+  advancing = "offense",
 }: Props) {
+  /* +1 means "one yard further for whoever is carrying it". For the offense
+     that is ballOn up; for a returner it is ballOn down. */
+  const advanceSign = advancing === "returner" ? -1 : 1;
   // Sub-yard drag remainder, purely for smooth motion between snap points.
   const [offsetPx, setOffsetPx] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -111,8 +129,11 @@ export default function YardReel({
     };
   });
 
-  // Downfield is whichever screen edge the offense is driving toward.
-  const downfieldOnRight = offenseDirection === "right";
+  // Downfield is whichever screen edge the BALL CARRIER is running toward -
+  // the offense on a scrimmage play, the returner on a kick or a pick.
+  const downfieldOnRight = advancing === "returner"
+    ? offenseDirection === "left"
+    : offenseDirection === "right";
 
   /* Stopped a yard short is a different play from converting, and the ruler gave
      no way to see which one was about to be recorded - the distance had to be
@@ -221,13 +242,13 @@ export default function YardReel({
 
       {/* Quick nudges. Dragging is best for "somewhere around the 30"; these
           are for "exactly 5 more" without hunting for the tick. Yardage here
-          is GAIN, not screen direction — +1 always moves the ball downfield
-          regardless of which way the offense faces. */}
+          is GAIN for whoever has the ball, not screen direction — +1 always
+          moves it further downfield for him, whichever way he is running. */}
       <div className="flex items-center gap-1.5 mt-2">
         {[-5, -1].map((delta) => (
           <button
             key={delta}
-            onClick={() => onChange(clampSpot(value + delta))}
+            onClick={() => onChange(clampSpot(value + delta * advanceSign))}
             className="btn-ghost flex-1 h-11 text-sm font-bold"
           >
             {delta}
@@ -242,7 +263,7 @@ export default function YardReel({
         {[1, 5].map((delta) => (
           <button
             key={delta}
-            onClick={() => onChange(clampSpot(value + delta))}
+            onClick={() => onChange(clampSpot(value + delta * advanceSign))}
             className="btn-ghost flex-1 h-11 text-sm font-bold"
           >
             +{delta}
