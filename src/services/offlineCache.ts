@@ -30,6 +30,7 @@ export const cacheKeys = {
   schedule: (seasonId: string) => `cache:schedule:${seasonId}`,
   game: (gameId: string) => `cache:game:${gameId}`,
   opponentPlayers: (opponentId: string) => `cache:opp-players:${opponentId}`,
+  reviewCounts: (seasonId: string) => `cache:review-counts:${seasonId}`,
 } as const;
 
 export interface CachedRead<T> {
@@ -114,6 +115,42 @@ export async function readSeasonGames<T = unknown>(seasonId: string): Promise<Ca
       .eq("season_id", seasonId).order("game_date");
     if (error) throw error;
     return (data ?? []) as T[];
+  });
+}
+
+/**
+ * How many plays in each game still need their next spot confirmed.
+ *
+ * Penalties, turnovers and blocked kicks all pop the Adjust Next Situation
+ * sheet and stay stored as next_situation_source "pending_review" until it is
+ * applied, so this is a direct count of unfinished post-game work rather than
+ * a proxy for it.
+ *
+ * Only the rows that need attention come back - the filter runs server-side -
+ * so this is a handful of ids on a healthy season, not every play.
+ *
+ * Cached like everything else the dashboard reads. That screen once ran its
+ * own uncached queries and reported "0 games and 0 players" offline; a count
+ * that silently returned zero would be the same bug in a new hat, which is why
+ * the caller treats a missing value as UNKNOWN rather than as clean.
+ */
+export async function readSeasonReviewCounts(
+  seasonId: string,
+  gameIds: string[],
+): Promise<CachedRead<Record<string, number>>> {
+  return cachedRead<Record<string, number>>(cacheKeys.reviewCounts(seasonId), async () => {
+    if (!gameIds.length) return {};
+    const { data, error } = await supabase
+      .from("plays")
+      .select("game_id")
+      .in("game_id", gameIds)
+      .eq("play_data->>next_situation_source", "pending_review");
+    if (error) throw error;
+    const counts: Record<string, number> = {};
+    for (const row of (data ?? []) as Array<{ game_id: string }>) {
+      counts[row.game_id] = (counts[row.game_id] ?? 0) + 1;
+    }
+    return counts;
   });
 }
 

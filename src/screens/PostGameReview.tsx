@@ -8,8 +8,10 @@ import {
   updatePlayFull,
   updatePlaySituation,
   deletePlay,
+  setGameStatsFinal,
   type PlayWithPlayers,
 } from "@/services/gameService";
+import { isMarkedStatsFinal } from "@/services/gameCompletion";
 import { opponentPlayerService } from "@/services/opponentService";
 import {
   loadGameCharting,
@@ -686,6 +688,8 @@ function Flag({ text, cls }: { text: string; cls: string }) {
 
 interface GameMeta {
   season_id: string | null;
+  /** games.tags, which is where the "stats final" mark lives. */
+  tags: unknown;
   opponent_id: string | null;
   opponent_name: string;
   game_date: string;
@@ -718,6 +722,15 @@ export default function PostGameReview() {
   const [plays, setPlays] = useState<PlayWithPlayers[]>([]);
   const [charting, setCharting] = useState<Record<string, PlayCharting>>({});
   const [meta, setMeta] = useState<GameMeta | null>(null);
+  /* Mirrored into state rather than read straight off meta, so the switch
+     moves the instant it is tapped instead of waiting for a refetch. Resynced
+     whenever meta lands, which is what makes it correct after a reload. */
+  const [markedFinal, setMarkedFinal] = useState(false);
+  const [savingFinal, setSavingFinal] = useState(false);
+
+  useEffect(() => {
+    setMarkedFinal(isMarkedStatsFinal(meta?.tags));
+  }, [meta]);
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const rosterJerseys = useMemo(
     () => new Map<string, number | null>(
@@ -751,7 +764,7 @@ export default function PostGameReview() {
         loadGameCharting(gameId),
         supabase
           .from("games")
-          .select("season_id, opponent_id, is_home, game_date, rules_config, opponent:opponents(*)")
+          .select("season_id, opponent_id, is_home, game_date, rules_config, tags, opponent:opponents(*)")
           .eq("id", gameId)
           .single(),
       ]);
@@ -764,6 +777,7 @@ export default function PostGameReview() {
       const quarterMinutes = Number((g?.rules_config ?? {})?.quarterLengthMinutes);
       setMeta({
         season_id: g?.season_id ?? null,
+        tags: g?.tags,
         opponent_id: g?.opponent_id ?? null,
         opponent_name: opp?.name ?? "Opponent",
         game_date: g?.game_date ?? "",
@@ -1120,6 +1134,60 @@ export default function PostGameReview() {
         </button>
       </div>
       <div className="mx-5 mt-1 mb-3 accent-line" />
+
+      {/* Whether the stats behind this game are done.
+
+          This is the human half of the label on the home screen: a coach
+          logging in on Monday wants to know if anyone still has to finish
+          last Friday, and "completed" only ever meant the clock ran out.
+
+          The mark does not override reality. Plays whose next spot was never
+          confirmed still show as outstanding on the dashboard whatever this
+          says, so tapping it cannot make an unfinished game read as done. */}
+      {!loading && meta && (
+        <div className="px-5 pb-3">
+          <button
+            onClick={async () => {
+              if (!gameId || savingFinal) return;
+              const next = !markedFinal;
+              setSavingFinal(true);
+              const ok = await setGameStatsFinal(gameId, next, meta.season_id);
+              setSavingFinal(false);
+              // Only move the switch if the write landed - otherwise it reads
+              // as saved on a device that never reached the server.
+              if (ok) setMarkedFinal(next);
+            }}
+            disabled={savingFinal}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 transition-colors cursor-pointer ${
+              markedFinal
+                ? "border-emerald-500 bg-emerald-500/10"
+                : "border-surface-border bg-surface-bg"
+            }`}
+          >
+            <span
+              className={`w-5 h-5 rounded-md shrink-0 flex items-center justify-center ${
+                markedFinal ? "bg-emerald-500 text-black" : "border-2 border-surface-border"
+              }`}
+            >
+              {markedFinal && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+            </span>
+            <span className="flex-1 text-left">
+              <span className={`block text-[12px] font-display font-bold uppercase tracking-wide ${
+                markedFinal ? "text-emerald-400" : "text-surface-muted"
+              }`}>
+                {markedFinal ? "Stats marked final" : "Mark stats final"}
+              </span>
+              <span className="block text-[10px] text-surface-muted/70 font-medium mt-0.5">
+                {savingFinal
+                  ? "Saving…"
+                  : markedFinal
+                    ? "Shows as done on the home screen"
+                    : "Tell the staff this game is finished"}
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Filters. A film chart is read looking for something - our defensive
           snaps, every touch a back had - and ninety rows in recording order
