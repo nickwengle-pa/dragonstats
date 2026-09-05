@@ -1108,7 +1108,7 @@ export default function GameScreen() {
     const nextSituationSource = existingSource
       ?? (play.type === "timeout"
         ? "timeout"
-        : (play.penalty || play.type === "blocked_kick" || isTurnoverPlay) ? "pending_review" : "auto");
+        : (play.penalty || (play.type === "blocked_kick" && !play.isTouchdown) || isTurnoverPlay) ? "pending_review" : "auto");
     const worksheetRow = buildWorksheetRow(play, before, after, scoreBefore, scoreAfter);
 
     return {
@@ -1707,7 +1707,7 @@ export default function GameScreen() {
            conflating them would misreport how the spot was arrived at. */
         next_situation_source: data.nextSituation
           ? data.nextSituation.source
-          : data.penalty || data.playType.id === "blocked_kick" || isTurnover ? "pending_review" : "auto",
+          : data.penalty || (data.playType.id === "blocked_kick" && !data.isTouchdown) || isTurnover ? "pending_review" : "auto",
       },
     };
     const liveReplay = liveSessionConfig ? replayLiveGame([...plays, previewPlay], liveSessionConfig) : null;
@@ -2182,7 +2182,7 @@ export default function GameScreen() {
     // same way it does on entry.
     const editSource = result.nextSituation
       ? "manual_override"
-      : (result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto");
+      : (result.penalty || (result.playType.id === "blocked_kick" && !result.isTouchdown) ? "pending_review" : "auto");
 
     // Persist to DB
     const ok = await updatePlayFull(playId, {

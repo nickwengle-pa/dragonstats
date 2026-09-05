@@ -1,3 +1,4 @@
+import { blockedTouchdownNetYards } from "@/services/blockedKickOutcome";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X, ChevronLeft, ChevronRight, Flag, Plus, Trash2, ArrowLeftRight } from "lucide-react";
 import Keypad from "./Keypad";
@@ -1690,6 +1691,8 @@ export default function PlayEntryModal({
       playYards = kickDistance - computedReturnYards;
     } else if (isInterception && interceptionReturnBallOn != null) {
       playYards = interceptionNetYards;
+    } else if (playType.id === "blocked_kick" && isTD) {
+      playYards = blockedTouchdownNetYards(gameState.ballOn, blockedRecoveredByKicking);
     } else if (isFumblePlay) {
       // A recovery return must not overwrite the original carrier's yardage.
       playYards = yards;
@@ -3483,13 +3486,15 @@ export default function PlayEntryModal({
                         <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 flex items-center justify-between">
                           <span className="text-sm font-black text-amber-300">
                             {fieldTeamTag(
-                              ["int", "fumble"].includes(playType.id)
-                                ? (gameState.possession === "us" ? "opponent" : "program")
+                              (["int", "fumble"].includes(playType.id) || (playType.id === "blocked_kick" && !blockedRecoveredByKicking))
+                                ? (gameState.possession === "us" ? "program" : "opponent")
                                 : (gameState.possession === "us" ? "opponent" : "program"),
                             )} EZ
                           </span>
                           <span className="text-[11px] font-bold text-amber-400/80 tabular-nums">
-                            {["int", "fumble"].includes(playType.id)
+                            {playType.id === "blocked_kick"
+                              ? blockedTouchdownNetYards(gameState.ballOn, blockedRecoveredByKicking)
+                              : ["int", "fumble"].includes(playType.id)
                               ? -gameState.ballOn
                               : 100 - gameState.ballOn} yds · touchdown
                           </span>
@@ -3550,7 +3555,7 @@ export default function PlayEntryModal({
                             the recoverer did with it, so say so rather than
                             leaving a bare "Yards" to be guessed at. */}
                         <span className="text-[10px] text-slate-500">
-                          {playType.id === "blocked_kick" ? "Return yards:" : "Yards:"}
+                          {playType.id === "blocked_kick" ? "Net field yards:" : "Yards:"}
                         </span>
                         <input
                           type="number"
@@ -4093,7 +4098,9 @@ export default function PlayEntryModal({
                           </div>
                         )}
                         {(() => {
-                          const displayYards = isTD && !isFumblePlay
+                          const displayYards = playType.id === "blocked_kick" && isTD
+                            ? blockedTouchdownNetYards(gameState.ballOn, blockedRecoveredByKicking)
+                            : isTD && !isFumblePlay
                             ? (["int", "fumble"].includes(playType.id) ? -gameState.ballOn : 100 - gameState.ballOn)
                             : yards;
                           return (

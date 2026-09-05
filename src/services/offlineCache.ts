@@ -1,3 +1,4 @@
+import { needsNextSpotReview } from "./blockedKickOutcome";
 /**
  * Read-through cache for the reference data a game needs.
  *
@@ -30,7 +31,7 @@ export const cacheKeys = {
   schedule: (seasonId: string) => `cache:schedule:${seasonId}`,
   game: (gameId: string) => `cache:game:${gameId}`,
   opponentPlayers: (opponentId: string) => `cache:opp-players:${opponentId}`,
-  reviewCounts: (seasonId: string) => `cache:review-counts:${seasonId}`,
+  reviewCounts: (seasonId: string) => `cache:review-counts:v2:${seasonId}`,
 } as const;
 
 export interface CachedRead<T> {
@@ -142,12 +143,13 @@ export async function readSeasonReviewCounts(
     if (!gameIds.length) return {};
     const { data, error } = await supabase
       .from("plays")
-      .select("game_id")
+      .select("game_id, play_type, is_touchdown, is_penalty, play_data")
       .in("game_id", gameIds)
       .eq("play_data->>next_situation_source", "pending_review");
     if (error) throw error;
     const counts: Record<string, number> = {};
-    for (const row of (data ?? []) as Array<{ game_id: string }>) {
+    for (const row of (data ?? [])) {
+      if (!needsNextSpotReview(row)) continue;
       counts[row.game_id] = (counts[row.game_id] ?? 0) + 1;
     }
     return counts;

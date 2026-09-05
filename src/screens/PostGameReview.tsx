@@ -1,3 +1,4 @@
+import { needsNextSpotReview, normalizeBlockedTouchdown } from "@/services/blockedKickOutcome";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, X, Check, Film, Pencil } from "lucide-react";
@@ -769,7 +770,7 @@ export default function PostGameReview() {
           .single(),
       ]);
 
-      setPlays(rawPlays);
+      setPlays(rawPlays.map(normalizeBlockedTouchdown));
       setCharting(chart);
 
       const g = gRes.data as any;
@@ -911,7 +912,7 @@ export default function PostGameReview() {
           next_yard_line: result.nextSituation?.ballOn ?? null,
           next_situation_source: result.nextSituation
             ? "manual_override"
-            : result.penalty || result.playType.id === "blocked_kick" ? "pending_review" : "auto",
+            : result.penalty || (result.playType.id === "blocked_kick" && !result.isTouchdown) ? "pending_review" : "auto",
           // Rewritten from the edit result rather than inherited from `pd`,
           // so removing a pending tag in the editor actually removes it.
           pending_tagged: result.tagged
@@ -1186,6 +1187,16 @@ export default function PostGameReview() {
               </span>
             </span>
           </button>
+        </div>
+      )}
+
+      {!loading && plays.some(needsNextSpotReview) && (
+        <div className="mx-5 mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
+          <p className="font-bold">Next spot still needs review</p>
+          <p className="text-xs mt-1">These plays keep the dashboard from showing Stats final.</p>
+          {plays.filter(needsNextSpotReview).map(p => (
+            <p key={p.id} className="text-sm mt-2">Play {p.sequence} · Q{p.quarter} · {p.clock} · {p.description || p.play_type}</p>
+          ))}
         </div>
       )}
 
