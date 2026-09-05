@@ -67,9 +67,10 @@ export default function FastPlayEntry(p: Props) {
   const filtered = players.filter(t => `${t.jersey_number ?? ""} ${t.name}`.toLowerCase().includes(search.toLowerCase()));
   const missingRole = ours ? p.playType.roles.find(r => r !== "target" && !p.tagged.some(t => t.role === r)) : undefined;
   const missingTackle = showTacklers && !ours && !p.noTackle && p.tacklers.length === 0;
-  const ready = !missingRole && !missingTackle && spotTouched;
   const endSpot = p.isTD ? 100 : p.situation.ballOn + p.yards;
   const [spotRaw, setSpotRaw] = useState(String(endSpot <= 50 ? endSpot : 100 - endSpot));
+  const validSpot = incomplete || p.isTD || (spotRaw.trim() !== "" && Number(spotRaw) >= 1 && Number(spotRaw) <= 50);
+  const ready = !missingRole && !missingTackle && spotTouched && validSpot;
   const firstDown = !incomplete && p.yards >= p.situation.distance;
   const nextLabel = p.isTD ? "Touchdown · conversion next" : p.situation.down === 4 && !firstDown
     ? `Turnover on downs · ${p.formatSpot(endSpot)}`
@@ -120,8 +121,8 @@ export default function FastPlayEntry(p: Props) {
                   <button aria-pressed={endSpot <= 50} onClick={() => changeYards((endSpot <= 50 ? endSpot : 100 - endSpot) - p.situation.ballOn)} className={`${button} ${endSpot <= 50 ? selected : idle} flex-1`}>{p.offenseName}</button>
                   <button aria-pressed={endSpot > 50} onClick={() => changeYards((endSpot > 50 ? endSpot : 100 - endSpot) - p.situation.ballOn)} className={`${button} ${endSpot > 50 ? selected : idle} flex-1`}>{p.defenseName}</button>
                   <label className="text-xs text-slate-400 w-16 shrink-0">Yard line
-                    <input aria-label="Ending yard line" inputMode="numeric" className="input !text-lg !px-2 text-center" value={spotRaw}
-                      onFocus={e => e.target.select()} onBlur={() => setSpotRaw(String(endSpot <= 50 ? endSpot : 100 - endSpot))}
+                    <input aria-label="Ending yard line" aria-invalid={!validSpot} disabled={p.isTD} inputMode="numeric" className="input !text-lg !px-2 text-center" value={p.isTD ? "0" : spotRaw}
+                      onFocus={e => e.target.select()}
                       onChange={e => {
                         const raw = e.target.value.replace(/\D/g, "").slice(0, 2); setSpotRaw(raw);
                         const n = Number(raw);
@@ -199,7 +200,7 @@ export default function FastPlayEntry(p: Props) {
             <span className="font-bold">{p.playType.label}{!incomplete ? ` · ${p.yards > 0 ? "+" : ""}${p.yards} yds` : ""}</span>
             <span className="text-slate-300"> · Next: {nextLabel}</span>
           </div>
-          {!ready && <p className="text-xs text-amber-300">{missingRole ? `Choose ${labels[missingRole]} or identify on film.` : !spotTouched ? "Set the ending spot, or tap No gain." : "Choose a tackler, Identify on film, or No tackle."}</p>}
+          {!ready && <p className="text-xs text-amber-300">{!validSpot ? "Enter a yard line from 1 to 50, or choose Touchdown." : missingRole ? `Choose ${labels[missingRole]} or identify on film.` : !spotTouched ? "Set the ending spot, or tap No gain." : "Choose a tackler, Identify on film, or No tackle."}</p>}
           {saveError && <p role="alert" className="text-sm text-red-400">{saveError}</p>}
           <button disabled={!ready || saving} onClick={async () => {
             setSaving(true); setSaveError("");

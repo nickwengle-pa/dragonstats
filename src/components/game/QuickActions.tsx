@@ -188,7 +188,8 @@ export default function QuickActions({
   // id that no longer exists just drops out instead of rendering a blank.
   const fastPath = fastPathIds(down, ballOn)
     .map((id) => PLAY_TYPES.find((pt) => pt.id === id))
-    .filter((pt): pt is PlayTypeDef => pt !== undefined);
+    .filter((pt): pt is PlayTypeDef => pt !== undefined && pt.category === phase);
+  const otherPlays = visible.filter(pt => !fastPath.some(primary => primary.id === pt.id));
 
   const offenseName = possession === "us" ? progName : oppName;
   const offenseColor = possession === "us" ? progColor : oppColor;
@@ -256,6 +257,7 @@ export default function QuickActions({
           {PHASE_TABS.map((tab) => (
             <button
               key={tab.value}
+              aria-pressed={phase === tab.value}
               onClick={() => { setPhase(tab.value); setManualOverride(true); }}
               className={`flex-1 py-2 rounded-[3px] text-[11px] font-display font-black uppercase tracking-wider transition-colors border-2 ${
                 phase === tab.value
@@ -272,9 +274,7 @@ export default function QuickActions({
         </div>
       </div>
 
-      {/* Fast path — always in the same place, whatever tab or group these
-          plays would otherwise live in. On 4th that means punt, field goal,
-          AND both ways of going for it, side by side. */}
+      {/* Common plays within the selected category only. */}
       {fastPath.length > 0 && (
         <div className={`grid gap-1.5 ${FAST_PATH_COLS[fastPath.length] ?? "grid-cols-2"}`}>
           {fastPath.map((playType) => (
@@ -299,7 +299,7 @@ export default function QuickActions({
           group's color. */}
       <div className="border-l-[3px] pl-2.5" style={{ borderColor: CATEGORY_ACCENT[phase] }}>
         <div className="grid grid-cols-4 gap-1.5">
-          {visible.map((playType) => (
+          {otherPlays.map((playType) => (
             <button
               key={playType.id}
               onClick={() => onSelect(playType)}
