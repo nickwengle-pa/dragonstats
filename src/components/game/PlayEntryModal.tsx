@@ -2423,6 +2423,28 @@ export default function PlayEntryModal({
                 {kickOutcome === "out_of_bounds" && `Out of bounds at ${landingLabel}. No return.`}
                 {kickOutcome === "touchback" && "Receiving team will start at their own 20 yard line."}
               </div>
+
+              {/* Every play can carry a live-ball foul, so every play has to
+                  have somewhere to put one. The standalone Penalty play type
+                  is for dead-ball fouls - a flag between snaps, where there is
+                  no play to attach it to.
+
+                  This step is the one every kick reaches, whatever the outcome,
+                  so it covers the kicks that never get a return step at all:
+                  a fair catch, a touchback, one downed or out of bounds.
+                  Roughing the kicker and holding on the return are not rare.
+                  A returned kick sees the control again on the return step,
+                  where a block in the back actually happens - same flag, two
+                  places to reach it, and the button reads back whatever is
+                  already set. */}
+              <button onClick={() => setShowPenalties(s => !s)}
+                className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
+                  penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
+                }`}>
+                <Flag className="w-3 h-3 inline mr-1" />
+                {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
+              </button>
+              {showPenalties && penaltyPicker}
             </>
           )}
 
@@ -2741,6 +2763,33 @@ export default function PlayEntryModal({
                 className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                   isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
                 }`}>Return TD</button>
+
+              {/* A kick play could not carry a flag at all: the penalty picker
+                  lives on the yards step, and the kick flow skips that step
+                  entirely - kicker, location, returner, return, review. So a
+                  block in the back on a thirty-yard return had nowhere to go.
+
+                  It belongs here rather than on its own step because the
+                  return is where the foul happened, and because the yardage
+                  does not have to be worked out now: recording any flag pops
+                  the Adjust Next Situation sheet after the play, which is
+                  where a spot foul gets marked off. Record the return as it
+                  happened, name the foul, then put the ball where the
+                  officials put it. */}
+              <button onClick={() => setShowPenalties(s => !s)}
+                className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
+                  penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
+                }`}>
+                <Flag className="w-3 h-3 inline mr-1" />
+                {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
+              </button>
+              {showPenalties && penaltyPicker}
+              {penalty && (
+                <div className="text-[10px] text-slate-600 text-center">
+                  You'll place the ball after the play - a spot foul is marked
+                  from where it happened, not from the end of the return.
+                </div>
+              )}
             </>
           )}
 
