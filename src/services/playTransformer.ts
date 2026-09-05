@@ -417,6 +417,27 @@ function convertPlay(
       } satisfies RushPlay & { context: PlayContext } as Play;
     }
 
+    case "bad_snap": {
+      /* Charged to TEAM, never to the quarterback who was waiting for it. The
+         tag is written at entry and lives in play_data.team_tagged, which
+         allTagsForRole reads, so this resolves the same way any other rusher
+         does and falls back to TEAM if the tag is somehow missing. */
+      const rusher = firstPlayerByRole(play, "rusher") ?? TEAM_PLAYER_ID;
+      return {
+        type: PlayType.Rush,
+        rusher,
+        result: RushResult.Normal,
+        yardsGained: play.yards_gained,
+        isTouchdown: false,
+        ...tackleCredits(play),
+        fumble: buildFumble(play, rusher, ctx),
+        returnTackledBy: returnTacklers(play),
+        penalties,
+        description: play.description ?? undefined,
+        context,
+      } satisfies RushPlay & { context: PlayContext } as Play;
+    }
+
     case "scramble": {
       // QB scramble — counts as a rush but the runner is the passer, and the
       // engine flags it as a designed-pass-turned-run for split passing/rushing stats.

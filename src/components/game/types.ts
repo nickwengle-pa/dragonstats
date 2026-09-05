@@ -213,6 +213,12 @@ export const PLAY_TYPES: PlayTypeDef[] = [
   { id: "rush", label: "Run", color: "emerald", category: "run", roles: ["rusher"] },
   { id: "scramble", label: "Scramble", color: "emerald", category: "run", roles: ["passer"] },
   { id: "kneel", label: "Kneel", color: "neutral", category: "run", roles: ["rusher"] },
+  /* A snap nobody had. The yardage is real and has to go somewhere, but it is
+     not a carry anybody chose to make - charging the loss to the quarterback
+     makes a bad centre exchange look like a bad night from the back. It is
+     charged to TEAM instead, which is why this carries no roles: the rusher is
+     filled in at submit and there is nobody to pick. */
+  { id: "bad_snap", label: "Bad Snap", color: "orange", category: "run", roles: [] },
   /* A fumble files under the play it happened ON, which for a standalone
      fumble is the run. (Most fumbles never reach this button at all - they
      ride the "+ Fumble" modifier on rush/scramble/pass_comp/sack/kneel.) */
@@ -466,6 +472,12 @@ export function buildDescription(
     case "rush": {
       const c = byRole("rusher");
       parts.push(`${playerLabel(c)} rush ${yards > 0 ? "+" : ""}${yards}`);
+      break;
+    }
+    case "bad_snap": {
+      // No name: the whole point is that the yardage is the team's, not a
+      // player's, and printing TEAM here would read as a player called TEAM.
+      parts.push(`Bad snap ${yards > 0 ? "+" : ""}${yards}`);
       break;
     }
     case "pass_comp": {

@@ -890,7 +890,8 @@ export default function PlayEntryModal({
   /* Somebody has to be holding the ball to lose it. "fumble" is excluded
      because it already IS one — the standalone play type stays for a plain
      runner-fumbles, which is one tap. */
-  const canHaveFumble = ["rush", "scramble", "pass_comp", "sack", "kneel"].includes(playType.id);
+  const canHaveFumble = ["rush", "scramble", "pass_comp", "sack", "kneel", "bad_snap"]
+    .includes(playType.id);
   /* Either the dedicated play type or the modifier means the fumble roles and
      the recovered-by question apply. */
   const isFumblePlay = playType.id === "fumble" || (canHaveFumble && hasFumble);
@@ -1596,6 +1597,13 @@ export default function PlayEntryModal({
 
   const handleSubmit = () => {
     const allTagged = [...tagged, ...tacklers];
+
+    /* A bad snap is charged to TEAM, not to the quarterback who was waiting
+       for it. There is nobody to pick, so the tag is written here - our own
+       TEAM placeholder rather than the opponent's, since it is our loss. */
+    if (playType.id === "bad_snap" && !allTagged.some(t => t.role === "rusher")) {
+      allTagged.push(makeTeamTag("rusher"));
+    }
 
     // ── Fill opponent-side roles nobody named with the TEAM placeholder ──
     // Our own skipped roles stay untagged: a coach should attribute his own
