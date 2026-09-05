@@ -1,3 +1,4 @@
+import { buildHudlCsv } from "@/services/hudlExport";
 import GameHomeLink from "@/components/game/GameHomeLink";
 import { needsNextSpotReview, normalizeBlockedTouchdown } from "@/services/blockedKickOutcome";
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -226,57 +227,12 @@ function rowToPlayRecord(
 // CSV export (one row per play, Hudl-breakdown friendly)
 // ---------------------------------------------------------------------------
 
-function csvEscape(v: unknown): string {
-  if (v == null) return "";
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 function exportChartingCsv(
-  plays: PlayWithPlayers[],
+  plays: PlayRecord[],
   charting: Record<string, PlayCharting>,
   filename: string,
 ) {
-  const header = [
-    "Seq", "Quarter", "Clock", "Unit", "Down", "Distance", "BallOn",
-    "Hash", "Personnel", "OffFormation", "DefFormation", "Motion", "PlayCall",
-    "Passer", "Receiver", "Type", "R/P", "Gain", "TD", "Turnover", "Penalty",
-    "Tags", "Notes", "Description",
-  ];
-
-  const rows = plays.map((p) => {
-    const c = charting[p.id];
-    return [
-      p.sequence,
-      quarterLabel(p.quarter),
-      p.clock ?? "",
-      unitFor(p),
-      p.down ?? "",
-      p.distance ?? "",
-      yardLabel(p.yard_line ?? 0),
-      c?.hash_mark ?? p.hash_mark ?? "",
-      c?.personnel ?? "",
-      c?.offensive_formation ?? p.offensive_formation ?? "",
-      c?.defensive_formation ?? p.defensive_formation ?? "",
-      c?.motion ?? "",
-      c?.play_call ?? "",
-      c?.passer ?? "",
-      c?.receiver ?? "",
-      typeLabel(p),
-      runPassFor(p),
-      p.yards_gained ?? 0,
-      p.is_touchdown ? "Y" : "",
-      p.is_turnover ? "Y" : "",
-      p.is_penalty ? "Y" : "",
-      (c?.tags ?? p.tags ?? []).join("; "),
-      c?.notes ?? "",
-      p.description ?? "",
-    ];
-  });
-
-  const content = [header, ...rows]
-    .map((r) => r.map(csvEscape).join(","))
-    .join("\r\n");
+  const content = buildHudlCsv(plays, charting);
 
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -1110,8 +1066,8 @@ export default function PostGameReview() {
     const safeOpp = (meta?.opponent_name || "opponent").replace(/[^a-z0-9-_]+/gi, "_");
     const safeDate = (meta?.game_date || "").slice(0, 10) || "game";
     const abbr = program?.abbreviation ?? "DRAGON";
-    exportChartingCsv(plays, charting, `${abbr}_film_chart_vs_${safeOpp}_${safeDate}.csv`);
-  }, [plays, charting, meta, program]);
+    exportChartingCsv(plays.map(p => rowToPlayRecord(p, rosterJerseys)), charting, `${abbr}_hudl_vs_${safeOpp}_${safeDate}.csv`);
+  }, [plays, charting, meta, program, rosterJerseys]);
 
   return (
     <div className="screen safe-top safe-bottom">
@@ -1131,9 +1087,11 @@ export default function PostGameReview() {
           onClick={handleExport}
           disabled={plays.length === 0}
           className="btn-ghost p-2 cursor-pointer"
-          title="Export CSV for Hudl"
+          title="Export all 37 Hudl columns; adjust clip numbers in your spreadsheet"
+          aria-label="Export Hudl CSV"
         >
-          <Download className="w-5 h-5" />
+          <Download className="w-5 h-5 inline-block mr-1" />
+          <span className="text-xs font-semibold">Hudl CSV</span>
         </button>
       </div>
       <div className="mx-5 mt-1 mb-3 accent-line" />
