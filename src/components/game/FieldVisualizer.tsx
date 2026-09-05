@@ -1,5 +1,6 @@
 import { ArrowLeftRight } from "lucide-react";
 import { Fragment, useMemo } from "react";
+import { readableAccent } from "@/utils/teamColor";
 
 interface Props {
   ballOn: number;
@@ -89,6 +90,12 @@ export default function FieldVisualizer({
      to read. Null when that team has no logo, and the field simply carries no
      midfield mark, as plenty of real ones do not. */
   const midfieldLogoUrl = (possession === "us" ? progLogoUrl : oppLogoUrl) ?? null;
+  /* The 50 wears the same team's colour as the logo painted on it, so the two
+     read as one landmark rather than two things happening at midfield.
+     readableAccent because the turf is dark: a team that wears black would
+     otherwise paint an invisible line on a dark green field, which is the
+     opposite of the point. */
+  const midfieldColor = readableAccent(possession === "us" ? primaryColor : oppColor);
 
   const ourEndZoneStyle = ourEndZoneSide === "left" ? { left: 0 } : { right: 0 };
   const theirEndZoneStyle = theirEndZoneSide === "left" ? { left: 0 } : { right: 0 };
@@ -210,14 +217,15 @@ export default function FieldVisualizer({
               className="absolute top-0 bottom-0 z-[3]"
               style={{
                 left: `${left}%`,
-                width: isGoalLine ? 2 : isFifty ? 2 : isTenMultiple ? 1.5 : 1,
+                width: isGoalLine ? 2 : isFifty ? 2.5 : isTenMultiple ? 1.5 : 1,
                 backgroundColor: isGoalLine
                   ? "rgba(255,255,255,0.72)"
-                  : isFifty
-                    ? "rgba(255,255,255,0.6)"
-                    : isTenMultiple
-                      ? "rgba(255,255,255,0.34)"
+                  : isTenMultiple && !isFifty
+                    ? "rgba(255,255,255,0.34)"
+                    : isFifty
+                      ? undefined
                       : "rgba(255,255,255,0.2)",
+                ...(isFifty ? { background: midfieldColor, opacity: 0.9 } : {}),
               }}
             />
           );
