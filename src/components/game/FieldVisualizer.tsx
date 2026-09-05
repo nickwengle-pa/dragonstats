@@ -84,6 +84,12 @@ export default function FieldVisualizer({
   compact = false,
 }: Props) {
   const theirEndZoneSide = ourEndZoneSide === "left" ? "right" : "left";
+  /* Whoever has the ball owns midfield, which makes the logo a possession cue
+     as well as a landmark - one mark doing two jobs rather than another badge
+     to read. Null when that team has no logo, and the field simply carries no
+     midfield mark, as plenty of real ones do not. */
+  const midfieldLogoUrl = (possession === "us" ? progLogoUrl : oppLogoUrl) ?? null;
+
   const ourEndZoneStyle = ourEndZoneSide === "left" ? { left: 0 } : { right: 0 };
   const theirEndZoneStyle = theirEndZoneSide === "left" ? { left: 0 } : { right: 0 };
   const ourLabelRotation = ourEndZoneSide === "left" ? "rotate-[-90deg]" : "rotate-90";
@@ -151,6 +157,35 @@ export default function FieldVisualizer({
           </span>
         </div>
 
+        {/* Midfield logo, the way a real field carries one — and the reason
+            the 50 is now findable at a glance rather than by counting tens.
+            It belongs to whoever has the ball, so it doubles as a possession
+            cue without adding another marker to read.
+
+            Sized in PERCENTAGES of the field, so it scales with the widget
+            from a phone's short field to a tablet's tall one without a
+            breakpoint. Height is capped well inside the yard numbers, which
+            sit at 14% from each edge, and width is capped so a wide wordmark
+            cannot creep out over the 40s. Painted under the yard lines at
+            z-[2], like paint under chalk, and low enough in opacity that the
+            ball, the chains and the numbers all still read over it. */}
+        {midfieldLogoUrl && (
+          <img
+            src={midfieldLogoUrl}
+            alt=""
+            aria-hidden
+            onError={e => { e.currentTarget.style.display = "none"; }}
+            className="absolute -translate-x-1/2 -translate-y-1/2 object-contain pointer-events-none select-none z-[2]"
+            style={{
+              left: `${toWidgetPercent(50)}%`,
+              top: "50%",
+              height: "46%",
+              maxWidth: "12%",
+              opacity: 0.32,
+            }}
+          />
+        )}
+
         <div
           className="absolute top-0 bottom-0 z-[5]"
           style={{ left: `${PLAYING_FIELD_START_PCT}%`, width: 2, backgroundColor: "rgba(255,255,255,0.75)" }}
@@ -164,6 +199,10 @@ export default function FieldVisualizer({
           const left = toWidgetPercent(yard);
           const isGoalLine = yard === 0 || yard === 100;
           const isTenMultiple = yard % 10 === 0;
+          /* Midfield was drawn exactly like the 40s and the 30s, so finding it
+             meant counting. On a real field it is the one line you can always
+             pick out; here it gets the width and the brightness to match. */
+          const isFifty = yard === 50;
 
           return (
             <div
@@ -171,12 +210,14 @@ export default function FieldVisualizer({
               className="absolute top-0 bottom-0 z-[3]"
               style={{
                 left: `${left}%`,
-                width: isGoalLine ? 2 : isTenMultiple ? 1.5 : 1,
+                width: isGoalLine ? 2 : isFifty ? 2 : isTenMultiple ? 1.5 : 1,
                 backgroundColor: isGoalLine
                   ? "rgba(255,255,255,0.72)"
-                  : isTenMultiple
-                    ? "rgba(255,255,255,0.34)"
-                    : "rgba(255,255,255,0.2)",
+                  : isFifty
+                    ? "rgba(255,255,255,0.6)"
+                    : isTenMultiple
+                      ? "rgba(255,255,255,0.34)"
+                      : "rgba(255,255,255,0.2)",
               }}
             />
           );
