@@ -223,8 +223,15 @@ export default function LoginScreen() {
                   setLoading(true);
                   const err = await resendConfirmation(email);
                   setLoading(false);
+                  /* Not "Sent." - the client cannot know that. auth-js
+                     discards everything but the error on an email resend, and
+                     GoTrue answers without one for an address it does not
+                     recognise, so a flat claim of success would be wrong in
+                     exactly the case someone is most likely to be in. */
                   setResendMsg(
-                    err ? err.message : "Sent. Check your inbox, and your spam folder.",
+                    err
+                      ? err.message
+                      : "Requested. If that address has an unconfirmed account, the email is on its way — check spam too.",
                   );
                 }}
                 disabled={loading || !email.trim()}

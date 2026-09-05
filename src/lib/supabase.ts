@@ -28,9 +28,38 @@ if (!url || !key) {
  */
 const REQUEST_TIMEOUT_MS = 10_000;
 
+/* Auth is the exception, and it took a missing confirmation email to notice.
+ *
+ * The ten-second deadline above is built for reads and writes that have
+ * somewhere to fall back to - a read drops to IndexedDB, a write enqueues - so
+ * cutting them off early is strictly better than hanging. An auth request has
+ * neither: there is no cached sign-up.
+ *
+ * Worse, it is genuinely slow by design. GoTrue sends the confirmation email
+ * INSIDE the sign-up request and only answers once the mail server has taken
+ * it, so a sluggish SMTP provider can push a perfectly healthy sign-up past
+ * ten seconds. The client then aborts, the coach sees "signal is aborted
+ * without reason", and whether the account was created depends on where the
+ * server had got to - which is the worst possible outcome for the one request
+ * that must not be ambiguous.
+ *
+ * Thirty seconds is past any real mail handoff and still short of a wait
+ * somebody would sit through twice. Nothing on the game-day path goes through
+ * these endpoints, so the press-box behaviour above is untouched. */
+const AUTH_TIMEOUT_MS = 30_000;
+
+const isAuthRequest = (input: RequestInfo | URL): boolean => {
+  const href =
+    typeof input === "string" ? input
+    : input instanceof URL ? input.href
+    : input.url;
+  return href.includes("/auth/v1/");
+};
+
 const timeoutFetch: typeof fetch = (input, init) => {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const deadline = isAuthRequest(input) ? AUTH_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), deadline);
 
   // A caller-supplied signal still has to win — Supabase aborts its own
   // requests on teardown, and dropping that would leak the request.
