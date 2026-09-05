@@ -9,7 +9,7 @@ import plDragon from "@/assets/pl-dragon.png";
    than offered as a later step - a coach who signs up without one would land
    on an empty app and assume it was broken. */
 export default function LoginScreen() {
-  const { signIn, signUp, requestPasswordReset } = useAuth();
+  const { signIn, signUp, requestPasswordReset, resendConfirmation } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,6 +20,9 @@ export default function LoginScreen() {
   const [isReset, setIsReset] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [error, setError] = useState("");
+  /* Kept apart from `error`, because a successful resend is not an error and
+     a rate-limit notice is not a form validation failure. */
+  const [resendMsg, setResendMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -190,6 +193,30 @@ export default function LoginScreen() {
               >
                 Forgot your password?
               </button>
+            )}
+            {/* The confirmation email goes missing for ordinary reasons, and
+                without this the only route back was asking whoever runs the
+                Supabase project to do something about it. */}
+            {isSignUp && (
+              <button
+                onClick={async () => {
+                  setError("");
+                  setResendMsg("");
+                  setLoading(true);
+                  const err = await resendConfirmation(email);
+                  setLoading(false);
+                  setResendMsg(
+                    err ? err.message : "Sent. Check your inbox, and your spam folder.",
+                  );
+                }}
+                disabled={loading || !email.trim()}
+                className="btn-ghost w-full mt-1 text-xs normal-case tracking-normal font-body text-surface-muted/70 disabled:opacity-40"
+              >
+                Didn't get the confirmation email? Resend
+              </button>
+            )}
+            {resendMsg && (
+              <p className="text-xs text-center text-surface-muted mt-1.5 px-2">{resendMsg}</p>
             )}
           </>
         )}
