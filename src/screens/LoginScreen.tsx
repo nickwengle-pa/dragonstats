@@ -43,9 +43,27 @@ export default function LoginScreen() {
       return;
     }
 
-    const err = isSignUp
-      ? await signUp(email, password, inviteCode)
-      : await signIn(email, password);
+    /* Wrapped, because every path out of here that is not a returned Error
+       leaves the form spinning with nothing on screen. signUp does more than
+       call Supabase - it redeems the invite code, which hits an RPC and then
+       IndexedDB, and IndexedDB throws for reasons that have nothing to do with
+       the credentials typed (private browsing, a full quota, a locked
+       database). A coach who saw a spinner and no message would have no way to
+       report anything useful, which is exactly the failure being chased here. */
+    let err: Error | null;
+    try {
+      err = isSignUp
+        ? await signUp(email, password, inviteCode)
+        : await signIn(email, password);
+    } catch (thrown) {
+      setLoading(false);
+      setError(
+        thrown instanceof Error
+          ? thrown.message
+          : "Something went wrong. Check your connection and try again.",
+      );
+      return;
+    }
 
     setLoading(false);
 
