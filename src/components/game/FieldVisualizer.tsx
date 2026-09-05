@@ -206,26 +206,18 @@ export default function FieldVisualizer({
           const left = toWidgetPercent(yard);
           const isGoalLine = yard === 0 || yard === 100;
           const isTenMultiple = yard % 10 === 0;
-          /* Midfield was drawn exactly like the 40s and the 30s, so finding it
-             meant counting. On a real field it is the one line you can always
-             pick out; here it gets the width and the brightness to match. */
-          const isFifty = yard === 50;
-
           return (
             <div
               key={`major-${yard}`}
               className="absolute top-0 bottom-0 z-[3]"
               style={{
                 left: `${left}%`,
-                width: isGoalLine ? 2 : isFifty ? 2.5 : isTenMultiple ? 1.5 : 1,
+                width: isGoalLine ? 2 : isTenMultiple ? 1.5 : 1,
                 backgroundColor: isGoalLine
                   ? "rgba(255,255,255,0.72)"
-                  : isTenMultiple && !isFifty
+                  : isTenMultiple
                     ? "rgba(255,255,255,0.34)"
-                    : isFifty
-                      ? undefined
-                      : "rgba(255,255,255,0.2)",
-                ...(isFifty ? { background: midfieldColor, opacity: 0.9 } : {}),
+                    : "rgba(255,255,255,0.2)",
               }}
             />
           );
@@ -236,10 +228,10 @@ export default function FieldVisualizer({
 
           return (
             <Fragment key={`tick-${yard}`}>
-              <div className="absolute w-px bg-white/35 z-[4]" style={{ left: `${left}%`, top: 0, height: 7 }} />
-              <div className="absolute w-px bg-white/35 z-[4]" style={{ left: `${left}%`, bottom: 0, height: 7 }} />
-              <div className="absolute w-px bg-white/22 z-[4]" style={{ left: `${left}%`, top: "32%", height: 6 }} />
-              <div className="absolute w-px bg-white/22 z-[4]" style={{ left: `${left}%`, bottom: "32%", height: 6 }} />
+              <div className="absolute w-px bg-white/60 z-[4]" style={{ left: `${left}%`, top: 0, height: 8 }} />
+              <div className="absolute w-px bg-white/60 z-[4]" style={{ left: `${left}%`, bottom: 0, height: 8 }} />
+              <div className="absolute w-px bg-white/40 z-[4]" style={{ left: `${left}%`, top: "34%", height: 7 }} />
+              <div className="absolute w-px bg-white/40 z-[4]" style={{ left: `${left}%`, bottom: "34%", height: 7 }} />
             </Fragment>
           );
         })}
@@ -257,18 +249,32 @@ export default function FieldVisualizer({
 
         {YARD_NUMBERS.map((num, index) => {
           const left = toWidgetPercent((index + 1) * 10);
+          /* The 50 is the only number that repeats nowhere else, so it is the
+             one worth colouring - and colouring the NUMBER rather than the
+             line leaves the ten stripes uniform and readable. */
+          const isFifty = (index + 1) * 10 === 50;
+          /* A team colour on green turf is two mid-tones against each other,
+             so the 50 gets a dark halo to lift it off the grass - the same
+             trick a real field uses with a white outline, inverted for a
+             surface this dark. The white numbers get one too: they were set
+             at 28% and read as smudges rather than numbers. */
+          const numberStyle = isFifty
+            ? {
+                left: `${left}%`,
+                color: midfieldColor,
+                textShadow: "0 1px 2px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.7)",
+              }
+            : { left: `${left}%`, textShadow: "0 1px 2px rgba(0,0,0,0.5)" };
+          const numberClass = `absolute text-[11px] font-display font-black -translate-x-1/2 select-none ${
+            isFifty ? "" : "text-white/55"
+          }`;
+
           return (
             <Fragment key={`yard-number-${index}`}>
-              <span
-                className="absolute text-[8px] text-white/28 font-display font-bold -translate-x-1/2 select-none"
-                style={{ left: `${left}%`, top: "14%" }}
-              >
+              <span className={numberClass} style={{ ...numberStyle, top: "12%" }}>
                 {num}
               </span>
-              <span
-                className="absolute text-[8px] text-white/28 font-display font-bold -translate-x-1/2 rotate-180 select-none"
-                style={{ left: `${left}%`, bottom: "14%" }}
-              >
+              <span className={`${numberClass} rotate-180`} style={{ ...numberStyle, bottom: "12%" }}>
                 {num}
               </span>
             </Fragment>
