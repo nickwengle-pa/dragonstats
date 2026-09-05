@@ -18,6 +18,7 @@ import {
   OFFENSIVE_FORMATIONS,
   DEFENSIVE_FORMATIONS,
   getPenaltyDefaultSide,
+  isSpotFoul,
   makePendingId,
   makeTeamTag,
   pendingDisplayName,
@@ -770,6 +771,13 @@ export default function PlayEntryModal({
   const [flagYardsRaw, setFlagYardsRaw] = useState(String(edit?.flagYards ?? 5));
   // Manual spot: when the officials' spot doesn't match the computed
   // enforcement, the recorder's eyes win over the math.
+  /* Where the foul itself happened, offense-relative.
+     Null for the ordinary case: a false start or a hold marked off from the
+     previous spot has no spot of its own worth recording. A SPOT foul does -
+     a block in the back is enforced from where the block was, not from where
+     the return ended - and without this the app could place the ball but
+     could never say afterwards where the foul actually was. */
+  const [foulSpotBallOn, setFoulSpotBallOn] = useState<number | null>(edit?.foulSpotBallOn ?? null);
   const [overrideSpot, setOverrideSpot] = useState(false);
   const [spotSide, setSpotSide] = useState<"our" | "opp">("our");
   const [spotYardLine, setSpotYardLine] = useState(25);
@@ -1694,6 +1702,9 @@ export default function PlayEntryModal({
         ? { ballOn: overrideBallOn, down: spotDown, distance: spotDistance }
         : null,
       playData: {
+        ...(penalty && foulSpotBallOn != null
+          ? { foul_spot_ball_on: foulSpotBallOn }
+          : {}),
         ...(playDirection ? { play_direction: playDirection } : {}),
         ...(wristbandCall.trim() ? { wristband_call: wristbandCall.trim() } : {}),
         ...(isInterception ? {
@@ -1847,16 +1858,32 @@ export default function PlayEntryModal({
 
   const overrideBallOn = spotToBallOn(spotSide, spotYardLine);
 
+  /** Where the ball finished, offense-relative: the return spot on a kick,
+   *  the interception return on a pick, the spotted ball otherwise. A spot
+   *  foul happened somewhere along that, so it is the seed worth offering. */
+  const playEndBallOn = isKickPlay
+    ? returnSpotBallOn
+    : isInterception && interceptionReturnBallOn != null
+      ? interceptionReturnBallOn
+      : resultBallOn;
+
   const selectPenalty = (label: string) => {
     setPenalty(label);
     setPenaltyCategory(getPenaltyDefaultSide(label));
     setFlagYards(PENALTY_DEFAULT_YARDS[label] ?? 5);
     setFlagYardsRaw(String(PENALTY_DEFAULT_YARDS[label] ?? 5));
+    /* Prefill the spot, because almost every foul has an obvious one and
+       nobody should have to set the line of scrimmage by hand on a false
+       start. A spot foul seeds to where the play ended instead - the return
+       spot on a kick - which is the right neighbourhood for a block in the
+       back and a nudge away from exact. */
+    setFoulSpotBallOn(isSpotFoul(label) ? playEndBallOn : gameState.ballOn);
   };
 
   const clearPenalty = () => {
     setPenalty(null);
     setPenaltyCategory(null);
+    setFoulSpotBallOn(null);
     setFlagYards(5);
     setFlagYardsRaw("5");
     setPenaltyEnforcement("accepted");
@@ -1972,6 +1999,38 @@ export default function PlayEntryModal({
               />
             </div>
           </div>
+
+          {/* Where the foul happened.
+              Prefilled the moment a penalty is picked - the line of scrimmage
+              for the ordinary foul, the end of the play for a spot foul - so
+              the common case costs nothing and only a spot foul asks for a
+              nudge. It is recorded whether or not it drives enforcement,
+              because "where was the block in the back" is a question the app
+              could not answer at all before: it could place the ball, but the
+              foul's own spot was never written down. */}
+          {foulSpotBallOn != null && (
+            <div>
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-xs text-slate-500">Spot of foul</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                  isSpotFoul(penalty) ? "text-amber-400" : "text-slate-600"
+                }`}>
+                  {isSpotFoul(penalty)
+                    ? "Spot foul — check this"
+                    : foulSpotBallOn === gameState.ballOn
+                      ? "Line of scrimmage"
+                      : "Adjusted"}
+                </span>
+              </div>
+              <YardReel
+                value={foulSpotBallOn}
+                onChange={setFoulSpotBallOn}
+                offenseDirection={offenseDirection}
+                accentColor="#fb923c"
+                formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+              />
+            </div>
+          )}
 
           <button onClick={clearPenalty} className="text-xs text-red-400 font-bold">
             Clear penalty
@@ -3645,6 +3704,17 @@ export default function PlayEntryModal({
                       <div className="flex justify-between">
                         <span className="text-slate-500">Enforcement</span>
                         <span className="font-bold capitalize text-slate-300">{penaltyEnforcement}</span>
+                      </div>
+                    )}
+                    {foulSpotBallOn != null && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Spot of Foul</span>
+                        <span className="font-bold text-orange-400">
+                          {formatFieldSpot(foulSpotBallOn, gameState.possession)}
+                          {isSpotFoul(penalty) && (
+                            <span className="text-[10px] text-amber-400/80"> · spot foul</span>
+                          )}
+                        </span>
                       </div>
                     )}
                     {penaltyProjection && (

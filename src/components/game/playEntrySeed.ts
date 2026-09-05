@@ -73,6 +73,9 @@ export interface EditSeed {
   hashMark: string | null;
   playDirection: "left" | "right" | null;
   wristbandCall: string;
+  /** Where the foul happened, offense-relative. Null when none was recorded,
+   *  which is every play charted before the field existed. */
+  foulSpotBallOn: number | null;
   twoPointStyle: "pass" | "run";
 }
 
@@ -208,6 +211,7 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
     offFormation: play.offensiveFormation ?? null,
     defFormation: play.defensiveFormation ?? null,
     hashMark: play.hashMark ?? null,
+    foulSpotBallOn: num(pd.foul_spot_ball_on),
     playDirection: ((): "left" | "right" | null => {
       const d = str(pd.play_direction);
       return d === "left" || d === "right" ? d : null;

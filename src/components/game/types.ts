@@ -296,6 +296,25 @@ export const PENALTIES = [
   "Clipping", "Encroachment", "Illegal Shift", "Illegal Motion",
 ];
 
+/**
+ * Fouls enforced from where they happened rather than from the snap.
+ *
+ * Almost every foul is marked off from the previous spot, which is why the
+ * foul-spot field prefills to the line of scrimmage and needs no thought. These
+ * are the ones where the spot IS the enforcement - a block in the back on a
+ * thirty-yard return brings the ball back to the block, not to the end of the
+ * return - so they prefill to where the play ended and ask to be checked.
+ *
+ * Deliberately short. NFHS marks off pass interference from the previous spot,
+ * unlike the college and professional rules, so it is not here.
+ */
+export const SPOT_FOULS = new Set(["Block in Back", "Clipping"]);
+
+/** Is this foul enforced from where it happened? */
+export function isSpotFoul(penalty: string | null | undefined): boolean {
+  return !!penalty && SPOT_FOULS.has(penalty);
+}
+
 export const BLOCKED_KICK_TYPES: Array<{ value: BlockedKickType; label: string }> = [
   { value: "field_goal", label: "Field Goal" },
   { value: "extra_point", label: "PAT / XP" },

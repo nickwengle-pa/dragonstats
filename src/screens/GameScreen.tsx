@@ -1044,6 +1044,17 @@ export default function GameScreen() {
       formation: play.offensiveFormation ?? null,
       defense: play.defensiveFormation ?? null,
       hash: play.hashMark ?? null,
+      /* Where the foul was, in the same team-relative label the ball spot
+         uses, so a film session can read it without converting. Null on the
+         plays that had no flag, which is most of them. */
+      foul_spot: typeof play.playData?.foul_spot_ball_on === "number"
+        ? formatTeamYardLabel(
+            play.playData.foul_spot_ball_on as number,
+            play.possession,
+            programTag,
+            opponentTag,
+          )
+        : null,
       primary_player_number: primaryTag?.jersey_number ?? null,
       primary_player_role: primaryTag?.role ?? null,
       possession: play.possession,
