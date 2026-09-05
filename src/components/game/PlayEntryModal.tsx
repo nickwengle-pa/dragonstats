@@ -30,9 +30,20 @@ import ClockInput from "./ClockInput";
 import { readableAccent } from "@/utils/teamColor";
 import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
+import FastPlayEntry from "./FastPlayEntry";
+import { FAST_PLAY_IDS, toggleFastTackler } from "./fastEntry";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
 import { flagSideDefault, reviewNextSpot } from "@/services/penaltySpot";
+import { enforcePenalty, type PlayKind } from "@/services/penaltyEnforcement";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "@/services/programService";
+
+/* Plays where nobody ever possessed the ball, which under NFHS makes them
+   loose-ball plays and puts the basic spot back at the previous spot. Anything
+   else - a run, a catch, any kind of return - ended with somebody carrying it,
+   so the basic spot is where that run ended. */
+const LOOSE_BALL_TYPES = new Set(["pass_inc", "throwaway", "drop", "spike", "fg", "pat"]);
+
+const otherSide = (p: "us" | "them"): "us" | "them" => (p === "us" ? "them" : "us");
 
 interface Props {
   playType: PlayTypeDef;
@@ -62,7 +73,7 @@ interface Props {
    *  them live. Film Chart can still fill them in afterwards. */
   trackFormations?: boolean;
   trackTacklers?: boolean;
-  onSubmit: (data: PlaySubmitData) => void;
+  onSubmit: (data: PlaySubmitData) => void | Promise<void>;
   onClose: () => void;
   onAddOpponentPlayer?: (player: OpponentPlayerRef) => void;
   /** Sticky defaults: last player tagged per role (side-resolved by the
@@ -116,7 +127,16 @@ export interface PlaySubmitData {
   playData?: Record<string, unknown>;
   /** Manual next-situation override — set when the recorder spots the ball
    *  themselves instead of trusting the computed penalty enforcement. */
-  nextSituation?: { ballOn: number; down: number; distance: number } | null;
+  nextSituation?: {
+    ballOn: number;
+    down: number;
+    distance: number;
+    /* Whose frame ballOn is in, and who has the ball next. Set because a flag
+       on a kick or a turnover flips possession, and gameFlow stores the
+       after-situation in the NEW team's frame. */
+    possession: "us" | "them";
+    source: "manual_override" | "penalty_enforced";
+  } | null;
 }
 
 type Step = "players" | "yards" | "penalty" | "formations" | "defense" | "review"
@@ -604,6 +624,7 @@ export default function PlayEntryModal({
      not change identity between them. See playEntrySeed.ts. */
   const edit = useMemo(() => (editing ? buildEditSeed(editing) : null), [editing]);
   const isEditing = edit != null;
+  const [useDetailedEntry, setUseDetailedEntry] = useState(false);
   /* The spot-seeding effects below all fire on mount, and on an edit they would
      immediately overwrite the spots just read off the play with the defaults a
      fresh entry starts from. They have to keep running afterwards - moving the
@@ -655,12 +676,14 @@ export default function PlayEntryModal({
 
     for (const role of activeRoles) {
       if (!STICKY_ROLES.has(role)) continue;
+      // The compact screen displays the QB; runners must be picked per snap.
+      if (!isEditing && FAST_PLAY_IDS.has(playType.id) && role !== "passer") continue;
       // Seeds assume the un-reversed case (no onside recovery yet, fumble not
       // yet marked recovered) — both are decided later in the flow.
       const usesOpp = roleUsesOpponentRoster(role, theirBall, { playTypeId: playType.id });
       const remembered = lastPlayerByRole[`${role}:${usesOpp ? "opp" : "us"}`];
       // The TEAM placeholder is a fallback, not a real pick — never carry it.
-      if (!remembered || remembered.player_id === OPP_TEAM_PLAYER.id) continue;
+      if (!remembered || remembered.isTeam || remembered.player_id === OPP_TEAM_PLAYER.id) continue;
       tags.push({ ...remembered, role });
       carried.add(role);
     }
@@ -829,7 +852,7 @@ export default function PlayEntryModal({
    * a tackle nobody identified — between them film review can read the play.
    * This only says the blank was on purpose.
    */
-  const [noTackle, setNoTackle] = useState(false);
+  const [noTackle, setNoTackle] = useState(editing?.playData?.no_tackle === true);
   /* On a sack the defender who got there IS the tackler — the engine already
      reads sackers first and falls back to tacklers. Tagging the role by play
      type keeps one step instead of two and lets a split sack hold both names. */
@@ -1683,7 +1706,7 @@ export default function PlayEntryModal({
       returnYards: interceptionReturnYards,
     } : undefined);
 
-    onSubmit({
+    return onSubmit({
       playType,
       tagged: allTagged,
       yards: playYards,
@@ -1707,10 +1730,9 @@ export default function PlayEntryModal({
       defensiveFormation: defFormation,
       hashMark,
       description: desc,
-      nextSituation: overrideSpot && penalty
-        ? { ballOn: overrideBallOn, down: spotDown, distance: spotDistance }
-        : null,
+      nextSituation: storedNextSituation,
       playData: {
+        no_tackle: noTackle && allTagged.every(t => t.role !== "tackler" && t.role !== "sacker"),
         ...(penalty && foulSpotBallOn != null
           ? { foul_spot_ball_on: foulSpotBallOn }
           : {}),
@@ -1867,26 +1889,6 @@ export default function PlayEntryModal({
 
   const overrideBallOn = spotToBallOn(spotSide, spotYardLine);
 
-  /* What review is allowed to say about the next spot. The projection above
-     runs on the PRE-SNAP situation with yards: 0, which is the right answer
-     for a dead-ball flag and a badly wrong one for a live-ball flag - on a
-     kickoff from the 40 every ten-yard foul enforces to the 50 regardless of
-     the return. See services/penaltySpot.ts. */
-  const reviewSpot = reviewNextSpot({
-    penalty,
-    isDeadBall: isPenaltyOnly,
-    override: overrideSpot
-      ? { ballOn: overrideBallOn, down: spotDown, distance: spotDistance }
-      : null,
-    projection: penaltyProjection
-      ? {
-          ballOn: penaltyProjection.ballOn,
-          down: penaltyProjection.down,
-          distance: penaltyProjection.distance,
-        }
-      : null,
-  });
-
   /** Who is carrying the ball on this play, which decides which way the reels
    *  call "downfield". A kick is caught and run back by the receiving team; a
    *  pick and a lost fumble are run back by the defense. All three advance by
@@ -1904,6 +1906,115 @@ export default function PlayEntryModal({
     : isInterception && interceptionReturnBallOn != null
       ? interceptionReturnBallOn
       : resultBallOn;
+
+  /** The rulebook category of this play, which is what fixes the basic spot. */
+  const enforcementKind: PlayKind =
+    playType.category === "penalty"
+      ? "dead_ball"
+      : LOOSE_BALL_TYPES.has(playType.id)
+        ? "loose_ball"
+        : "running";
+
+  /** Who had the ball when the play ended, named against the PRE-SNAP
+   *  possession because that is the frame every number here uses. */
+  const possessionAtEnd: PenaltySide =
+    playType.id === "onside_kick" && onsideRecoveredByKicker
+      ? "offense"
+      : ballCarrier === "returner"
+        ? "defense"
+        : "offense";
+
+  /* Where the ball actually ends up after a live-ball flag. The operator has
+     already given the three things this needs - the spot of the foul, which
+     team it was on, and the yardage - so the app can do the arithmetic instead
+     of handing it back. Null when there is not enough to go on, which the UI
+     has to handle rather than paper over. */
+  const enforcement =
+    penalty && penaltyCategory && penaltyEnforcement === "accepted" && !isPenaltyOnly
+      ? enforcePenalty({
+          side: penaltyCategory,
+          flagYards,
+          before: {
+            ballOn: gameState.ballOn,
+            down: gameState.down,
+            distance: gameState.distance,
+          },
+          foulSpotBallOn,
+          playEndBallOn,
+          kind: enforcementKind,
+          possessionAtEnd,
+          firstDownDistance: gameConfig.first_down_distance,
+        })
+      : null;
+
+  const reviewSpot = reviewNextSpot({
+    penalty,
+    isDeadBall: isPenaltyOnly,
+    override: overrideSpot
+      ? { ballOn: overrideBallOn, down: spotDown, distance: spotDistance }
+      : null,
+    projection: penaltyProjection
+      ? {
+          ballOn: penaltyProjection.ballOn,
+          down: penaltyProjection.down,
+          distance: penaltyProjection.distance,
+        }
+      : null,
+    enforced: enforcement
+      ? {
+          ballOn: enforcement.ballOn,
+          down: enforcement.down,
+          distance: enforcement.distance,
+          from: enforcement.from,
+        }
+      : null,
+  });
+
+  /* What actually gets persisted, and the one place the two frames meet.
+
+     Everything on screen is in the PRE-SNAP possession's frame. gameFlow
+     stores the after-situation in the NEW possession's frame - it runs ballOn
+     through flipFieldPosition whenever possession changes - so a spot that
+     flips possession has to be complemented on the way out. Skip that and the
+     ball lands the right distance from the WRONG goal, which is the sort of
+     error that looks fine on the review screen and ruins the drive chart. */
+  const storedNextSituation = (() => {
+    if (!penalty) return null;
+    const flips = !isPenaltyOnly && possessionAtEnd === "defense";
+    const nextPossession = flips ? otherSide(gameState.possession) : gameState.possession;
+    if (overrideSpot) {
+      return {
+        ballOn: flips ? 100 - overrideBallOn : overrideBallOn,
+        down: spotDown,
+        distance: spotDistance,
+        possession: nextPossession,
+        source: "manual_override" as const,
+      };
+    }
+    if (enforcement) {
+      return {
+        ballOn: enforcement.possessionFlips
+          ? 100 - enforcement.ballOn
+          : enforcement.ballOn,
+        down: enforcement.down,
+        distance: enforcement.distance,
+        possession: enforcement.possessionFlips
+          ? otherSide(gameState.possession)
+          : gameState.possession,
+        source: "penalty_enforced" as const,
+      };
+    }
+    return null;
+  })();
+
+
+  /* Which of the three possible next spots review may show, and what to call
+     it. A spot the operator typed always wins; a dead-ball flag uses the
+     projection above; a live-ball flag uses the enforcement. The projection
+     must never reach a live-ball flag - it runs on the PRE-SNAP situation
+     with yards: 0, so on a kickoff from the 40 every ten-yard foul came out
+     at the 50 regardless of the return. See services/penaltySpot.ts. */
+
 
   /** Open the flag's own step, adding it to the flow if it is not there yet. */
   const openPenaltyStep = () => {
@@ -2227,6 +2338,63 @@ export default function PlayEntryModal({
       )}
     </div>
   );
+
+  if (!isEditing && FAST_PLAY_IDS.has(playType.id) && !useDetailedEntry) {
+    const ourPlayers: TaggedPlayer[] = roster.map(p => ({
+      id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
+      name: `${p.player.first_name} ${p.player.last_name}`, role: "",
+    }));
+    const theirPlayers: TaggedPlayer[] = localOppPlayers.map(p => ({
+      id: p.id, player_id: p.id, jersey_number: p.jersey_number,
+      name: p.name, role: "", isOpponent: true,
+    }));
+    return <FastPlayEntry
+      playType={playType} situation={gameState}
+      offenseName={isTheirBall ? oppName : progName} defenseName={isTheirBall ? progName : oppName}
+      offensePlayers={isTheirBall ? theirPlayers : ourPlayers}
+      defensePlayers={isTheirBall ? ourPlayers : theirPlayers}
+      tagged={tagged} tacklers={tacklers} noTackle={noTackle}
+      trackTacklers={trackTacklers} trackFormations={trackFormations}
+      isTD={isTD} yards={isTD ? 100 - gameState.ballOn : yards}
+      offenseDirection={offenseDirection} accentColor={offenseAccent}
+      formatSpot={b => formatFieldSpot(b, gameState.possession)}
+      onTag={(role, player) => {
+        const pick = player ? { ...player, role } : isTheirBall
+          ? { id: OPP_TEAM_PLAYER.id, player_id: OPP_TEAM_PLAYER.id, jersey_number: null, name: "TEAM", role, isOpponent: true }
+          : makeTeamTag(role);
+        setTagged(prev => [...prev.filter(t => t.role !== role), pick]);
+        setCarriedRoles(prev => { const next = new Set(prev); next.delete(role); return next; });
+      }}
+      onTackler={player => {
+        setNoTackle(false);
+        if (player.isTeam || player.player_id === OPP_TEAM_PLAYER.id) { setTacklers([]); return; }
+        setTacklers(prev => toggleFastTackler(prev, { ...player, role: defensiveCreditRole }));
+      }}
+      onNoTackle={() => { setNoTackle(!noTackle); setTacklers([]); }}
+      onUnknownTackle={() => {
+        setNoTackle(false);
+        setTacklers([{ ...(tacklersAreOurs ? makeTeamTag(defensiveCreditRole) : {
+          id: OPP_TEAM_PLAYER.id, player_id: OPP_TEAM_PLAYER.id, jersey_number: null,
+          name: "TEAM", role: defensiveCreditRole, isOpponent: true,
+        }), credit: 1 }]);
+      }}
+      onYards={setResultFromTotalYards}
+      onTouchdown={() => { setIsTD(!isTD); setTacklers([]); setNoTackle(false); }}
+      onDetailed={section => {
+        setUseDetailedEntry(true);
+        if (section === "penalty") {
+          setShowPenalties(true);
+          setStepIdx(steps.indexOf("review")); // The new penalty step precedes review.
+        } else if (section === "fumble") {
+          setHasFumble(true); setIsTD(false);
+          setStepIdx(steps.indexOf("yards"));
+        } else { setStepIdx(0); }
+      }}
+      offFormation={offFormation} defFormation={defFormation} hashMark={hashMark}
+      onOffFormation={setOffFormation} onDefFormation={setDefFormation} onHash={setHashMark}
+      onSubmit={handleSubmit} onClose={onClose}
+    />;
+  }
 
   return (
     <div className="sheet bg-black/60 backdrop-blur-sm">
@@ -3461,41 +3629,59 @@ export default function PlayEntryModal({
                 </button>
               )}
 
-              {/* Where the ball ends up on a LIVE-ball flag is not something
-                  this app can compute, and it should not pretend to.
+              {/* Where the ball ends up on a live-ball flag.
 
-                  The projection below enforces from the PRE-SNAP spot with the
-                  play worth zero yards, which is exactly right for a dead-ball
-                  foul - there was no play - and nonsense the moment there was
-                  one. On a kickoff from the 40 a ten-yard flag came out at the
-                  50, ignoring a thirty-yard return entirely. NFHS enforcement
-                  on a live ball turns on the all-but-one principle, the spot of
-                  the foul and where the run ended; half-computing that puts a
-                  confident wrong number in front of the operator, which is
-                  worse than no number.
+                  This used to refuse to answer, because the only thing on hand
+                  was a projection that enforced from the PRE-SNAP spot with
+                  the play worth zero yards - right for a dead-ball foul, and
+                  nonsense the moment there was a play. On a kickoff from the
+                  40 a ten-yard flag came out at the 50 whatever the return did.
 
-                  So a live-ball flag gets the honest version: record what
-                  happened, and place the ball afterwards - either here, by
-                  hand, or on the Adjust Next Situation sheet that a flag
-                  already pops. */}
+                  services/penaltyEnforcement does it properly now, off the
+                  foul spot, the basic spot and the all-but-one principle, so
+                  the number below is real. It is still only a number the app
+                  worked out: the Adjust sheet opens after the play, and the
+                  officials get the last word. */}
               {penalty && !isPenaltyOnly && (
                 <div className="card p-3 space-y-2 border border-surface-border">
                   <div className="text-xs text-slate-400 font-bold">Where the ball ends up</div>
-                  <div className="text-[11px] text-slate-500 leading-snug">
-                    Set after the play — the enforcement depends on the spot of
-                    the foul and where the run ended, so the app asks rather
-                    than guesses. Recording this flag opens the spot sheet as
-                    soon as the play is saved.
-                  </div>
+                  {enforcement && !overrideSpot && (
+                    <>
+                      <div className="text-center">
+                        <div className="text-sm font-black tabular-nums text-emerald-400">
+                          {formatFieldSpot(enforcement.ballOn, gameState.possession)}
+                          {" · "}{enforcement.down} & {enforcement.distance}
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          {enforcement.from}
+                          {enforcement.possessionFlips
+                            ? ` · ${flagTeamName("defense")} ball`
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-slate-500 leading-snug">
+                        Recording confirms this spot. The Adjust sheet still
+                        opens afterwards if the officials put it elsewhere.
+                      </div>
+                    </>
+                  )}
+                  {!enforcement && !overrideSpot && (
+                    <div className="text-[11px] text-slate-500 leading-snug">
+                      Set after the play — there is no recorded end spot to
+                      enforce from, so the app asks rather than guesses.
+                    </div>
+                  )}
                   <button
                     onClick={() => {
                       const next = !overrideSpot;
                       if (next) {
-                        // The end of the play is the right neighbourhood to
-                        // start nudging from, whichever way it gets enforced.
-                        seedSpotFromBallOn(playEndBallOn);
-                        setSpotDown(gameState.down);
-                        setSpotDistance(gameState.distance);
+                        // Start from the enforced spot when there is one - it
+                        // is the answer, and correcting it is a nudge. Falling
+                        // back to the end of the play keeps the old behaviour
+                        // for the cases enforcement declines to guess at.
+                        seedSpotFromBallOn(enforcement?.ballOn ?? playEndBallOn);
+                        setSpotDown(enforcement?.down ?? gameState.down);
+                        setSpotDistance(enforcement?.distance ?? gameState.distance);
                       }
                       setOverrideSpot(next);
                     }}
@@ -3912,12 +4098,17 @@ export default function PlayEntryModal({
                         <span className="text-slate-500">
                           Next Spot{reviewSpot.source === "operator" ? " (yours)" : ""}
                         </span>
-                        <span className={`font-bold ${reviewSpot.source === "operator" ? "text-amber-400" : "text-emerald-400"}`}>
+                        <span className={`font-bold text-right ${reviewSpot.source === "operator" ? "text-amber-400" : "text-emerald-400"}`}>
                           {formatFieldSpot(reviewSpot.ballOn, gameState.possession)}
                           {" · "}
                           {reviewSpot.down}
                           {" & "}
                           {reviewSpot.distance}
+                          {reviewSpot.from && (
+                            <span className="block text-[9px] font-normal text-slate-500">
+                              {reviewSpot.from}
+                            </span>
+                          )}
                         </span>
                       </div>
                     ) : (

@@ -1,27 +1,33 @@
 /**
  * What the review screen is allowed to claim about where the ball ends up.
  *
- * A dead-ball flag is arithmetic: nothing happened, so marking the penalty off
- * from the previous spot IS the answer, and the modal runs the same
- * enforcement the recorder would get after submitting so the preview cannot
- * drift from the result.
+ * There are three ways a next spot can be arrived at, and they are not equally
+ * trustworthy, so they are kept apart and labelled:
  *
- * A LIVE-ball flag is not arithmetic, and this is the bug this module exists
- * to stop coming back. That same projection is handed `yards: 0` and the
- * PRE-SNAP situation, because at the point it runs the play has not been
- * submitted. On a scrimmage down that is merely optimistic. On a kickoff it is
- * reliably wrong in a way that looks plausible: kicking from the 40, any
- * ten-yard flag enforces to the 50 and prints "50 - 1 & 10" no matter what the
- * return did. A thirty-two yard return and a spot foul at the receiver's 26
- * both vanish, and the operator gets a confident number that is out by most of
- * the field.
+ *   operator  - the recorder typed it. Always wins. It is a statement about
+ *               what the officials actually did, which outranks any rule the
+ *               app knows.
+ *   computed  - a DEAD-ball flag, marked off from the previous spot by
+ *               gameFlow's enforcement. Nothing happened, so the previous spot
+ *               is the right spot and this is simple arithmetic.
+ *   enforced  - a LIVE-ball flag, resolved by services/penaltyEnforcement from
+ *               the foul spot, the basic spot and which team fouled.
  *
- * Real enforcement needs the foul spot, which team fouled, whether the foul is
- * a spot foul, and the NFHS basic-spot rules for fouls during a kick - none of
- * which the projection is given. So the honest answer for a live-ball flag is
- * to claim nothing and let the operator place the ball, by hand here or on the
- * Adjust Next Situation sheet the flag already pops. A blank is recoverable;
- * a wrong spot that reads as computed gets trusted and saved.
+ * The distinction that matters is the last one. gameFlow's enforcement is
+ * handed the PRE-SNAP situation with yards: 0, because at review time the play
+ * has not been submitted, and it marks off from there regardless of what the
+ * play did. For a dead-ball flag that is correct. For a live-ball flag it is
+ * reliably wrong in a way that looks plausible: on a kickoff from the 40 every
+ * ten-yard foul enforced to the 50 and printed "50 - 1 & 10" no matter what
+ * the return did, so a 32-yard return and a clipping foul spotted at the
+ * receiver's 26 both vanished.
+ *
+ * That was reported twice. The first fix silenced the guess and showed nothing
+ * for live-ball flags, which was honest but left arithmetic to the operator
+ * that the app had all the inputs for. penaltyEnforcement now does it properly,
+ * and this module's job is just to pick the right source and label it, so the
+ * screen never presents an enforced spot and a mechanical one as if they were
+ * the same kind of claim.
  */
 
 import { getPenaltyDefaultSide, type PenaltySide } from "../components/game/types.ts";
@@ -33,8 +39,9 @@ export interface Situation {
 }
 
 export interface ReviewSpot extends Situation {
-  /** "operator" when a human typed it, "computed" when enforcement produced it. */
-  source: "operator" | "computed";
+  source: "operator" | "computed" | "enforced";
+  /** Where it was marked off from, for the enforced case. Empty otherwise. */
+  from: string;
 }
 
 export function reviewNextSpot(o: {
@@ -44,15 +51,18 @@ export function reviewNextSpot(o: {
   isDeadBall: boolean;
   /** A spot the operator set by hand, which outranks everything. */
   override: Situation | null;
-  /** The engine's enforcement, trustworthy for dead-ball flags only. */
+  /** gameFlow's enforcement. Trustworthy for dead-ball flags only. */
   projection: Situation | null;
+  /** penaltyEnforcement's answer for a live-ball flag. */
+  enforced: (Situation & { from: string }) | null;
 }): ReviewSpot | null {
   if (!o.penalty) return null;
-  if (o.override) return { ...o.override, source: "operator" };
-  if (o.isDeadBall && o.projection) return { ...o.projection, source: "computed" };
-  return null;
+  if (o.override) return { ...o.override, source: "operator", from: "" };
+  if (o.isDeadBall) {
+    return o.projection ? { ...o.projection, source: "computed", from: "" } : null;
+  }
+  return o.enforced ? { ...o.enforced, source: "enforced" } : null;
 }
-
 
 /**
  * Which team a flag lands on before anyone touches it.

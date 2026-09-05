@@ -62,12 +62,9 @@ function ordinalDown(down: number): string {
  * side by side (punt, field goal, and going for it).
  */
 function fastPathIds(down: number | undefined, ballOn: number | undefined): string[] {
-  // Inside the opponent's 3, a conversion attempt is far likelier than a snap.
-  if (ballOn != null && ballOn >= 97) return ["pat", "two_pt"];
-  // 4th: the actual decision is punt / kick it / go for it. "Go for it" isn't
-  // a play type, so we surface both ways of going for it.
-  if (down === 4) return ["punt", "fg", "rush", "pass_comp"];
-  return ["rush", "pass_comp", "pass_inc"];
+  // Keep common actions in the same place, even on fourth down or at the goal.
+  // Special teams remain available in their fixed category tab.
+  return ["rush", "pass_comp", "pass_inc", "sack"];
 }
 
 /**

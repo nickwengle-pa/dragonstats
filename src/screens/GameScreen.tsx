@@ -1086,7 +1086,8 @@ export default function GameScreen() {
     // did, so it outranks both the engine replay and the computed enforcement.
     // Without this, the engine's afterSituation silently wins and the spot the
     // user typed is discarded.
-    const isManualOverride = play.playData?.next_situation_source === "manual_override";
+    const isManualOverride = play.playData?.next_situation_source === "manual_override"
+      || play.playData?.next_situation_source === "penalty_enforced";
     const after: LiveSituationSnapshot = isManualOverride
       ? {
           possession: play.nextPossession ?? baseAfter.possession,
@@ -1676,7 +1677,13 @@ export default function GameScreen() {
       possession: insertAt ? insertAt.possession : possession,
       // Onside recovered by the kicking team: keep possession (the situation
       // engine reads nextPossession to decide flip vs. keep).
-      nextPossession: data.playType.id === "onside_kick" && data.onsideRecoveredByKicker ? possession : undefined,
+      nextPossession: data.playType.id === "onside_kick" && data.onsideRecoveredByKicker
+        ? possession
+        // A flag on a kick or a turnover changes who has the ball, and the
+        // modal has already worked out which team and complemented ballOn into
+        // their frame. Without this the spot was stored against the team that
+        // just lost possession.
+        : data.nextSituation?.possession,
       // Penalty spot the recorder set by hand — wins over computed enforcement.
       nextDown: data.nextSituation?.down,
       nextDistance: data.nextSituation?.distance,
@@ -1689,8 +1696,12 @@ export default function GameScreen() {
         recorded_start_clock: fmtClock(playClock),
         recorded_start_clock_seconds: playClock,
         ...(data.playData ?? {}),
+        /* "manual_override" means the recorder stated what the officials did;
+           "penalty_enforced" means the app worked it out from the foul spot.
+           Both outrank the replay, but only one of them is a human claim, and
+           conflating them would misreport how the spot was arrived at. */
         next_situation_source: data.nextSituation
-          ? "manual_override"
+          ? data.nextSituation.source
           : data.penalty || data.playType.id === "blocked_kick" || isTurnover ? "pending_review" : "auto",
       },
     };

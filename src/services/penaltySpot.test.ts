@@ -41,10 +41,47 @@ const THE_KICKOFF = {
   isDeadBall: false,
   override: null,
   projection: { ballOn: 50, down: 1, distance: 10 },
+  enforced: null,
 };
 
-test("the reported case: a kickoff flag claims nothing rather than the 50", () => {
+test("the reported case: a kickoff flag never falls back to the mechanical 50", () => {
+  // With no enforcement available it shows nothing. What it must never do is
+  // reach for the projection, which marks off from the snap and ignores the
+  // return entirely.
   assert.equal(reviewNextSpot(THE_KICKOFF), null);
+});
+
+test("a live-ball flag WITH an enforcement shows it, labelled enforced", () => {
+  const spot = reviewNextSpot({
+    ...THE_KICKOFF,
+    enforced: { ballOn: 84, down: 1, distance: 10, from: "from the foul spot" },
+  });
+  assert.deepEqual(spot, {
+    ballOn: 84, down: 1, distance: 10,
+    source: "enforced", from: "from the foul spot",
+  });
+});
+
+test("the enforcement never overrides a spot the operator set", () => {
+  const spot = reviewNextSpot({
+    ...THE_KICKOFF,
+    override: { ballOn: 70, down: 2, distance: 8 },
+    enforced: { ballOn: 84, down: 1, distance: 10, from: "from the foul spot" },
+  });
+  assert.equal(spot?.source, "operator");
+  assert.equal(spot?.ballOn, 70);
+});
+
+test("a dead-ball flag ignores any enforcement handed to it", () => {
+  // Dead-ball enforcement is gameFlow s job and is already correct there;
+  // routing it through two paths would let them disagree.
+  const spot = reviewNextSpot({
+    penalty: "False Start", isDeadBall: true, override: null,
+    projection: { ballOn: 25, down: 1, distance: 15 },
+    enforced: { ballOn: 99, down: 4, distance: 1, from: "nonsense" },
+  });
+  assert.equal(spot?.ballOn, 25);
+  assert.equal(spot?.source, "computed");
 });
 
 test("a live-ball flag on a scrimmage down claims nothing either", () => {
@@ -55,6 +92,7 @@ test("a live-ball flag on a scrimmage down claims nothing either", () => {
       penalty: "Holding-OFF",
       isDeadBall: false,
       override: null,
+      enforced: null,
       projection: { ballOn: 20, down: 1, distance: 10 },
     }),
     null,
@@ -68,9 +106,10 @@ test("a dead-ball flag still shows its enforcement", () => {
     penalty: "False Start",
     isDeadBall: true,
     override: null,
+    enforced: null,
     projection: { ballOn: 25, down: 1, distance: 15 },
   });
-  assert.deepEqual(spot, { ballOn: 25, down: 1, distance: 15, source: "computed" });
+  assert.deepEqual(spot, { ballOn: 25, down: 1, distance: 15, source: "computed", from: "" });
 });
 
 test("a hand-set spot wins on a live-ball flag - that is how the ball gets placed", () => {
@@ -78,7 +117,7 @@ test("a hand-set spot wins on a live-ball flag - that is how the ball gets place
     ...THE_KICKOFF,
     override: { ballOn: 84, down: 1, distance: 10 },
   });
-  assert.deepEqual(spot, { ballOn: 84, down: 1, distance: 10, source: "operator" });
+  assert.deepEqual(spot, { ballOn: 84, down: 1, distance: 10, source: "operator", from: "" });
 });
 
 test("a hand-set spot outranks the engine on a dead-ball flag too", () => {
@@ -86,6 +125,7 @@ test("a hand-set spot outranks the engine on a dead-ball flag too", () => {
     penalty: "Delay of Game",
     isDeadBall: true,
     override: { ballOn: 30, down: 2, distance: 5 },
+    enforced: null,
     projection: { ballOn: 25, down: 1, distance: 15 },
   });
   assert.equal(spot?.source, "operator");
@@ -98,6 +138,7 @@ test("no flag, no claim - the row must not render on an ordinary play", () => {
       penalty: null,
       isDeadBall: false,
       override: { ballOn: 40, down: 1, distance: 10 },
+      enforced: null,
       projection: { ballOn: 50, down: 1, distance: 10 },
     }),
     null,
@@ -106,7 +147,7 @@ test("no flag, no claim - the row must not render on an ordinary play", () => {
 
 test("a dead-ball flag with no projection yet claims nothing", () => {
   assert.equal(
-    reviewNextSpot({ penalty: "Offsides", isDeadBall: true, override: null, projection: null }),
+    reviewNextSpot({ penalty: "Offsides", isDeadBall: true, override: null, projection: null, enforced: null }),
     null,
   );
 });
@@ -116,7 +157,7 @@ test("the source is what the label keys off, so it must be exact", () => {
   // here would silently make a hand-set spot read as computed.
   const operator = reviewNextSpot({ ...THE_KICKOFF, override: { ballOn: 84, down: 1, distance: 10 } });
   const computed = reviewNextSpot({
-    penalty: "False Start", isDeadBall: true, override: null,
+    penalty: "False Start", isDeadBall: true, override: null, enforced: null,
     projection: { ballOn: 25, down: 1, distance: 15 },
   });
   assert.equal(operator?.source, "operator");
