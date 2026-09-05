@@ -1,3 +1,4 @@
+import GameHomeLink from "@/components/game/GameHomeLink";
 import { needsNextSpotReview, normalizeBlockedTouchdown } from "@/services/blockedKickOutcome";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -1115,6 +1116,7 @@ export default function PostGameReview() {
   return (
     <div className="screen safe-top safe-bottom">
       {/* Header */}
+      <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2">
         <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />

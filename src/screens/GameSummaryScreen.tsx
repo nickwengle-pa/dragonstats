@@ -1,3 +1,4 @@
+import GameHomeLink from "@/components/game/GameHomeLink";
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Share2, Film, FileText, ClipboardList } from "lucide-react";
@@ -270,6 +271,7 @@ export default function GameSummaryScreen() {
   return (
     <div className="screen safe-top safe-bottom">
       {/* Header */}
+      <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2">
         <button onClick={() => navigate(`/game/${gameId}`)} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />

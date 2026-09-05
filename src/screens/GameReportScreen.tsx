@@ -1,3 +1,4 @@
+import GameHomeLink from "@/components/game/GameHomeLink";
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer } from "lucide-react";
@@ -405,6 +406,7 @@ export default function GameReportScreen() {
        breakpoint, and print lays out at about 768px, so the app frame used to
        squeeze the whole document into a phone-width column on paper. */
     <div className="min-h-dvh flex flex-col bg-surface-bg print:bg-white">
+      <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2 print:hidden">
         <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
