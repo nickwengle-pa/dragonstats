@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProgramContext } from "@/hooks/useProgramContext";
-import { readSeasonGames, readSeasonRoster } from "@/services/offlineCache";
+import { readSeasonGames, readSeasonRoster, readSeasonReviewCounts } from "@/services/offlineCache";
+import { statsState, statsStateLabel, type StatsState } from "@/services/gameCompletion";
 import { supabase } from "@/lib/supabase";
 import {
   Calendar, Users, BarChart3, Settings, ChevronRight, Trophy, SlidersHorizontal,
@@ -24,7 +25,20 @@ interface CompletedGame {
   opponent_score: number;
   game_date: string;
   is_home: boolean;
+  /** games.tags, which carries the "stats final" mark. */
+  tags: unknown;
+  /** Plays still needing their spot confirmed. Null means NOT KNOWN - offline,
+   *  or the count has not landed - which must not read as zero. */
+  toReview: number | null;
 }
+
+/** Chip colours per state. Literal classes, because Tailwind cannot see an
+ *  interpolated one and would emit nothing. */
+const STATS_CHIP: Record<StatsState, string> = {
+  final: "bg-emerald-500/15 text-emerald-400",
+  review: "bg-amber-500/15 text-amber-400",
+  open: "bg-slate-500/15 text-slate-400",
+};
 
 /** Everything recorded about a game, in the order you would want it after
  *  one: the sheet you hand round, the short version, the whole picture, the
@@ -137,6 +151,21 @@ export default function DashboardScreen() {
           opponent_score: live.opponent_score,
         } : null,
       });
+      /* How much post-game work is still outstanding per game. Deliberately
+         after the games land, since it needs their ids, and deliberately
+         tolerant of failure: a coach who cannot reach the server should still
+         get the list, just without the amber counts. */
+      const reviewRead = await readSeasonReviewCounts(season.id, completed.map((g: any) => g.id))
+        .catch((err) => {
+          /* Loud rather than silent. A failure here degrades to "count not
+             known", which renders as no amber chip at all - indistinguishable
+             from a season with nothing outstanding, and so exactly the kind of
+             bug that survives for months. */
+          console.warn("[dashboard] review counts unavailable:", err);
+          return null;
+        });
+      const reviewCounts = reviewRead?.value ?? null;
+
       /* Most recent first: the game you want to read about is almost always
          the one just played. game_date is a date string, so it sorts. */
       setCompletedGames(
@@ -148,6 +177,8 @@ export default function DashboardScreen() {
             our_score: g.our_score ?? 0,
             opponent_score: g.opponent_score ?? 0,
             game_date: g.game_date,
+            tags: g.tags,
+            toReview: reviewCounts ? (reviewCounts[g.id] ?? 0) : null,
             is_home: g.is_home,
           })),
       );
@@ -306,10 +337,22 @@ export default function DashboardScreen() {
                         <div className="font-display font-bold text-sm uppercase tracking-wide truncate">
                           {g.is_home ? "vs" : "@"} {g.opponent_name}
                         </div>
-                        <div className="text-[11px] text-surface-muted font-medium mt-0.5">
-                          {g.game_date
-                            ? new Date(g.game_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                            : "—"}
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[11px] text-surface-muted font-medium">
+                            {g.game_date
+                              ? new Date(g.game_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                              : "—"}
+                          </span>
+                          {/* Whether the stats behind this game are finished.
+                              "Completed" only means the clock ran out. */}
+                          {(() => {
+                            const state = statsState({ tags: g.tags, toReview: g.toReview });
+                            return (
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 ${STATS_CHIP[state]}`}>
+                                {statsStateLabel(state, g.toReview)}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div className="text-base font-display font-extrabold tabular-nums shrink-0">

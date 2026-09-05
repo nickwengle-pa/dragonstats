@@ -9,6 +9,45 @@ import {
 import { TEAM_PLAYER_ID } from "@/components/game/types";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "./programService";
 import { mergeQueuedPlays } from "./mergeQueuedPlays";
+import { cacheKeys, invalidateCache } from "./offlineCache";
+import { STATS_FINAL_TAG } from "./gameCompletion";
+
+/**
+ * Mark a game's stats finished, or take the mark back off.
+ *
+ * Stored as a tag rather than a column: games.tags is an existing TEXT[], so
+ * this needs no migration and works on games recorded long before the feature.
+ * The read side is read-modify-write because the column is shared - a game can
+ * also be tagged "homecoming" - and replacing the array wholesale would drop
+ * whatever else is on it.
+ *
+ * The schedule cache is what the dashboard renders the chip from, so it has to
+ * be dropped here or the label does not change until something else happens to
+ * invalidate it.
+ */
+export async function setGameStatsFinal(
+  gameId: string,
+  final: boolean,
+  seasonId?: string | null,
+): Promise<boolean> {
+  const { data, error: readErr } = await supabase
+    .from("games").select("tags").eq("id", gameId).single();
+  if (readErr) return false;
+
+  const current: string[] = Array.isArray(data?.tags) ? data.tags as string[] : [];
+  const next = final
+    ? (current.includes(STATS_FINAL_TAG) ? current : [...current, STATS_FINAL_TAG])
+    : current.filter((t) => t !== STATS_FINAL_TAG);
+
+  const { error } = await supabase.from("games").update({ tags: next }).eq("id", gameId);
+  if (error) return false;
+
+  if (seasonId) {
+    await invalidateCache(cacheKeys.schedule(seasonId));
+    await invalidateCache(cacheKeys.reviewCounts(seasonId));
+  }
+  return true;
+}
 
 const APP_META_KEY = "_dragonstats";
 const LIVE_STATE_VERSION = 1;

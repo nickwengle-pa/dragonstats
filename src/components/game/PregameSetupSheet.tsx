@@ -238,18 +238,28 @@ export default function PregameSetupSheet({
 
           <div className="card p-3 space-y-1.5">
             <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest">Summary</div>
-            <div className="text-sm font-bold">
-              {teamLabel(oppositeTeam(openingReceiver), progName, oppName)} kicks off to {teamLabel(openingReceiver, progName, oppName)} to start the game.
+            <div className="flex justify-between text-sm font-bold">
+              <span className="text-neutral-500">Q1</span>
+              <span>
+                {teamLabel(oppositeTeam(openingReceiver), progName, oppName)}
+                {" kicks to "}
+                {teamLabel(openingReceiver, progName, oppName)}
+              </span>
             </div>
-            <div className="text-sm font-bold">
-              {teamLabel(oppositeTeam(secondHalfReceiver), progName, oppName)} kicks off to {teamLabel(secondHalfReceiver, progName, oppName)} to start the 3rd quarter.
+            <div className="flex justify-between text-sm font-bold">
+              <span className="text-neutral-500">Q3</span>
+              <span>
+                {teamLabel(oppositeTeam(secondHalfReceiver), progName, oppName)}
+                {" kicks to "}
+                {teamLabel(secondHalfReceiver, progName, oppName)}
+              </span>
             </div>
             <div className="text-xs text-neutral-500">
-              Teams switch ends every quarter. The first-quarter direction sets the field display for the whole game.
+              Ends switch every quarter. Q1 direction sets the field view.
             </div>
             {openingReceiverLocked && (
               <div className="text-[11px] text-neutral-500">
-                Opening receiver is locked because the toss winner chose to {form.tossChoice.replace("_", " ")}.
+                Locked — toss winner chose to {form.tossChoice.replace("_", " ")}.
               </div>
             )}
           </div>

@@ -85,6 +85,29 @@ export function useAuth() {
     return error ? new Error(error.message) : null;
   }, []);
 
+  /* Send the confirmation email again.
+
+     Needed because the first one goes missing for ordinary reasons - spam
+     folder, a typo'd address, or the project's email provider throttling. The
+     error is passed through verbatim rather than tidied into something
+     friendlier, because the useful ones are specific: Supabase's rate limit
+     says how many seconds are left, and "already confirmed" means the account
+     is fine and the person should just sign in. A generic "could not send"
+     would hide both.
+
+     Same emailRedirectTo as signUp, for the same reason - without it the link
+     is built from Site URL. */
+  const resendConfirmation = useCallback(async (email: string) => {
+    const address = email.trim();
+    if (!address) return new Error("Enter your email address first.");
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: address,
+      options: { emailRedirectTo: `${window.location.origin}/` },
+    });
+    return error ? new Error(error.message) : null;
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -122,8 +145,44 @@ export function useAuth() {
      the caller reports that so the user can try again from the join screen
      instead of being stranded on a working login with nothing in it. */
   const signUp = useCallback(async (email: string, password: string, inviteCode: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    /* `emailRedirectTo` is not optional, for the same reason it is not
+       optional on the reset link above: with nothing passed, Supabase builds
+       the confirmation link out of the project's Site URL. A project whose
+       Site URL still points at a dev server mails every new coach a link to
+       localhost, and clicking it opens a blank page on a machine that is not
+       theirs - which is what happened.
+
+       Note that setting this is only half of it. An origin that is not listed
+       under Auth -> URL Configuration -> Redirect URLs does not error; it
+       silently falls back to Site URL, so the symptom is identical whether the
+       parameter is missing or merely unlisted. */
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/` },
+    });
     if (error) return error;
+
+    /* Supabase will not say "that email is taken" - saying so would turn this
+       form into a way to test which of a school's coaches have accounts - so
+       an address that already exists comes back looking EXACTLY like a fresh
+       sign-up: no error, no session, and a user object. The only tell is that
+       its `identities` array is empty.
+
+       Without this check the app cheerfully told a returning coach to go and
+       confirm an email that was never sent, because Supabase does not resend
+       confirmations to an address it already knows. That is how "they rejoined
+       and now they're not getting a confirm email" becomes a mystery instead
+       of a message.
+
+       Worth knowing when this fires unexpectedly: deleting a user from a
+       public table does not delete them from auth.users. If the auth row
+       survived, the address is still taken. */
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      return new Error(
+        "That email already has an account. Sign in instead, or use Forgot Password to get back in.",
+      );
+    }
 
     // Email confirmation is on: there is no session yet, so redemption has to
     // wait until the first real sign-in.
@@ -136,5 +195,9 @@ export function useAuth() {
     return await redeemInviteCode(inviteCode);
   }, [redeemInviteCode]);
 
-  return { ...state, signIn, signUp, signOut, redeemInviteCode, requestPasswordReset, updatePassword };
+  return {
+    ...state,
+    signIn, signUp, signOut, redeemInviteCode,
+    requestPasswordReset, updatePassword, resendConfirmation,
+  };
 }

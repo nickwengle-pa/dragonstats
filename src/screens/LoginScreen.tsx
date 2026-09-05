@@ -9,7 +9,7 @@ import plDragon from "@/assets/pl-dragon.png";
    than offered as a later step - a coach who signs up without one would land
    on an empty app and assume it was broken. */
 export default function LoginScreen() {
-  const { signIn, signUp, requestPasswordReset } = useAuth();
+  const { signIn, signUp, requestPasswordReset, resendConfirmation } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,6 +20,9 @@ export default function LoginScreen() {
   const [isReset, setIsReset] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [error, setError] = useState("");
+  /* Kept apart from `error`, because a successful resend is not an error and
+     a rate-limit notice is not a form validation failure. */
+  const [resendMsg, setResendMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,9 +43,27 @@ export default function LoginScreen() {
       return;
     }
 
-    const err = isSignUp
-      ? await signUp(email, password, inviteCode)
-      : await signIn(email, password);
+    /* Wrapped, because every path out of here that is not a returned Error
+       leaves the form spinning with nothing on screen. signUp does more than
+       call Supabase - it redeems the invite code, which hits an RPC and then
+       IndexedDB, and IndexedDB throws for reasons that have nothing to do with
+       the credentials typed (private browsing, a full quota, a locked
+       database). A coach who saw a spinner and no message would have no way to
+       report anything useful, which is exactly the failure being chased here. */
+    let err: Error | null;
+    try {
+      err = isSignUp
+        ? await signUp(email, password, inviteCode)
+        : await signIn(email, password);
+    } catch (thrown) {
+      setLoading(false);
+      setError(
+        thrown instanceof Error
+          ? thrown.message
+          : "Something went wrong. Check your connection and try again.",
+      );
+      return;
+    }
 
     setLoading(false);
 
@@ -190,6 +211,30 @@ export default function LoginScreen() {
               >
                 Forgot your password?
               </button>
+            )}
+            {/* The confirmation email goes missing for ordinary reasons, and
+                without this the only route back was asking whoever runs the
+                Supabase project to do something about it. */}
+            {isSignUp && (
+              <button
+                onClick={async () => {
+                  setError("");
+                  setResendMsg("");
+                  setLoading(true);
+                  const err = await resendConfirmation(email);
+                  setLoading(false);
+                  setResendMsg(
+                    err ? err.message : "Sent. Check your inbox, and your spam folder.",
+                  );
+                }}
+                disabled={loading || !email.trim()}
+                className="btn-ghost w-full mt-1 text-xs normal-case tracking-normal font-body text-surface-muted/70 disabled:opacity-40"
+              >
+                Didn't get the confirmation email? Resend
+              </button>
+            )}
+            {resendMsg && (
+              <p className="text-xs text-center text-surface-muted mt-1.5 px-2">{resendMsg}</p>
             )}
           </>
         )}

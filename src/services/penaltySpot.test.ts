@@ -14,7 +14,13 @@
  */
 import assert from "node:assert/strict";
 import { flagSideDefault, reviewNextSpot } from "./penaltySpot.ts";
-import { PENALTIES, getPenaltyDefaultSide } from "../components/game/types.ts";
+import {
+  PENALTIES,
+  getPenaltyDefaultSide,
+  getPenaltyEngineCode,
+  penaltyDefaultYards,
+  isSpotFoul,
+} from "../components/game/types.ts";
 
 let passed = 0;
 let total = 0;
@@ -213,6 +219,47 @@ test("blocking fouls on a kick land on the receiving team", () => {
 test("blocking fouls on a scrimmage down land on the offense", () => {
   assert.equal(flagSideDefault("Block in Back", false), "offense");
   assert.equal(flagSideDefault("Clipping", false), "offense");
+});
+
+/* ── Custom flags ────────────────────────────────────────────────────────── */
+
+test("a typed flag still resolves to a side", () => {
+  // It reaches flagSideDefault as an unknown label, and the prefill-and-swap
+  // control has no empty state, so this must never come back null.
+  for (const kick of [true, false]) {
+    const side = flagSideDefault("Illegal Kicking", kick);
+    assert.ok(side === "offense" || side === "defense");
+  }
+});
+
+test("an empty name resolves too - custom mode starts before anything is typed", () => {
+  assert.equal(flagSideDefault("", true), "defense");
+});
+
+test("a typed flag is flagged as a guess, so the check warning shows", () => {
+  assert.equal(getPenaltyDefaultSide("Illegal Kicking"), null);
+});
+
+test("Other is NOT in the penalty table", () => {
+  // The table is the rulebook the app knows: default sides, standard
+  // distances, engine codes. A free-text entry has none of the three, so
+  // listing it there would put a row in that lies about all of them - and it
+  // would break the four-sideless-fouls canary above.
+  assert.equal(PENALTIES.includes("Other"), false);
+});
+
+test("a typed flag has no engine code, so the call sites' fallback takes over", () => {
+  // playTransformer and liveGameSession both read
+  //   getPenaltyEngineCode(x) ?? x.toLowerCase().replace(/\s+/g, "_")
+  // so an unmapped label degrades to a derived code rather than undefined.
+  assert.equal(getPenaltyEngineCode("Illegal Kicking"), undefined);
+  const derived = "Illegal Kicking".toLowerCase().replace(/\s+/g, "_");
+  assert.equal(derived, "illegal_kicking");
+});
+
+test("a typed flag takes the default distance and is not a spot foul", () => {
+  assert.equal(penaltyDefaultYards("Illegal Kicking"), 5);
+  assert.equal(isSpotFoul("Illegal Kicking"), false);
 });
 
 console.log(`\n${passed}/${total} passed`);
