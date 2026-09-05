@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node src/services/mergeQueuedPlays.test.ts && node src/services/tackleCredit.test.ts && node src/services/driveResults.test.ts && node src/services/kickSpots.test.ts && node src/services/looseTags.test.ts && node src/services/badSnap.test.ts && node src/utils/teamColor.test.ts && node src/services/foulSpot.test.ts && node src/services/penaltyStep.test.ts && vitest run"
+    "test": "node src/services/mergeQueuedPlays.test.ts && node src/services/tackleCredit.test.ts && node src/services/driveResults.test.ts && node src/services/kickSpots.test.ts && node src/services/looseTags.test.ts && node src/services/badSnap.test.ts && node src/utils/teamColor.test.ts && node src/services/foulSpot.test.ts && node src/services/penaltyStep.test.ts && node src/services/penaltySpot.test.ts && node src/components/game/playEntrySeed.test.ts && vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",

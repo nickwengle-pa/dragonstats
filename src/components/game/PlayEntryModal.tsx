@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, ChevronLeft, ChevronRight, Flag, Plus, Trash2 } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Flag, Plus, Trash2, ArrowLeftRight } from "lucide-react";
 import Keypad from "./Keypad";
 import {
   type BlockedKickType,
@@ -31,6 +31,7 @@ import { readableAccent } from "@/utils/teamColor";
 import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
+import { flagSideDefault, reviewNextSpot } from "@/services/penaltySpot";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "@/services/programService";
 
 interface Props {
@@ -1866,6 +1867,26 @@ export default function PlayEntryModal({
 
   const overrideBallOn = spotToBallOn(spotSide, spotYardLine);
 
+  /* What review is allowed to say about the next spot. The projection above
+     runs on the PRE-SNAP situation with yards: 0, which is the right answer
+     for a dead-ball flag and a badly wrong one for a live-ball flag - on a
+     kickoff from the 40 every ten-yard foul enforces to the 50 regardless of
+     the return. See services/penaltySpot.ts. */
+  const reviewSpot = reviewNextSpot({
+    penalty,
+    isDeadBall: isPenaltyOnly,
+    override: overrideSpot
+      ? { ballOn: overrideBallOn, down: spotDown, distance: spotDistance }
+      : null,
+    projection: penaltyProjection
+      ? {
+          ballOn: penaltyProjection.ballOn,
+          down: penaltyProjection.down,
+          distance: penaltyProjection.distance,
+        }
+      : null,
+  });
+
   /** Who is carrying the ball on this play, which decides which way the reels
    *  call "downfield". A kick is caught and run back by the receiving team; a
    *  pick and a lost fumble are run back by the defense. All three advance by
@@ -1895,7 +1916,7 @@ export default function PlayEntryModal({
 
   const selectPenalty = (label: string) => {
     setPenalty(label);
-    setPenaltyCategory(getPenaltyDefaultSide(label));
+    setPenaltyCategory(defaultFlagSide(label));
     setFlagYards(PENALTY_DEFAULT_YARDS[label] ?? 5);
     setFlagYardsRaw(String(PENALTY_DEFAULT_YARDS[label] ?? 5));
     /* Prefill the spot, because almost every foul has an obvious one and
@@ -2000,6 +2021,51 @@ export default function PlayEntryModal({
                   </div>
   );
 
+  /**
+   * Who a flag was on, in the words the operator is thinking in.
+   *
+   * The data model has always stored "offense" or "defense", which the
+   * enforcement engine needs and which is right - but it is not what anyone
+   * says in a press box, and on a kick it is actively confusing: possession
+   * belongs to the KICKING team, so "offense" means the team that just kicked
+   * it away. Naming the team removes the mental step entirely, and the role
+   * stays underneath as the tie back to the rulebook.
+   *
+   * The mapping is exact, not a guess: offense IS the team with possession.
+   */
+  const flagTeamName = (category: PenaltySide) =>
+    category === "offense"
+      ? (isTheirBall ? oppName : progName)
+      : (isTheirBall ? progName : oppName);
+
+  /**
+   * Which team the flag lands on before anyone touches it.
+   *
+   * Four fouls carry no defaultSide in the rules table, because either team
+   * can commit them: facemask, unsportsmanlike, block in the back, clipping.
+   * A prefill-and-swap control cannot leave the side null - the display would
+   * name a team while the stored value was empty, and Record Play would refuse
+   * with nothing on screen to explain why - so those get a contextual guess and
+   * say that they are guessing.
+   *
+   * The blocking fouls are the ones worth getting right, since they are the
+   * common return fouls: on a kick the blocking is done by the RETURNING team,
+   * which is "defense" because possession sits with the kicking team; on a
+   * scrimmage play it is the offense doing the blocking.
+   */
+  const defaultFlagSide = (label: string): PenaltySide =>
+    flagSideDefault(label, isKickPlay);
+
+  /** True when the side above was a guess rather than the rulebook's answer. */
+  const sideIsGuess = (label: string | null) =>
+    !!label && getPenaltyDefaultSide(label) === null;
+
+  /** The rulebook word for that side, which is what a kick makes worth saying. */
+  const flagRoleWord = (category: PenaltySide) => {
+    if (isKickPlay) return category === "offense" ? "kicking team" : "receiving team";
+    return category;
+  };
+
   const penaltyPicker = (
     <div className="space-y-3">
       <div>
@@ -2022,21 +2088,37 @@ export default function PlayEntryModal({
       {penalty && (
         <div className="space-y-3">
           <div>
-            <span className="text-xs text-slate-500 block mb-1">Flag On</span>
-            <div className="grid grid-cols-2 gap-2">
-              {(["offense", "defense"] as const).map((side) => (
-                <button
-                  key={side}
-                  onClick={() => setPenaltyCategory(side)}
-                  className={`py-2.5 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
-                    penaltyCategory === side
-                      ? "border-orange-500 bg-orange-500/15 text-orange-400"
-                      : "border-surface-border bg-surface-bg text-slate-500"
-                  }`}
-                >
-                  {side}
-                </button>
-              ))}
+            <div className="flex items-baseline justify-between mb-1">
+              <span className="text-xs text-slate-500">Flag On</span>
+              {sideIsGuess(penalty) && (
+                <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400">
+                  Either team can — check
+                </span>
+              )}
+            </div>
+            {/* Prefilled from the penalty, then swapped if it was the other
+                team - one control rather than a choice, because the penalty
+                itself already says which side it is nearly every time. Holding
+                is on the offense until it is not. */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0 py-2 px-3 rounded-xl border-2 border-orange-500 bg-orange-500/15">
+                <span className="block text-sm font-black text-orange-400 truncate">
+                  {flagTeamName(penaltyCategory ?? "offense")}
+                </span>
+                <span className="block text-[9px] font-bold uppercase tracking-wider text-orange-400/60 capitalize">
+                  {flagRoleWord(penaltyCategory ?? "offense")}
+                </span>
+              </div>
+              <button
+                onClick={() => setPenaltyCategory(
+                  (penaltyCategory ?? "offense") === "offense" ? "defense" : "offense",
+                )}
+                className="shrink-0 h-[46px] px-3 rounded-xl border-2 border-surface-border bg-surface-bg text-slate-400 flex flex-col items-center justify-center gap-0.5"
+                title="Flag was on the other team"
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+                <span className="text-[9px] font-bold uppercase tracking-wider">Swap</span>
+              </button>
             </div>
           </div>
 
@@ -3802,8 +3884,10 @@ export default function PlayEntryModal({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Flag On</span>
-                      <span className={`font-bold capitalize ${penaltyCategory ? "text-orange-400" : "text-red-400"}`}>
-                        {penaltyCategory ?? "Pick offense or defense"}
+                      <span className={`font-bold ${penaltyCategory ? "text-orange-400" : "text-red-400"}`}>
+                        {penaltyCategory
+                          ? `${flagTeamName(penaltyCategory)} (${flagRoleWord(penaltyCategory)})`
+                          : "Pick which team"}
                       </span>
                     </div>
                     {penaltyEnforcement !== "accepted" && (
@@ -3823,20 +3907,27 @@ export default function PlayEntryModal({
                         </span>
                       </div>
                     )}
-                    {penaltyProjection && (
+                    {reviewSpot ? (
                       <div className="flex justify-between">
                         <span className="text-slate-500">
-                          Next Spot{overrideSpot ? " (yours)" : ""}
+                          Next Spot{reviewSpot.source === "operator" ? " (yours)" : ""}
                         </span>
-                        <span className={`font-bold ${overrideSpot ? "text-amber-400" : "text-emerald-400"}`}>
-                          {formatFieldSpot(
-                            overrideSpot ? overrideBallOn : penaltyProjection.ballOn,
-                            gameState.possession,
-                          )}
+                        <span className={`font-bold ${reviewSpot.source === "operator" ? "text-amber-400" : "text-emerald-400"}`}>
+                          {formatFieldSpot(reviewSpot.ballOn, gameState.possession)}
                           {" · "}
-                          {overrideSpot ? spotDown : penaltyProjection.down}
+                          {reviewSpot.down}
                           {" & "}
-                          {overrideSpot ? spotDistance : penaltyProjection.distance}
+                          {reviewSpot.distance}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between items-baseline">
+                        <span className="text-slate-500">Next Spot</span>
+                        <span className="text-[10px] font-bold text-amber-400/90 text-right leading-tight">
+                          Set after the play<br />
+                          <span className="text-slate-500 font-normal">
+                            depends on the foul spot
+                          </span>
                         </span>
                       </div>
                     )}
