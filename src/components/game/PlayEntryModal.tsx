@@ -1166,6 +1166,8 @@ export default function PlayEntryModal({
       // tackler question instead of asking for a name that doesn't exist.
       if (trackTacklers && !isTD) steps.push("defense");
     }
+    // Same as the scrimmage flow: the flag is its own question.
+    if (showPenalties || penalty) steps.push("penalty");
     steps.push("review");
   } else if (isPenaltyOnly) {
     // Penalty-only (incl. pre-snap flags): no snap happened, so there are no
@@ -1192,6 +1194,12 @@ export default function PlayEntryModal({
     // within the play, with its own spot and its own tackler.
     if (canHaveFumble && hasFumble) steps.push("fumble_return");
     if (trackFormations && !isConversion) steps.push("formations");
+    /* A flag is its own question and deserves its own screen. It used to
+       unfold underneath the yardage controls - a penalty list, a side, an
+       enforcement, a yardage and now a foul spot, all stacked below the spot
+       picker on a modal 512px wide at its widest. Adding the step only once a
+       flag is wanted keeps the ordinary snap exactly as short as it was. */
+    if (showPenalties || penalty) steps.push("penalty");
     steps.push("review");
   }
 
@@ -1867,6 +1875,15 @@ export default function PlayEntryModal({
       ? interceptionReturnBallOn
       : resultBallOn;
 
+  /** Open the flag's own step, adding it to the flow if it is not there yet. */
+  const openPenaltyStep = () => {
+    const alreadyThere = steps.indexOf("penalty");
+    if (alreadyThere >= 0) { setStepIdx(alreadyThere); return; }
+    setShowPenalties(true);
+    // Inserted just before review, so it takes review's current index.
+    setStepIdx(Math.max(0, steps.length - 1));
+  };
+
   const selectPenalty = (label: string) => {
     setPenalty(label);
     setPenaltyCategory(getPenaltyDefaultSide(label));
@@ -2496,14 +2513,13 @@ export default function PlayEntryModal({
                   where a block in the back actually happens - same flag, two
                   places to reach it, and the button reads back whatever is
                   already set. */}
-              <button onClick={() => setShowPenalties(s => !s)}
+              <button onClick={openPenaltyStep}
                 className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
                   penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
                 }`}>
                 <Flag className="w-3 h-3 inline mr-1" />
                 {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
               </button>
-              {showPenalties && penaltyPicker}
             </>
           )}
 
@@ -2835,14 +2851,13 @@ export default function PlayEntryModal({
                   where a spot foul gets marked off. Record the return as it
                   happened, name the foul, then put the ball where the
                   officials put it. */}
-              <button onClick={() => setShowPenalties(s => !s)}
+              <button onClick={openPenaltyStep}
                 className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
                   penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
                 }`}>
                 <Flag className="w-3 h-3 inline mr-1" />
                 {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
               </button>
-              {showPenalties && penaltyPicker}
               {penalty && (
                 <div className="text-[10px] text-slate-600 text-center">
                   You'll place the ball after the play - a spot foul is marked
@@ -3235,7 +3250,7 @@ export default function PlayEntryModal({
               )}
 
               {/* Penalty */}
-              <button onClick={() => setShowPenalties(s => !s)}
+              <button onClick={openPenaltyStep}
                 className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
                   penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
                 }`}>
@@ -3243,10 +3258,6 @@ export default function PlayEntryModal({
                 {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
               </button>
 
-              {/* The shared picker keeps side/enforcement/yards visible once a
-                  penalty is chosen — collapsing them made decline and offset
-                  effectively undiscoverable during live entry. */}
-              {showPenalties && penaltyPicker}
             </>
           )}
 
@@ -3256,10 +3267,26 @@ export default function PlayEntryModal({
               <div className="text-sm font-bold text-slate-300">
                 What was the flag?
               </div>
+              {/* The step serves two jobs now: a dead-ball flag, which IS the
+                  play, and a live-ball flag on a play that also happened. The
+                  line says which one you are on. */}
               <div className="text-[11px] text-slate-600 -mt-1">
-                No snap counted, so there's nothing to tag or chart — just the flag.
+                {isPenaltyOnly
+                  ? "No snap counted, so there's nothing to tag or chart — just the flag."
+                  : "The play is recorded as it happened; this is the flag on top of it."}
               </div>
               {penaltyPicker}
+
+              {/* Backing out. A flag added by mistake would otherwise be stuck
+                  in the flow, since the step only exists while there is one. */}
+              {!isPenaltyOnly && (
+                <button
+                  onClick={() => { clearPenalty(); setShowPenalties(false); setStepIdx(i => Math.max(0, i - 1)); }}
+                  className="w-full py-2 rounded-xl text-xs font-bold border border-surface-border bg-surface-bg text-slate-500"
+                >
+                  No flag after all — remove it
+                </button>
+              )}
 
               {/* ── Resulting spot ── */}
               {penalty && penaltyProjection && (
