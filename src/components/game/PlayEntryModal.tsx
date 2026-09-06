@@ -89,6 +89,11 @@ interface Props {
    *  of state seeds from the play (see playEntrySeed.ts), so an edit opens
    *  showing what was entered. */
   editing?: PlayRecord | null;
+  /** Resume an unsaved draft without marking it as a recorded-play edit. */
+  initialDraft?: PlayRecord;
+  startDetailed?: boolean;
+  submitLabel?: string;
+  onReturnToSimple?: (data: PlaySubmitData) => void;
   /** Remove the play being edited. Absent when entering. */
   onDelete?: () => void;
 }
@@ -618,22 +623,25 @@ export default function PlayEntryModal({
   progColor = "#dc2626", oppColor = "#6b7280", progAbbr, oppAbbr,
   progLogoUrl, oppLogoUrl, ourEndZoneSide = "left", offenseDirection = "right",
   trackFormations = true, trackTacklers = true,
-  onSubmit, onClose, onAddOpponentPlayer, editing = null, onDelete,
+  onSubmit, onClose, onAddOpponentPlayer, editing = null, onDelete, initialDraft, startDetailed = false, onReturnToSimple, submitLabel,
 }: Props) {
   /* The recorded play, read back into the state that produced it. Built once:
      every state initialiser below reads it during the first render, and it must
      not change identity between them. See playEntrySeed.ts. */
-  const edit = useMemo(() => (editing ? buildEditSeed(editing) : null), [editing]);
-  const isEditing = edit != null;
-  const [useDetailedEntry, setUseDetailedEntry] = useState(false);
+  const edit = useMemo(() => {
+    const source = editing ?? initialDraft;
+    return source ? buildEditSeed(source) : null;
+  }, [editing, initialDraft]);
+  const isEditing = editing != null;
+  const [useDetailedEntry, setUseDetailedEntry] = useState(startDetailed);
   /* The spot-seeding effects below all fire on mount, and on an edit they would
      immediately overwrite the spots just read off the play with the defaults a
      fresh entry starts from. They have to keep running afterwards - moving the
      catch spot should still drag the return with it - so each gets a one-shot
      pass rather than being disabled outright. */
-  const skipFirstReturnSeed = useRef(isEditing);
-  const skipFirstKickReturnSeed = useRef(isEditing);
-  const skipFirstIntReturnSeed = useRef(isEditing);
+  const skipFirstReturnSeed = useRef(edit != null);
+  const skipFirstKickReturnSeed = useRef(edit != null);
+  const skipFirstIntReturnSeed = useRef(edit != null);
   /**
    * The play type can change mid-flow.
    *
@@ -859,7 +867,7 @@ export default function PlayEntryModal({
    * a tackle nobody identified — between them film review can read the play.
    * This only says the blank was on purpose.
    */
-  const [noTackle, setNoTackle] = useState(editing?.playData?.no_tackle === true);
+  const [noTackle, setNoTackle] = useState((editing ?? initialDraft)?.playData?.no_tackle === true);
   /* On a sack the defender who got there IS the tackler — the engine already
      reads sackers first and falls back to tacklers. Tagging the role by play
      type keeps one step instead of two and lets a split sack hold both names. */
@@ -1645,7 +1653,7 @@ export default function PlayEntryModal({
     goNext();
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = (receive = onSubmit, draftOnly = false) => {
     const allTagged = [...tagged, ...tacklers];
 
     /* A bad snap is charged to TEAM, not to the quarterback who was waiting
@@ -1662,7 +1670,7 @@ export default function PlayEntryModal({
     // vanishing. teamDefaultRoles is the same list the steps and the review
     // showed on the way here, so nothing appears at submit that was not on
     // screen first.
-    for (const role of teamDefaultRoles) {
+    for (const role of (draftOnly ? [] : teamDefaultRoles)) {
       allTagged.push({
         id: OPP_TEAM_PLAYER.id,
         player_id: OPP_TEAM_PLAYER.id,
@@ -1722,7 +1730,7 @@ export default function PlayEntryModal({
       returnYards: interceptionReturnYards,
     } : undefined);
 
-    return onSubmit({
+    return receive({
       playType,
       tagged: allTagged,
       yards: playYards,
@@ -2510,8 +2518,9 @@ export default function PlayEntryModal({
               Step {stepIdx + 1} of {steps.length}
             </div>
           </div>
-          {!isEditing && FAST_PLAY_IDS.has(playType.id) && (
-            <button onClick={() => { setUseDetailedEntry(false); setSkipWarning(null); }}
+          {!isEditing && (onReturnToSimple || FAST_PLAY_IDS.has(playType.id)) && (
+            <button onClick={() => { if (onReturnToSimple) { void handleSubmit(onReturnToSimple, true); return; }
+                  setUseDetailedEntry(false); setSkipWarning(null); }}
               className="btn-ghost min-h-11 px-3 text-sm font-bold border border-surface-border rounded-lg shrink-0">
               Simple view
             </button>
@@ -4344,8 +4353,8 @@ export default function PlayEntryModal({
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
-              <button onClick={handleSubmit} disabled={!canGoNext()} className="btn-primary flex-1 py-3 text-sm font-black disabled:opacity-50">
-                {isEditing ? "Save Changes" : "Record Play"}
+              <button onClick={() => handleSubmit()} disabled={!canGoNext()} className="btn-primary flex-1 py-3 text-sm font-black disabled:opacity-50">
+                {submitLabel ?? (isEditing ? "Save Changes" : "Record Play")}
               </button>
             </>
           )}

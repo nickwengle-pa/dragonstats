@@ -82,3 +82,47 @@
 @media (min-width: 900px) and (orientation: landscape) {
  .ui-notice { top:8px;bottom:auto; }
 }
+
+/* Phone keeps the live landing structure, with one panel visible at a time. */
+.ui-mobile-panels { display: none; }
+@media (max-width: 640px) {
+  .ui-preview { padding: 8px 10px 100px; }
+  .ui-top { margin-bottom: 8px; gap: 6px; }
+  .ui-top strong { font-size: 14px; }
+  .ui-top p { font-size: 10px; margin: 2px 0; }
+  .ui-top > .ui-chip { padding: 6px 9px; font-size: 11px; }
+  .ui-scoreboard > div { padding: 12px; }
+  .ui-field { margin-top: 8px; }
+  .ui-field-caption { flex-direction: row; justify-content: flex-end; margin: 0; }
+  .ui-field-caption > span, .ui-stats { display: none; }
+  .ui-mobile-panels { display: flex; gap: 6px; margin: 4px 0 8px; }
+  .ui-mobile-panels button { flex: 1; min-height: 44px; background: #161e28; color: #94a3b8; border: 1px solid #29323d; border-radius: 7px; font-weight: 800; font-size: 12px; }
+  .ui-mobile-panels button[aria-pressed="true"] { color: #f87171; background: #34151c; border-color: #7f2833; }
+  .ui-show-play .ui-log, .ui-show-plays .ui-entry { display: none; }
+  .ui-entry-title { padding: 8px 10px; }
+  .ui-entry-title h1 { font-size: 16px; }
+  .ui-entry-title > span { display: block; white-space: nowrap; font-size: 11px; }
+  .ui-eyebrow { font-size: 9px; letter-spacing: .07em; }
+  .ui-tabs { padding: 0 10px 8px; }
+  .ui-tabs small { display: none; }
+  .ui-body { padding: 10px; gap: 10px; }
+  .ui-chip { font-size: 12px; padding: 8px 9px; }
+  .ui-chips { gap: 5px; }
+  .ui-runner-group h2, .ui-yard-group h2 { margin-bottom: 5px; }
+  .ui-gain-title { flex-direction: row; align-items: center; gap: 6px; margin-top: 0; }
+  .ui-gain-title strong { font-size: 11px; }
+  .ui-gain { gap: 5px; }
+  .ui-gain input { width: 52px; padding: 5px; }
+  .ui-gain label { gap: 4px; }
+  .ui-tackles { padding: 9px; margin: 0; }
+  .ui-tackles h2 span { display: inline; font-size: 8px; margin-left: 4px; }
+  .ui-tackles p { font-size: 10px; }
+  .ui-tackles .ui-chips { margin-top: 6px; }
+  .ui-entry-footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 15; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; flex-wrap: nowrap; box-shadow: 0 -6px 22px #0008; }
+  .ui-entry-footer > div { flex: 1; min-width: 0; }
+  .ui-entry-footer p { font-size: 10px; margin: 0; }
+  .ui-entry-footer .ui-link { padding: 4px 0; }
+  .ui-entry-footer .ui-save { width: auto; min-height: 48px; padding: 10px 17px; }
+  .ui-scope { margin: 0; font-size: 10px; padding: 8px 10px; }
+  .ui-notice { top: 8px; bottom: auto; }
+}
