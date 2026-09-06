@@ -270,8 +270,8 @@ export default function FieldVisualizer({
                 textShadow: "0 1px 2px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.7)",
               }
             : { left: `${left}%`, textShadow: "0 1px 2px rgba(0,0,0,0.5)" };
-          const numberClass = `absolute text-[11px] font-display font-black -translate-x-1/2 select-none ${
-            isFifty ? "" : "text-white/55"
+          const numberClass = `absolute ${tilted ? "text-[16px] sm:text-[22px] lg:text-[28px] leading-none" : "text-[11px]"} font-display font-black -translate-x-1/2 select-none ${
+            isFifty ? "" : tilted ? "text-white/90" : "text-white/55"
           }`;
 
           return (
