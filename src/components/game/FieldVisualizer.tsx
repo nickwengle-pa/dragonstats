@@ -291,17 +291,25 @@ export default function FieldVisualizer({
             className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-20"
             style={{
               left: `${toWidgetPercent(firstDownPosition)}%`,
-              boxShadow: "0 0 7px rgba(245, 158, 11, 0.5)",
+              width: tilted ? 4 : undefined,
+              background: tilted ? "linear-gradient(90deg, #b77908, #fff6a3 45%, #facc15 70%, #a16207)" : undefined,
+              boxShadow: tilted
+                ? "2px 2px 0 rgba(0,0,0,0.7), 0 0 0 1px rgba(50,30,0,0.8), 0 0 10px rgba(250,204,21,0.65)"
+                : "0 0 7px rgba(245, 158, 11, 0.5)",
             }}
           />
         )}
 
         <div
-          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full border-2 border-white/90 flex items-center justify-center text-[10px] font-display font-extrabold text-white"
+          className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 ${tilted ? "w-9 h-9 sm:w-11 sm:h-11 text-[13px] sm:text-[16px]" : "w-7 h-7 text-[10px]"} rounded-full border-2 border-white/90 flex items-center justify-center font-display font-extrabold text-white`}
           style={{
             left: `${toWidgetPercent(ballPosition)}%`,
             backgroundColor: possession === "us" ? primaryColor : oppColor,
-            boxShadow: `0 0 16px ${possession === "us" ? `${primaryColor}88` : `${oppColor}88`}, 0 0 5px rgba(255,255,255,0.25)`,
+            backgroundImage: tilted ? "radial-gradient(ellipse at 30% 15%, rgba(255,255,255,0.6), transparent 55%), linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.4))" : undefined,
+            textShadow: tilted ? "0 2px 2px rgba(0,0,0,0.8)" : undefined,
+            boxShadow: tilted
+              ? "inset 0 2px 2px rgba(255,255,255,0.6), inset 0 -3px 4px rgba(0,0,0,0.35), 0 4px 0 #4b1520, 0 6px 0 rgba(0,0,0,0.6), 0 10px 9px rgba(0,0,0,0.65), 0 0 0 4px rgba(255,255,255,0.16)"
+              : `0 0 16px ${possession === "us" ? `${primaryColor}88` : `${oppColor}88`}, 0 0 5px rgba(255,255,255,0.25)`,
           }}
         >
           {ballOn > 50 ? 100 - ballOn : ballOn}
