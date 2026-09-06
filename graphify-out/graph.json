@@ -8232,7 +8232,7 @@
       "file_type": "code",
       "norm_label": "endzonelabel()",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L43"
+      "source_location": "L45"
     },
     {
       "id": "src_components_game_fieldvisualizer_endzonelogo",
@@ -8244,7 +8244,7 @@
       "file_type": "code",
       "norm_label": "endzonelogo()",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L56"
+      "source_location": "L58"
     },
     {
       "id": "src_components_game_fieldvisualizer_fieldvisualizer",
@@ -8256,7 +8256,7 @@
       "file_type": "code",
       "norm_label": "fieldvisualizer()",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L69"
+      "source_location": "L71"
     },
     {
       "id": "src_components_game_fieldvisualizer_fromwidgetpercent",
@@ -8268,7 +8268,7 @@
       "file_type": "code",
       "norm_label": "fromwidgetpercent()",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L28"
+      "source_location": "L30"
     },
     {
       "id": "src_components_game_fieldvisualizer_towidgetpercent",
@@ -8280,7 +8280,7 @@
       "file_type": "code",
       "norm_label": "towidgetpercent()",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L38"
+      "source_location": "L40"
     },
     {
       "id": "src_utils_teamcolor_hsltohex",
@@ -8676,7 +8676,7 @@
       "file_type": "code",
       "norm_label": "save()",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L42"
+      "source_location": "L43"
     },
     {
       "id": "src_screens_uipreview_uipreview_undo",
@@ -8688,7 +8688,7 @@
       "file_type": "code",
       "norm_label": "undo()",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L53"
+      "source_location": "L54"
     },
     {
       "id": "src_components_game_types_makependingid",
@@ -14324,7 +14324,7 @@
       "file_type": "code",
       "norm_label": "five_yard_lines",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L36"
+      "source_location": "L38"
     },
     {
       "id": "src_components_game_fieldvisualizer_yard_numbers",
@@ -14335,7 +14335,7 @@
       "file_type": "code",
       "norm_label": "yard_numbers",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L33"
+      "source_location": "L35"
     },
     {
       "id": "src_utils_teamcolor",
@@ -15786,6 +15786,18 @@
     },
     {
       "source": "src_components_game_fieldvisualizer_fieldvisualizer",
+      "target": "src_utils_teamcolor_readableaccent",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L101",
+      "weight": 1.0
+    },
+    {
+      "source": "src_components_game_fieldvisualizer_fieldvisualizer",
       "target": "src_components_game_fieldvisualizer_endzonelabel",
       "relation": "calls",
       "_origin": "ast",
@@ -15793,7 +15805,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L110",
+      "source_location": "L113",
       "weight": 1.0
     },
     {
@@ -15805,7 +15817,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L138",
+      "source_location": "L143",
       "weight": 1.0
     },
     {
@@ -15817,19 +15829,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L323",
-      "weight": 1.0
-    },
-    {
-      "source": "src_components_game_fieldvisualizer_fieldvisualizer",
-      "target": "src_utils_teamcolor_readableaccent",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L98",
+      "source_location": "L334",
       "weight": 1.0
     },
     {
@@ -18973,7 +18973,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L33",
+      "source_location": "L34",
       "weight": 1.0
     },
     {
@@ -18985,7 +18985,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L57",
+      "source_location": "L58",
       "weight": 1.0
     },
     {
@@ -18997,7 +18997,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L45",
+      "source_location": "L46",
       "weight": 1.0
     },
     {
@@ -19009,7 +19009,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L48",
+      "source_location": "L49",
       "weight": 1.0
     },
     {
@@ -19021,7 +19021,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L50",
+      "source_location": "L51",
       "weight": 1.0
     },
     {
@@ -37193,7 +37193,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L28",
+      "source_location": "L30",
       "weight": 1.0
     },
     {
@@ -37204,7 +37204,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L33",
+      "source_location": "L35",
       "weight": 1.0
     },
     {
@@ -37215,7 +37215,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L36",
+      "source_location": "L38",
       "weight": 1.0
     },
     {
@@ -37226,7 +37226,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L38",
+      "source_location": "L40",
       "weight": 1.0
     },
     {
@@ -37237,7 +37237,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L43",
+      "source_location": "L45",
       "weight": 1.0
     },
     {
@@ -37259,7 +37259,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L56",
+      "source_location": "L58",
       "weight": 1.0
     },
     {
@@ -37270,7 +37270,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L69",
+      "source_location": "L71",
       "weight": 1.0
     },
     {
@@ -40977,7 +40977,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L42",
+      "source_location": "L43",
       "weight": 1.0
     },
     {
@@ -40988,7 +40988,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L53",
+      "source_location": "L54",
       "weight": 1.0
     },
     {
@@ -48668,5 +48668,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "4968f3e7c93df682987cb2c80f1b002d1d1e04c9"
+  "built_at_commit": "be59d7c1680846d7cff2b1421519279ad98d7fd9"
 }

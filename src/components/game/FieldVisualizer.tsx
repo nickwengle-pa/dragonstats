@@ -22,6 +22,8 @@ interface Props {
   onPickSpot?: (displayPosition: number) => void;
   /** Shorter field, for use inside the play-entry sheet. */
   compact?: boolean;
+  /** Optional perspective for the redesign preview; existing screens stay flat. */
+  tilted?: boolean;
 }
 
 /** Inverse of toWidgetPercent — widget-relative click → 0–100 field position. */
@@ -83,6 +85,7 @@ export default function FieldVisualizer({
   onFlipDirection,
   onPickSpot,
   compact = false,
+  tilted = false,
 }: Props) {
   const theirEndZoneSide = ourEndZoneSide === "left" ? "right" : "left";
   /* Whoever has the ball owns midfield, which makes the logo a possession cue
@@ -113,7 +116,7 @@ export default function FieldVisualizer({
   return (
     <div
       className="rounded-2xl border border-surface-border p-2 overflow-hidden"
-      style={{ background: "linear-gradient(180deg, #111820, #0d1117)" }}
+      style={{ background: "linear-gradient(180deg, #111820, #0d1117)", padding: tilted ? "12px 20px 8px" : undefined }}
     >
       <div
         // Short field below lg: the pinned block has to give the play buttons
@@ -122,6 +125,8 @@ export default function FieldVisualizer({
         style={{
           background: "linear-gradient(180deg, rgba(34, 94, 45, 0.98), rgba(19, 78, 36, 1))",
           boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
+          transform: tilted ? "perspective(480px) rotateX(24deg)" : undefined,
+          transformOrigin: "50% 100%",
         }}
       >
         <div className="absolute inset-x-0 top-0 h-px bg-white/65 z-[4]" />
@@ -307,6 +312,7 @@ export default function FieldVisualizer({
             the playing surface — the end zones aren't valid spots. */}
         {onPickSpot && (
           <div
+            data-testid="field-spot-surface"
             className="absolute top-0 bottom-0 z-[25] cursor-crosshair"
             style={{
               left: `${PLAYING_FIELD_START_PCT}%`,
@@ -315,7 +321,12 @@ export default function FieldVisualizer({
             onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
               if (rect.width === 0) return;
-              const localPct = ((event.clientX - rect.left) / rect.width) * 100;
+              // Native offsetX is in the target's untransformed local space.
+              // A bounding-box ratio is wrong for a trapezoid: its width varies
+              // with height. This empty overlay has no child event targets.
+              const localPct = tilted
+                ? (event.nativeEvent.offsetX / event.currentTarget.clientWidth) * 100
+                : ((event.clientX - rect.left) / rect.width) * 100;
               // localPct is already relative to the playing surface, so map it
               // back through the widget frame fromWidgetPercent expects.
               const widgetPct =
