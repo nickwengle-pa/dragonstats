@@ -8676,7 +8676,7 @@
       "file_type": "code",
       "norm_label": "save()",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L43"
+      "source_location": "L44"
     },
     {
       "id": "src_screens_uipreview_uipreview_undo",
@@ -8688,7 +8688,7 @@
       "file_type": "code",
       "norm_label": "undo()",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L54"
+      "source_location": "L56"
     },
     {
       "id": "src_components_game_types_makependingid",
@@ -18973,7 +18973,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L34",
+      "source_location": "L35",
       "weight": 1.0
     },
     {
@@ -18985,7 +18985,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L58",
+      "source_location": "L60",
       "weight": 1.0
     },
     {
@@ -18997,7 +18997,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L46",
+      "source_location": "L47",
       "weight": 1.0
     },
     {
@@ -19009,7 +19009,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L49",
+      "source_location": "L51",
       "weight": 1.0
     },
     {
@@ -19021,7 +19021,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L51",
+      "source_location": "L53",
       "weight": 1.0
     },
     {
@@ -40977,7 +40977,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L43",
+      "source_location": "L44",
       "weight": 1.0
     },
     {
@@ -40988,7 +40988,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "src/screens/UiPreview.tsx",
-      "source_location": "L54",
+      "source_location": "L56",
       "weight": 1.0
     },
     {
@@ -48668,5 +48668,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "a3e980630166c1121abbb9476f79a8c943a8be09"
+  "built_at_commit": "a9173a0d4091f2ff881ba918d169b7277c7f3ee6"
 }

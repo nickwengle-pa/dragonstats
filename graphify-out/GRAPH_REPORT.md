@@ -1,7 +1,7 @@
 # Graph Report - dragonstats-ui-redesign  (2026-09-05)
 
 ## Corpus Check
-- 130 files · ~242,258 words
+- 130 files · ~242,318 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a3e98063`
+- Built from commit: `a9173a0d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
