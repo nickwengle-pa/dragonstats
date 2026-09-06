@@ -68,62 +68,6 @@ function fastPathIds(down: number | undefined, ballOn: number | undefined): stri
   return ["rush", "pass_comp", "pass_inc", "sack"];
 }
 
-/**
- * Play-button palette: turf, chalk, gold, steel, ember.
- *
- * The old one was Tailwind's defaults - emerald #34d399, blue #60a5fa, purple
- * #c084fc - which is mint, sky and lavender, and reads as generic because it
- * is the palette every framework ships and every dashboard uses. Purple in
- * particular has nothing to do with football.
- *
- * These are drawn from what you are actually looking at on a Friday night:
- * turf, the chalk of the lines, the gold of a scoreboard bulb, the grey steel
- * of the uprights, the rust of an alarm. Hex rather than Tailwind families,
- * because escaping the default families is the whole point.
- *
- * Each entry is {fill, ink, edge}. Fill stays near-black so the buttons remain
- * dark under stadium light; the ink carries the identity.
- */
-interface PlayHue { fill: string; ink: string; edge: string; }
-
-const PLAY_HUES: Record<string, PlayHue> = {
-  // Turf. Deeper and greyer than mint - a real field is not a highlighter.
-  emerald: { fill: "#131a12", ink: "#8fb96a", edge: "#2f4426" },
-  // Chalk. The lines on the grass; reads as bright without belonging to a hue.
-  blue:    { fill: "#16171a", ink: "#d8d3c6", edge: "#3d3f45" },
-  // Ember, for what went wrong.
-  red:     { fill: "#1c1210", ink: "#e0714b", edge: "#4d2519" },
-  // Scoreboard gold.
-  amber:   { fill: "#1b1710", ink: "#e0aa3c", edge: "#4a3a18" },
-  // Steel of the uprights. This replaces purple outright.
-  purple:  { fill: "#14171a", ink: "#93a7b8", edge: "#33404b" },
-  // Rust, a shade off the ember so a turnover is not mistaken for an incompletion.
-  orange:  { fill: "#1d1510", ink: "#d4894a", edge: "#4f3320" },
-  // Sand.
-  yellow:  { fill: "#1a1810", ink: "#c4ad72", edge: "#453d24" },
-  neutral: { fill: "#15161a", ink: "#8b8f96", edge: "#2e3138" },
-};
-
-function hueStyle(color: string): React.CSSProperties {
-  const h = PLAY_HUES[color] ?? PLAY_HUES.neutral;
-  return { backgroundColor: h.fill, color: h.ink, borderColor: h.edge };
-}
-
-const CATEGORY_LABELS: Record<PlayCategory, string> = {
-  run: "Run",
-  pass: "Pass",
-  special: "ST",
-  penalty: "Pen",
-};
-
-/** Rail color per group, matched to the play-button color family inside it. */
-const CATEGORY_ACCENT: Record<PlayCategory, string> = {
-  run: PLAY_HUES.emerald.ink,   // turf
-  pass: PLAY_HUES.blue.ink,     // chalk
-  special: PLAY_HUES.amber.ink, // scoreboard gold
-  penalty: PLAY_HUES.yellow.ink, // sand — the flag on the grass
-};
-
 /** Column count per fast-path size. Literal class strings — Tailwind cannot
  *  see an interpolated `grid-cols-${n}`. Four wraps to 2x2 rather than
  *  squeezing four tall buttons across. */
@@ -218,7 +162,7 @@ export default function QuickActions({
           the phase filter so context and filter read as one block. Sticky so
           both stay reachable while the play groups scroll under them. */}
       <div
-        className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-[4px] border-b"
+        className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-xl border-b"
         style={{
           background: `linear-gradient(180deg, ${offenseColor}26, #111820)`,
           borderColor: `${offenseAccent}59`,
@@ -271,7 +215,7 @@ export default function QuickActions({
               key={tab.value}
               aria-pressed={phase === tab.value}
               onClick={() => { setPhase(tab.value); setManualOverride(true); }}
-              className={`flex-1 py-2 rounded-[3px] text-[11px] font-display font-black uppercase tracking-wider transition-colors border-2 ${
+              className={`flex-1 min-h-11 py-2 rounded-lg text-sm font-bold transition-colors border ${
                 phase === tab.value
                   ? "text-white"
                   : "bg-surface-bg/60 text-surface-muted border-transparent active:bg-surface-hover"
@@ -288,8 +232,8 @@ export default function QuickActions({
 
       {spotlight && <div className="space-y-1.5">
         <div className="text-xs font-bold text-slate-300">{specialPrompt === "kickoff" ? "Kickoff due" : "Fourth down · Special teams"}</div>
-        <button onClick={() => onSelect(spotlight)} className="w-full min-h-24 rounded-lg border-2 text-2xl font-display font-black uppercase tracking-wide active:scale-[0.99]"
-          style={hueStyle(spotlight.color)}>{spotlight.label}</button>
+        <button onClick={() => onSelect(spotlight)} className="w-full min-h-24 rounded-lg border border-dragon-primary bg-dragon-primary/20 text-white text-2xl font-bold active:bg-dragon-primary/30"
+          >{spotlight.label}</button>
       </div>}
 
       {/* Common plays within the selected category only. */}
@@ -299,11 +243,7 @@ export default function QuickActions({
             <button
               key={`fast-${playType.id}`}
               onClick={() => onSelect(playType)}
-              /* rounded-[3px], not rounded-xl. A 12px radius on a small dark
-                 button is what makes it read as a phone-app pill; near-square
-                 corners read as instrumentation, which is what this is. */
-              className="py-5 px-1 rounded-[3px] text-sm font-display font-black border-2 transition-all active:scale-95 cursor-pointer uppercase tracking-wide ring-1 ring-inset ring-white/5"
-              style={hueStyle(playType.color)}
+              className="min-h-16 px-3 py-4 rounded-lg text-sm font-bold border border-surface-border bg-surface-bg text-slate-200 transition-colors hover:bg-surface-hover active:bg-surface-hover"
             >
               {playType.label}
             </button>
@@ -311,20 +251,13 @@ export default function QuickActions({
         </div>
       )}
 
-      {/* No group header here: the active tab already names the group, and a
-          heading that repeats the control above it is the kind of thing that
-          made this screen feel busy in the first place. The rail keeps the
-          group's color. */}
-      <div className="border-l-[3px] pl-2.5" style={{ borderColor: CATEGORY_ACCENT[phase] }}>
-        <div className="grid grid-cols-4 gap-1.5">
+      <div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
           {otherPlays.map((playType) => (
             <button
               key={playType.id}
               onClick={() => onSelect(playType)}
-              // A quarter of a 375px row is ~62px; "ENCROACHMENT" needs
-              // the smaller type and tighter padding to sit inside it.
-              className="px-0.5 lg:px-1 py-2.5 rounded-[3px] text-[10px] lg:text-[11px] font-display font-bold border transition-all active:scale-95 cursor-pointer uppercase tracking-wide"
-              style={hueStyle(playType.color)}
+              className="min-h-11 px-3 py-2 rounded-lg text-sm font-bold border border-surface-border bg-surface-bg text-slate-200 transition-colors hover:bg-surface-hover active:bg-surface-hover"
             >
               {playType.label}
             </button>

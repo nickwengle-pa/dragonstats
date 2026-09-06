@@ -1,28 +1,28 @@
 # Graph Report - dragonstats  (2026-09-05)
 
 ## Corpus Check
-- 130 files · ~242,911 words
+- 130 files · ~242,426 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1285 nodes · 2886 edges · 70 communities (51 shown, 11 thin omitted)
+- 1280 nodes · 2880 edges · 76 communities (58 shown, 10 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 14 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4a20bfac`
+- Built from commit: `65b3698c`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- statsService.ts
-- gameService.ts
+- playTransformer.ts
+- liveGameSession.ts
 - Database Schema
-- offlineDb.ts
+- gameService.ts
 - design_system.py
 - PostGameReview.tsx
 - package.json
-- ScheduleScreen.tsx
+- dangerZone.ts
 - PlayLog.tsx
 - GameScreen.tsx
 - gameFlow.ts
@@ -46,14 +46,15 @@
 - FlowPreview.tsx
 - advanceSituationAfterPlay
 - penaltyEnforcement.ts
-- QuickActions.tsx
+- statsService.ts
 - football-stats-engine/package.json
-- mergeQueuedPlays.test.ts
-- DashboardScreen.tsx
+- UiPreview.tsx
+- RosterScreen.tsx
 - 20260901000000_program_membership_rls.sql
 - SeasonStatsScreen.tsx
-- UiPreview.tsx
+- QuickActions.tsx
 - playEntrySeed.ts
+- BoxScoreScreen.tsx
 - FastPlayEntry.tsx
 - Sending auth email through Resend
 - Dragon Stats
@@ -63,9 +64,14 @@
 - Auth email templates
 - vite-env.d.ts
 - AGENTS.md
-- liveGameSession.ts
+- LiveStatsPanel.tsx
+- liveVsPostgame.spec.ts
+- driveResults.ts
+- ScheduleScreen.tsx
 - supabase.ts
-- useProgramContext
+- DashboardScreen.tsx
+- scoringLedger.ts
+- csvExport.ts
 - 20260901010000_program_invite_codes.sql
 - play_charting
 - play_charting
@@ -91,16 +97,16 @@
 10. `advanceSituationAfterPlay()` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Props` --references--> `PlayRecord`  [EXTRACTED]
-  src/components/game/PlayLog.tsx → src/components/game/types.ts
-- `Props` --references--> `PlayTypeDef`  [EXTRACTED]
-  src/components/game/QuickActions.tsx → src/components/game/types.ts
-- `Props` --references--> `GameState`  [EXTRACTED]
-  src/components/game/Scoreboard.tsx → src/components/game/types.ts
+- `SyncCoordinator()` --calls--> `setupAutoDrain()`  [EXTRACTED]
+  src/App.tsx → src/services/syncWorker.ts
 - `PostGameReview()` --indirect_call--> `isRosterTag()`  [INFERRED]
   src/screens/PostGameReview.tsx → src/components/game/types.ts
-- `AdvanceablePlay` --references--> `PenaltySide`  [EXTRACTED]
-  src/services/gameFlow.ts → src/components/game/types.ts
+- `rebuild()` --calls--> `rebuildPlaySituations()`  [EXTRACTED]
+  src/services/rebuildChain.spec.ts → src/services/gameFlow.ts
+- `livesummary()` --calls--> `replayLiveGame()`  [EXTRACTED]
+  src/services/liveVsPostgame.spec.ts → src/services/liveGameSession.ts
+- `score()` --calls--> `replayLiveGame()`  [EXTRACTED]
+  src/services/scoringSide.spec.ts → src/services/liveGameSession.ts
 
 ## Import Cycles
 - None detected.
@@ -109,55 +115,55 @@
 - **Database Entities** — database_schema, programs_table, seasons_table, players_table, season_rosters_table, opponents_table, games_table, plays_table, play_players_table, game_stats_cache_table [EXTRACTED 1.00]
 - **Technology Stack** — dragon_stats_app, react_19, typescript, vite, tailwind_css, supabase, football_stats_engine, pwa [EXTRACTED 1.00]
 
-## Communities (70 total, 11 thin omitted)
+## Communities (76 total, 10 thin omitted)
 
-### Community 0 - "statsService.ts"
-Cohesion: 0.05
-Nodes (60): getPenaltyEngineCode(), grantsAutoFirstDown(), TEAM_PLAYER_ID, BAD_SNAP, summarise(), AFTERMATH, classify(), DriveResult (+52 more)
-
-### Community 1 - "gameService.ts"
+### Community 0 - "playTransformer.ts"
 Cohesion: 0.11
-Nodes (28): RFC-4122, asRecord(), calcTimeOfPossession(), clockToSecs(), CurrentGameStateUpdate, deletePlay(), fmtSecs(), genUuid() (+20 more)
+Nodes (28): getPenaltyEngineCode(), TEAM_PLAYER_ID, BAD_SNAP, summarise(), postgameSummary(), allTagsForRole(), buildContext(), buildFumble() (+20 more)
+
+### Community 1 - "liveGameSession.ts"
+Cohesion: 0.17
+Nodes (23): grantsAutoFirstDown(), applyScoreDelta(), buildFumble(), buildPenalties(), buildPlayContext(), createEngine(), firstTaggedPlayer(), genericPlayerId() (+15 more)
 
 ### Community 2 - "Database Schema"
 Cohesion: 0.10
 Nodes (23): Database Schema, Dragon Stats, football-stats-engine, game_stats_cache table, games table, High School Football Play-by-Play Tracking App, NFHS Rules, opponents table (+15 more)
 
-### Community 3 - "offlineDb.ts"
-Cohesion: 0.08
-Nodes (66): SyncCoordinator(), Props, SyncBadge(), PlayInsert, PlayRow, PlayWithPlayers, cachedRead, cachePlay() (+58 more)
+### Community 3 - "gameService.ts"
+Cohesion: 0.05
+Nodes (87): RFC-4122, Props, SyncBadge(), calcTimeOfPossession(), clockToSeconds(), clockToSecs(), CurrentGameStateUpdate, fmtSecs() (+79 more)
 
 ### Community 4 - "design_system.py"
 Cohesion: 0.05
 Nodes (45): BM25, detect_domain(), _load_csv(), Lowercase, split, remove punctuation, filter short words, Build BM25 index from documents, Score all documents against query, Load CSV and return list of dicts, Core search function using BM25 (+37 more)
 
 ### Community 5 - "PostGameReview.tsx"
-Cohesion: 0.06
-Nodes (49): ClockInput(), formatClockValue(), parseClockDigits(), Props, TimeoutEdit, TimeoutEditModal(), findPlayTypeDef(), yardLabel() (+41 more)
+Cohesion: 0.07
+Nodes (46): ClockInput(), formatClockValue(), parseClockDigits(), Props, TimeoutEdit, TimeoutEditModal(), findPlayTypeDef(), yardLabel() (+38 more)
 
 ### Community 6 - "package.json"
 Cohesion: 0.05
 Nodes (41): dependencies, football-stats-engine, idb, lucide-react, react, react-dom, react-router-dom, @supabase/supabase-js (+33 more)
 
-### Community 7 - "ScheduleScreen.tsx"
-Cohesion: 0.10
-Nodes (38): ScheduleScreen, DangerZone(), ImportModal(), formatKickoff(), GameRow, OpponentRosterSection(), ScheduleScreen(), Site (+30 more)
+### Community 7 - "dangerZone.ts"
+Cohesion: 0.33
+Nodes (15): DangerZone(), countSeasonData(), deleteGame(), deleteSeason(), deleteUnrosteredPlayers(), fail(), getSeasonGameIds(), ok() (+7 more)
 
 ### Community 8 - "PlayLog.tsx"
-Cohesion: 0.19
-Nodes (12): FILTERS, KICKING_TYPES, LogFilter, ourTacklers(), PLAY_ICON_COLORS, PLAY_ICONS, PlayLog(), Props (+4 more)
+Cohesion: 0.17
+Nodes (15): FILTERS, KICKING_TYPES, LogFilter, ourTacklers(), PLAY_ICON_COLORS, PLAY_ICONS, PlayLog(), Props (+7 more)
 
 ### Community 9 - "GameScreen.tsx"
-Cohesion: 0.11
-Nodes (33): isRosterTag(), makePendingId(), makeTeamTag(), normalizeOppTagId(), pendingDisplayName(), pendingJerseyFromId(), readKeepAwake(), useWakeLock() (+25 more)
+Cohesion: 0.09
+Nodes (41): isRosterTag(), makePendingId(), makeTeamTag(), normalizeOppTagId(), pendingDisplayName(), pendingJerseyFromId(), readKeepAwake(), useWakeLock() (+33 more)
 
 ### Community 10 - "gameFlow.ts"
-Cohesion: 0.20
-Nodes (18): AdvanceablePlay, asRecord(), buildPregameGameUpdate(), DEFAULT_PREGAME, GameRulesCarrier, getChartingPrefs(), getOffenseDriveDirection(), getOurDriveDirectionForQuarter() (+10 more)
+Cohesion: 0.17
+Nodes (22): asRecord(), buildPregameGameUpdate(), clampBallOn(), DEFAULT_PREGAME, flipFieldPosition(), GameRulesCarrier, getChartingPrefs(), getOffenseDriveDirection() (+14 more)
 
 ### Community 11 - "PlayerScreen.tsx"
-Cohesion: 0.06
-Nodes (42): RFC-4180, football-stats-engine, DrivesList(), formatFieldPosition(), Props, RESULT_LABEL, DefenseTab(), LiveStatsPanel() (+34 more)
+Cohesion: 0.19
+Nodes (18): CareerRow, careerRowFromLines(), CareerSection(), Column, DefenseSection(), fmt(), fmtDate(), GameLog() (+10 more)
 
 ### Community 12 - "ui-ux-pro-max"
 Cohesion: 0.07
@@ -172,36 +178,36 @@ Cohesion: 0.15
 Nodes (15): SettingsScreen, Props, SettingsScreen(), buildSeasonName(), Coach, coachService, CreateSeasonInput, formatLevel() (+7 more)
 
 ### Community 15 - "GameSummaryScreen.tsx"
-Cohesion: 0.17
-Nodes (11): lucide-react, GameSummaryScreen, GameHomeLink(), computeFormationStats(), fmt(), FormationBreakdown, GameInfo, GameSummaryScreen() (+3 more)
+Cohesion: 0.11
+Nodes (15): football-stats-engine, GameSummaryScreen, DrivesList(), formatFieldPosition(), Props, RESULT_LABEL, Props, SIZES (+7 more)
 
 ### Community 16 - "PlayEntryModal.tsx"
-Cohesion: 0.10
-Nodes (23): FAST_PLAY_IDS, toggleFastTackler(), DIGITS, Keypad(), Props, defaultBlockedKickType(), DEFENSIVE_ROLES, FieldTeam (+15 more)
+Cohesion: 0.09
+Nodes (27): FAST_PLAY_IDS, toggleFastTackler(), DIGITS, Keypad(), Props, defaultBlockedKickType(), DEFENSIVE_ROLES, FieldTeam (+19 more)
 
 ### Community 17 - "pendingPlayerService.ts"
-Cohesion: 0.24
-Nodes (15): MergeCandidate, Mode, PendingCard(), playerLabel(), Props, discardPending(), loadSeasonPendingPlays(), mergePendingIntoPlayer() (+7 more)
+Cohesion: 0.22
+Nodes (16): MergeCandidate, Mode, PendingCard(), PendingPlayersSheet(), playerLabel(), Props, discardPending(), loadSeasonPendingPlays() (+8 more)
 
 ### Community 18 - "App.tsx"
 Cohesion: 0.14
-Nodes (15): react, react-router-dom, @supabase/supabase-js, App(), GameScreen, PlayerScreen, PostGameReview, ProtectedRoute() (+7 more)
+Nodes (15): react, react-router-dom, App(), GameScreen, PlayerScreen, PostGameReview, ProtectedRoute(), ResetPasswordScreen (+7 more)
 
 ### Community 19 - "PregameSetupSheet.tsx"
 Cohesion: 0.19
 Nodes (14): PregameSetupSheet(), Props, teamLabel(), ChartingPrefs, createDefaultPregameConfig(), createSecondHalfSituation(), DEFAULT_CHARTING, deriveOpeningKickoffReceiver() (+6 more)
 
 ### Community 20 - "gameReport.ts"
-Cohesion: 0.06
-Nodes (47): BoxScoreScreen, Props, SIZES, TeamCrest(), BoxScoreScreen(), fmt(), GameInfo, ourLines() (+39 more)
+Cohesion: 0.13
+Nodes (24): avg(), buildGameReport(), BuildReportInput, conversionText(), dash(), DefensiveRow, KickoffRow, labelFor() (+16 more)
 
 ### Community 21 - "useProgramContext.tsx"
-Cohesion: 0.25
-Nodes (10): Props, Branding, DEFAULT_BRANDING, deriveBranding(), keepIfEqual(), ProgramContext, ProgramContextValue, ProgramProvider() (+2 more)
+Cohesion: 0.22
+Nodes (12): Props, Branding, DEFAULT_BRANDING, deriveBranding(), keepIfEqual(), ProgramContext, ProgramContextValue, ProgramProvider() (+4 more)
 
 ### Community 22 - "types.ts"
-Cohesion: 0.09
-Nodes (24): BLOCKED_KICK_TYPES, buildDescription(), getPenaltyDefaultSide(), isPenaltyOnOffense(), isPendingId(), isSpotFoul(), NFHS_QUARTER_SECS, OFFENSE_PENALTIES (+16 more)
+Cohesion: 0.12
+Nodes (17): BLOCKED_KICK_TYPES, buildDescription(), isPendingId(), isSpotFoul(), NFHS_QUARTER_SECS, OFFENSE_PENALTIES, PENALTIES, PENALTY_DEFAULT_YARDS (+9 more)
 
 ### Community 23 - "compilerOptions"
 Cohesion: 0.11
@@ -224,28 +230,32 @@ Cohesion: 0.12
 Nodes (16): Additional Forbidden Patterns, Anti-Patterns (Do NOT Use), Buttons, Cards, Color Palette, Component Specs, Design System Master File, Global Rules (+8 more)
 
 ### Community 28 - "FlowPreview.tsx"
-Cohesion: 0.22
-Nodes (15): Props, PlaySubmitData, Props, isKickoffDue(), GameState, PlayTypeDef, RosterPlayer, TaggedPlayer (+7 more)
+Cohesion: 0.17
+Nodes (18): Props, PlaySubmitData, Props, Props, Props, isKickoffDue(), GameState, OpponentPlayerRef (+10 more)
 
 ### Community 29 - "advanceSituationAfterPlay"
-Cohesion: 0.20
-Nodes (15): maxTimeoutsForQuarter(), timeoutHalfForQuarter(), advanceSituationAfterPlay(), clampBallOn(), createInitialSituation(), createKickoffSituation(), flipFieldPosition(), getRecordedNextSituation() (+7 more)
+Cohesion: 0.22
+Nodes (13): getPenaltyDefaultSide(), isPenaltyOnOffense(), maxTimeoutsForQuarter(), timeoutHalfForQuarter(), advanceSituationAfterPlay(), createInitialSituation(), createKickoffSituation(), moveToQuarter() (+5 more)
 
 ### Community 30 - "penaltyEnforcement.ts"
-Cohesion: 0.19
-Nodes (12): PenaltySide, basicSpot(), clamp(), Enforcement, EnforcementInput, enforcePenalty(), isBehind(), markOff() (+4 more)
+Cohesion: 0.20
+Nodes (11): basicSpot(), clamp(), Enforcement, EnforcementInput, enforcePenalty(), isBehind(), markOff(), PlayKind (+3 more)
 
-### Community 31 - "QuickActions.tsx"
-Cohesion: 0.18
-Nodes (13): CATEGORY_ACCENT, CATEGORY_LABELS, FAST_PATH_COLS, fastPathIds(), hueStyle(), ordinalDown(), PHASE_TABS, PhaseFilter (+5 more)
+### Community 31 - "statsService.ts"
+Cohesion: 0.15
+Nodes (20): calcDefenseStats(), loadGamePlays(), isInsideTwenty(), kickInfoFromDescription(), KickSpots, netKickYards(), num(), resolveKickSpots() (+12 more)
 
 ### Community 32 - "football-stats-engine/package.json"
 Cohesion: 0.12
 Nodes (15): _comment, description, devDependencies, tsx, typescript, files, typescript, keywords (+7 more)
 
-### Community 34 - "DashboardScreen.tsx"
-Cohesion: 0.11
-Nodes (19): DashboardScreen, RosterScreen, PendingPlayersSheet(), CompletedGame, DashboardScreen(), GAME_VIEWS, LiveGame, QuickStats (+11 more)
+### Community 33 - "UiPreview.tsx"
+Cohesion: 0.16
+Nodes (13): downLabel(), Scoreboard(), fmtClock(), quarterLabel(), away, clamp(), Draft, empty() (+5 more)
+
+### Community 34 - "RosterScreen.tsx"
+Cohesion: 0.14
+Nodes (21): RosterScreen, TabBar(), CLASSIFICATIONS, ImportModal(), POSITIONS, RosterPlayer, RosterScreen(), OpponentRosterSection() (+13 more)
 
 ### Community 35 - "20260901000000_program_membership_rls.sql"
 Cohesion: 0.15
@@ -255,13 +265,17 @@ Nodes (17): public.enrol_program_owner, program_members, programs_enrol_owner, p
 Cohesion: 0.17
 Nodes (11): SeasonStatsScreen, AggDefense, AggKicking, AggPassing, AggPunting, AggReceiving, AggReturns, AggRushing (+3 more)
 
-### Community 37 - "UiPreview.tsx"
-Cohesion: 0.08
-Nodes (26): endZoneLabel(), FieldVisualizer(), FIVE_YARD_LINES, fromWidgetPercent(), Props, toWidgetPercent(), YARD_NUMBERS, downLabel() (+18 more)
+### Community 37 - "QuickActions.tsx"
+Cohesion: 0.11
+Nodes (19): endZoneLabel(), FieldVisualizer(), FIVE_YARD_LINES, fromWidgetPercent(), Props, toWidgetPercent(), YARD_NUMBERS, FAST_PATH_COLS (+11 more)
 
 ### Community 38 - "playEntrySeed.ts"
-Cohesion: 0.21
-Nodes (11): buildEditSeed(), EditSeed, FieldTeam, FUMBLE_MODIFIER_TYPES, KickOutcome, num(), PenaltyEnforcement, TACKLE_ROLES (+3 more)
+Cohesion: 0.13
+Nodes (14): buildEditSeed(), EditSeed, FieldTeam, FUMBLE_MODIFIER_TYPES, KickOutcome, num(), PenaltyEnforcement, TACKLE_ROLES (+6 more)
+
+### Community 39 - "BoxScoreScreen.tsx"
+Cohesion: 0.16
+Nodes (13): lucide-react, BoxScoreScreen, GameHomeLink(), BoxScoreScreen(), fmt(), GameInfo, ourLines(), playerLabel() (+5 more)
 
 ### Community 40 - "FastPlayEntry.tsx"
 Cohesion: 0.25
@@ -287,17 +301,37 @@ Nodes (4): assertLandsOnPenalty(), buildSteps(), Step, targetIndex()
 Cohesion: 0.40
 Nodes (4): Auth email templates, Notes, The from address is a separate problem, Where they go
 
-### Community 53 - "liveGameSession.ts"
-Cohesion: 0.06
-Nodes (52): vitest, PreviousPlay, Situation, previous, situation, PENALTY_RULES, penaltyDefaultYards(), PlayRecord (+44 more)
+### Community 52 - "LiveStatsPanel.tsx"
+Cohesion: 0.15
+Nodes (10): DefenseTab(), LiveStatsPanel(), noneYet(), OffenseTab(), Props, SpecialTeamsTab(), Tab, TabContainer() (+2 more)
+
+### Community 53 - "liveVsPostgame.spec.ts"
+Cohesion: 0.07
+Nodes (25): vitest, PreviousPlay, Situation, previous, situation, PENALTY_RULES, before, play (+17 more)
+
+### Community 54 - "driveResults.ts"
+Cohesion: 0.18
+Nodes (13): AFTERMATH, classify(), DriveResult, DriveResultPlay, DriveResultValue, LocalDriveResult, possessionRuns(), PUNT_TYPES (+5 more)
+
+### Community 55 - "ScheduleScreen.tsx"
+Cohesion: 0.19
+Nodes (10): ScheduleScreen, formatKickoff(), GameRow, ScheduleScreen(), Site, readSeasonGames(), Opponent, OpponentPlayer (+2 more)
 
 ### Community 56 - "supabase.ts"
-Cohesion: 0.31
-Nodes (7): expiryLabel(), InviteCode, Props, TeamAccess(), isAuthRequest(), supabase, timeoutFetch()
+Cohesion: 0.17
+Nodes (11): @supabase/supabase-js, GameSettingsScreen, expiryLabel(), InviteCode, Props, TeamAccess(), isAuthRequest(), supabase (+3 more)
 
-### Community 57 - "useProgramContext"
-Cohesion: 0.32
-Nodes (5): AppRoutes(), GameSettingsScreen, useProgramContext(), GameSettingsScreen(), getGameConfig()
+### Community 57 - "DashboardScreen.tsx"
+Cohesion: 0.19
+Nodes (13): AppRoutes(), DashboardScreen, useProgramContext(), CompletedGame, DashboardScreen(), GAME_VIEWS, LiveGame, QuickStats (+5 more)
+
+### Community 58 - "scoringLedger.ts"
+Cohesion: 0.27
+Nodes (8): other(), ScorablePlay, Score, ScoringEvent, scoringEvents(), scoringEventsForPlay(), ScoringKind, totalScore()
+
+### Community 59 - "csvExport.ts"
+Cohesion: 0.31
+Nodes (9): RFC-4180, csvEscape(), downloadCsv(), ExportGameOptions, exportGameSummaryCsv(), exportPlayerSeasonCsv(), ExportSeasonOptions, rowsToCsv() (+1 more)
 
 ### Community 64 - "20260901010000_program_invite_codes.sql"
 Cohesion: 0.29
@@ -316,24 +350,24 @@ Cohesion: 0.40
 Nodes (4): coaches, opponent_players, opponents, seasons
 
 ## Knowledge Gaps
-- **341 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+336 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 510 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **11 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **337 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+332 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 506 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `react` connect `App.tsx` to `offlineDb.ts`, `PostGameReview.tsx`, `package.json`, `ScheduleScreen.tsx`, `PlayLog.tsx`, `GameScreen.tsx`, `PlayerScreen.tsx`, `SettingsScreen.tsx`, `GameSummaryScreen.tsx`, `PlayEntryModal.tsx`, `pendingPlayerService.ts`, `PregameSetupSheet.tsx`, `gameReport.ts`, `useProgramContext.tsx`, `GameReportScreen.tsx`, `FlowPreview.tsx`, `QuickActions.tsx`, `DashboardScreen.tsx`, `SeasonStatsScreen.tsx`, `UiPreview.tsx`, `FastPlayEntry.tsx`, `supabase.ts`, `useProgramContext`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
-- **Why does `lucide-react` connect `GameSummaryScreen.tsx` to `offlineDb.ts`, `PostGameReview.tsx`, `package.json`, `ScheduleScreen.tsx`, `PlayLog.tsx`, `GameScreen.tsx`, `PlayerScreen.tsx`, `SettingsScreen.tsx`, `PlayEntryModal.tsx`, `pendingPlayerService.ts`, `PregameSetupSheet.tsx`, `gameReport.ts`, `GameReportScreen.tsx`, `DashboardScreen.tsx`, `SeasonStatsScreen.tsx`, `UiPreview.tsx`, `FastPlayEntry.tsx`, `supabase.ts`, `useProgramContext`?**
-  _High betweenness centrality (0.036) - this node is a cross-community bridge._
-- **Why does `football-stats-engine` connect `PlayerScreen.tsx` to `statsService.ts`, `SeasonStatsScreen.tsx`, `package.json`, `GameSummaryScreen.tsx`, `gameReport.ts`, `liveGameSession.ts`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
+- **Why does `react` connect `App.tsx` to `gameService.ts`, `PostGameReview.tsx`, `package.json`, `dangerZone.ts`, `PlayLog.tsx`, `GameScreen.tsx`, `PlayerScreen.tsx`, `SettingsScreen.tsx`, `GameSummaryScreen.tsx`, `PlayEntryModal.tsx`, `pendingPlayerService.ts`, `PregameSetupSheet.tsx`, `useProgramContext.tsx`, `GameReportScreen.tsx`, `FlowPreview.tsx`, `UiPreview.tsx`, `RosterScreen.tsx`, `SeasonStatsScreen.tsx`, `QuickActions.tsx`, `BoxScoreScreen.tsx`, `FastPlayEntry.tsx`, `LiveStatsPanel.tsx`, `ScheduleScreen.tsx`, `supabase.ts`, `DashboardScreen.tsx`?**
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
+- **Why does `lucide-react` connect `BoxScoreScreen.tsx` to `gameService.ts`, `PostGameReview.tsx`, `package.json`, `dangerZone.ts`, `PlayLog.tsx`, `GameScreen.tsx`, `PlayerScreen.tsx`, `SettingsScreen.tsx`, `GameSummaryScreen.tsx`, `PlayEntryModal.tsx`, `pendingPlayerService.ts`, `PregameSetupSheet.tsx`, `GameReportScreen.tsx`, `UiPreview.tsx`, `RosterScreen.tsx`, `SeasonStatsScreen.tsx`, `QuickActions.tsx`, `FastPlayEntry.tsx`, `LiveStatsPanel.tsx`, `ScheduleScreen.tsx`, `supabase.ts`, `DashboardScreen.tsx`?**
+  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+- **Why does `football-stats-engine` connect `GameSummaryScreen.tsx` to `playTransformer.ts`, `liveGameSession.ts`, `SeasonStatsScreen.tsx`, `package.json`, `BoxScoreScreen.tsx`, `PlayerScreen.tsx`, `LiveStatsPanel.tsx`, `gameReport.ts`, `driveResults.ts`, `liveVsPostgame.spec.ts`, `csvExport.ts`, `statsService.ts`?**
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `GameScreen()` (e.g. with `isRosterTag()` and `readKeepAwake()`) actually correct?**
   _`GameScreen()` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `private`, `version` to the rest of the system?**
-  _341 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `statsService.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.05017543859649123 - nodes in this community are weakly interconnected._
-- **Should `gameService.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.10591133004926108 - nodes in this community are weakly interconnected._
+  _337 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `playTransformer.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.10634920634920635 - nodes in this community are weakly interconnected._
+- **Should `Database Schema` be split into smaller, more focused modules?**
+  _Cohesion score 0.09881422924901186 - nodes in this community are weakly interconnected._
