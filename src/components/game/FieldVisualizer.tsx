@@ -276,12 +276,12 @@ export default function FieldVisualizer({
 
           return (
             <Fragment key={`yard-number-${index}`}>
-              <span className={numberClass} style={{ ...numberStyle, top: "12%" }}>
+              <span className={`${numberClass} ${tilted ? "-translate-y-1/2" : ""}`} style={{ ...numberStyle, top: tilted ? "50%" : "12%" }}>
                 {num}
               </span>
-              <span className={`${numberClass} rotate-180`} style={{ ...numberStyle, bottom: "12%" }}>
+              {!tilted && <span className={`${numberClass} rotate-180`} style={{ ...numberStyle, bottom: "12%" }}>
                 {num}
-              </span>
+              </span>}
             </Fragment>
           );
         })}
