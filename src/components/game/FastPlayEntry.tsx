@@ -7,6 +7,8 @@ import {
 } from "./types";
 
 interface Props {
+  inline?: boolean;
+  spotConfirmed?: boolean;
   playType: PlayTypeDef;
   situation: GameState;
   offenseName: string;
@@ -56,13 +58,14 @@ export default function FastPlayEntry(p: Props) {
   const showTacklers = p.trackTacklers && !incomplete && !p.isTD;
   const ours = p.situation.possession === "us";
   const [activeRole, setActiveRole] = useState<string | null>(() => {
+    if (p.inline) return null;
     if (!ours) return showTacklers ? defenseRole : null;
     return p.playType.roles.find(r => r !== "target" && !p.tagged.some(t => t.role === r)) ?? null;
   });
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [spotTouched, setSpotTouched] = useState(incomplete || p.isTD || p.yards !== 0);
+  const [spotTouched, setSpotTouched] = useState(p.spotConfirmed || incomplete || p.isTD || p.yards !== 0);
   const defenseActive = activeRole === defenseRole;
   const players = defenseActive ? p.defensePlayers : p.offensePlayers;
   const filtered = players.filter(t => `${t.jersey_number ?? ""} ${t.name}`.toLowerCase().includes(search.toLowerCase()));
@@ -91,18 +94,23 @@ export default function FastPlayEntry(p: Props) {
   };
 
   return (
-    <div className="sheet bg-black/60 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-labelledby="fast-title" className="sheet-panel sm:!max-w-3xl !max-h-[96dvh] flex flex-col">
+    <div className={p.inline ? "live-inline-entry mb-40 lg:mb-0" : "sheet bg-black/60 backdrop-blur-sm"}>
+      <div role={p.inline ? "region" : "dialog"} aria-modal={p.inline ? undefined : true} aria-labelledby="fast-title" className={p.inline ? "card !p-0 flex flex-col" : "sheet-panel sm:!max-w-3xl !max-h-[96dvh] flex flex-col"}>
         <header className="p-3 border-b border-surface-border flex items-center justify-between gap-3 shrink-0">
           <div>
             <h2 id="fast-title" className="text-lg font-black">{p.playType.label} <span className="text-slate-400 text-sm font-normal">· {p.offenseName}</span></h2>
             <div className="text-sm text-slate-300">Q{p.situation.quarter} · {Math.floor(p.situation.clock / 60)}:{String(p.situation.clock % 60).padStart(2, "0")} · {p.situation.down} & {p.situation.distance} · {p.formatSpot(p.situation.ballOn)}</div>
           </div>
-          <button aria-label="Cancel play" onClick={p.onClose} className={`${button} ${idle}`}><X size={20} /></button>
+          <button aria-label={p.inline ? "Change play" : "Cancel play"} onClick={p.onClose} className={`${button} ${idle}`}>{p.inline ? "Change play" : <X size={20} />}</button>
         </header>
-        <div className="overflow-y-auto min-h-0 p-3 space-y-3">
+        <div className={p.inline ? "min-h-0 p-3 space-y-3" : "overflow-y-auto min-h-0 p-3 space-y-3"}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <section className="space-y-3">
+              {p.inline ? <div className="space-y-3">{p.playType.roles.map(role => {
+                const pick = p.tagged.find(t => t.role === role);
+                const players = [...p.offensePlayers.slice(0,5), ...(pick && !p.offensePlayers.slice(0,5).some(t => t.player_id === pick.player_id) ? [pick] : [])];
+                return <section key={role} className="space-y-1.5"><h3 className="text-sm font-bold">{labels[role] ?? role}{role === "target" ? " (optional)" : ""}</h3><div className="flex flex-wrap gap-1.5">{players.map(t => <button key={t.player_id} aria-pressed={pick?.player_id === t.player_id} onClick={() => p.onTag(role,t)} className={`${button} ${pick?.player_id === t.player_id ? selected : idle}`}>{name(t)}</button>)}<button onClick={() => chooseRole(role)} className={`${button} ${idle}`}>More...</button><button onClick={() => p.onTag(role,null)} className={`${button} ${idle}`}>Identify on film</button></div></section>;
+              })}</div> : <>
               <div className="flex flex-wrap gap-2">
                 {p.playType.roles.map(role => {
                   const pick = p.tagged.find(t => t.role === role);
@@ -113,11 +121,16 @@ export default function FastPlayEntry(p: Props) {
                   </button>;
                 })}
               </div>
+              </>}
               {!incomplete && <div>
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-sm font-bold">Ending spot</span>
                   <span className="font-black text-lg tabular-nums">{p.isTD ? "TD" : `${p.yards > 0 ? "+" : ""}${p.yards} yds`}</span>
                 </div>
+                {p.inline ? <label className="text-sm text-slate-400 flex items-center gap-2">Gain
+                  <input aria-label="Play gain" type="number" inputMode="numeric" min={1-p.situation.ballOn} max={99-p.situation.ballOn} disabled={p.isTD} value={spotTouched ? p.yards : ""} placeholder="0" className="input !w-24 !text-lg text-center" onChange={e => { if (!e.target.value) { setSpotTouched(false); return; } changeYards(Math.max(1-p.situation.ballOn, Math.min(99-p.situation.ballOn, Number(e.target.value)))); }} />
+                  <span className="text-emerald-300">{p.isTD ? "TD" : p.formatSpot(endSpot)}</span>
+                </label> : <>
                 <div className="flex gap-2 items-end">
                   <button aria-pressed={endSpot <= 50} onClick={() => changeYards((endSpot <= 50 ? endSpot : 100 - endSpot) - p.situation.ballOn)} className={`${button} ${endSpot <= 50 ? selected : idle} flex-1`}>{p.offenseName}</button>
                   <button aria-pressed={endSpot > 50} onClick={() => changeYards((endSpot > 50 ? endSpot : 100 - endSpot) - p.situation.ballOn)} className={`${button} ${endSpot > 50 ? selected : idle} flex-1`}>{p.defenseName}</button>
@@ -131,6 +144,7 @@ export default function FastPlayEntry(p: Props) {
                       }} />
                   </label>
                 </div>
+                </>}
                 <div className="flex gap-2 mt-2">
                   {[-1, 1, 5].map(delta => <button key={delta} onClick={() => changeYards(Math.max(1, Math.min(99, endSpot + delta)) - p.situation.ballOn)} className={`${button} ${idle} flex-1`}>{delta > 0 ? "+" : ""}{delta}</button>)}
                 </div>
@@ -148,6 +162,7 @@ export default function FastPlayEntry(p: Props) {
             </section>
             <section className="space-y-2">
               {showTacklers && <>
+                {p.inline && <div className="flex flex-wrap gap-1.5">{p.defensePlayers.slice(0,5).map(t => <button key={t.player_id} aria-pressed={p.tacklers.some(x => x.player_id === t.player_id)} onClick={() => p.onTackler(t)} className={`${button} ${p.tacklers.some(x => x.player_id === t.player_id) ? selected : idle}`}>{name(t)}</button>)}</div>}
                 <div className="flex justify-between items-center gap-2">
                   <span className="text-sm font-bold">{p.defenseName} · {labels[defenseRole]}</span>
                   <button onClick={() => chooseRole(defenseRole)} aria-pressed={defenseActive} className={`${button} ${defenseActive ? selected : idle}`}>Choose {sack ? "sacker" : "tackler"}</button>
@@ -157,7 +172,7 @@ export default function FastPlayEntry(p: Props) {
                     {name(t)} · {t.credit === 0.5 ? "assist" : "solo"} ×
                   </button>)}
                 </div>
-                {(!ours || defenseActive || p.tacklers.length > 0 || p.noTackle) && <div className="flex gap-2">
+                {(p.inline || !ours || defenseActive || p.tacklers.length > 0 || p.noTackle) && <div className="flex gap-2">
                   <button onClick={p.onUnknownTackle} className={`${button} ${idle} flex-1`}>Identify on film</button>
                   {!sack && <button aria-pressed={p.noTackle} onClick={p.onNoTackle} className={`${button} ${p.noTackle ? selected : idle} flex-1`}>No tackle</button>}
                 </div>}
@@ -167,13 +182,13 @@ export default function FastPlayEntry(p: Props) {
                 <label className="block text-sm font-bold">{labels[activeRole]} · {defenseActive ? p.defenseName : p.offenseName}
                   <input value={search} onChange={e => setSearch(e.target.value)} inputMode="numeric" placeholder="Jersey or name" className="input mt-1 !text-base" />
                 </label>
-                <div className="grid grid-cols-4 gap-1.5 max-h-44 overflow-y-auto">
+                <div className={p.inline ? "flex flex-wrap gap-1.5 max-h-44 overflow-y-auto" : "grid grid-cols-4 gap-1.5 max-h-44 overflow-y-auto"}>
                   {filtered.map(t => {
                     const isPicked = defenseActive ? p.tacklers.some(x => x.player_id === t.player_id) : p.tagged.some(x => x.role === activeRole && x.player_id === t.player_id);
                     return <button key={t.id} aria-pressed={isPicked} aria-label={`Select ${labels[activeRole]} ${t.name} number ${t.jersey_number}`}
                       onClick={() => { if (defenseActive) { p.onTackler(t); setSearch(""); } else tag(t); }}
                       className={`${button} !px-1 ${isPicked ? selected : idle}`}>
-                      <span className="block text-lg">{t.jersey_number ?? "?"}</span><span className="block text-xs truncate">{t.name.split(" ").slice(-1)[0]}</span>
+                      {p.inline ? name(t) : <><span className="block text-lg">{t.jersey_number ?? "?"}</span><span className="block text-xs truncate">{t.name.split(" ").slice(-1)[0]}</span></>}
                     </button>;
                   })}
                 </div>
@@ -191,12 +206,12 @@ export default function FastPlayEntry(p: Props) {
             <div className="flex gap-2 mt-2">{["left", "middle", "right"].map(h => <button key={h} aria-pressed={p.hashMark === h} onClick={() => p.onHash(p.hashMark === h ? null : h)} className={`${button} ${p.hashMark === h ? selected : idle} flex-1`}>{h} hash</button>)}</div>
           </details>}
           <div className="flex gap-2">
-            <button onClick={() => p.onDetailed("penalty")} className={`${button} ${idle}`}><Flag size={16} className="inline mr-1" />Flag</button>
-            {!incomplete && <button onClick={() => p.onDetailed("fumble")} className={`${button} ${idle}`}>Fumble</button>}
-            <button onClick={() => p.onDetailed("players")} className={`${button} ${idle} flex-1`}>Full details</button>
+            <button onClick={() => p.onDetailed("penalty")} className={`${button} ${idle}`}><Flag size={16} className="inline mr-1" />+ Penalty</button>
+            {!incomplete && <button onClick={() => p.onDetailed("fumble")} className={`${button} ${idle}`}>+ Fumble</button>}
+            {!p.inline && <button onClick={() => p.onDetailed("players")} className={`${button} ${idle} flex-1`}>Full details</button>}
           </div>
         </div>
-        <footer className="p-3 border-t border-surface-border shrink-0 safe-bottom space-y-2">
+        <footer className={`${p.inline ? "fixed bottom-0 left-0 right-0 z-30 lg:static bg-surface-card" : ""} p-3 border-t border-surface-border shrink-0 safe-bottom space-y-2`}>
           {p.attachedDetails && <p className="text-sm text-amber-300">{p.attachedDetails} · review before saving</p>}
           <div className="text-sm" aria-live="polite">
             <span className="font-bold">{p.playType.label}{!incomplete ? ` · ${p.yards > 0 ? "+" : ""}${p.yards} yds` : ""}</span>
@@ -204,10 +219,11 @@ export default function FastPlayEntry(p: Props) {
           </div>
           {!ready && <p className="text-xs text-amber-300">{!validSpot ? "Enter a yard line from 1 to 50, or choose Touchdown." : missingRole ? `Choose ${labels[missingRole]} or identify on film.` : !spotTouched ? "Set the ending spot, or tap No gain." : "Choose a tackler, Identify on film, or No tackle."}</p>}
           {saveError && <p role="alert" className="text-sm text-red-400">{saveError}</p>}
+          <div className="flex gap-2 items-center">{p.inline && <button onClick={() => p.onDetailed("players")} className={`${button} ${idle} shrink-0`}>Full details</button>}
           <button disabled={!ready || saving} onClick={async () => {
             setSaving(true); setSaveError("");
             try { await p.onSubmit(); } catch { setSaveError("Could not save. Try again."); } finally { setSaving(false); }
-          }} className="btn-primary w-full min-h-12 text-base font-black disabled:opacity-40">{saving ? "Saving…" : p.attachedDetails ? "Review details" : "Save Play"}</button>
+          }} className="btn-primary w-full min-h-12 text-base font-black disabled:opacity-40">{saving ? "Saving…" : p.attachedDetails ? "Review details" : "Save Play"}</button></div>
         </footer>
       </div>
     </div>

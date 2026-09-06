@@ -84,7 +84,7 @@ export default function FlowPreview() {
         <div className="text-sm text-slate-400">{play.data.tagged.map(t => `${t.role}: ${t.isTeam ? "Identify on film" : t.name}${t.credit != null ? ` (${t.credit === 1 ? "solo" : "assist"})` : ""}`).join(" · ")}</div>
       </div>)}
     </section>
-    {playType && <PlayEntryModal playType={playType} gameState={situation} roster={roster} opponentPlayers={opponents}
+    {playType && <PlayEntryModal inlineSimple key={playType.id} playType={playType} gameState={situation} roster={roster} opponentPlayers={opponents}
       progName="Dragons" oppName="Visitors" lastPlayerByRole={remembered} trackFormations={formations} trackTacklers
       offenseDirection={situation.possession === "us" ? "right" : "left"} onSubmit={record} onClose={() => setPlayType(null)} />}
   </main>;

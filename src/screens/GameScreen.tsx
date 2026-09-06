@@ -1230,21 +1230,6 @@ export default function GameScreen() {
   }, [ballOn, clock, distance, down, game, gameId, loading, possession, quarter]);
 
   /* ── Quick stats ── */
-  const stats = useMemo(() => {
-    let rushAtt = 0, rushYds = 0, passAtt = 0, passComp = 0, passYds = 0, firstDowns = 0, tos = 0, pens = 0;
-    plays.forEach(p => {
-      if (p.possession === "us") {
-        if (p.type === "rush" || p.type === "scramble") { rushAtt++; rushYds += p.yards; }
-        if (p.type === "pass_comp") { passAtt++; passComp++; passYds += p.yards; }
-        if (["pass_inc", "throwaway", "drop", "spike", "int"].includes(p.type)) passAtt++;
-        if (p.firstDown) firstDowns++;
-        if (p.turnover) tos++;
-      }
-      if (p.penalty) pens++;
-    });
-    return { rushAtt, rushYds, passAtt, passComp, passYds, firstDowns, tos, pens };
-  }, [plays]);
-
   const progAbbr = useMemo(
     () => toTeamTag(program?.name ?? "Team", program?.abbreviation),
     [program?.abbreviation, program?.name],
@@ -2645,24 +2630,6 @@ export default function GameScreen() {
           </button>
         </div>
 
-        {/* Quick stats. Tablets only: on a phone these game totals cost a row
-            of the pinned block, and the scoreboard already carries the
-            situation that matters mid-drive. Full numbers are a tap away in
-            Live Stats. */}
-        <div className="hidden lg:grid grid-cols-5 gap-1.5">
-          {[
-            { label: "RUSH", val: `${stats.rushAtt}/${stats.rushYds}` },
-            { label: "PASS", val: `${stats.passComp}-${stats.passAtt}/${stats.passYds}` },
-            { label: "1ST", val: stats.firstDowns },
-            { label: "TO", val: stats.tos },
-            { label: "PEN", val: stats.pens },
-          ].map(s => (
-            <div key={s.label} className="card p-1.5 text-center">
-              <div className="stat-label text-[8px]">{s.label}</div>
-              <div className="text-xs font-display font-extrabold tabular-nums">{s.val}</div>
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* Phone pane switcher. Pinned rather than scrolled: getting back to the
@@ -2731,7 +2698,53 @@ export default function GameScreen() {
           </div>
         )}
 
+      {/* Play Entry Modal */}
+      {selectedPlayType && (
+        <PlayEntryModal
+          inlineSimple
+          key={selectedPlayType.id}
+          playType={selectedPlayType}
+          /* Inserting into the middle of the game: the play is entered
+             against the situation AT that point, not against the live one,
+             which is the end of the game and wrong by everything since. */
+          gameState={entryGameState}
+          roster={roster}
+          opponentPlayers={oppPlayers}
+          progName={progName}
+          oppName={oppName}
+          gameConfig={gc}
+          lastPlayerByRole={lastPlayerByRole}
+          progColor={primaryColor}
+          oppColor={oppColor}
+          progAbbr={progAbbr}
+          oppAbbr={oppAbbr}
+          progLogoUrl={progLogoUrl}
+          oppLogoUrl={oppLogoUrl}
+          ourEndZoneSide={ourEndZoneSide}
+          offenseDirection={offenseDisplayDirection}
+          trackFormations={charting.formations}
+          trackTacklers={charting.tacklers}
+          onSubmit={handlePlaySubmit}
+          onClose={() => { setSelectedPlayType(null); setInsertAfterPlayId(null); }}
+          onAddOpponentPlayer={async (player) => {
+            // Persist quick-added opponent player to DB and update local state
+            if (game?.opponent_id) {
+              const saved = await opponentPlayerService.create({
+                opponent_id: game.opponent_id,
+                name: player.name,
+                jersey_number: player.jersey_number,
+                position: null,
+              });
+              if (saved) {
+                setOppPlayers(prev => [...prev, saved]);
+              }
+            }
+          }}
+        />
+      )}
+
         {/* Quick Action Grid */}
+        {!selectedPlayType && <>
         <div className="card p-3">
           <QuickActions
             onSelect={handlePlayTypeSelect}
@@ -2748,6 +2761,7 @@ export default function GameScreen() {
             oppColor={oppColor}
           />
         </div>
+        </>}
         </div>
 
         {/* Right column: drive summary. Scrolls on its own, so a long play
@@ -2869,49 +2883,6 @@ export default function GameScreen() {
           onClose={() => setShowPregame(false)}
           onSave={handleSavePregame}
           saving={savingPregame}
-        />
-      )}
-
-      {/* Play Entry Modal */}
-      {selectedPlayType && (
-        <PlayEntryModal
-          playType={selectedPlayType}
-          /* Inserting into the middle of the game: the play is entered
-             against the situation AT that point, not against the live one,
-             which is the end of the game and wrong by everything since. */
-          gameState={entryGameState}
-          roster={roster}
-          opponentPlayers={oppPlayers}
-          progName={progName}
-          oppName={oppName}
-          gameConfig={gc}
-          lastPlayerByRole={lastPlayerByRole}
-          progColor={primaryColor}
-          oppColor={oppColor}
-          progAbbr={progAbbr}
-          oppAbbr={oppAbbr}
-          progLogoUrl={progLogoUrl}
-          oppLogoUrl={oppLogoUrl}
-          ourEndZoneSide={ourEndZoneSide}
-          offenseDirection={offenseDisplayDirection}
-          trackFormations={charting.formations}
-          trackTacklers={charting.tacklers}
-          onSubmit={handlePlaySubmit}
-          onClose={() => { setSelectedPlayType(null); setInsertAfterPlayId(null); }}
-          onAddOpponentPlayer={async (player) => {
-            // Persist quick-added opponent player to DB and update local state
-            if (game?.opponent_id) {
-              const saved = await opponentPlayerService.create({
-                opponent_id: game.opponent_id,
-                name: player.name,
-                jersey_number: player.jersey_number,
-                position: null,
-              });
-              if (saved) {
-                setOppPlayers(prev => [...prev, saved]);
-              }
-            }
-          }}
         />
       )}
 

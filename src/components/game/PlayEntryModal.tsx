@@ -92,6 +92,8 @@ interface Props {
   /** Resume an unsaved draft without marking it as a recorded-play edit. */
   initialDraft?: PlayRecord;
   startDetailed?: boolean;
+  /** Keep simple entry below the live field; full details remain a sheet. */
+  inlineSimple?: boolean;
   submitLabel?: string;
   onReturnToSimple?: (data: PlaySubmitData) => void;
   /** Remove the play being edited. Absent when entering. */
@@ -623,7 +625,7 @@ export default function PlayEntryModal({
   progColor = "#dc2626", oppColor = "#6b7280", progAbbr, oppAbbr,
   progLogoUrl, oppLogoUrl, ourEndZoneSide = "left", offenseDirection = "right",
   trackFormations = true, trackTacklers = true,
-  onSubmit, onClose, onAddOpponentPlayer, editing = null, onDelete, initialDraft, startDetailed = false, onReturnToSimple, submitLabel,
+  onSubmit, onClose, onAddOpponentPlayer, editing = null, onDelete, initialDraft, startDetailed = false, onReturnToSimple, submitLabel, inlineSimple = false,
 }: Props) {
   /* The recorded play, read back into the state that produced it. Built once:
      every state initialiser below reads it during the first render, and it must
@@ -633,6 +635,7 @@ export default function PlayEntryModal({
     return source ? buildEditSeed(source) : null;
   }, [editing, initialDraft]);
   const isEditing = editing != null;
+  const [fastSpotConfirmed, setFastSpotConfirmed] = useState(false);
   const [useDetailedEntry, setUseDetailedEntry] = useState(startDetailed);
   /* The spot-seeding effects below all fire on mount, and on an edit they would
      immediately overwrite the spots just read off the play with the defaults a
@@ -2418,6 +2421,8 @@ export default function PlayEntryModal({
       name: p.name, role: "", isOpponent: true,
     }));
     return <FastPlayEntry
+      inline={inlineSimple}
+      spotConfirmed={fastSpotConfirmed}
       playType={playType} situation={gameState}
       offenseName={isTheirBall ? oppName : progName} defenseName={isTheirBall ? progName : oppName}
       offensePlayers={isTheirBall ? theirPlayers : ourPlayers}
@@ -2447,7 +2452,7 @@ export default function PlayEntryModal({
           name: "TEAM", role: defensiveCreditRole, isOpponent: true,
         }), credit: 1 }]);
       }}
-      onYards={setResultFromTotalYards}
+      onYards={value => { setFastSpotConfirmed(true); setResultFromTotalYards(value); }}
       onTouchdown={() => { setIsTD(!isTD); setTacklers([]); setNoTackle(false); }}
       onDetailed={section => {
         setUseDetailedEntry(true);
