@@ -882,6 +882,17 @@ export default function GameScreen() {
   }, [oppPlayers]);
   const quarterSnapshots = useRef<Partial<Record<number, { clock: number; situation: LiveSituationSnapshot }>>>({});
   const [directionFlipped, setDirectionFlipped] = useState(() => readFieldFlip(gameId));
+  const [tiltedField, setTiltedField] = useState(() => {
+    try { return localStorage.getItem("dragonstats:field-view") !== "flat"; }
+    catch { return true; }
+  });
+  const toggleFieldView = () => {
+    const next = !tiltedField;
+    setTiltedField(next);
+    try { localStorage.setItem("dragonstats:field-view", next ? "tilted" : "flat"); }
+    catch { /* View switching still works when storage is unavailable. */ }
+  };
+
   const ballDisplayPosition = useMemo(
     () => {
       const displayPosition = toDisplayFieldPosition(
@@ -2602,6 +2613,7 @@ export default function GameScreen() {
 
         {/* Field */}
         <FieldVisualizer
+          tilted={tiltedField}
           ballOn={entrySituation.ballOn}
           ballPosition={ballDisplayPosition}
           firstDownPosition={firstDownDisplayPosition}
@@ -2621,6 +2633,17 @@ export default function GameScreen() {
             return next;
           })}
         />
+
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={toggleFieldView}
+            aria-label={tiltedField ? "Switch to flat field" : "Switch to tilted field"}
+            className="min-h-11 px-3 text-xs font-semibold text-slate-300 hover:text-white rounded-md border border-surface-border"
+          >
+            {tiltedField ? "Tilted field / switch to flat" : "Flat field / switch to tilted"}
+          </button>
+        </div>
 
         {/* Quick stats. Tablets only: on a phone these game totals cost a row
             of the pinned block, and the scoreboard already carries the

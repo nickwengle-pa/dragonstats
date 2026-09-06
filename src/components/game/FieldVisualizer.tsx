@@ -22,6 +22,8 @@ interface Props {
   onPickSpot?: (displayPosition: number) => void;
   /** Shorter field, for use inside the play-entry sheet. */
   compact?: boolean;
+  /** Optional perspective; compact entry fields remain flat by default. */
+  tilted?: boolean;
 }
 
 /** Inverse of toWidgetPercent — widget-relative click → 0–100 field position. */
@@ -83,6 +85,7 @@ export default function FieldVisualizer({
   onFlipDirection,
   onPickSpot,
   compact = false,
+  tilted = false,
 }: Props) {
   const theirEndZoneSide = ourEndZoneSide === "left" ? "right" : "left";
   /* Whoever has the ball owns midfield, which makes the logo a possession cue
@@ -113,7 +116,7 @@ export default function FieldVisualizer({
   return (
     <div
       className="rounded-2xl border border-surface-border p-2 overflow-hidden"
-      style={{ background: "linear-gradient(180deg, #111820, #0d1117)" }}
+      style={{ background: "linear-gradient(180deg, #111820, #0d1117)", padding: tilted ? "12px 20px 8px" : undefined }}
     >
       <div
         // Short field below lg: the pinned block has to give the play buttons
@@ -122,6 +125,8 @@ export default function FieldVisualizer({
         style={{
           background: "linear-gradient(180deg, rgba(34, 94, 45, 0.98), rgba(19, 78, 36, 1))",
           boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
+          transform: tilted ? "perspective(480px) rotateX(24deg)" : undefined,
+          transformOrigin: "50% 100%",
         }}
       >
         <div className="absolute inset-x-0 top-0 h-px bg-white/65 z-[4]" />
@@ -265,18 +270,18 @@ export default function FieldVisualizer({
                 textShadow: "0 1px 2px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.7)",
               }
             : { left: `${left}%`, textShadow: "0 1px 2px rgba(0,0,0,0.5)" };
-          const numberClass = `absolute text-[11px] font-display font-black -translate-x-1/2 select-none ${
-            isFifty ? "" : "text-white/55"
+          const numberClass = `absolute ${tilted ? "text-[16px] sm:text-[22px] lg:text-[28px] leading-none" : "text-[11px]"} font-display font-black -translate-x-1/2 select-none ${
+            isFifty ? "" : tilted ? "text-white/90" : "text-white/55"
           }`;
 
           return (
             <Fragment key={`yard-number-${index}`}>
-              <span className={numberClass} style={{ ...numberStyle, top: "12%" }}>
+              <span className={`${numberClass} ${tilted ? "-translate-y-1/2" : ""}`} style={{ ...numberStyle, top: tilted ? "50%" : "12%" }}>
                 {num}
               </span>
-              <span className={`${numberClass} rotate-180`} style={{ ...numberStyle, bottom: "12%" }}>
+              {!tilted && <span className={`${numberClass} rotate-180`} style={{ ...numberStyle, bottom: "12%" }}>
                 {num}
-              </span>
+              </span>}
             </Fragment>
           );
         })}
@@ -286,17 +291,25 @@ export default function FieldVisualizer({
             className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-20"
             style={{
               left: `${toWidgetPercent(firstDownPosition)}%`,
-              boxShadow: "0 0 7px rgba(245, 158, 11, 0.5)",
+              width: tilted ? 4 : undefined,
+              background: tilted ? "linear-gradient(90deg, #b77908, #fff6a3 45%, #facc15 70%, #a16207)" : undefined,
+              boxShadow: tilted
+                ? "2px 2px 0 rgba(0,0,0,0.7), 0 0 0 1px rgba(50,30,0,0.8), 0 0 10px rgba(250,204,21,0.65)"
+                : "0 0 7px rgba(245, 158, 11, 0.5)",
             }}
           />
         )}
 
         <div
-          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full border-2 border-white/90 flex items-center justify-center text-[10px] font-display font-extrabold text-white"
+          className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 ${tilted ? "w-9 h-9 sm:w-11 sm:h-11 text-[13px] sm:text-[16px]" : "w-7 h-7 text-[10px]"} rounded-full border-2 border-white/90 flex items-center justify-center font-display font-extrabold text-white`}
           style={{
             left: `${toWidgetPercent(ballPosition)}%`,
             backgroundColor: possession === "us" ? primaryColor : oppColor,
-            boxShadow: `0 0 16px ${possession === "us" ? `${primaryColor}88` : `${oppColor}88`}, 0 0 5px rgba(255,255,255,0.25)`,
+            backgroundImage: tilted ? "radial-gradient(ellipse at 30% 15%, rgba(255,255,255,0.6), transparent 55%), linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.4))" : undefined,
+            textShadow: tilted ? "0 2px 2px rgba(0,0,0,0.8)" : undefined,
+            boxShadow: tilted
+              ? "inset 0 2px 2px rgba(255,255,255,0.6), inset 0 -3px 4px rgba(0,0,0,0.35), 0 4px 0 #4b1520, 0 6px 0 rgba(0,0,0,0.6), 0 10px 9px rgba(0,0,0,0.65), 0 0 0 4px rgba(255,255,255,0.16)"
+              : `0 0 16px ${possession === "us" ? `${primaryColor}88` : `${oppColor}88`}, 0 0 5px rgba(255,255,255,0.25)`,
           }}
         >
           {ballOn > 50 ? 100 - ballOn : ballOn}
@@ -307,6 +320,7 @@ export default function FieldVisualizer({
             the playing surface — the end zones aren't valid spots. */}
         {onPickSpot && (
           <div
+            data-testid="field-spot-surface"
             className="absolute top-0 bottom-0 z-[25] cursor-crosshair"
             style={{
               left: `${PLAYING_FIELD_START_PCT}%`,
@@ -315,7 +329,12 @@ export default function FieldVisualizer({
             onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
               if (rect.width === 0) return;
-              const localPct = ((event.clientX - rect.left) / rect.width) * 100;
+              // Native offsetX is in the target's untransformed local space.
+              // A bounding-box ratio is wrong for a trapezoid: its width varies
+              // with height. This empty overlay has no child event targets.
+              const localPct = tilted
+                ? (event.nativeEvent.offsetX / event.currentTarget.clientWidth) * 100
+                : ((event.clientX - rect.left) / rect.width) * 100;
               // localPct is already relative to the playing surface, so map it
               // back through the widget frame fromWidgetPercent expects.
               const widgetPct =
