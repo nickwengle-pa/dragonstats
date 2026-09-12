@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import PregameSetupView from "./PregameSetupView";
 import {
   DEFAULT_CHARTING,
   type ChartingPrefs,
@@ -7,7 +7,6 @@ import {
   deriveOpeningKickoffReceiver,
   getSecondHalfKickoffReceiver,
   oppositeTeam,
-  type FieldDirection,
   type PregameConfig,
   type TeamSide,
   type TossChoice,
@@ -19,84 +18,17 @@ interface Props {
   initialCharting?: ChartingPrefs | null;
   progName: string;
   oppName: string;
+  /** Raw team colours. Buttons that stand for a team wear that team's colour
+      so the two sides never look alike; missing colours fall back to grey. */
+  progColor?: string | null;
+  oppColor?: string | null;
+  /** Short tags for the summary, where two full names plus an arrow will not
+      fit a phone. Fall back to the names. */
+  progAbbr?: string | null;
+  oppAbbr?: string | null;
   onClose: () => void;
   onSave: (pregame: PregameConfig, charting: ChartingPrefs) => Promise<void> | void;
   saving?: boolean;
-}
-
-/** On/off row for a charting option. */
-function SwitchRow({
-  label, hint, value, onChange,
-}: {
-  label: string;
-  hint: string;
-  value: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!value)}
-      className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
-        value
-          ? "border-dragon-primary/50 bg-dragon-primary/10"
-          : "border-surface-border bg-surface-bg"
-      }`}
-    >
-      <div className="flex-1 min-w-0">
-        <div className={`text-xs font-bold ${value ? "text-dragon-primary" : "text-neutral-400"}`}>{label}</div>
-        <div className="text-[10px] text-neutral-500 mt-0.5">{hint}</div>
-      </div>
-      <span
-        className={`shrink-0 w-10 h-6 rounded-full flex items-center px-0.5 transition-colors ${
-          value ? "bg-dragon-primary justify-end" : "bg-surface-border justify-start"
-        }`}
-      >
-        <span className="w-5 h-5 rounded-full bg-white block" />
-      </span>
-    </button>
-  );
-}
-
-function teamLabel(team: TeamSide, progName: string, oppName: string): string {
-  return team === "us" ? progName : oppName;
-}
-
-function ToggleRow<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  disabled = false,
-}: {
-  label: string;
-  value: T;
-  options: Array<{ value: T; label: string }>;
-  onChange: (value: T) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div>
-      <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest mb-1.5">{label}</div>
-      <div className="grid grid-cols-2 gap-2">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            disabled={disabled}
-            onClick={() => onChange(option.value)}
-            className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
-              value === option.value
-                ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
-                : "border-surface-border bg-surface-bg text-neutral-400"
-            } ${disabled ? "opacity-50" : "active:bg-surface-hover"}`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export default function PregameSetupSheet({
@@ -104,6 +36,10 @@ export default function PregameSetupSheet({
   initialCharting,
   progName,
   oppName,
+  progColor,
+  oppColor,
+  progAbbr,
+  oppAbbr,
   onClose,
   onSave,
   saving = false,
@@ -119,15 +55,42 @@ export default function PregameSetupSheet({
     setCharting(initialCharting ?? DEFAULT_CHARTING);
   }, [initialCharting]);
 
-  const openingReceiverLocked = form.tossChoice === "receive" || form.tossChoice === "kick";
+  const team = {
+    us: { name: progName, tag: progAbbr || progName, color: progColor ?? "#6b7280" },
+    them: { name: oppName, tag: oppAbbr || oppName, color: oppColor ?? "#6b7280" },
+  };
+  const loserSide = oppositeTeam(form.tossWinner);
+
   const openingReceiver = useMemo(
     () => deriveOpeningKickoffReceiver(form.tossWinner, form.tossChoice, form.openingKickoffReceiver),
     [form],
   );
+  const loserChoice: "receive" | "kick" = openingReceiver === loserSide ? "receive" : "kick";
   const secondHalfReceiver = getSecondHalfKickoffReceiver({
     ...form,
     openingKickoffReceiver: openingReceiver,
   });
+
+  /* Changing the winner or the choice drops any earlier explicit receiver
+     rather than carrying it. Carried, a receiver derived from "receive"
+     survived into "defer" and read as the loser choosing to kick — which
+     is almost never what happened. Starting from the derivation's own
+     default (the loser receives) is right far more often. A saved config
+     still opens exactly as stored; only an edit resets it. */
+  const setTossWinner = (tossWinner: TeamSide) => setForm((prev) => ({
+    ...prev,
+    tossWinner,
+    openingKickoffReceiver: deriveOpeningKickoffReceiver(tossWinner, prev.tossChoice, null),
+  }));
+  const setTossChoice = (tossChoice: TossChoice) => setForm((prev) => ({
+    ...prev,
+    tossChoice,
+    openingKickoffReceiver: deriveOpeningKickoffReceiver(prev.tossWinner, tossChoice, null),
+  }));
+  const setLoserChoice = (choice: "receive" | "kick") => setForm((prev) => ({
+    ...prev,
+    openingKickoffReceiver: choice === "receive" ? oppositeTeam(prev.tossWinner) : prev.tossWinner,
+  }));
 
   const handleSave = () => {
     onSave({
@@ -136,141 +99,22 @@ export default function PregameSetupSheet({
     }, charting);
   };
 
-  return (
-    <div className="sheet bg-black/80">
-      <div className="sheet-panel max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 pb-3 shrink-0">
-          <div>
-            <h2 className="text-lg font-black">Pregame Setup</h2>
-            <p className="text-xs text-neutral-500 mt-1">Opening kickoff, field direction, and halftime kickoff flow.</p>
-          </div>
-          <button onClick={onClose} className="btn-ghost p-1.5">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-4">
-          <ToggleRow<TeamSide>
-            label="Coin Toss Winner"
-            value={form.tossWinner}
-            options={[
-              { value: "us", label: progName },
-              { value: "them", label: oppName },
-            ]}
-            onChange={(value) => setForm((prev) => ({
-              ...prev,
-              tossWinner: value,
-              openingKickoffReceiver: deriveOpeningKickoffReceiver(value, prev.tossChoice, prev.openingKickoffReceiver),
-            }))}
-          />
-
-          <div>
-            <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest mb-1.5">Winner Choice</div>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { value: "receive", label: "Receive" },
-                { value: "kick", label: "Kick" },
-                { value: "defer", label: "Defer" },
-                { value: "defend_goal", label: "Defend Goal" },
-              ].map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setForm((prev) => ({
-                    ...prev,
-                    tossChoice: option.value as TossChoice,
-                    openingKickoffReceiver: deriveOpeningKickoffReceiver(
-                      prev.tossWinner,
-                      option.value as TossChoice,
-                      prev.openingKickoffReceiver,
-                    ),
-                  }))}
-                  className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
-                    form.tossChoice === option.value
-                      ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
-                      : "border-surface-border bg-surface-bg text-neutral-400 active:bg-surface-hover"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <ToggleRow<FieldDirection>
-            label="Drive Direction In 1st Quarter"
-            value={form.ourDriveDirectionQ1}
-            options={[
-              { value: "right", label: "To The Right" },
-              { value: "left", label: "To The Left" },
-            ]}
-            onChange={(value) => setForm((prev) => ({ ...prev, ourDriveDirectionQ1: value }))}
-          />
-
-          <ToggleRow<TeamSide>
-            label="Opening Kickoff Receiver"
-            value={openingReceiver}
-            options={[
-              { value: "us", label: progName },
-              { value: "them", label: oppName },
-            ]}
-            onChange={(value) => setForm((prev) => ({ ...prev, openingKickoffReceiver: value }))}
-            disabled={openingReceiverLocked}
-          />
-
-          <div className="space-y-2">
-            <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest">
-              Charting This Game
-            </div>
-            <SwitchRow
-              label="Track formations"
-              hint="Adds a formation + hash step to every play. Turn off for a thin crew — Film Chart can still add it later."
-              value={charting.formations}
-              onChange={(value) => setCharting((prev) => ({ ...prev, formations: value }))}
-            />
-            <SwitchRow
-              label="Track tacklers"
-              hint="Adds a tackler step (solo 1.0 / assist 0.5). Turn off to record faster."
-              value={charting.tacklers}
-              onChange={(value) => setCharting((prev) => ({ ...prev, tacklers: value }))}
-            />
-          </div>
-
-          <div className="card p-3 space-y-1.5">
-            <div className="text-[10px] font-display font-bold text-surface-muted uppercase tracking-widest">Summary</div>
-            <div className="flex justify-between text-sm font-bold">
-              <span className="text-neutral-500">Q1</span>
-              <span>
-                {teamLabel(oppositeTeam(openingReceiver), progName, oppName)}
-                {" kicks to "}
-                {teamLabel(openingReceiver, progName, oppName)}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm font-bold">
-              <span className="text-neutral-500">Q3</span>
-              <span>
-                {teamLabel(oppositeTeam(secondHalfReceiver), progName, oppName)}
-                {" kicks to "}
-                {teamLabel(secondHalfReceiver, progName, oppName)}
-              </span>
-            </div>
-            <div className="text-xs text-neutral-500">
-              Ends switch every quarter. Q1 direction sets the field view.
-            </div>
-            {openingReceiverLocked && (
-              <div className="text-[11px] text-neutral-500">
-                Locked — toss winner chose to {form.tossChoice.replace("_", " ")}.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="p-5 pt-0 shrink-0">
-          <button onClick={handleSave} disabled={saving} className="btn-primary w-full">
-            {saving ? "Saving..." : "Save Pregame"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <PregameSetupView
+    teams={team}
+    winner={form.tossWinner}
+    choice={form.tossChoice}
+    loserChoice={loserChoice}
+    direction={form.ourDriveDirectionQ1}
+    receiver={openingReceiver}
+    secondHalfReceiver={secondHalfReceiver}
+    charting={charting}
+    setWinner={setTossWinner}
+    setChoice={setTossChoice}
+    setLoserChoice={setLoserChoice}
+    setDirection={(value) => setForm(prev => ({ ...prev, ourDriveDirectionQ1: value }))}
+    setCharting={setCharting}
+    onSave={handleSave}
+    onClose={onClose}
+    saving={saving}
+  />;
 }

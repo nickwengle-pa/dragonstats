@@ -10,6 +10,9 @@ const UiPreview = import.meta.env.DEV ? lazy(() => import("./screens/UiPreview")
 const FlowPreview = import.meta.env.DEV
   ? lazy(() => import("./screens/FlowPreview")) : null;
 
+const PregamePreview = import.meta.env.DEV
+  ? lazy(() => import("./screens/PregamePreview")) : null;
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
@@ -20,6 +23,8 @@ createRoot(document.getElementById("root")!).render(
           ? <Suspense fallback={<p>Loading UI preview?</p>}><UiPreview /></Suspense>
           : FlowPreview && window.location.pathname === "/flow-preview"
           ? <Suspense fallback={<p>Loading practice game…</p>}><FlowPreview /></Suspense>
+          : PregamePreview && window.location.pathname === "/pregame-preview"
+          ? <Suspense fallback={<p>Loading pregame…</p>}><PregamePreview /></Suspense>
           : <App />}
       </BrowserRouter>
     </ErrorBoundary>

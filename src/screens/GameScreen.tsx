@@ -2880,6 +2880,10 @@ export default function GameScreen() {
           initialCharting={charting}
           progName={progName}
           oppName={oppName}
+          progColor={program?.primary_color ?? null}
+          oppColor={oppColor}
+          progAbbr={progAbbr}
+          oppAbbr={oppAbbr}
           onClose={() => setShowPregame(false)}
           onSave={handleSavePregame}
           saving={savingPregame}
