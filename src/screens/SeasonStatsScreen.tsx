@@ -236,6 +236,7 @@ export default function SeasonStatsScreen() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Season Stats</h1>
+        <button className="btn-primary text-sm" onClick={() => navigate("/season-report")}>Season PDF</button>
       </div>
       <div className="mx-5 mt-1 mb-4 accent-line" />
 

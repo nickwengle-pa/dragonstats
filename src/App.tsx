@@ -41,6 +41,7 @@ const ResetPasswordScreen = lazyWithReload(() => import("@/screens/ResetPassword
 const PlayerScreen = lazyWithReload(() => import("@/screens/PlayerScreen"));
 const SettingsScreen = lazyWithReload(() => import("@/screens/SettingsScreen"));
 const SeasonStatsScreen = lazyWithReload(() => import("@/screens/SeasonStatsScreen"));
+const SeasonReportScreen = lazyWithReload(() => import("@/screens/SeasonReportScreen"));
 const GameSettingsScreen = lazyWithReload(() => import("@/screens/GameSettingsScreen"));
 const BoxScoreScreen = lazyWithReload(() => import("@/screens/BoxScoreScreen"));
 const GameReportScreen = lazyWithReload(() => import("@/screens/GameReportScreen"));
@@ -156,6 +157,7 @@ function AppRoutes() {
         <Route path="/player/:playerId" element={<ProtectedRoute><PlayerScreen /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
         <Route path="/season-stats" element={<ProtectedRoute><SeasonStatsScreen /></ProtectedRoute>} />
+        <Route path="/season-report" element={<ProtectedRoute><SeasonReportScreen /></ProtectedRoute>} />
         <Route path="/game-settings" element={<ProtectedRoute><GameSettingsScreen /></ProtectedRoute>} />
 
         {/* Fallback */}

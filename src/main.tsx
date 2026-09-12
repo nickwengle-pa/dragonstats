@@ -6,6 +6,7 @@ import ErrorBoundary from "./ErrorBoundary";
 import "./index.css";
 
 const UiPreview = import.meta.env.DEV ? lazy(() => import("./screens/UiPreview")) : null;
+const SeasonReportPreview = import.meta.env.DEV ? lazy(() => import("./screens/SeasonReportPreview")) : null;
 
 const FlowPreview = import.meta.env.DEV
   ? lazy(() => import("./screens/FlowPreview")) : null;
@@ -19,7 +20,9 @@ createRoot(document.getElementById("root")!).render(
       {/* Served from the root of dragonstats.app — no basename. It was
           "/dragonstats" while the app lived on github.io under the repo path. */}
       <BrowserRouter>
-        {UiPreview && window.location.pathname === "/ui-preview"
+        {SeasonReportPreview && window.location.pathname === "/season-report-preview"
+          ? <Suspense fallback={<p>Loading season report…</p>}><SeasonReportPreview /></Suspense>
+          : UiPreview && window.location.pathname === "/ui-preview"
           ? <Suspense fallback={<p>Loading UI preview?</p>}><UiPreview /></Suspense>
           : FlowPreview && window.location.pathname === "/flow-preview"
           ? <Suspense fallback={<p>Loading practice game…</p>}><FlowPreview /></Suspense>
