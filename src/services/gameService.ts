@@ -1,3 +1,4 @@
+import { nullifiedStats } from "./statAuditRules";
 import { supabase } from "@/lib/supabase";
 import {
   advanceSituationAfterPlay,
@@ -1110,6 +1111,7 @@ export function calcDefenseStats(
   };
 
   for (const play of plays) {
+    if (nullifiedStats(play)) continue;
     /* Shared tackles are recorded as several "tackler" tags carrying credit
        0.5 each - that is what tapping a second name in the modal does. The
        role "assist" is read here and by the engine transformer, and NOTHING
@@ -1131,11 +1133,11 @@ export function calcDefenseStats(
     const allTacklerTags = [
       ...play.play_players.filter(p => p.role === "tackler"),
       ...teamTacklerTags,
-    ];
+    ].filter(t => !play.play_players.some(p => p.role === "sacker" && p.player_id === t.player_id));
     const sharedTags = allTacklerTags.filter(p => (p.credit ?? 1) < 1);
     const soloTags = allTacklerTags.filter(p => (p.credit ?? 1) >= 1);
     const assists = [
-      ...play.play_players.filter(p => p.role === "assist"),
+      ...play.play_players.filter(p => p.role === "assist" && !play.play_players.some(s => s.role === "sacker" && s.player_id === p.player_id)),
       ...sharedTags,
     ];
     // Derived credit: a tackler tagged on an incompletion is a pass breakup,
@@ -1165,7 +1167,7 @@ export function calcDefenseStats(
         s.soloTackles  += 1;
         s.totalTackles += 1;
       }
-      if (isTfl) s.tfl += 1;
+      if (isTfl) s.tfl += isAssisted ? assistCredit : 1;
       if (play.play_type === "safety") s.safeties += 1;
     }
 
@@ -1174,23 +1176,26 @@ export function calcDefenseStats(
       const s = get(a.player_id);
       s.assistTackles += 1;
       s.totalTackles  += assistCredit;
-      if (isTfl) s.tfl += 1;
+      if (isTfl) s.tfl += a.credit ?? assistCredit;
     }
 
     // Role-based credits
     for (const pp of play.play_players) {
       const s = get(pp.player_id);
       if (pp.role === "sacker") {
-        s.sacks += 1;
+        const sackers = play.play_players.filter(p => p.role === "sacker");
+        const credit = 1 / sackers.length;
+        s.sacks += credit;
         // NFHS scoring: a sack is also a solo tackle and a TFL. Live entry
         // tags only the sacker role, so derive the rest — unless the same
         // player is also tagged tackler/assist on this play (already counted).
         const alsoTagged = tacklers.some(t => t.player_id === pp.player_id)
           || assists.some(a => a.player_id === pp.player_id);
         if (!alsoTagged) {
-          s.soloTackles += 1;
-          s.totalTackles += 1;
-          s.tfl += 1;
+          if (credit === 1) s.soloTackles += 1;
+          else s.assistTackles += 1;
+          s.totalTackles += credit;
+          s.tfl += credit;
         }
       }
       if (pp.role === "interceptor")     s.ints            += 1;

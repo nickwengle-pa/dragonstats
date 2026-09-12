@@ -42,14 +42,7 @@ export class TeamCalculator {
             return;
         // --- PENALTY-ONLY PLAYS ---
         if (play.type === PlayType.Penalty) {
-            const pp = play;
-            for (const pen of pp.penalties) {
-                if (pen.enforcement === "accepted") {
-                    const penTeamStat = this.getOrCreate(pen.team, pen.team === this.homeTeamId ? this.homeTeamName : this.awayTeamName);
-                    penTeamStat.penalties++;
-                    penTeamStat.penaltyYards += pen.yards;
-                }
-            }
+            this.processPenaltiesOnPlay(play);
             return;
         }
         // Play wiped out by an accepted penalty: no attempt/yardage credit,
@@ -66,7 +59,10 @@ export class TeamCalculator {
                 stat.totalPlays++;
                 stat.sacks++;
                 stat.sackYardsLost += Math.abs(p.yardsGained);
+                if (this.config.highSchoolStats) { stat.rushAttempts++; stat.rushingYards += p.yardsGained; }
                 stat.totalYards += p.yardsGained; // negative
+                this.checkSituational(stat, play, p.yardsGained, false);
+                this.processPenaltiesOnPlay(play);
                 this.checkTurnover(p, stat, play);
                 return;
             }
@@ -209,7 +205,7 @@ export class TeamCalculator {
         d.endQuarter = play.context.quarter;
         d.endTime = play.context.gameClock;
         d.maxYardLine = Math.max(d.maxYardLine, play.context.yardLine);
-        if (play.type !== PlayType.Timeout && play.type !== PlayType.NoPlay) {
+        if (play.type !== PlayType.Timeout && play.type !== PlayType.NoPlay && play.type !== PlayType.Penalty && !isPlayNullifiedByPenalty(play)) {
             d.plays++;
             const p = play;
             if (p.yardsGained != null) {
@@ -355,7 +351,7 @@ export class TeamCalculator {
                 penStat.penalties++;
                 penStat.penaltyYards += pen.yards;
                 // Penalty first downs
-                if (pen.isAutoFirstDown) {
+                if (pen.isAutoFirstDown || (pen.team !== play.context.possessionTeam && pen.yards >= play.context.distance && !isGoalToGo(play))) {
                     const offTeam = play.context.possessionTeam;
                     if (pen.team !== offTeam) {
                         const offStat = this.getOrCreate(offTeam, offTeam === this.homeTeamId ? this.homeTeamName : this.awayTeamName);

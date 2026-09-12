@@ -42,6 +42,8 @@ import { splitTackleCredit } from "./tackleCredit";
 import { grantsAutoFirstDown } from "@/components/game/types";
 import { resolveKickSpots } from "./kickSpots";
 import { scoringEventsForPlay } from "./scoringLedger";
+import { convertPlay } from "./playTransformer";
+import type { PlayWithPlayers } from "./gameService";
 
 export interface LiveSessionConfig {
   gameId: string;
@@ -239,6 +241,7 @@ function liveKickSpots(play: PlayRecord) {
     ballOn: play.ballOn,
     playData: play.playData,
     description: play.description,
+    isTouchdown: play.isTouchdown,
   });
 }
 
@@ -330,6 +333,31 @@ function toEnginePlay(
   driveNumber: number,
 ): Play | null {
   const context = buildPlayContext(stateBefore, scoreBefore, config, driveNumber);
+  // Share audited conversions with saved-game reports, using the live situation.
+  if (["rush", "pass_comp", "sack", "safety", "fum_rec", "blocked_kick", "onside_kick", "kickoff", "punt", "penalty", "penalty_only"].includes(play.type)) {
+    const row = {
+      id: play.id, game_id: config.gameId, play_type: play.type,
+      possession: play.possession, yard_line: stateBefore.ballOn, down: stateBefore.down,
+      distance: stateBefore.distance, quarter: play.quarter, yards_gained: play.yards,
+      is_touchdown: play.isTouchdown, is_turnover: play.turnover,
+      is_penalty: Boolean(play.penalty), description: play.description,
+      play_data: {
+        result: play.result, is_touchback: play.isTouchback,
+        penalty_type: play.penalty, penalty_yards: play.flagYards,
+        penalty_enforcement: play.penaltyEnforcement,
+        play_category: play.penaltyCategory,
+        fumble_return_yards: play.fumbleReturnYards,
+        ...play.playData,
+      },
+      play_players: play.tagged.map(t => ({ player_id: t.player_id, role: t.role, credit: t.credit })),
+    } as unknown as PlayWithPlayers;
+    return convertPlay(row, context, {
+      gameId: config.gameId, homeTeamId: context.homeTeam, awayTeamId: context.awayTeam,
+      homeTeamName: config.isHome ? config.programName : config.opponentName,
+      awayTeamName: config.isHome ? config.opponentName : config.programName,
+      programTeamId: config.programTeamId,
+    });
+  }
   const penalties = buildPenalties(play, config);
   const tackles = liveTackleCredits(play);
   const kickSpots = liveKickSpots(play);

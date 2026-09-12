@@ -35,7 +35,7 @@ function fromWidgetPercent(widgetPercent: number) {
 const YARD_NUMBERS = [10, 20, 30, 40, 50, 40, 30, 20, 10];
 const PLAYING_FIELD_START_PCT = 10;
 const PLAYING_FIELD_WIDTH_PCT = 80;
-const FIVE_YARD_LINES = Array.from({ length: 17 }, (_, index) => index * 5);
+const FIVE_YARD_LINES = Array.from({ length: 21 }, (_, index) => index * 5);
 
 function toWidgetPercent(displayPercent: number) {
   const clamped = Math.max(0, Math.min(100, displayPercent));
@@ -121,7 +121,7 @@ export default function FieldVisualizer({
       <div
         // Short field below lg: the pinned block has to give the play buttons
         // room on a phone, and 32 units of field is the cheapest 32 to find.
-        className={`relative w-full ${compact ? "h-24" : "h-24 lg:h-32"} rounded-xl overflow-hidden`}
+        className={`field-turf relative w-full ${compact ? "h-24" : "h-24 lg:h-32"} rounded-xl overflow-hidden`}
         style={{
           background: "linear-gradient(180deg, rgba(34, 94, 45, 0.98), rgba(19, 78, 36, 1))",
           boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
@@ -214,6 +214,7 @@ export default function FieldVisualizer({
           return (
             <div
               key={`major-${yard}`}
+              data-yard-line={yard}
               className="absolute top-0 bottom-0 z-[3]"
               style={{
                 left: `${left}%`,
@@ -315,13 +316,26 @@ export default function FieldVisualizer({
           {ballOn > 50 ? 100 - ballOn : ballOn}
         </div>
 
-        {/* Tap-to-spot overlay. Sits above the field art but below the ball
-            marker and the flip button so neither gets swallowed. Covers only
+        {/* Tap-to-spot overlay. Sits above the ball so even a no-gain tap works;
+            the flip button remains above the overlay. Covers only
             the playing surface — the end zones aren't valid spots. */}
         {onPickSpot && (
           <div
             data-testid="field-spot-surface"
-            className="absolute top-0 bottom-0 z-[25] cursor-crosshair"
+            role="slider"
+            tabIndex={0}
+            aria-label="Select field yard line"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(ballPosition)}
+            aria-valuetext={`${Math.round(ballPosition <= 50 ? ballPosition : 100 - ballPosition)} yard line, ${ballPosition < 50 ? "left" : "right"} half of field`}
+            className="absolute top-0 bottom-0 z-40 cursor-crosshair focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+            onKeyDown={event => {
+              const delta = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+              if (!delta) return;
+              event.preventDefault();
+              onPickSpot(Math.max(0, Math.min(100, Math.round(ballPosition) + delta)));
+            }}
             style={{
               left: `${PLAYING_FIELD_START_PCT}%`,
               width: `${PLAYING_FIELD_WIDTH_PCT}%`,
@@ -347,7 +361,7 @@ export default function FieldVisualizer({
         {onFlipDirection && (
           <button
             onClick={onFlipDirection}
-            className="absolute bottom-1 right-[11%] z-30 p-1 rounded bg-black/45 text-white/60 active:text-white active:bg-black/65 transition-colors cursor-pointer"
+            className="absolute bottom-1 right-[11%] z-50 p-1 rounded bg-black/45 text-white/60 active:text-white active:bg-black/65 transition-colors cursor-pointer"
             title="Swap field sides"
           >
             <ArrowLeftRight className="w-3.5 h-3.5" />

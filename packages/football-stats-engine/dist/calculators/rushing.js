@@ -1,7 +1,7 @@
 // ============================================================================
 // RUSHING STATS CALCULATOR
 // ============================================================================
-import { PassResult, } from "../types";
+import { PassResult, PlayType, } from "../types";
 import { initRushingStats, isRushPlay, isPassPlay, isRedZone, isThirdDown, isFirstDown, directionBucket, safeDivide, } from "../utils";
 import { isPlayNullifiedByPenalty } from "./penalty";
 export class RushingCalculator {
@@ -23,6 +23,10 @@ export class RushingCalculator {
         // QB scrambles count as rushing
         if (isPassPlay(play)) {
             const p = play;
+            if (p.result === PassResult.Sack && this.config.highSchoolStats && p.passer) {
+                this.processRush({ ...p, type: PlayType.Rush, rusher: p.passer, isTouchdown: false }, play);
+                return;
+            }
             if (p.result === PassResult.Scramble) {
                 this.processScramble(p, play);
             }

@@ -36,6 +36,7 @@ export function isPlayNullifiedByPenalty(play) {
     return p.penalties.some((pen) => {
         if (pen.enforcement !== PenaltyEnforcement.Accepted)
             return false;
+        if (pen.preservesPlayStats) return false;
         const def = lookupPenalty(pen.penaltyType);
         return def ? def.replayDown : true;
     });

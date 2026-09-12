@@ -1,3 +1,4 @@
+import { isPlayNullifiedByPenalty } from "./penalty";
 // ============================================================================
 // DEFENSIVE STATS CALCULATOR
 // ============================================================================
@@ -10,6 +11,7 @@ export class DefensiveCalculator {
         this.stats = new Map();
     }
     process(play) {
+        if (isPlayNullifiedByPenalty(play)) return;
         // --- TACKLES (available on rush + pass + special teams) ---
         this.processTackles(play);
         // --- PASS-SPECIFIC DEFENSE ---
@@ -25,8 +27,22 @@ export class DefensiveCalculator {
     }
     processTackles(play) {
         const p = play;
+        const schoolSack = this.config.highSchoolStats && isPassPlay(play) && p.result === PassResult.Sack;
+        if (schoolSack && p.tackledBy?.length) {
+            const count = p.tackledBy.length;
+            for (const id of p.tackledBy) {
+                const stat = this.getOrCreate(id);
+                if (count === 1)
+                    stat.soloTackles++;
+                else
+                    stat.assistedTackles++;
+                stat.totalTackles += 1 / count;
+                if (p.yardsGained < 0)
+                    stat.tacklesForLoss += 1 / count;
+            }
+        }
         // Solo tackles
-        if (p.tackledBy && Array.isArray(p.tackledBy)) {
+        if (!schoolSack && p.tackledBy && Array.isArray(p.tackledBy)) {
             for (const tackler of p.tackledBy) {
                 const stat = this.getOrCreate(tackler);
                 if (p.tackledBy.length === 1 && (!p.assistedTackle || p.assistedTackle.length === 0)) {
@@ -70,7 +86,7 @@ export class DefensiveCalculator {
             }
         }
         // Assisted tackles
-        if (p.assistedTackle && Array.isArray(p.assistedTackle)) {
+        if (!schoolSack && p.assistedTackle && Array.isArray(p.assistedTackle)) {
             for (const assister of p.assistedTackle) {
                 const stat = this.getOrCreate(assister);
                 stat.assistedTackles++;
@@ -91,7 +107,7 @@ export class DefensiveCalculator {
                 else {
                     // Split sack
                     stat.halfSacks++;
-                    stat.sacks += 0.5;
+                    stat.sacks += this.config.highSchoolStats ? 1 / sackCount : 0.5;
                     stat.sackYards += Math.abs(p.yardsGained) / sackCount;
                 }
             }
@@ -116,9 +132,7 @@ export class DefensiveCalculator {
             if (p.interceptionReturnYards != null) {
                 stat.interceptionYards += p.interceptionReturnYards;
             }
-            if (p.isTouchdown) {
-                stat.interceptionTouchdowns++;
-            }
+            if (p.isTouchdown) stat.interceptionTouchdowns++;
         }
         // --- PASSES DEFENDED (incomplete where a defender was near) ---
         if (p.result === PassResult.BattedDown && p.tackledBy) {

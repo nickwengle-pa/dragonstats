@@ -780,6 +780,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
           ballOn: p.yard_line ?? 0,
           playData: p.play_data,
           description: p.description,
+          isTouchdown: p.is_touchdown,
         });
         if (!spots) return acc;
         return {

@@ -38,6 +38,8 @@ export interface TaggedPlayer {
    *  couldn't see who". A live-entry placeholder resolved during film review,
    *  not a claim about a player. See TEAM_PLAYER_ID below. */
   isTeam?: boolean;
+  /** Explicit team credit, rather than a player to identify during film review. */
+  teamCreditConfirmed?: boolean;
 }
 
 /* ─────────────────────────────────────────────

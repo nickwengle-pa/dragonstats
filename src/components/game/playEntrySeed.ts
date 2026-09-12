@@ -137,7 +137,9 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
       ? Math.max(0, Math.min(100, 100 - play.ballOn - fromDescription.kickDistance))
       : 5);
 
-  const storedReturnTo = num(pd.return_to_ball_on);
+  const storedReturnTo = play.isTouchdown && ["kickoff", "punt"].includes(play.type)
+    ? 0
+    : num(pd.return_to_ball_on);
   /* Where the return ended, in the receiving team's own numbers: caught on the
      10 and brought out 10 is their 20. Over midfield it flips sides, exactly
      as the return picker does. */

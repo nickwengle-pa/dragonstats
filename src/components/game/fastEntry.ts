@@ -1,6 +1,6 @@
 import type { TaggedPlayer } from "./types";
 
-export const FAST_PLAY_IDS = new Set(["rush", "pass_comp", "pass_inc", "sack"]);
+export const FAST_PLAY_IDS = new Set(["rush", "bad_snap", "pass_comp", "pass_inc", "sack"]);
 
 /** Replacing an unidentified tackle must not create an extra assist. */
 export function toggleFastTackler(current: TaggedPlayer[], pick: TaggedPlayer): TaggedPlayer[] {

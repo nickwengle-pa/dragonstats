@@ -37,89 +37,60 @@ export function parseClockDigits(digits: string): number | null {
   return mins * 60 + secs;
 }
 
-/**
- * Clock entry that takes the whole time as one number — no tabbing between a
- * minutes box and a seconds box while the game waits. Type 1123 for 11:23.
- * Separate minute/second fields are kept underneath for the times it's easier
- * to nudge one part.
- */
+/** Touch keypad shared by game, play, and timeout clock editors. */
 export default function ClockInput({ seconds, onChange, maxSeconds, autoFocus }: Props) {
-  const [digits, setDigits] = useState("");
-  const [editing, setEditing] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
+  const [digits, setDigits] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const displayRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (autoFocus) inputRef.current?.focus();
+    if (autoFocus) displayRef.current?.focus();
   }, [autoFocus]);
 
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-
-  const commitDigits = (raw: string) => {
+  const commit = (raw: string) => {
+    const parsed = raw === "" ? 0 : parseClockDigits(raw);
     setDigits(raw);
-    const parsed = parseClockDigits(raw);
-    if (parsed == null) return;
-    onChange(Math.max(0, Math.min(maxSeconds, parsed)));
+    if (parsed == null || parsed > maxSeconds) {
+      setMessage(`Entry ${raw}: ${parsed == null ? "seconds must be 00–59" : `maximum ${formatClockValue(maxSeconds)}`}. Clock unchanged.`);
+      return;
+    }
+    setMessage("");
+    onChange(parsed);
   };
-
-  const setPart = (nextMins: number, nextSecs: number) => {
-    const total = Math.max(0, nextMins) * 60 + Math.max(0, Math.min(59, nextSecs));
-    onChange(Math.max(0, Math.min(maxSeconds, total)));
-    setDigits("");
+  const press = (key: string) => {
+    if (key === "clear") { commit(""); return; }
+    if (key === "backspace") {
+      const current = digits ?? `${Math.floor(seconds / 60)}${String(seconds % 60).padStart(2, "0")}`;
+      commit(current.slice(0, -1));
+      return;
+    }
+    const current = digits ?? "";
+    if (current.length >= 4) { setMessage("Tap the time to start a new entry."); return; }
+    commit(current + key);
   };
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="text-[10px] font-bold text-neutral-500 block mb-1 text-center">
-          Type the whole time — 1123 = 11:23
-        </label>
-        <input
-          ref={inputRef}
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          placeholder={formatClockValue(seconds)}
-          value={digits}
-          onChange={(e) => commitDigits(e.target.value)}
-          onFocus={() => { setEditing(true); setDigits(""); }}
-          onBlur={() => { setEditing(false); setDigits(""); }}
-          className="input w-full text-center text-3xl font-black tabular-nums"
-          maxLength={4}
-        />
-        <div className="text-center text-sm font-black tabular-nums mt-1 text-dragon-primary">
-          {editing && digits.length > 0 && parseClockDigits(digits) == null
-            ? "—:—"
-            : formatClockValue(seconds)}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-center gap-2">
-        <div className="text-center">
-          <span className="text-[10px] font-bold text-neutral-500 block mb-1">Min</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={Math.floor(maxSeconds / 60)}
-            value={mins}
-            onChange={(e) => setPart(Number(e.target.value) || 0, secs)}
-            className="input w-20 text-center text-xl font-black"
-          />
-        </div>
-        <span className="text-xl font-black pt-5">:</span>
-        <div className="text-center">
-          <span className="text-[10px] font-bold text-neutral-500 block mb-1">Sec</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={59}
-            value={secs}
-            onChange={(e) => setPart(mins, Number(e.target.value) || 0)}
-            className="input w-20 text-center text-xl font-black"
-          />
-        </div>
+    <div className="space-y-2" role="group" aria-label="Clock number pad"
+      onKeyDown={event => {
+        if (/^[0-9]$/.test(event.key)) { event.preventDefault(); press(event.key); }
+        else if (event.key === "Backspace") { event.preventDefault(); press("backspace"); }
+        else if (event.key === "Delete") { event.preventDefault(); press("clear"); }
+      }}>
+      <button ref={displayRef} type="button" aria-label="Clock time, tap to replace"
+        onClick={() => { setDigits(null); setMessage(""); }}
+        className="w-full rounded-xl border border-slate-500 bg-slate-950 py-2 text-4xl font-black text-white tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
+        {formatClockValue(seconds)}
+      </button>
+      <p className="text-center text-xs text-slate-400" aria-live="polite">
+        {message || (digits == null ? "Tap numbers to replace time · 425 = 4:25" : "Tap time to start over")}
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "backspace"].map(key => (
+          <button key={key} type="button" onClick={() => press(key)}
+            aria-label={key === "backspace" ? "Delete last digit" : key === "clear" ? "Clear clock" : key}
+            className={`min-h-12 rounded-xl border border-slate-600 bg-slate-800 text-white active:bg-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${key.length > 1 ? "text-sm font-bold" : "text-2xl font-black"}`}>
+            {key === "backspace" ? "⌫" : key === "clear" ? "Clear" : key}
+          </button>
+        ))}
       </div>
     </div>
   );

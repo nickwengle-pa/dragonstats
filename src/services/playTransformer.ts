@@ -1,3 +1,4 @@
+import { preservesAdvance } from "./statAuditRules";
 /**
  * Transforms dragonstats PlayWithPlayers records into football-stats-engine Play objects.
  *
@@ -235,6 +236,7 @@ function kickSpotsFor(play: PlayWithPlayers) {
     ballOn: play.yard_line ?? 0,
     playData: play.play_data,
     description: play.description,
+    isTouchdown: play.is_touchdown,
   });
 }
 
@@ -320,6 +322,7 @@ function getOppPlayerId(play: PlayWithPlayers): string {
 function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEvent[] | undefined {
   if (!play.is_penalty) return undefined;
   const pd = play.play_data as Record<string, any>;
+  if (pd?.kickoff_out_of_bounds_choice === "take_35") return undefined;
   const penaltyType = pd?.penalty_type;
   if (!penaltyType) return undefined;
 
@@ -344,6 +347,7 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
     yards: enforcement === PenaltyEnforcement.Accepted ? (pd?.penalty_yards ?? 5) : 0,
     enforcement,
     isAutoFirstDown: grantsAutoFirstDown(penaltyType, penCategory),
+    preservesPlayStats: preservesAdvance(pd ?? {}, play.yard_line ?? 0),
   }];
 }
 
@@ -351,7 +355,7 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
 function buildFumble(play: PlayWithPlayers, ballCarrier: string, ctx: TransformContext): FumbleEvent | undefined {
   const recoverer = firstPlayerByRole(play, "fumble_recovery");
   const forcer = firstPlayerByRole(play, "forced_fumble");
-  if (!recoverer && !forcer) return undefined;
+  if (!recoverer && !forcer && !play.is_turnover) return undefined;
 
   const possTeamId = play.possession === "us" ? ctx.programTeamId : otherTeam(ctx.programTeamId, ctx);
   // recoveryYards has been on FumbleEvent all along with nothing filling it,
@@ -387,14 +391,27 @@ function scoreForPlay(play: PlayWithPlayers): number {
 // Play conversion — route each play_type to the correct engine type
 // ---------------------------------------------------------------------------
 
-function convertPlay(
+export function convertPlay(
   play: PlayWithPlayers,
   context: PlayContext,
   ctx: TransformContext,
 ): Play | null {
   const pd = play.play_data as Record<string, any>;
+  // A loose ball remains part of the original advance up to recovery, before any recovery return.
+  if (play.is_turnover && ["rush", "pass_comp", "sack", "fum_rec"].includes(play.play_type)
+      && typeof pd?.fumble_recovered_at === "number") {
+    play = { ...play, yards_gained: pd.fumble_recovered_at - (play.yard_line ?? 0) };
+  }
   const penalties = buildPenalties(play, ctx);
+  if (penalties?.some(p => p.preservesPlayStats) && ["rush", "pass_comp"].includes(play.play_type)) {
+    play = { ...play, yards_gained: Math.min(play.yards_gained, pd.foul_spot_ball_on - (play.yard_line ?? 0)) };
+  }
   const isOurOffense = play.possession === "us";
+
+  // A kick repeated after enforcement contributes the penalty, not a kick attempt.
+  if (["kickoff", "onside_kick"].includes(play.play_type) && pd?.kickoff_out_of_bounds_choice === "rekick") {
+    return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } as Play : null;
+  }
 
   switch (play.play_type) {
     // ── OFFENSIVE PLAYS (typically possession="us") ──────────────────────
@@ -684,7 +701,7 @@ function convertPlay(
       return {
         type: PlayType.Kickoff,
         kicker,
-        returner: recoverer,
+        returner: pd?.onside_recovered_by_kicker ? undefined : recoverer,
         result: SpecialTeamsResult.Normal,
         kickDistance: spots?.kickDistance,
         returnYards: recoverer ? spots?.returnYards : undefined,
@@ -775,7 +792,8 @@ function convertPlay(
       if (blockedKickType === "punt") {
         return {
           type: PlayType.Punt,
-          punter: firstPlayerByRole(play, "punter"),
+          punter: isOurOffense ? TEAM_PLAYER_ID : "opp_team",
+          kickDistance: 0,
           returner: firstPlayerByRole(play, "returner"),
           result: SpecialTeamsResult.Block,
           isBlocked: true,
@@ -802,6 +820,7 @@ function convertPlay(
       }
       return {
         type: blockedKickType === "extra_point" ? PlayType.ExtraPoint : PlayType.FieldGoal,
+        kicker: firstPlayerByRole(play, "kicker"),
         result: KickResult.Blocked,
         isBlocked: true,
         blockedBy,
@@ -872,7 +891,7 @@ function convertPlay(
     case "safety": {
       // Safety = opponent tackled in their own end zone.
       // Model as a rush for negative yards.
-      const oppRusher = getOppPlayerId(play);
+      const oppRusher = firstPlayerByRole(play, "rusher") ?? (isOurOffense ? TEAM_PLAYER_ID : getOppPlayerId(play));
       return {
         type: PlayType.Rush,
         rusher: oppRusher,

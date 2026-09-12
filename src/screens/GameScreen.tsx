@@ -55,6 +55,8 @@ import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import PlayLog from "@/components/game/PlayLog";
+import { countPlayerUsage } from "@/components/game/playerUsage";
+import { OffensivePlayBadge, PlayTacklers } from "@/components/game/PlayRowDetails";
 import LiveStatsPanel from "@/components/game/LiveStatsPanel";
 import SyncBadge from "@/components/game/SyncBadge";
 import { useWakeLock, readKeepAwake, writeKeepAwake } from "@/hooks/useWakeLock";
@@ -690,6 +692,9 @@ export default function GameScreen() {
 
   /* ── Modal state ── */
   const [selectedPlayType, setSelectedPlayType] = useState<PlayTypeDef | null>(null);
+  const [draftFieldSpot, setDraftFieldSpot] = useState<number | null>(null);
+  const [fieldSpotRequest, setFieldSpotRequest] = useState<{ ballOn: number; id: number } | null>(null);
+  const fieldPickId = useRef(0);
   const [showLog, setShowLog] = useState(false);
   const [showLiveStats, setShowLiveStats] = useState(false);
   const [hurryUp, setHurryUp] = useState(false);
@@ -834,6 +839,7 @@ export default function GameScreen() {
     }
     return map;
   }, [plays, roster, oppPlayers]);
+  const playerUsage = useMemo(() => countPlayerUsage(plays), [plays]);
 
 
   /* ── Live engine summary (re-derives per play change) ── */
@@ -925,10 +931,10 @@ export default function GameScreen() {
   // mirrored, so dragging "downfield" counts the wrong way.
   const offenseDisplayDirection = useMemo(
     () => {
-      const direction = getOffenseDriveDirection(possession, quarter, pregame);
+      const direction = getOffenseDriveDirection(entrySituation.possession, entrySituation.quarter, pregame);
       return directionFlipped ? oppositeFieldDirection(direction) : direction;
     },
-    [directionFlipped, possession, quarter, pregame],
+    [directionFlipped, entrySituation, pregame],
   );
 
   useEffect(() => {
@@ -1584,6 +1590,8 @@ export default function GameScreen() {
       void submitPreSnapPenalty(pt.id);
       return;
     }
+    setFieldSpotRequest(null);
+    setDraftFieldSpot(null);
     setSelectedPlayType(pt);
   };
 
@@ -1811,7 +1819,7 @@ export default function GameScreen() {
       applySituation(nextSituation);
       // Hurry-up mode skips the clock-capture prompt — operator updates the
       // clock manually between plays via the editor when they have a moment.
-      if (!hurryUp && shouldPromptForClockCapture(localPlay, before, nextSituation)) {
+      if (!hurryUp && data.playData?.quick_kneel !== true && shouldPromptForClockCapture(localPlay, before, nextSituation)) {
         openPostPlayClockCapture({
           play: localPlay,
           before,
@@ -2238,7 +2246,7 @@ export default function GameScreen() {
         team_tagged: result.tagged
           .filter(t => t.isTeam)
           .map(t => ({ role: t.role, credit: t.credit ?? null })),
-        next_possession: result.nextSituation ? original.possession : null,
+        next_possession: result.nextSituation?.possession ?? null,
         next_down: result.nextSituation?.down ?? null,
         next_distance: result.nextSituation?.distance ?? null,
         next_yard_line: result.nextSituation?.ballOn ?? null,
@@ -2273,7 +2281,7 @@ export default function GameScreen() {
       tagged: result.tagged,
       fumbleReturnYards: result.fumbleReturnYards ?? null,
       fumbleRecoveredAt: result.fumbleRecoveredAt ?? null,
-      nextPossession: result.nextSituation ? original.possession : undefined,
+      nextPossession: result.nextSituation?.possession,
       nextDown: result.nextSituation?.down,
       nextDistance: result.nextSituation?.distance,
       nextBallOn: result.nextSituation?.ballOn,
@@ -2485,7 +2493,7 @@ export default function GameScreen() {
     // Phone landscape can't afford a pinned block — header plus scoreboard plus
     // field already exceed the viewport, which collapses the play area to zero
     // and strands every button. There, drop the lock and let the page scroll.
-    <div className="screen safe-top safe-bottom h-dvh overflow-hidden max-lg:landscape:h-auto max-lg:landscape:overflow-visible">
+    <div className={`screen live-game-screen ${selectedPlayType ? "live-recording" : ""} safe-top safe-bottom h-dvh overflow-hidden max-lg:landscape:h-auto max-lg:landscape:overflow-visible`}>
       {/* Header */}
       <div className="flex items-center gap-1.5 lg:gap-3 px-3 lg:px-5 pt-4 pb-2 shrink-0">
         <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
@@ -2560,7 +2568,7 @@ export default function GameScreen() {
       {/* Pinned: scoreboard and field never scroll away. The stats strip is
           pinned too on tablets, but on a phone it moves into the scroller —
           the pinned block was leaving barely two rows of play buttons. */}
-      <div className="shrink-0 px-3 lg:px-5 pb-2 lg:pb-3 space-y-2 lg:space-y-3">
+      <div className="live-pinned shrink-0 px-3 lg:px-5 pb-2 lg:pb-3 space-y-2 lg:space-y-3">
         {/* Scoreboard */}
         <Scoreboard
           state={entryGameState}
@@ -2575,7 +2583,7 @@ export default function GameScreen() {
              showing, so they lock - and the numbers they correct are derived
              from the plays either side of the insert anyway, which means a
              wrong one is a wrong neighbouring play, not a wrong nudge here. */
-          locked={insertContext != null}
+          locked={insertContext != null || selectedPlayType != null}
           progLogoUrl={progLogoUrl}
           oppLogoUrl={oppLogoUrl}
           oppColor={oppColor}
@@ -2597,10 +2605,18 @@ export default function GameScreen() {
         />
 
         {/* Field */}
+        <div className="live-field-block">
         <FieldVisualizer
           tilted={tiltedField}
-          ballOn={entrySituation.ballOn}
-          ballPosition={ballDisplayPosition}
+          compact
+          ballOn={selectedPlayType && draftFieldSpot != null ? draftFieldSpot : entrySituation.ballOn}
+          ballPosition={selectedPlayType && draftFieldSpot != null ? (offenseDisplayDirection === "right" ? draftFieldSpot : 100 - draftFieldSpot) : ballDisplayPosition}
+          onPickSpot={selectedPlayType ? draftFieldSpot == null ? undefined : display => {
+            const spot = offenseDisplayDirection === "right" ? display : 100 - display;
+            setFieldSpotRequest({ ballOn: Math.max(1, Math.min(99, spot)), id: ++fieldPickId.current });
+          } : insertContext ? undefined : display => {
+            setBallOn(Math.max(1, Math.min(99, offenseDisplayDirection === "right" ? display : 100 - display)));
+          }}
           firstDownPosition={firstDownDisplayPosition}
           possession={entrySituation.possession}
           ourEndZoneSide={ourEndZoneSide}
@@ -2619,22 +2635,24 @@ export default function GameScreen() {
           })}
         />
 
-        <div className="flex justify-end">
+        <div className="live-field-toolbar">
+          <span aria-live="polite">{selectedPlayType ? draftFieldSpot != null ? "Tap field to set the play’s ending spot" : "Set the spot in play details" : insertContext ? "Inserting a play · starting spot locked" : "Tap field to set the starting yard line"}</span>
           <button
             type="button"
             onClick={toggleFieldView}
             aria-label={tiltedField ? "Switch to flat field" : "Switch to tilted field"}
             className="min-h-11 px-3 text-xs font-semibold text-slate-300 hover:text-white rounded-md border border-surface-border"
           >
-            {tiltedField ? "Tilted field / switch to flat" : "Flat field / switch to tilted"}
+            {tiltedField ? "Tilted / Flat" : "Flat / Tilted"}
           </button>
+        </div>
         </div>
 
       </div>
 
       {/* Phone pane switcher. Pinned rather than scrolled: getting back to the
           buttons after checking the log has to be one tap, mid-drive. */}
-      <div className="lg:hidden shrink-0 px-3 pb-2 flex gap-1.5">
+      <div className="live-pane-switch lg:hidden shrink-0 px-3 pb-2 flex gap-1.5">
         {([
           { id: "play" as const, label: "Play" },
           { id: "plays" as const, label: `Plays (${plays.length})` },
@@ -2656,12 +2674,12 @@ export default function GameScreen() {
       {/* Below the pinned block: play selection and the drive summary. On a
           tablet in landscape they sit side by side and scroll independently;
           on narrower screens they stack in one scroller as before. */}
-      <div className="flex-1 min-h-0 px-3 lg:px-5 pb-4 flex flex-col gap-3 overflow-y-auto
+      <div className="live-workspace flex-1 min-h-0 px-3 lg:px-5 pb-4 flex flex-col gap-3 overflow-y-auto
                       lg:flex-row lg:gap-4 lg:overflow-hidden">
 
         {/* Left column: play selection. Hidden on the phone's Plays pane; the
             lg:block wins the cascade back at tablet width, where both show. */}
-        <div className={`lg:flex-1 min-h-0 lg:overflow-y-auto space-y-3 lg:block ${
+        <div data-pane={phonePane} className={`live-entry-column lg:flex-1 min-h-0 lg:overflow-y-auto space-y-3 lg:block ${
           phonePane === "play" ? "" : "hidden"
         }`}>
 
@@ -2702,6 +2720,8 @@ export default function GameScreen() {
       {selectedPlayType && (
         <PlayEntryModal
           inlineSimple
+          fieldSpotRequest={fieldSpotRequest}
+          onFieldPreview={setDraftFieldSpot}
           key={selectedPlayType.id}
           playType={selectedPlayType}
           /* Inserting into the middle of the game: the play is entered
@@ -2714,6 +2734,7 @@ export default function GameScreen() {
           oppName={oppName}
           gameConfig={gc}
           lastPlayerByRole={lastPlayerByRole}
+          playerUsage={playerUsage}
           progColor={primaryColor}
           oppColor={oppColor}
           progAbbr={progAbbr}
@@ -2766,7 +2787,7 @@ export default function GameScreen() {
 
         {/* Right column: drive summary. Scrolls on its own, so a long play
             list never pushes the play buttons off screen. */}
-        <div className={`lg:w-[38%] lg:shrink-0 min-h-0 lg:overflow-y-auto space-y-3 lg:block ${
+        <div data-pane={phonePane} className={`live-log-column lg:w-[38%] lg:shrink-0 min-h-0 lg:overflow-y-auto space-y-3 lg:block ${
           phonePane === "plays" ? "" : "hidden"
         }`}>
 
@@ -2833,8 +2854,10 @@ export default function GameScreen() {
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-body font-semibold truncate">{play.description}</div>
                     <div className="text-[10px] text-surface-muted font-body">
-                      {QUARTER_LABELS[play.quarter]} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance}
+                      <OffensivePlayBadge play={play} />{" "}
+                      {QUARTER_LABELS[play.quarter]} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance} · {formatTeamYardLabel(play.ballOn, play.possession, progAbbr, oppAbbr)}
                     </div>
+                    <PlayTacklers play={play} />
                   </div>
                   <div className={`text-xs font-display font-extrabold tabular-nums ${
                     isTimeout
@@ -2854,6 +2877,7 @@ export default function GameScreen() {
                         : play.yards > 0 ? `+${play.yards}` : play.yards}
                   </div>
                   {play.isTouchdown && <span className="text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider">TD</span>}
+                  {play.penalty && <span title={play.penalty} className="text-[9px] font-bold text-amber-300">PEN</span>}
                 </button>
                 );
               })}

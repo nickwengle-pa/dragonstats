@@ -6,6 +6,7 @@ import {
   type PlayRecord,
 } from "@/components/game/types";
 import type { GameConfig } from "./programService";
+import { kickoffOutOfBoundsSituation } from "./kickoffOutOfBounds";
 
 export type TeamSide = "us" | "them";
 export type FieldDirection = "left" | "right";
@@ -32,6 +33,7 @@ interface GameRulesCarrier {
 }
 
 interface AdvanceablePlay {
+  playData?: Record<string, unknown>;
   type: string;
   yards: number;
   result: string;
@@ -360,6 +362,10 @@ export function advanceSituationAfterPlay(
   before: LiveSituation,
   config: GameConfig,
 ): LiveSituation {
+  const outOfBoundsChoice = play.playData?.kickoff_out_of_bounds_choice;
+  if (["kickoff", "onside_kick"].includes(play.type) && (outOfBoundsChoice === "rekick" || outOfBoundsChoice === "take_35")) {
+    return kickoffOutOfBoundsSituation(before, outOfBoundsChoice, config.first_down_distance);
+  }
   if (play.type === "timeout") {
     return {
       possession: before.possession,

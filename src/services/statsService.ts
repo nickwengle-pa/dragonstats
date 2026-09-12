@@ -362,6 +362,7 @@ function supplementPuntsInside20(
       ballOn: play.yard_line ?? 0,
       playData: play.play_data,
       description: play.description,
+      isTouchdown: play.is_touchdown,
     });
     if (!spots) continue;
     if (isInsideTwenty(spots, Boolean(play.play_data?.is_touchback))) {

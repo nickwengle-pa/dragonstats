@@ -42,6 +42,7 @@ export class FootballStatsEngine {
             trackSituationalSplits: true,
             trackDrives: true,
             computePasserRating: true,
+            highSchoolStats: rules === "high_school",
             ...rest,
         };
         this.gameStateEnabled = enableGameState;

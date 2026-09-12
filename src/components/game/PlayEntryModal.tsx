@@ -34,6 +34,9 @@ import YardReel from "./YardReel";
 import FastPlayEntry from "./FastPlayEntry";
 import { FAST_PLAY_IDS, toggleFastTackler } from "./fastEntry";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
+import KneelEntry from "./KneelEntry";
+import { playerUseCount, type PlayerUsage } from "./playerUsage";
+import { KICKOFF_OUT_OF_BOUNDS, kickoffOutOfBoundsSituation, type KickoffOutOfBoundsChoice } from "@/services/kickoffOutOfBounds";
 import { flagSideDefault, reviewNextSpot } from "@/services/penaltySpot";
 import { enforcePenalty, type PlayKind } from "@/services/penaltyEnforcement";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "@/services/programService";
@@ -58,6 +61,7 @@ interface Props {
   /** Last player used per role, keyed "<role>:us" / "<role>:opp". Used to
    *  pre-fill recurring roles (QB, RB, kicker...) on the next play. */
   lastPlayerByRole?: Record<string, TaggedPlayer>;
+  playerUsage?: PlayerUsage;
   /** Team colors — the modal tints itself to whichever team you're working on,
    *  so a glance tells you whose players you're tagging. */
   progColor?: string;
@@ -94,6 +98,8 @@ interface Props {
   startDetailed?: boolean;
   /** Keep simple entry below the live field; full details remain a sheet. */
   inlineSimple?: boolean;
+  fieldSpotRequest?: { ballOn: number; id: number } | null;
+  onFieldPreview?: (ballOn: number | null) => void;
   submitLabel?: string;
   onReturnToSimple?: (data: PlaySubmitData) => void;
   /** Remove the play being edited. Absent when entering. */
@@ -157,8 +163,8 @@ const KICK_OUTCOMES: Array<{ value: KickOutcome; label: string }> = [
   { value: "returned", label: "Returned" },
   { value: "fair_catch", label: "Fair Catch" },
   { value: "downed", label: "Downed" },
-  { value: "out_of_bounds", label: "Out of Bounds" },
   { value: "touchback", label: "Touchback" },
+  { value: "out_of_bounds", label: "Out of Bounds" },
 ];
 
 /** Roles that belong to the team WITHOUT the ball. */
@@ -621,18 +627,22 @@ function OpponentPlayerGrid({
 
 export default function PlayEntryModal({
   playType: chosenPlayType, gameState, roster, opponentPlayers, progName, oppName,
-  gameConfig = DEFAULT_GAME_CONFIG, lastPlayerByRole,
+  gameConfig = DEFAULT_GAME_CONFIG, lastPlayerByRole, playerUsage,
   progColor = "#dc2626", oppColor = "#6b7280", progAbbr, oppAbbr,
   progLogoUrl, oppLogoUrl, ourEndZoneSide = "left", offenseDirection = "right",
   trackFormations = true, trackTacklers = true,
-  onSubmit, onClose, onAddOpponentPlayer, editing = null, onDelete, initialDraft, startDetailed = false, onReturnToSimple, submitLabel, inlineSimple = false,
+  onSubmit, onClose, onAddOpponentPlayer, editing = null, onDelete, initialDraft, startDetailed = false, onReturnToSimple, submitLabel, inlineSimple = false, fieldSpotRequest, onFieldPreview,
 }: Props) {
   /* The recorded play, read back into the state that produced it. Built once:
      every state initialiser below reads it during the first render, and it must
      not change identity between them. See playEntrySeed.ts. */
   const edit = useMemo(() => {
     const source = editing ?? initialDraft;
-    return source ? buildEditSeed(source) : null;
+    if (!source) return null;
+    const seed = buildEditSeed(source);
+    if (source.playData?.team_tackle_confirmed === true) seed.tacklers = seed.tacklers.map(tag => tag.isTeam ? { ...tag, teamCreditConfirmed: true } : tag);
+    if (source.playData?.kickoff_out_of_bounds_choice) seed.penalty = null;
+    return seed;
   }, [editing, initialDraft]);
   const isEditing = editing != null;
   const [fastSpotConfirmed, setFastSpotConfirmed] = useState(false);
@@ -793,6 +803,10 @@ export default function PlayEntryModal({
      and how the play reads. Touchback is the exception — the receiving team
      starts at their own 20 regardless of where it came down. */
   const [kickOutcome, setKickOutcome] = useState<KickOutcome>(edit?.kickOutcome ?? "returned");
+  const [outOfBoundsChoice, setOutOfBoundsChoice] = useState<KickoffOutOfBoundsChoice>(
+    (editing ?? initialDraft)?.playData?.kickoff_out_of_bounds_choice === "rekick" ? "rekick" : "take_35");
+  const isKickoffOutOfBounds = ["kickoff", "onside_kick"].includes(playType.id) && kickOutcome === "out_of_bounds";
+  const outOfBoundsNext = kickoffOutOfBoundsSituation(gameState, outOfBoundsChoice, gameConfig.first_down_distance);
   const isTouchback = kickOutcome === "touchback";
   const wasReturned = kickOutcome === "returned";
   const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">(edit?.result ?? "");
@@ -887,7 +901,8 @@ export default function PlayEntryModal({
   const kickerRole = (playType.id === "kickoff" || playType.id === "onside_kick")
     ? "kicker"
     : "punter";
-  const [kickedToYard, setKickedToYard] = useState(edit?.kickedToYard ?? 5); // receiving team's yard line where ball lands
+  const [selectedKickedToYard, setKickedToYard] = useState(edit?.kickedToYard ?? 5);
+  const kickedToYard = isTouchback ? 0 : selectedKickedToYard;
   const [kickedToRaw, setKickedToRaw] = useState("");
   const [returnToYardLine, setReturnToYardLine] = useState(edit?.returnToYardLine ?? 20);
 
@@ -1007,7 +1022,9 @@ export default function PlayEntryModal({
   /* Where the return ended, offense-relative, so the field graphic and the
      ruler can drive it the same way the run/pass spot picker does. The
      team + yard-line pair stays the source of truth; this is a view of it. */
-  const returnSpotBallOn = toOffensePerspectiveBallOn(returnToTeam, returnToYardLine);
+  const returnSpotBallOn = isKickPlay && wasReturned && isTD
+    ? 0
+    : toOffensePerspectiveBallOn(returnToTeam, returnToYardLine);
   const setReturnSpotFromBallOn = (ballOn: number) => {
     const spot = toFieldSpot(ballOn);
     setReturnToTeam(spot.side);
@@ -1693,9 +1710,7 @@ export default function PlayEntryModal({
     // Only an actual return moves the ball off the landing spot. Fair catch,
     // downed, out of bounds and touchback are all zero-return by definition.
     if (isKickPlay && wasReturned) {
-      const isReceiverSide = returnToTeam === receivingFieldSide;
-      const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
-      computedReturnYards = receiverYard - kickedToYard;
+      computedReturnYards = (100 - returnSpotBallOn) - Math.max(0, kickedToYard);
     }
 
     if (isKickPlay) {
@@ -1748,17 +1763,19 @@ export default function PlayEntryModal({
       fumbleRecoveredAt: isFumblePlay ? fumbleRecoveredAtBallOn : undefined,
       onsideRecoveredByKicker: playType.id === "onside_kick" ? onsideRecoveredByKicker : undefined,
       result: finalResult,
-      penalty: penalty ? penalty.trim() : null,
-      penaltyCategory,
-      penaltyEnforcement: penalty ? penaltyEnforcement : "accepted",
-      flagYards: penalty && penaltyEnforcement === "accepted" ? flagYards : 0,
+      penalty: isKickoffOutOfBounds ? KICKOFF_OUT_OF_BOUNDS : penalty ? penalty.trim() : null,
+      penaltyCategory: isKickoffOutOfBounds ? "offense" : penaltyCategory,
+      penaltyEnforcement: isKickoffOutOfBounds ? "accepted" : penalty ? penaltyEnforcement : "accepted",
+      flagYards: isKickoffOutOfBounds ? (outOfBoundsChoice === "rekick" ? gameState.ballOn - outOfBoundsNext.ballOn : 0) : penalty && penaltyEnforcement === "accepted" ? flagYards : 0,
       blockedKickType: playType.id === "blocked_kick" ? blockedKickType : null,
       offensiveFormation: offFormation,
       defensiveFormation: defFormation,
       hashMark,
-      description: desc,
-      nextSituation: storedNextSituation,
+      description: isKickoffOutOfBounds ? `${desc} · PEN: ${KICKOFF_OUT_OF_BOUNDS} · ${outOfBoundsChoice === "rekick" ? `Re-kick from ${formatFieldSpot(outOfBoundsNext.ballOn, gameState.possession)}` : `${receivingTeamLabel} ball at own 35`}` : desc,
+      nextSituation: isKickoffOutOfBounds ? { ...outOfBoundsNext, source: "penalty_enforced" } : storedNextSituation,
       playData: {
+        team_tackle_confirmed: allTagged.some(tag => tag.isTeam && tag.teamCreditConfirmed && ["tackler", "sacker"].includes(tag.role)),
+        kickoff_out_of_bounds_choice: isKickoffOutOfBounds ? outOfBoundsChoice : null,
         no_tackle: noTackle && allTagged.every(t => t.role !== "tackler" && t.role !== "sacker"),
         ...(penalty && foulSpotBallOn != null
           ? { foul_spot_ball_on: foulSpotBallOn }
@@ -2411,6 +2428,12 @@ export default function PlayEntryModal({
     </div>
   );
 
+  if (!isEditing && playType.id === "kneel") {
+    const players: TaggedPlayer[] = isTheirBall
+      ? localOppPlayers.map(p => ({ id: p.id, player_id: p.id, jersey_number: p.jersey_number, name: p.name, role: "rusher", isOpponent: true }))
+      : roster.map(p => ({ id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number, name: `${p.player.first_name} ${p.player.last_name}`, role: "rusher" }));
+    return <KneelEntry playType={playType} situation={gameState} players={players} team={isTheirBall ? oppName : progName} usage={playerUsage} inline={inlineSimple} onSubmit={onSubmit} onClose={onClose} />;
+  }
   if (!isEditing && FAST_PLAY_IDS.has(playType.id) && !useDetailedEntry) {
     const ourPlayers: TaggedPlayer[] = roster.map(p => ({
       id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
@@ -2421,7 +2444,20 @@ export default function PlayEntryModal({
       name: p.name, role: "", isOpponent: true,
     }));
     return <FastPlayEntry
+      onKneel={() => {
+        const kneel = PLAY_TYPES.find(type => type.id === "kneel");
+        if (kneel) setPlayTypeOverride(kneel);
+      }}
+      onBadSnap={() => {
+        const badSnap = PLAY_TYPES.find(type => type.id === "bad_snap");
+        if (!badSnap) return;
+        setTagged(prev => prev.filter(tag => tag.role !== "rusher"));
+        setPlayTypeOverride(badSnap);
+      }}
+      playerUsage={playerUsage}
       inline={inlineSimple}
+      fieldSpotRequest={fieldSpotRequest}
+      onFieldPreview={onFieldPreview}
       spotConfirmed={fastSpotConfirmed}
       playType={playType} situation={gameState}
       offenseName={isTheirBall ? oppName : progName} defenseName={isTheirBall ? progName : oppName}
@@ -2452,6 +2488,10 @@ export default function PlayEntryModal({
           name: "TEAM", role: defensiveCreditRole, isOpponent: true,
         }), credit: 1 }]);
       }}
+      onTeamTackle={tacklersAreOurs ? () => {
+        setNoTackle(false);
+        setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1, teamCreditConfirmed: true }]);
+      } : undefined}
       onYards={value => { setFastSpotConfirmed(true); setResultFromTotalYards(value); }}
       onTouchdown={() => { setIsTD(!isTD); setTacklers([]); setNoTackle(false); }}
       onDetailed={section => {
@@ -2718,7 +2758,7 @@ export default function PlayEntryModal({
               {/* Show opponent or our roster */}
               {showOpponentRoster ? (
                 <OpponentPlayerGrid
-                  players={localOppPlayers}
+                  players={[...localOppPlayers].sort((a, b) => playerUseCount(playerUsage, currentRole, b.id, true) - playerUseCount(playerUsage, currentRole, a.id, true))}
                   label={`Select ${currentRole} — ${oppName}`}
                   onSelect={handleOpponentSelect}
                   selectedId={tagged.find(t => t.role === currentRole)?.id ?? null}
@@ -2729,7 +2769,7 @@ export default function PlayEntryModal({
                 />
               ) : (
                 <PlayerGrid
-                  roster={roster}
+                  roster={[...roster].sort((a, b) => playerUseCount(playerUsage, currentRole, b.player_id) - playerUseCount(playerUsage, currentRole, a.player_id))}
                   label={`Select ${currentRole} — ${progName}`}
                   onSelect={handlePlayerSelect}
                   selectedId={tagged.find(t => t.role === currentRole)?.player_id ?? null}
@@ -2829,24 +2869,6 @@ export default function PlayEntryModal({
               />
 
               <div className="mt-3">
-                <label className="label block mb-2">
-                  {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicked" : "Punted"} To ({receivingTeamLabel} Yard Line)
-                </label>
-                <div className="flex items-center gap-1.5">
-                  {[-10, -5, -1].map(n => (
-                    <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(100, y + n)))}
-                      className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
-                  ))}
-                  {/* Holds a full label like "OPP 30", not just digits, so it
-                      needs more room than the plain yard-line readouts. */}
-                  <div className="min-w-[5.5rem] px-2 h-10 shrink-0 rounded-lg bg-surface-bg flex items-center justify-center text-base font-black tabular-nums text-purple-400 whitespace-nowrap">
-                    {landingLabel}
-                  </div>
-                  {[1, 5, 10].map(n => (
-                    <button key={n} onClick={() => setKickedToYard(y => Math.max(0, Math.min(100, y + n)))}
-                      className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
-                  ))}
-                </div>
                 {/* Type whichever number you actually caught — each derives the other. */}
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <div>
@@ -2909,6 +2931,19 @@ export default function PlayEntryModal({
                     </button>
                   ))}
                 </div>
+                {isKickoffOutOfBounds && (
+                  <div className="mt-2 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+                    <div className="text-xs font-bold text-amber-300">Penalty: Kickoff Out of Bounds</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["rekick", "take_35"] as const).map(choice => <button key={choice} type="button"
+                        aria-pressed={outOfBoundsChoice === choice} onClick={() => setOutOfBoundsChoice(choice)}
+                        className={`min-h-11 rounded-lg border px-2 text-xs font-bold ${outOfBoundsChoice === choice ? "border-amber-300 bg-amber-500/20 text-white" : "border-slate-600 text-slate-300"}`}>
+                        {choice === "rekick" ? "Re-kick · 5-yard penalty" : `${receivingTeamLabel} ball at 35`}
+                      </button>)}
+                    </div>
+                    <p className="text-xs text-slate-300">{outOfBoundsChoice === "rekick" ? `Re-kick from ${formatFieldSpot(outOfBoundsNext.ballOn, gameState.possession)}.` : `${receivingTeamLabel}: 1st & ${outOfBoundsNext.distance} at own 35.`}</p>
+                  </div>
+                )}
                 {/* Same escape as the FG/PAT result step. A punt that never
                     got away isn't one of these outcomes at all — it's a
                     different play — and it has to BE a blocked_kick before it
@@ -2940,7 +2975,7 @@ export default function PlayEntryModal({
                 {kickOutcome === "returned" && "You'll pick the returner and where they got to."}
                 {kickOutcome === "fair_catch" && `Ball spotted at ${landingLabel}. No return yards — you'll still tag who signaled.`}
                 {kickOutcome === "downed" && `Downed by the kicking team. Ball spotted at ${landingLabel}.`}
-                {kickOutcome === "out_of_bounds" && `Out of bounds at ${landingLabel}. No return.`}
+                {kickOutcome === "out_of_bounds" && !isKickoffOutOfBounds && `Out of bounds at ${landingLabel}. No return.`}
                 {kickOutcome === "touchback" && "Receiving team will start at their own 20 yard line."}
               </div>
 
@@ -3268,6 +3303,7 @@ export default function PlayEntryModal({
                 </div>
                 <div className="text-xs text-slate-500 mt-3">
                   {(() => {
+                    if (isTD) return `Caught at ${landingLabel} → Touchdown (${100 - Math.max(0, kickedToYard)} yds)`;
                     const sideLabel = fieldTeamTag(returnToTeam);
                     const isReceiverSide = returnToTeam === receivingFieldSide;
                     const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
@@ -3960,11 +3996,13 @@ export default function PlayEntryModal({
               {tacklersAreOurs && tacklers.length === 0 && (
                 <div className="flex gap-2 mb-2">
                   <button
-                    onClick={() => { setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1 }]); setSkipWarning(null); }}
+                    onClick={() => { setNoTackle(false); setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1, teamCreditConfirmed: true }]); setSkipWarning(null); }}
                     className="flex-1 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-400 text-xs font-bold uppercase tracking-wide"
                   >
                     {playType.id === "sack" ? "Sack by TEAM" : "Tackle by TEAM"}
                   </button>
+                  <button onClick={() => { setNoTackle(false); setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1 }]); setSkipWarning(null); }}
+                    className="flex-1 py-2 rounded-xl border border-surface-border text-slate-300 text-xs font-bold">Identify on film later</button>
                   {/* A sack always had somebody get there — "no tackle" is only
                       an answer for a runner who went out of bounds, scored, or
                       fell down. */}
@@ -4036,6 +4074,10 @@ export default function PlayEntryModal({
               <div className="text-sm font-bold text-slate-300">
                 {isEditing ? "Review Changes" : "Review Play"}
               </div>
+              {isKickoffOutOfBounds && <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
+                <strong>Penalty: Kickoff Out of Bounds</strong>
+                <div className="mt-1">{outOfBoundsChoice === "rekick" ? `Re-kick from ${formatFieldSpot(outOfBoundsNext.ballOn, gameState.possession)}` : `${receivingTeamLabel}: 1st & ${outOfBoundsNext.distance} at own 35`}</div>
+              </div>}
 
               {/* Scoreboard time at the snap. Pre-filled from the running
                   clock, so entering a play live costs nothing; correcting one
@@ -4153,6 +4195,7 @@ export default function PlayEntryModal({
                         <span className="text-slate-500">Returned To</span>
                         <span className="font-bold text-emerald-400">
                           {(() => {
+                            if (isTD) return `Touchdown (${100 - Math.max(0, kickedToYard)} yds)`;
                             const sideLabel = fieldTeamTag(returnToTeam);
                             const isReceiverSide = returnToTeam === receivingFieldSide;
                             const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;

@@ -203,6 +203,7 @@ export function isGoalToGo(play) {
 export function isFirstDown(play) {
     if (play.type === PlayType.Pass || play.type === PlayType.Rush) {
         const p = play;
+        if (isGoalToGo(play) || (p.fumble?.recoveryTeam && p.fumble.recoveryTeam !== play.context.possessionTeam)) return false;
         if (p.isTouchdown)
             return true;
         return p.yardsGained >= play.context.distance;

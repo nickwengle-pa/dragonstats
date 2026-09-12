@@ -270,6 +270,7 @@ export interface PenaltyEvent {
     enforcement: PenaltyEnforcement;
     isPreSnap?: boolean;
     isAutoFirstDown?: boolean;
+    preservesPlayStats?: boolean;
     description?: string;
 }
 export type Play = (PassPlay | RushPlay | SpecialTeamsPlay | PenaltyPlay | TimeoutPlay) & {
@@ -631,6 +632,8 @@ export interface ScoringPlay {
     playType: "passing_td" | "rushing_td" | "field_goal" | "extra_point" | "two_point" | "safety" | "return_td" | "defensive_td" | "fumble_recovery_td";
 }
 export interface EngineConfig {
+    /** NFHS sack rushing and shared defensive credit conventions. */
+    highSchoolStats?: boolean;
     /** Whether to track advanced metrics (air yards, YAC, pressure, etc.) */
     trackAdvancedMetrics?: boolean;
     /** Whether to track directional rushing splits */

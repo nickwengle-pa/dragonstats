@@ -31,6 +31,24 @@ import { DEFAULT_GAME_CONFIG } from "./programService";
 import { describe, it, expect } from "vitest";
 
 const PROGRAM = "team-us";
+describe("touchdown kick return yardage", () => {
+  for (const type of ["kickoff", "punt"]) {
+    for (const possession of ["us", "them"] as const) {
+      it(`${type} TD uses the goal line in live and saved stats (${possession})`, () => {
+        const tags = [{ id: "pu1", role: "kicker" }, { id: "rt1", role: "returner" }];
+        // Old entry recorded the touchdown while leaving the ending spot at their 20.
+        const pd = { kicked_to_yard: 8, return_to_ball_on: 80 };
+        const live = livesummary([appPlay({ id: "ktd", type, possession, isTouchdown: true, playData: pd, tagged: tags })]);
+        const post = postgameSummary([dbPlay({ id: "ktd", play_type: type, possession, is_touchdown: true, play_data: pd, credits: tags })]);
+        for (const s of [live, post]) {
+          const ret = s?.returns.rt1;
+          expect(type === "kickoff" ? ret?.kickReturnYards : ret?.puntReturnYards).toBe(92);
+          expect(type === "kickoff" ? ret?.kickReturnTouchdowns : ret?.puntReturnTouchdowns).toBe(1);
+        }
+      });
+    }
+  }
+});
 describe("turnover player credits in live and postgame reports", () => {
   for (const type of ["rush", "pass_comp", "sack"]) {
     it(`${type} fumble return retains the return tackler in both reports`, () => {

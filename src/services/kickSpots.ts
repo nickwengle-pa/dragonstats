@@ -28,6 +28,7 @@ export interface KickSpots {
 }
 
 const num = (v: unknown): number | null => {
+  if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
@@ -64,16 +65,18 @@ export function resolveKickSpots(args: {
   ballOn: number;
   playData: Record<string, unknown> | null | undefined;
   description: string | null | undefined;
+  isTouchdown?: boolean;
 }): KickSpots | null {
   const pd = args.playData ?? {};
-  const storedKickedTo = num(pd.kicked_to_yard);
+  const touchback = pd.is_touchback === true || pd.kick_outcome === "touchback";
+  const storedKickedTo = touchback ? 0 : num(pd.kicked_to_yard);
 
   if (storedKickedTo != null) {
     const storedReturnTo = num(pd.return_to_ball_on);
     /* kickedToYard counts from the RECEIVING team's goal line and
        return_to_ball_on counts from the KICKING team's, so they are
        complements — the return is the difference between them. */
-    const returnYards = storedReturnTo != null
+    const returnYards = touchback ? 0 : args.isTouchdown ? 100 - Math.max(0, storedKickedTo) : storedReturnTo != null
       ? (100 - storedReturnTo) - storedKickedTo
       : 0;
     return {
@@ -86,10 +89,11 @@ export function resolveKickSpots(args: {
 
   const parsed = kickInfoFromDescription(args.description ?? "");
   if (!parsed) return null;
+  const kickedToYard = Math.max(0, Math.min(100, 100 - args.ballOn - parsed.kickDistance));
   return {
     kickDistance: parsed.kickDistance,
-    kickedToYard: Math.max(0, Math.min(100, 100 - args.ballOn - parsed.kickDistance)),
-    returnYards: parsed.returnYards,
+    kickedToYard,
+    returnYards: args.isTouchdown ? 100 - kickedToYard : parsed.returnYards,
     exact: false,
   };
 }

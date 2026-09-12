@@ -1,0 +1,93 @@
+.fast-entry { display:flex; flex-direction:column; min-width:0; }
+.fast-header { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; border-bottom:1px solid #334155; }
+.fast-header h2 { font-size:18px; font-weight:800; }
+.fast-header h2 span { font-size:13px; font-weight:400; color:#b8c5d7; }
+.fast-header p { font-size:12px; color:#b8c5d7; }
+.fast-body { padding:12px; min-height:0; overflow-y:auto; }
+.live-inline-entry .fast-body { overflow:visible; }
+.fast-columns { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; }
+.fast-personnel, .fast-position { min-width:0; }
+.fast-personnel { display:flex; flex-direction:column; gap:12px; }
+.fast-hint { font-size:12px; color:#b8c5d7; margin:4px 0 8px; }
+.fast-spot-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:14px; }
+.fast-spot-heading h3, .fast-spot-heading strong { font-weight:750; }
+.fast-side-buttons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.fast-side-buttons button { font-size:12px; padding:8px; overflow-wrap:anywhere; }
+.fast-number-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:8px; }
+.fast-number-fields label { color:#cbd5e1; font-size:12px; }
+.fast-number-fields input { font-size:18px; text-align:center; margin-top:3px; padding:6px; min-height:44px; width:100%; }
+.fast-nudges { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.4fr) minmax(0,1.7fr); gap:5px; margin-top:8px; }
+.fast-nudges button { padding:6px; font-size:12px; }
+.fast-touchdown { width:100%; margin-top:8px; }
+.fast-ruler, .fast-formations { font-size:12px; color:#b8c5d7; }
+.fast-ruler summary, .fast-formations summary { cursor:pointer; padding:9px 0; }
+.fast-tackle-options { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:7px; }
+.fast-tackle-options > span { font-size:11px; color:#b8c5d7; }
+.fast-tackle-options button { min-height:36px; padding:6px 10px; font-size:12px; }
+.fast-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+.fast-tags button { border:1px solid #64748b; border-radius:6px; padding:7px; font-size:12px; }
+.fast-footer { padding:10px 12px; border-top:1px solid #334155; background:#141b25; }
+.fast-review { display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; font-size:12px; margin-bottom:5px; }
+.fast-review > span { color:#cbd5e1; }
+.fast-review > .fast-required { color:#fcd34d; }
+.fast-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.fast-actions > button { display:flex; align-items:center; justify-content:center; gap:5px; padding:8px 10px; font-size:12px; min-height:44px; }
+.fast-save { flex:1; min-width:115px; }
+.fast-entry button[aria-pressed=true], .fast-entry .fast-save { border:1px solid var(--fast-accent); background:color-mix(in srgb, var(--fast-accent) 25%, #101722); color:#f8fafc; box-shadow:none; }
+.player-picker label { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:14px; font-weight:700; margin-bottom:6px; }
+.player-picker label > span { font-size:11px; font-weight:400; color:#b8c5d7; text-align:right; }
+.player-picker-input { display:flex; align-items:center; border:1px solid #64748b; border-radius:8px; background:#0c131e; }
+.player-picker-input:focus-within { outline:2px solid #dbeafe; outline-offset:1px; }
+.player-picker-input input { min-width:0; flex:1; width:100%; padding:11px 10px; background:transparent; color:#f1f5f9; font-size:16px; outline:none; text-overflow:ellipsis; }
+.player-picker-input input::placeholder { font-size:13px; color:#b8c5d7; }
+.player-picker-input > button { padding:10px; min-height:44px; }
+.player-picker-popup { position:fixed; z-index:100; display:flex; flex-direction:column; overflow:hidden; border:1px solid #94a3b8; border-radius:10px; background:#172231; color:#f1f5f9; box-shadow:0 12px 32px #0009; }
+.player-picker-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; font-size:13px; border-bottom:1px solid #475569; }
+.player-picker-heading button { padding:7px; color:#cbd5e1; min-height:36px; }
+.player-film { display:flex; align-items:center; gap:7px; text-align:left; padding:11px 12px; min-height:44px; border-bottom:1px solid #475569; font-size:14px; }
+.player-picker-popup [role=listbox] { overflow-y:auto; min-height:0; overscroll-behavior:contain; }
+.player-picker-popup [role=option] { display:flex; align-items:center; gap:10px; width:100%; text-align:left; min-height:44px; padding:10px 12px; border-bottom:1px solid #334155; font-size:14px; }
+.player-picker-popup [role=option] > span:nth-child(2) { flex:1; }
+.player-picker-popup .player-active, .player-picker-popup [role=option]:hover { background:#344459; }
+.player-picker-popup [aria-selected=true] { font-weight:700; }
+.player-jersey { min-width:38px; font-weight:800; }
+.player-empty { font-size:13px; color:#cbd5e1; padding:12px; }
+.live-field-toolbar { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px; color:#cbd5e1; }
+.live-field-toolbar button { min-height:32px; padding:5px 10px; font-size:11px; }
+.live-inline-entry { margin-bottom:0; }
+@media (min-width:768px) {
+  .live-game-screen { max-width:none !important; height:100dvh !important; overflow:hidden !important; }
+  .live-workspace { display:flex !important; flex-direction:row !important; overflow:hidden !important; gap:16px; padding-bottom:8px !important; }
+  .live-entry-column { display:block !important; flex:1; min-width:0; overflow-y:auto; }
+  .live-log-column { display:block !important; width:25% !important; min-width:180px; flex-shrink:0; overflow-y:auto; }
+  .live-pane-switch { display:none !important; }
+  .live-game-screen .fast-columns { gap:14px; }
+}
+@media (min-width:768px) and (max-width:1000px) {
+  .live-game-screen .live-entry-column { flex:1; }
+  .live-game-screen .live-log-column { display:none !important; }
+  .live-game-screen .live-pane-switch { display:flex !important; }
+  .live-game-screen .live-entry-column[data-pane=plays] { display:none !important; }
+  .live-game-screen .live-log-column[data-pane=plays] { display:block !important; width:100% !important; }
+}
+@media (min-width:768px) {
+  .live-game-screen .live-pinned { display:flex; flex-direction:column; gap:6px; }
+  .live-game-screen .live-pinned > * { width:100%; margin-top:0 !important; }
+  .live-game-screen .live-field-block { display:flex; flex-direction:column; gap:4px; }
+  .live-recording .scoreboard-situation { display:none; }
+}
+@media (max-width:767px) {
+  .fast-columns { grid-template-columns:minmax(0,1fr); gap:14px; }
+  .live-inline-entry { margin-bottom:145px; }
+  .live-inline-entry .fast-footer { position:fixed; bottom:0; left:0; right:0; z-index:30; }
+}
+@media (min-width:768px) and (max-height:850px) {
+  .live-recording .live-field-block .field-turf { height:80px; }
+  .live-recording .fast-header { padding:6px 10px; }
+  .live-recording .fast-body { padding:6px 10px; }
+  .live-recording .fast-footer { padding:6px 10px; }
+  .live-recording .fast-actions { margin-top:4px; }
+  .live-recording .fast-personnel { gap:8px; }
+  .live-recording .player-picker label { margin-bottom:4px; }
+  .live-recording .fast-tackle-options { margin-top:4px; }
+}

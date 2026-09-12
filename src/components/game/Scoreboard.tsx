@@ -211,6 +211,7 @@ export default function Scoreboard({
             </button>
             <button
               onClick={onFlipPossession}
+              disabled={locked}
               className="text-[8px] font-display font-bold uppercase tracking-[0.18em] cursor-pointer"
               style={{ color: state.possession === "us" ? effPrimaryColor : effOppColor }}
               title="Tap to flip possession (manual correction)"
@@ -275,9 +276,9 @@ export default function Scoreboard({
             tighten so all three fit one row (~104 + 96 + 120 + 12 = 332).
             Every change here is a <phone> lg:<original> pair, so at 1024px and
             up this renders exactly as it did. */}
-        <div className={`mt-2 lg:mt-3 flex flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2 ${
-          locked ? "opacity-45 pointer-events-none" : ""
-        }`}>
+        {locked ? <div className="scoreboard-situation mt-3 flex flex-wrap justify-between gap-2 text-sm text-slate-200">
+          <strong>{downLabel(state.down)} & {state.distance}</strong><span>Starting spot: {ballLabel}</span>
+        </div> : <div className="mt-2 lg:mt-3 flex flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2">
           <div className="flex-1 min-w-[104px] lg:min-w-[116px] rounded-[4px] border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
             <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Down</div>
             <div className="mt-0 lg:mt-1 grid grid-cols-4 gap-0.5 lg:gap-1">
@@ -364,7 +365,7 @@ export default function Scoreboard({
               </button>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

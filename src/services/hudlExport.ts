@@ -17,7 +17,7 @@ export function hudlRow(p: PlayRecord, c?: PlayCharting): unknown[] {
   const pd = p.playData ?? {};
   const def = findPlayTypeDef(p.type);
   const kick = ["punt", "kickoff", "onside_kick", "fair_catch"].includes(p.type)
-    ? resolveKickSpots({ ballOn: p.ballOn, playData: pd, description: p.description }) : null;
+    ? resolveKickSpots({ ballOn: p.ballOn, playData: pd, description: p.description, isTouchdown: p.isTouchdown }) : null;
   const players = (roles: string[]) => p.tagged.filter(t => roles.includes(t.role));
   const pair = (roles: string[], index = 0, fallback = "") => {
     const t = players(roles)[index];
