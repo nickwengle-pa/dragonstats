@@ -554,14 +554,15 @@ export default function GameReportScreen() {
                 cols={[
                   { key: "Player", name: true },
                   { key: "Att" }, { key: "Net", bold: true }, { key: "Gain" }, { key: "Loss" },
+                  { key: "Sck Yds" },
                   { key: "TD" }, { key: "Lg" }, { key: "Avg" }, { key: "Fum" },
                 ]}
                 rows={report.rushing.map(r => [
-                  r.name, r.att, r.net, r.gain, r.loss, r.td, r.long, r.avg.toFixed(1), r.fum,
+                  r.name, r.att, r.net, r.gain, r.loss, r.sackYds, r.td, r.long, r.avg.toFixed(1), r.fum,
                 ])}
                 total={[
                   "Total", report.rushingTotal.att, report.rushingTotal.net,
-                  report.rushingTotal.gain, report.rushingTotal.loss, report.rushingTotal.td,
+                  report.rushingTotal.gain, report.rushingTotal.loss, report.rushingTotal.sackYds, report.rushingTotal.td,
                   report.rushingTotal.long, report.rushingTotal.avg.toFixed(1), report.rushingTotal.fum,
                 ]}
               />
@@ -645,18 +646,18 @@ export default function GameReportScreen() {
                   <tr>
                     <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase">Player</th>
                     {["Kickoff", "Punt", "Intercept"].map(g => (
-                      <th key={g} colSpan={3} className="py-[3px] px-[3px] text-[6.5pt] font-black uppercase text-center border-l border-neutral-400">
+                      <th key={g} colSpan={4} className="py-[3px] px-[3px] text-[6.5pt] font-black uppercase text-center border-l border-neutral-400">
                         {g}
                       </th>
                     ))}
                   </tr>
                   <tr className="border-b border-black">
                     <th />
-                    {["No", "Yds", "Lg", "No", "Yds", "Lg", "No", "Yds", "Lg"].map((h, i) => (
+                    {["No", "Yds", "Lg", "TD", "No", "Yds", "Lg", "TD", "No", "Yds", "Lg", "TD"].map((h, i) => (
                       <th
                         key={i}
                         className={`py-[2px] px-[3px] text-[6.5pt] font-bold uppercase text-right ${
-                          i % 3 === 0 ? "border-l border-neutral-400" : ""
+                          i % 4 === 0 ? "border-l border-neutral-400" : ""
                         }`}
                       >
                         {h}
@@ -672,6 +673,7 @@ export default function GameReportScreen() {
                         <td key={`${gi}n`} className="py-[2.5px] px-[3px] text-right border-l border-neutral-400">{g.no || ""}</td>,
                         <td key={`${gi}y`} className="py-[2.5px] px-[3px] text-right font-black">{g.no ? g.yds : ""}</td>,
                         <td key={`${gi}l`} className="py-[2.5px] px-[3px] text-right">{g.no ? g.long : ""}</td>,
+                        <td key={`${gi}t`} className="py-[2.5px] px-[3px] text-right">{g.no ? g.td : ""}</td>,
                       ])}
                     </tr>
                   ))}
@@ -681,6 +683,7 @@ export default function GameReportScreen() {
                       <td key={`${gi}n`} className="py-[3px] px-[3px] text-right border-l border-neutral-400">{g.no}</td>,
                       <td key={`${gi}y`} className="py-[3px] px-[3px] text-right">{g.yds}</td>,
                       <td key={`${gi}l`} className="py-[3px] px-[3px] text-right">{g.long}</td>,
+                      <td key={`${gi}t`} className="py-[3px] px-[3px] text-right">{g.td}</td>,
                     ])}
                   </tr>
                 </tbody>

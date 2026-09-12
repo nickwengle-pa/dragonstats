@@ -76,7 +76,7 @@ export interface ScoringRow {
 export interface PointsRow { name: string; points: number }
 
 export interface RushingRow {
-  name: string; att: number; gain: number; loss: number;
+  name: string; att: number; gain: number; loss: number; sackYds: number;
   net: number; td: number; long: number; avg: number; fum: number;
 }
 export interface PassingRow {
@@ -89,9 +89,9 @@ export interface PuntingRow {
 }
 export interface ReturnRow {
   name: string;
-  ko: { no: number; yds: number; long: number };
-  punt: { no: number; yds: number; long: number };
-  int: { no: number; yds: number; long: number };
+  ko: { no: number; yds: number; long: number; td: number };
+  punt: { no: number; yds: number; long: number; td: number };
+  int: { no: number; yds: number; long: number; td: number };
 }
 export interface KickoffRow { name: string; no: number; yds: number; avg: number; tb: number }
 export interface DefensiveRow {
@@ -517,11 +517,13 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     // loss always add back to the net printed beside them and to the team
     // rushing total, whatever the engine chose to count as a carry.
     const gain = rushGainById.get(id) ?? Math.max(0, s.yards);
+    const sackYds = -Math.abs(summary.passing[id]?.sackYardsLost ?? 0);
     return {
       name: names.get(id) ?? s.playerName,
       att: s.carries,
       gain,
-      loss: s.yards - gain,
+      loss: s.yards - gain - sackYds,
+      sackYds,
       net: s.yards,
       td: s.touchdowns,
       long: s.longRush ?? 0,
@@ -531,10 +533,10 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   });
   const rushingTotal: RushingRow = rushing.reduce((t, r) => ({
     name: "Total",
-    att: t.att + r.att, gain: t.gain + r.gain, loss: t.loss + r.loss,
+    att: t.att + r.att, gain: t.gain + r.gain, loss: t.loss + r.loss, sackYds: t.sackYds + r.sackYds,
     net: t.net + r.net, td: t.td + r.td, long: Math.max(t.long, r.long),
     avg: 0, fum: t.fum + r.fum,
-  }), { name: "Total", att: 0, gain: 0, loss: 0, net: 0, td: 0, long: 0, avg: 0, fum: 0 });
+  }), { name: "Total", att: 0, gain: 0, loss: 0, sackYds: 0, net: 0, td: 0, long: 0, avg: 0, fum: 0 });
   rushingTotal.avg = avg(rushingTotal.net, rushingTotal.att);
 
   /* ── Passing ──────────────────────────────────────────────────────────── */
@@ -615,13 +617,15 @@ export function buildGameReport(input: BuildReportInput): GameReport {
           no: r?.kickReturns ?? 0,
           yds: r?.kickReturnYards ?? 0,
           long: r?.kickReturnLong ?? 0,
+          td: r?.kickReturnTouchdowns ?? 0,
         },
         punt: {
           no: r?.puntReturns ?? 0,
           yds: r?.puntReturnYards ?? 0,
           long: r?.puntReturnLong ?? 0,
+          td: r?.puntReturnTouchdowns ?? 0,
         },
-        int: { no: pick.no, yds: pick.yds, long: pick.long },
+        int: { no: pick.no, yds: pick.yds, long: pick.long, td: summary.defense[id]?.interceptionTouchdowns ?? 0 },
       };
     })
     .filter(r => r.ko.no > 0 || r.punt.no > 0 || r.int.no > 0)
@@ -629,14 +633,14 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       (b.ko.yds + b.punt.yds + b.int.yds) - (a.ko.yds + a.punt.yds + a.int.yds));
   const returnsTotal: ReturnRow = returns.reduce((t, r) => ({
     name: "Total",
-    ko: { no: t.ko.no + r.ko.no, yds: t.ko.yds + r.ko.yds, long: Math.max(t.ko.long, r.ko.long) },
-    punt: { no: t.punt.no + r.punt.no, yds: t.punt.yds + r.punt.yds, long: Math.max(t.punt.long, r.punt.long) },
-    int: { no: t.int.no + r.int.no, yds: t.int.yds + r.int.yds, long: Math.max(t.int.long, r.int.long) },
+    ko: { no: t.ko.no + r.ko.no, yds: t.ko.yds + r.ko.yds, long: Math.max(t.ko.long, r.ko.long), td: t.ko.td + r.ko.td },
+    punt: { no: t.punt.no + r.punt.no, yds: t.punt.yds + r.punt.yds, long: Math.max(t.punt.long, r.punt.long), td: t.punt.td + r.punt.td },
+    int: { no: t.int.no + r.int.no, yds: t.int.yds + r.int.yds, long: Math.max(t.int.long, r.int.long), td: t.int.td + r.int.td },
   }), {
     name: "Total",
-    ko: { no: 0, yds: 0, long: 0 },
-    punt: { no: 0, yds: 0, long: 0 },
-    int: { no: 0, yds: 0, long: 0 },
+    ko: { no: 0, yds: 0, long: 0, td: 0 },
+    punt: { no: 0, yds: 0, long: 0, td: 0 },
+    int: { no: 0, yds: 0, long: 0, td: 0 },
   });
 
   /* ── Kickoffs ─────────────────────────────────────────────────────────── */
