@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import PregameSetupView from "./PregameSetupView";
 import {
   DEFAULT_CHARTING,
@@ -44,16 +44,13 @@ export default function PregameSetupSheet({
   onSave,
   saving = false,
 }: Props) {
+  /* Seeded once, on mount. The sheet is mounted fresh every time it opens,
+     so there is nothing to re-sync from props — and re-syncing was actively
+     harmful: with no stored config the parent passed a new default object
+     on every render, and an effect keyed on it wiped the crew's picks each
+     time the game screen repainted. */
   const [form, setForm] = useState<PregameConfig>(initialValue ?? createDefaultPregameConfig());
   const [charting, setCharting] = useState<ChartingPrefs>(initialCharting ?? DEFAULT_CHARTING);
-
-  useEffect(() => {
-    setForm(initialValue ?? createDefaultPregameConfig());
-  }, [initialValue]);
-
-  useEffect(() => {
-    setCharting(initialCharting ?? DEFAULT_CHARTING);
-  }, [initialCharting]);
 
   const team = {
     us: { name: progName, tag: progAbbr || progName, color: progColor ?? "#6b7280" },
@@ -76,17 +73,24 @@ export default function PregameSetupSheet({
      survived into "defer" and read as the loser choosing to kick — which
      is almost never what happened. Starting from the derivation's own
      default (the loser receives) is right far more often. A saved config
-     still opens exactly as stored; only an edit resets it. */
-  const setTossWinner = (tossWinner: TeamSide) => setForm((prev) => ({
-    ...prev,
-    tossWinner,
-    openingKickoffReceiver: deriveOpeningKickoffReceiver(tossWinner, prev.tossChoice, null),
-  }));
-  const setTossChoice = (tossChoice: TossChoice) => setForm((prev) => ({
-    ...prev,
-    tossChoice,
-    openingKickoffReceiver: deriveOpeningKickoffReceiver(prev.tossWinner, tossChoice, null),
-  }));
+     still opens exactly as stored; only an actual change resets it: a
+     re-tap on the already-selected button is a no-op, because otherwise a
+     second tap on a phone silently flipped the loser's receive/kick pick
+     and with it who had the ball to open the game. */
+  const setTossWinner = (tossWinner: TeamSide) => setForm((prev) => (
+    tossWinner === prev.tossWinner ? prev : {
+      ...prev,
+      tossWinner,
+      openingKickoffReceiver: deriveOpeningKickoffReceiver(tossWinner, prev.tossChoice, null),
+    }
+  ));
+  const setTossChoice = (tossChoice: TossChoice) => setForm((prev) => (
+    tossChoice === prev.tossChoice ? prev : {
+      ...prev,
+      tossChoice,
+      openingKickoffReceiver: deriveOpeningKickoffReceiver(prev.tossWinner, tossChoice, null),
+    }
+  ));
   const setLoserChoice = (choice: "receive" | "kick") => setForm((prev) => ({
     ...prev,
     openingKickoffReceiver: choice === "receive" ? oppositeTeam(prev.tossWinner) : prev.tossWinner,

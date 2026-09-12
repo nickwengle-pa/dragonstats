@@ -21,7 +21,6 @@ import {
   advanceSituationAfterPlay,
   buildPregameGameUpdate,
   createKickoffSituation,
-  createDefaultPregameConfig,
   createInitialSituation,
   getChartingPrefs,
   getOffenseDriveDirection,
@@ -2900,7 +2899,7 @@ export default function GameScreen() {
 
       {showPregame && (
         <PregameSetupSheet
-          initialValue={pregame ?? createDefaultPregameConfig()}
+          initialValue={pregame}
           initialCharting={charting}
           progName={progName}
           oppName={oppName}
