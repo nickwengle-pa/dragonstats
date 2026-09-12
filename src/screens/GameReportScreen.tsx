@@ -201,17 +201,19 @@ type Col = {
  * how columns used to disappear off the right-hand edge.
  */
 function StatTable({
-  cols, rows, total,
+  cols, rows, total, evenNumericColumns = false,
 }: {
   cols: Col[];
   rows: Array<Array<string | number>>;
   total?: Array<string | number>;
+  evenNumericColumns?: boolean;
 }) {
   if (rows.length === 0) {
     return <div className="text-[8pt] text-neutral-500 py-1">None recorded.</div>;
   }
   return (
-    <table className="w-full border-collapse text-[8.5pt] tabular-nums">
+    <table className="w-full border-collapse text-[8.5pt] tabular-nums" style={evenNumericColumns ? { tableLayout: "fixed" } : undefined}>
+      {evenNumericColumns && <colgroup>{cols.map((c, i) => <col key={i} style={{ width: c.name ? "32.5%" : `${67.5 / (cols.length - 1)}%` }} />)}</colgroup>}
       <thead>
         <tr className="border-b border-black">
           {cols.map((c, i) => (
@@ -551,10 +553,11 @@ export default function GameReportScreen() {
 
               <SubHead>Rushing</SubHead>
               <StatTable
+                evenNumericColumns
                 cols={[
                   { key: "Player", name: true },
                   { key: "Att" }, { key: "Net", bold: true }, { key: "Gain" }, { key: "Loss" },
-                  { key: "Sck Yds" },
+                  { key: "Sack" },
                   { key: "TD" }, { key: "Lg" }, { key: "Avg" }, { key: "Fum" },
                 ]}
                 rows={report.rushing.map(r => [
@@ -566,6 +569,8 @@ export default function GameReportScreen() {
                   report.rushingTotal.long, report.rushingTotal.avg.toFixed(1), report.rushingTotal.fum,
                 ]}
               />
+
+              <p className="mt-1 text-[6.5pt] text-neutral-500">Loss excludes sacks · Sack = sack yards lost</p>
 
               <SubHead>Passing</SubHead>
               <StatTable
