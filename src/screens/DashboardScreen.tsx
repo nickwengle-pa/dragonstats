@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import HomeLoading from "@/components/game/HomeLoading";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProgramContext } from "@/hooks/useProgramContext";
@@ -111,14 +112,25 @@ export default function DashboardScreen() {
      populates and those zeros just sit there, which is indistinguishable from
      a season with no games in it. Show a dash until we actually know. */
   const [statsLoaded, setStatsLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
   /* One game open at a time. Four buttons per game on a phone would otherwise
      push the list off the screen before the second result. */
   const [openGameId, setOpenGameId] = useState<string | null>(null);
 
   useEffect(() => {
+    setStatsLoaded(false); setCompletedGames([]); setOpenGameId(null);
+    setStats({ totalGames: 0, wins: 0, losses: 0, ties: 0, rosterCount: 0, nextGame: null, liveGame: null });
+  }, [season?.id]);
+
+  useEffect(() => {
     if (!season) return;
+    let cancelled = false;
+    setLoading(true); setLoadError("");
     (async () => {
+      try {
       /* Both go through the shared cached readers. This is the screen the app
          opens on, so it is also where the cache gets warmed in practice — and
          it was the screen reporting "0 games and 0 players" offline, because
@@ -127,6 +139,8 @@ export default function DashboardScreen() {
         readSeasonGames<any>(season.id),
         readSeasonRoster<any>(season.id),
       ]);
+      if (cancelled) return;
+      if (!gamesRead.value || !rosterRead.value) throw new Error("Could not load the schedule and roster. Check your connection and try again.");
       const games = gamesRead.value ?? [];
       const rosterRows = rosterRead.value ?? [];
       const completed = games.filter((g: any) => g.status === "completed");
@@ -151,6 +165,12 @@ export default function DashboardScreen() {
           opponent_score: live.opponent_score,
         } : null,
       });
+      setCompletedGames([...completed].sort((a: any, b: any) => String(b.game_date ?? "").localeCompare(String(a.game_date ?? ""))).map((g: any) => ({
+        id: g.id, opponent_name: g.opponent?.name ?? "Opponent", our_score: g.our_score ?? 0,
+        opponent_score: g.opponent_score ?? 0, game_date: g.game_date, tags: g.tags, toReview: null, is_home: g.is_home,
+      })));
+      setStatsLoaded(true);
+      setLoading(false);
       /* How much post-game work is still outstanding per game. Deliberately
          after the games land, since it needs their ids, and deliberately
          tolerant of failure: a coach who cannot reach the server should still
@@ -165,6 +185,7 @@ export default function DashboardScreen() {
           return null;
         });
       const reviewCounts = reviewRead?.value ?? null;
+      if (cancelled) return;
 
       /* Most recent first: the game you want to read about is almost always
          the one just played. game_date is a date string, so it sorts. */
@@ -183,8 +204,12 @@ export default function DashboardScreen() {
           })),
       );
       setStatsLoaded(true);
+      } catch (error) {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : "Could not load the home screen. Please try again.");
+      } finally { if (!cancelled) setLoading(false); }
     })();
-  }, [season]);
+    return () => { cancelled = true; };
+  }, [season, retry]);
 
   const programName = program?.name ?? "DRAGON STATS";
   const mascot = program?.mascot ?? "";
@@ -225,6 +250,9 @@ export default function DashboardScreen() {
       <div className="mx-5 mt-3 mb-5 accent-line" />
 
       <div className="px-5 lg:px-8 space-y-4">
+        {loading && !statsLoaded && <HomeLoading label="Loading schedule, roster, and game results…" />}
+        {loading && statsLoaded && <p role="status" className="text-sm text-slate-400">Refreshing season information…</p>}
+        {loadError && <div role="alert" className="card p-4 text-sm text-slate-300">{loadError}<button onClick={() => setRetry(n => n + 1)} className="btn-primary ml-3">Try again</button></div>}
         {/* Live game banner */}
         {stats.liveGame && (
           <button
@@ -249,7 +277,7 @@ export default function DashboardScreen() {
         )}
 
         {/* Record + Quick Stats */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className={`grid grid-cols-3 gap-3 ${!statsLoaded && loading ? "hidden" : ""}`}>
           <div className="card p-4 text-center col-span-1">
             <div className="stat-value" style={{ color: primaryColor }}>{record}{ties}</div>
             <div className="stat-label mt-1">Record</div>
@@ -287,7 +315,7 @@ export default function DashboardScreen() {
           </button>
         )}
 
-        {!stats.nextGame && stats.totalGames === 0 && (
+        {statsLoaded && !stats.nextGame && stats.totalGames === 0 && (
           <button
             onClick={() => navigate("/schedule")}
             className="w-full card p-4 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer card-hover"

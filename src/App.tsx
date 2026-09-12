@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
+import HomeLoading from "@/components/game/HomeLoading";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { ProgramProvider, useProgramContext } from "@/hooks/useProgramContext";
@@ -49,7 +50,7 @@ const GameReportScreen = lazyWithReload(() => import("@/screens/GameReportScreen
 function LoadingFallback() {
   return (
     <div className="screen items-center justify-center">
-      <div className="text-slate-500 animate-pulse">Loading...</div>
+      <HomeLoading />
     </div>
   );
 }
@@ -101,6 +102,7 @@ function SyncCoordinator() {
 
 function AppRoutes() {
   const { program, season, loading, offline, refresh } = useProgramContext();
+  if (loading && (!program || !season)) return <LoadingFallback />;
 
   /* Offline with nothing cached: `program`/`season` being null here means
      "could not look", not "does not exist". Falling through to the setup
