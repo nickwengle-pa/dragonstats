@@ -71,19 +71,7 @@ export default function LoginScreen() {
       setError(err.message);
       return;
     }
-    /* Joining is the one case that needs a real reload rather than a client-side
-       navigate. Signing up flips auth state, which makes the program context
-       read "no program" before the invite code has been redeemed — and its
-       refresh closes over a user that is still null at that moment, so calling
-       it again from here clears the program instead of finding it. Rather than
-       sequence three async things that each own part of the answer, start the
-       app over: the membership exists by now, and useAuth dropped the cached
-       "no program" entry, so a fresh boot reads the truth. Costs one reload,
-       once, on the only screen where nobody is mid-game. */
-    if (isSignUp) {
-      window.location.assign("/");
-      return;
-    }
+    // ProgramProvider finishes the saved invite before showing the team.
     navigate("/");
   };
 

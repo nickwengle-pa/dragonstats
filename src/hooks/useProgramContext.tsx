@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import type { Program } from "@/services/programService";
 import { seasonService, type Season } from "@/services/seasonService";
 import { cachedRead, cacheKeys, warmGamedayCache } from "@/services/offlineCache";
+import { completeProgramJoin } from "@/services/completeProgramJoin";
 
 export interface Branding {
   primaryColor: string;
@@ -24,6 +25,7 @@ interface ProgramContextValue {
    *  not look", NOT "no program exists". Routing must not treat it as the
    *  latter or an offline coach lands in first-time setup. */
   offline: boolean;
+  joinError: string | null;
   /** Reload program + season from DB */
   refresh: () => Promise<void>;
   /** Set the active season manually */
@@ -45,6 +47,7 @@ const ProgramContext = createContext<ProgramContextValue>({
   branding: DEFAULT_BRANDING,
   loading: true,
   offline: false,
+  joinError: null,
   refresh: async () => {},
   setSeason: async () => false,
 });
@@ -72,16 +75,19 @@ function deriveBranding(program: Program | null): Branding {
 }
 
 export function ProgramProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [program, setProgram] = useState<Program | null>(null);
   const [season, setSeasonState] = useState<Season | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
   // Once a program has loaded, background refreshes (auth event echoes,
   // manual refresh()) must not flip `loading` back to true — that swaps the
   // route content for a spinner and unmounts live screens mid-game.
   const hasLoadedRef = useRef(false);
+  const refreshSequence = useRef(0);
 
   const applyActiveSeason = useCallback((programSeasons: Season[], activeSeasonId: string | null) => {
     const nextSeasons = programSeasons.map((entry) => ({
@@ -95,6 +101,8 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
+    setJoinError(null);
     if (!user) {
       setProgram(null);
       setSeasonState(null);
@@ -106,6 +114,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       setOffline(false);
       hasLoadedRef.current = false;
       setLoading(false);
+      setLoadedUserId(null);
       return;
     }
 
@@ -115,7 +124,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     // error that came back as a plain null would look exactly like "this coach
     // has no program yet", and the router answers that with the first-time
     // setup screen. At a field with no signal that misread is the whole app.
-    const programRead = await cachedRead<Program>(cacheKeys.program(user.id), async () => {
+    const readProgram = () => cachedRead<Program>(cacheKeys.program(user.id), async () => {
       /* Membership, not ownership. This used to filter on owner_id, which was
          fine while the only account was the one that created the program - but
          a coach who joins with an invite code is a MEMBER, and would have been
@@ -131,6 +140,19 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
       return ((data as Program[] | null)?.[0]) ?? null;
     });
+
+    let programRead;
+    try {
+      programRead = await completeProgramJoin(user, readProgram);
+    } catch (error) {
+      if (sequence !== refreshSequence.current) return;
+      setJoinError(error instanceof Error ? error.message : "Could not join your team. Please try again.");
+      setLoadedUserId(user.id);
+      setLoading(false);
+      return;
+    }
+
+    if (sequence !== refreshSequence.current) return;
 
     const prog = programRead.value;
     let couldNotReachServer = programRead.offline;
@@ -148,6 +170,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
         return data ?? [];
       });
       const programSeasons = seasonsRead.value ?? [];
+      if (sequence !== refreshSequence.current) return;
       couldNotReachServer = couldNotReachServer || seasonsRead.offline;
 
       const activeSeasons = programSeasons.filter((entry) => entry.is_active);
@@ -192,8 +215,10 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       setSeasonState(null);
     }
 
+    if (sequence !== refreshSequence.current) return;
     setOffline(couldNotReachServer);
     hasLoadedRef.current = true;
+    setLoadedUserId(user.id);
     setLoading(false);
   }, [applyActiveSeason, user]);
 
@@ -212,6 +237,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   }, [season?.id]);
 
   const branding = deriveBranding(program);
+  const changingUser = loadedUserId !== (user?.id ?? null);
   const setSeason = useCallback(async (nextSeason: Season) => {
     if (!program) return false;
 
@@ -226,7 +252,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   }, [applyActiveSeason, program, seasons]);
 
   return (
-    <ProgramContext.Provider value={{ program, season, seasons, branding, loading, offline, refresh, setSeason }}>
+    <ProgramContext.Provider value={{ program: changingUser ? null : program, season: changingUser ? null : season, seasons: changingUser ? [] : seasons, branding, loading: loading || authLoading || changingUser, offline, joinError, refresh, setSeason }}>
       {children}
     </ProgramContext.Provider>
   );

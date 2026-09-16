@@ -133,18 +133,12 @@ export function useAuth() {
     return null;
   }, []);
 
-  /* Sign-up exists, but an account is worth nothing on its own: RLS scopes
-     every table to program membership, and a fresh account is a member of
-     nothing. The invite code is what grants access, so it is redeemed as part
-     of signing up rather than left as a later step someone forgets.
-  
-     The code is checked AFTER the account exists because redeeming needs an
-     authenticated session - redeem_invite_code writes the membership row on
-     the caller's behalf, which is exactly what the caller cannot do for
-     themselves. A bad code therefore leaves a real but program-less account;
-     the caller reports that so the user can try again from the join screen
-     instead of being stranded on a working login with nothing in it. */
+  /* Keep the invite on the account through email confirmation. ProgramProvider
+     validates it through the membership RPC after sign-in; user-editable
+     metadata never grants access by itself. */
   const signUp = useCallback(async (email: string, password: string, inviteCode: string) => {
+    const code = inviteCode.trim().toUpperCase();
+    if (!code) return new Error("Enter the invite code from your program administrator.");
     /* `emailRedirectTo` is not optional, for the same reason it is not
        optional on the reset link above: with nothing passed, Supabase builds
        the confirmation link out of the project's Site URL. A project whose
@@ -159,7 +153,10 @@ export function useAuth() {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/`,
+        data: { pending_invite_code: code },
+      },
     });
     if (error) return error;
 
@@ -184,16 +181,16 @@ export function useAuth() {
       );
     }
 
-    // Email confirmation is on: there is no session yet, so redemption has to
-    // wait until the first real sign-in.
+    // ProgramProvider redeems the saved code once a confirmed session exists,
+    // including when the confirmation link is opened on another device.
     if (!data.session) {
       return new Error(
-        "Account created. Confirm your email, then sign in and enter your code.",
+        "Account created. Confirm your email, then sign in to go straight to your team.",
       );
     }
 
-    return await redeemInviteCode(inviteCode);
-  }, [redeemInviteCode]);
+    return null;
+  }, []);
 
   return {
     ...state,

@@ -101,8 +101,23 @@ function SyncCoordinator() {
 }
 
 function AppRoutes() {
-  const { program, season, loading, offline, refresh } = useProgramContext();
+  const { program, season, loading, offline, joinError, refresh } = useProgramContext();
+  const { signOut } = useAuth();
   if (loading && (!program || !season)) return <LoadingFallback />;
+
+  if (joinError) {
+    return (
+      <div className="screen items-center justify-center p-6 text-center">
+        <div className="max-w-sm space-y-4">
+          <h1 className="text-xl font-bold">Could not join your team</h1>
+          <p role="alert">{joinError}</p>
+          <p className="text-sm text-surface-muted">If your invite code has expired, ask your program administrator for help.</p>
+          <button className="btn-primary w-full" onClick={() => { void refresh(); }}>Try again</button>
+          <button className="btn-ghost w-full" onClick={() => { void signOut(); }}>Back to sign in</button>
+        </div>
+      </div>
+    );
+  }
 
   /* Offline with nothing cached: `program`/`season` being null here means
      "could not look", not "does not exist". Falling through to the setup
