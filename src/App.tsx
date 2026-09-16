@@ -33,6 +33,7 @@ function lazyWithReload(load: () => Promise<{ default: React.ComponentType<any> 
 
 // Lazy-loaded screens
 const DashboardScreen = lazyWithReload(() => import("@/screens/DashboardScreen"));
+const JoinTeamScreen = lazyWithReload(() => import("@/screens/JoinTeamScreen"));
 const ScheduleScreen = lazyWithReload(() => import("@/screens/ScheduleScreen"));
 const RosterScreen = lazyWithReload(() => import("@/screens/RosterScreen"));
 const GameScreen = lazyWithReload(() => import("@/screens/GameScreen"));
@@ -126,7 +127,7 @@ function AppRoutes() {
     return <OfflineNoData onRetry={() => { void refresh(); }} />;
   }
 
-  // If logged in but no program yet, force Settings
+  // Unassigned accounts may join an existing team, not create a program.
   if (!loading && !program) {
     return (
       <Suspense fallback={<LoadingFallback />}>
@@ -135,7 +136,7 @@ function AppRoutes() {
           {/* A recovery session is a signed-in user with no program, so
               this has to be routable here too. */}
           <Route path="/reset-password" element={<ResetPasswordScreen />} />
-          <Route path="*" element={<ProtectedRoute><SettingsScreen firstTime /></ProtectedRoute>} />
+          <Route path="*" element={<ProtectedRoute><JoinTeamScreen /></ProtectedRoute>} />
         </Routes>
       </Suspense>
     );

@@ -104,6 +104,7 @@ export default function LoginScreen() {
           <p className="text-xs font-display font-semibold text-surface-muted uppercase tracking-[0.3em] mt-2">
             Football Intelligence
           </p>
+          <p className="text-xs text-surface-muted mt-3">Invited staff only. A valid team invite code is required to register.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
