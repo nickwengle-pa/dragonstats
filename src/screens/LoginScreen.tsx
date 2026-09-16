@@ -215,14 +215,14 @@ export default function LoginScreen() {
             {/* The confirmation email goes missing for ordinary reasons, and
                 without this the only route back was asking whoever runs the
                 Supabase project to do something about it. */}
-            {isSignUp && (
-              <button
-                onClick={async () => {
-                  setError("");
-                  setResendMsg("");
-                  setLoading(true);
+            <button
+              type="button"
+              onClick={async () => {
+                setError("");
+                setResendMsg("");
+                setLoading(true);
+                try {
                   const err = await resendConfirmation(email);
-                  setLoading(false);
                   /* Not "Sent." - the client cannot know that. auth-js
                      discards everything but the error on an email resend, and
                      GoTrue answers without one for an address it does not
@@ -233,13 +233,17 @@ export default function LoginScreen() {
                       ? err.message
                       : "Requested. If that address has an unconfirmed account, the email is on its way — check spam too.",
                   );
-                }}
-                disabled={loading || !email.trim()}
-                className="btn-ghost w-full mt-1 text-xs normal-case tracking-normal font-body text-surface-muted/70 disabled:opacity-40"
-              >
-                Didn't get the confirmation email? Resend
-              </button>
-            )}
+                } catch (thrown) {
+                  setResendMsg(thrown instanceof Error ? thrown.message : "Could not request the email. Check your connection and try again.");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading || !email.trim()}
+              className="btn-ghost w-full mt-2 text-sm normal-case tracking-normal font-body disabled:opacity-40"
+            >
+              Resend confirmation email
+            </button>
             {resendMsg && (
               <p className="text-xs text-center text-surface-muted mt-1.5 px-2">{resendMsg}</p>
             )}

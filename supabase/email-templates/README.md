@@ -18,6 +18,15 @@ contents into the matching template and set the subject:
 
 ## Notes
 
+- In the hosted project's Authentication -> URL Configuration, set **Site URL**
+  to `https://dragonstats.app` and allow `https://dragonstats.app/` and
+  `https://dragonstats.app/reset-password`. The signup and resend requests use
+  the trailing slash. Supabase falls back to Site URL when the requested
+  redirect is not allowed, so a localhost Site URL breaks emailed links.
+  Editing `supabase/config.toml` or deploying the frontend does not update the
+  hosted dashboard settings. After updating them, request a fresh confirmation
+  email from the production app; previously sent links can retain the old URL.
+
 - The logo is referenced from `https://dragonstats.app/icon-192.png`, which is
   `public/icon-192.png` served at the site root. Email clients cannot use
   bundled assets, so it must stay a public absolute URL. If that file is ever
