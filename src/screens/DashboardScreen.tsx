@@ -62,7 +62,7 @@ interface QuickStats {
   losses: number;
   ties: number;
   rosterCount: number;
-  nextGame: { opponent_name: string; game_date: string; is_home: boolean } | null;
+  nextGame: { id: string; opponent_name: string; game_date: string; is_home: boolean } | null;
   liveGame: LiveGame | null;
 }
 
@@ -154,6 +154,7 @@ export default function DashboardScreen() {
         wins, losses, ties,
         rosterCount: rosterRows.length,
         nextGame: nextGame ? {
+          id: nextGame.id,
           opponent_name: (nextGame as any).opponent?.name ?? "TBD",
           game_date: nextGame.game_date,
           is_home: nextGame.is_home,
@@ -295,7 +296,7 @@ export default function DashboardScreen() {
         {/* Next game card */}
         {stats.nextGame && (
           <button
-            onClick={() => navigate("/schedule")}
+            onClick={() => navigate(`/game/${stats.nextGame!.id}`)}
             className="w-full card p-4 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer card-hover"
           >
             <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
