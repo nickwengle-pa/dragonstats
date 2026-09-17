@@ -1,0 +1,314 @@
+/* ── Broadcast home ────────────────────────────────────────────────────────
+   The home screen as a TV scorebug: a black header bar with a red slash
+   under it, a studio-grey stage, hard corners, Chakra Petch for anything
+   on air and Manrope for the small print.
+
+   Two palettes, keyed off html[data-theme] (see hooks/useTheme.ts). The
+   light studio is the design as drawn; dark keeps the same chrome — the
+   header and tab bar are already black — and turns the stage down. */
+
+.bc {
+  --bc-stage: #e6e8ec;
+  --bc-stage-2: #eef0f3;
+  --bc-stage-3: #dfe2e7;
+  --bc-hatch: rgba(11, 13, 16, 0.035);
+  --bc-surface: #ffffff;
+  --bc-surface-2: #f2f3f5;
+  --bc-bug: #0b0d10;
+  --bc-ink: #0b0d10;
+  --bc-mute: #525a66;
+  --bc-line: #c9cdd4;
+  --bc-red: #d7141a;
+  --bc-amber: #f5a800;
+  --bc-green: #149a5b;
+  --bc-shadow: 0 1px 0 var(--bc-line), 0 12px 30px rgba(11, 13, 16, 0.08);
+  --bc-shadow-bug: 0 12px 30px rgba(11, 13, 16, 0.18);
+
+  color: var(--bc-ink);
+  background: linear-gradient(160deg, var(--bc-stage-2), var(--bc-stage-3));
+  font-family: "Manrope", system-ui, sans-serif;
+  position: relative;
+}
+html[data-theme="dark"] .bc {
+  --bc-stage: #0f1216;
+  --bc-stage-2: #14181d;
+  --bc-stage-3: #0d1014;
+  --bc-hatch: rgba(255, 255, 255, 0.03);
+  --bc-surface: #1a1f26;
+  --bc-surface-2: #222830;
+  --bc-bug: #07090c;
+  --bc-ink: #f2f3f5;
+  --bc-mute: #9aa3ad;
+  --bc-line: #2c333d;
+  --bc-shadow: 0 1px 0 var(--bc-line), 0 12px 30px rgba(0, 0, 0, 0.35);
+  --bc-shadow-bug: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+/* The stage hatching: studio floor, faintly. */
+.bc::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(135deg, transparent 0 14px, var(--bc-hatch) 14px 15px);
+}
+.bc > * { position: relative; z-index: 1; }
+
+.bc-d { font-family: "Chakra Petch", "Arial Narrow", sans-serif; }
+/* Zero-specificity reset so the themed classes below win without !important. */
+:where(.bc button) { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-align: inherit; }
+.bc-btn-reset { cursor: pointer; }
+
+/* ── header ── */
+.bc-hdr {
+  background: var(--bc-bug);
+  color: #fff;
+  padding: 22px 20px 14px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bc-hdr::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -6px;
+  height: 6px;
+  background: var(--bc-red);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+}
+.bc-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.bc-logo { width: 40px; height: 40px; object-fit: contain; display: block; flex-shrink: 0; }
+.bc-title {
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 18px; line-height: 20px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+}
+.bc-sub {
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 10px; color: rgba(255, 255, 255, .6);
+  letter-spacing: .06em; text-transform: uppercase; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bc-hdr-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.bc-rec {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bc-red); color: #fff;
+  padding: 4px 10px 4px 12px;
+  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%);
+}
+.bc-rec-l { font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .85; }
+.bc-rec-v { font-family: "Chakra Petch", sans-serif; font-size: 20px; line-height: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.bc-hdr-tools { display: flex; align-items: center; gap: 2px; }
+.bc-l5 { display: flex; align-items: center; gap: 2px; margin-right: 4px; }
+.bc-l5 b { font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .14em; color: rgba(255, 255, 255, .5); margin-right: 4px; }
+.bc-l5 i {
+  width: 13px; height: 13px; display: flex; align-items: center; justify-content: center;
+  font-family: "Chakra Petch", sans-serif; font-style: normal; font-size: 9px; font-weight: 700; color: #fff;
+  background: rgba(255, 255, 255, .18);
+}
+.bc-l5 .w { background: var(--bc-green); }
+.bc-l5 .l { background: var(--bc-red); }
+.bc-tool {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  color: rgba(255, 255, 255, .6); cursor: pointer; transition: color 200ms, background-color 200ms;
+}
+.bc-tool:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+
+/* ── stage ── */
+.bc-stage { padding: 26px 20px 0; }
+.bc-block { padding-top: 24px; }
+.bc-section {
+  margin-bottom: 10px;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 11px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--bc-mute);
+  display: flex; align-items: center; gap: 8px;
+}
+.bc-section > span { background: var(--bc-bug); color: #fff; padding: 3px 8px; }
+.bc-section::after { content: ""; flex: 1; height: 1px; background: var(--bc-line); }
+
+/* ── next game hero ── */
+.bc-next {
+  position: relative;
+  background: var(--bc-surface);
+  box-shadow: var(--bc-shadow);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+}
+.bc-next-top { background: var(--bc-bug); color: #fff; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; }
+.bc-eyebrow { font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: rgba(255, 255, 255, .6); }
+.bc-eyebrow.hot { color: #fff; display: flex; align-items: center; gap: 8px; }
+.bc-eyebrow.hot::before { content: ""; width: 8px; height: 8px; background: var(--bc-red); animation: bc-blink 1.4s steps(2, end) infinite; }
+.bc-live-dot { width: 8px; height: 8px; background: #fff; animation: bc-blink 1.4s steps(2, end) infinite; }
+@keyframes bc-blink { to { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .bc-eyebrow.hot::before, .bc-live-dot { animation: none; } }
+.bc-matchup { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 0 16px; min-width: 0; }
+.bc-crest {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  color: #fff; background: var(--c, #6b7280);
+  font-family: "Chakra Petch", sans-serif; font-weight: 700; text-transform: uppercase;
+  object-fit: contain;
+}
+.bc-crest-lg { width: 48px; height: 48px; font-size: 14px; }
+.bc-crest-sm { width: 32px; height: 32px; font-size: 10px; }
+.bc-crest-md { width: 40px; height: 40px; font-size: 12px; }
+.bc-opp {
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 40px; line-height: 42px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bc-opp.long { font-size: 28px; line-height: 32px; }
+.bc-vs { font-size: 14px; font-weight: 600; color: var(--bc-mute); margin-right: 8px; vertical-align: middle; font-family: "Manrope", sans-serif; }
+.bc-meta { display: flex; gap: 16px; margin-top: 10px; padding: 0 16px; flex-wrap: wrap; }
+.bc-meta span { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--bc-mute); font-weight: 500; }
+.bc-cta { display: flex; gap: 10px; margin-top: 20px; padding: 0 16px 16px; }
+.bc-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  height: 48px; padding: 0 22px; cursor: pointer; white-space: nowrap;
+  font-family: "Chakra Petch", sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  transition: background-color 200ms, filter 200ms;
+  user-select: none;
+}
+.bc-btn:active { filter: brightness(.9); }
+.bc-btn-primary { flex: 1; background: var(--bc-red); color: #fff; clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.bc-btn-primary:hover { background: #ef1c22; }
+.bc-btn-secondary { background: var(--bc-bug); color: #fff; }
+.bc-btn-secondary:hover { background: #1a1e25; }
+
+/* ── live scorebug (replaces the hero while a game is in progress) ── */
+.bc-bug {
+  background: var(--bc-bug); color: #fff; position: relative;
+  box-shadow: var(--bc-shadow-bug);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+  cursor: pointer; width: 100%; display: block;
+}
+.bc-bug-top { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: var(--bc-red); }
+.bc-bug-top .bc-eyebrow { color: #fff; display: flex; align-items: center; gap: 8px; }
+.bc-bug-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 14px 16px 10px; gap: 10px; }
+.bc-bug-team { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.bc-bug-team .n {
+  font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em;
+  color: rgba(255, 255, 255, .75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.bc-bug-team .bc-crest { position: relative; }
+.bc-bug-team.poss .bc-crest::after {
+  content: ""; position: absolute; top: 14px;
+  border: 6px solid transparent;
+}
+.bc-bug-team.poss.l .bc-crest::after { right: -12px; border-left: 7px solid var(--bc-amber); }
+.bc-bug-team.poss.r .bc-crest::after { left: -12px; border-right: 7px solid var(--bc-amber); }
+.bc-bug-score { font-family: "Chakra Petch", sans-serif; font-size: 40px; line-height: 40px; font-weight: 700; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 10px; }
+.bc-bug-score i { font-style: normal; color: rgba(255, 255, 255, .3); font-size: 22px; }
+.bc-bug-sit {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, .12); padding: 8px 16px 14px;
+  font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.bc-bug-sit b { color: var(--bc-amber); }
+.bc-bug-sit em { font-style: normal; color: rgba(255, 255, 255, .55); }
+.bc-bug-cta {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--bc-amber); color: #1a1200; height: 44px;
+  font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+}
+
+/* ── cards ── */
+.bc-card { background: var(--bc-surface); border: 1px solid var(--bc-line); transition: background-color 200ms, border-color 200ms; }
+.bc-card.tap { cursor: pointer; }
+.bc-card.tap:hover { background: var(--bc-surface-2); }
+.bc-last { padding: 12px 14px; border-left: 4px solid var(--bc-bug); }
+.bc-last .bc-name { font-size: 15px; }
+.bc-last .bc-score { font-size: 24px; }
+.bc-last-row { display: flex; align-items: center; gap: 12px; width: 100%; }
+.bc-last-info { flex: 1; min-width: 0; }
+.bc-last-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; white-space: nowrap; }
+.bc-last-meta > span:first-child { color: var(--bc-mute); font-weight: 500; }
+.bc-wl {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  font-family: "Chakra Petch", sans-serif; font-weight: 700; font-size: 14px; color: #fff;
+}
+.bc-wl.w { background: var(--bc-green); }
+.bc-wl.l { background: var(--bc-red); }
+.bc-wl.t { background: var(--bc-mute); }
+.bc-name {
+  font-family: "Chakra Petch", sans-serif; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; line-height: 20px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bc-chip {
+  display: inline-flex; align-items: center; padding: 2px 6px;
+  font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; line-height: 12px; white-space: nowrap;
+}
+.bc-chip.review { background: var(--bc-amber); color: #1a1200; }
+.bc-chip.final { background: var(--bc-green); color: #fff; }
+.bc-chip.open { background: var(--bc-line); color: var(--bc-ink); }
+.bc-score { font-family: "Chakra Petch", sans-serif; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; white-space: nowrap; }
+.bc-dash { color: var(--bc-line); margin: 0 3px; }
+.bc-quick { display: flex; gap: 6px; margin-top: 12px; }
+.bc-q {
+  flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  cursor: pointer; background: var(--bc-surface-2); border: 1px solid var(--bc-line); color: var(--bc-ink);
+  transition: background-color 200ms, border-color 200ms;
+}
+.bc-q:hover { background: var(--bc-surface); border-color: var(--bc-ink); }
+.bc-q svg { color: var(--bc-red); }
+.bc-q span { font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.bc-rows { display: flex; flex-direction: column; gap: 6px; }
+.bc-row { display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 16px; cursor: pointer; border-left: 4px solid var(--bc-red); width: 100%; }
+.bc-row > svg { color: var(--bc-ink); flex-shrink: 0; }
+.bc-row-body { flex: 1; display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.bc-row-meta { font-size: 12px; color: var(--bc-mute); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bc-chev { color: var(--bc-mute); flex-shrink: 0; }
+
+/* recent games: compact rows, opponent color as the rule */
+.bc-rg { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-left: 4px solid var(--c, var(--bc-line)); width: 100%; }
+.bc-rg.featured { border-color: var(--bc-bug); background: var(--bc-surface-2); }
+.bc-rg .bc-wl { width: 28px; height: 28px; font-size: 12px; }
+.bc-rg .bc-score { font-size: 18px; }
+.bc-rg .bc-name { font-size: 14px; }
+
+/* status lines */
+.bc-status { font-size: 13px; color: var(--bc-mute); }
+.bc-alert { background: var(--bc-surface); border-left: 4px solid var(--bc-red); padding: 12px 14px; font-size: 13px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.bc-alert .bc-btn { height: 40px; padding: 0 16px; font-size: 12px; }
+.bc-version { padding: 28px 20px 24px; text-align: center; font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--bc-mute); opacity: .5; }
+
+/* ── iPad landscape: two columns at the tablet cap ── */
+@media (min-width: 1024px) {
+  .bc-hdr { padding: 26px 32px 16px; }
+  .bc-stage { padding: 30px 32px 0; }
+  .bc-grid {
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0 24px; align-items: start;
+    grid-template-areas: "hero last" "season recent";
+  }
+  .bc-grid > * { min-width: 0; }
+  .bc-a-hero { grid-area: hero; }
+  .bc-a-last { grid-area: last; padding-top: 0; }
+  .bc-a-recent { grid-area: recent; }
+  .bc-a-season { grid-area: season; }
+  /* The right column is ~330px: pull the numbers in so names keep their room. */
+  .bc-last .bc-name, .bc-rg .bc-name { font-size: 13px; letter-spacing: .03em; }
+  .bc-last .bc-score { font-size: 22px; }
+  .bc-rg .bc-score { font-size: 16px; }
+  .bc-rg { gap: 8px; padding: 10px 10px; }
+}
+
+/* ── tab bar (shared by every screen) ──
+   Black on both palettes; the stage colour is the only thing that moves. */
+.bc-tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex; align-items: stretch;
+  background: #0b0d10; color: #fff;
+  border-top: 1px solid #1a1e25;
+}
+.bc-tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  cursor: pointer; color: rgba(255, 255, 255, .5); position: relative; transition: color 200ms; user-select: none;
+  background: none; border: 0; padding: 0; font: inherit;
+}
+.bc-tab:hover { color: rgba(255, 255, 255, .85); }
+.bc-tab.active { color: #fff; }
+.bc-tab.active::before { content: ""; position: absolute; top: -1px; left: 18%; right: 18%; height: 3px; background: #d7141a; }
+.bc-tab span { font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; }
