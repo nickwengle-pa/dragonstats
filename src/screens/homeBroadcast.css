@@ -368,6 +368,7 @@ html[data-theme="dark"] .bc {
 
 .bc .text-white, .bc .text-neutral-200, .bc .text-neutral-300, .bc .text-slate-200, .bc .text-slate-300 { color: var(--bc-ink); }
 .bc .text-neutral-400, .bc .text-neutral-500, .bc .text-surface-muted, .bc .text-slate-400, .bc .text-slate-500 { color: var(--bc-mute); }
+.bc .bg-neutral-800.text-neutral-400 { color: var(--bc-ink); }
 .bc .text-neutral-600, .bc .text-neutral-700, .bc .text-surface-muted\/40, .bc .text-surface-muted\/30, .bc .text-surface-muted\/50 { color: var(--bc-mute); opacity: .55; }
 .bc .placeholder\:text-neutral-600::placeholder { color: var(--bc-mute); opacity: .7; }
 .bc .text-dragon-primary, .bc .text-red-400, .bc .text-red-500, .bc .text-red-300\/90, .bc .hover\:text-red-400:hover { color: var(--bc-red-text); }
@@ -384,6 +385,14 @@ html[data-theme="dark"] .bc .text-blue-400 { color: #7eaeda; } html[data-theme="
 .bc .bg-amber-500\/10, .bc .bg-amber-500\/15 { background-color: color-mix(in srgb, var(--bc-amber) 12%, transparent); }
 .bc .bg-red-500\/10 { background-color: color-mix(in srgb, var(--bc-red) 10%, transparent); }
 .bc .bg-red-600 { background-color: var(--bc-red); }
+/* Dark-only badge and panel fills: neutral-800 under mute text was unreadable
+   on the light stage. Tints follow the palette on both. */
+.bc .bg-neutral-800, .bc .bg-neutral-700, .bc .bg-neutral-900 { background-color: var(--bc-line); }
+.bc .bg-yellow-900\/40, .bc .bg-yellow-900\/30, .bc .bg-yellow-900\/20 { background-color: color-mix(in srgb, var(--bc-amber) 18%, transparent); }
+.bc .bg-red-900\/50, .bc .bg-red-950\/25, .bc .bg-red-950\/10 { background-color: color-mix(in srgb, var(--bc-red) 10%, transparent); }
+.bc .border-red-900\/40, .bc .border-red-900\/25, .bc .border-red-500\/30 { border-color: color-mix(in srgb, var(--bc-red) 40%, transparent); }
+.bc .border-amber-500\/50 { border-color: var(--bc-amber); }
+.bc .text-red-300, .bc .text-red-500\/70 { color: var(--bc-red-text); }
 .bc .border-surface-border, .bc .border-surface-border\/50, .bc .border-surface-borderLight, .bc .border-neutral-500 { border-color: var(--bc-line); }
 .bc .divide-surface-border > :not([hidden]) ~ :not([hidden]) { border-color: var(--bc-line); }
 .bc .border-dragon-primary, .bc .border-red-500, .bc .border-red-500\/40 { border-color: var(--bc-red); }
