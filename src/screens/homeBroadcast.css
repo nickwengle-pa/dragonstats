@@ -95,9 +95,21 @@ html[data-theme="dark"] .bc {
   font-family: "Chakra Petch", sans-serif;
   font-size: 10px; color: rgba(255, 255, 255, .6);
   letter-spacing: .06em; text-transform: uppercase; margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 13px;
 }
 .bc-hdr-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.bc-rec-row { display: flex; align-items: stretch; gap: 4px; }
+/* The rankings link: a white bug beside the red record chip, angled the other
+   way so the pair reads as one strip. */
+.bc-rank {
+  display: flex; align-items: center; gap: 5px;
+  background: #fff; color: var(--bc-bug, #0b0d10);
+  padding: 4px 12px 4px 10px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  text-decoration: none; cursor: pointer; transition: background-color 200ms;
+}
+.bc-rank:hover { background: #e6e8ec; }
 .bc-rec {
   display: flex; align-items: center; gap: 8px;
   background: var(--bc-red); color: #fff;

@@ -4,7 +4,7 @@ import { statsState, statsStateLabel, type StatsState } from "@/services/gameCom
 import type { Theme } from "@/hooks/useTheme";
 import {
   CalendarIcon, JerseyIcon, StatsIcon, WhistleIcon, SheetIcon, GridIcon, TrendIcon, FilmIcon,
-  ChevronIcon, ClockIcon, PinIcon, PlayIcon, SunIcon, MoonIcon, PowerIcon,
+  ChevronIcon, ClockIcon, PinIcon, PlayIcon, SunIcon, MoonIcon, PowerIcon, TrophyIcon,
 } from "@/components/icons/BroadcastIcons";
 import "@/screens/homeBroadcast.css";
 
@@ -59,6 +59,10 @@ export interface HomeData {
   /** False until the schedule has landed once; the record shows a dash. */
   loaded: boolean;
 }
+
+/** District 6 football rankings (PIAA). Sits beside the record so the
+ *  standings are one tap from the score that feeds them. */
+export const D6_RANKINGS_URL = "https://sports.blkline.com/sports/reports/d6FootballRanking.action";
 
 interface Props {
   data: HomeData;
@@ -190,7 +194,12 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
           </div>
         </div>
         <div className="bc-hdr-right">
-          <div className="bc-rec"><span className="bc-rec-l">Record</span><span className="bc-rec-v">{record}</span></div>
+          <div className="bc-rec-row">
+            <div className="bc-rec"><span className="bc-rec-l">Record</span><span className="bc-rec-v">{record}</span></div>
+            <a className="bc-rank" href={D6_RANKINGS_URL} target="_blank" rel="noopener noreferrer" title="District 6 football rankings">
+              <TrophyIcon size={14} /><span>D6</span>
+            </a>
+          </div>
           <div className="bc-hdr-tools">
             {last5.length > 0 && (
               <div className="bc-l5" aria-label={`Last ${last5.length} results`}>

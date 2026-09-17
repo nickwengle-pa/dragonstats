@@ -81,6 +81,12 @@ export const SunIcon = make("SunIcon", <>
 export const MoonIcon = make("MoonIcon", <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />);
 export const PowerIcon = make("PowerIcon", <><path d="M12 3v8" /><path d="M7 7a7 7 0 1 0 10 0" /></>);
 export const BackIcon = make("BackIcon", <path d="M15 5l-7 7 7 7" />);
+export const TrophyIcon = make("TrophyIcon", <>
+  <path d="M7 4h10v5a5 5 0 0 1-10 0Z" />
+  <path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3" />
+  <path d="M12 14v3M9 17h6v4H9Z" />
+</>);
+export const ExternalIcon = make("ExternalIcon", <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 13v7H4V6h7" /></>);
 export const PlusIcon = make("PlusIcon", <path d="M12 5v14M5 12h14" />);
 export const UploadIcon = make("UploadIcon", <><path d="M12 16V4M6 10l6-6 6 6" /><path d="M4 20h16" /></>);
 export const ShieldIcon = make("ShieldIcon", <path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6Z" />);
