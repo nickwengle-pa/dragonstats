@@ -38,3 +38,11 @@ Same Game Day layout as `Main.dc.html`, re-skinned. Type, color, texture and sha
 - **T2 · Turf & Chalk** — `ThemeTurf.dc.html` — turf green with yard lines and sideline hash marks, chalk-white borders, first-down yellow. Alumni Sans + Atkinson Hyperlegible.
 - **T3 · Broadcast** — `ThemeBroadcast.dc.html` — light studio gray, black scorebug header, red slash, angled corners. Chakra Petch + Manrope.
 - **T4 · Varsity** — `ThemeVarsity.dc.html` — navy felt, red/cream stripe, cream record patch, stitched red next-game patch. Graduate + Work Sans.
+
+## Live game · Broadcast (2026-09-17)
+
+The play-entry screen in the chosen theme. Not built yet — mockups only.
+
+- **L1 · iPad landscape · dark** — `LiveIpadDark.dc.html` — scorebug header, situation strip, field with TV-style LOS/first-down lines, entry panel beside the drive log.
+- **L2 · iPad landscape · light** — `LiveIpadLight.dc.html` — same board on the studio stage.
+- **L3 · phone** — `LivePhone.dc.html` — compact scorebug, stacked situation strip, bottom pane switcher.

@@ -1,0 +1,196 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Manrope:wght@400;500;600;700&amp;display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; -webkit-font-smoothing: antialiased; }
+    .lv {
+      --stage:#e6e8ec; --stage2:#eef0f3; --stage3:#dfe2e7; --hatch:rgba(11,13,16,.035);
+      --surface:#fff; --surface2:#f2f3f5; --bug:#0b0d10; --ink:#0b0d10; --mute:#525a66; --line:#c9cdd4;
+      --red:#d7141a; --amber:#f5a800; --green:#149a5b; --blue:#2a78d6;
+      --shadow:0 1px 0 var(--line), 0 12px 30px rgba(11,13,16,.08);
+      color: var(--ink); font-family: "Manrope", system-ui, sans-serif;
+      background: linear-gradient(160deg, var(--stage2), var(--stage3));
+      position: relative; isolation: isolate; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .lv.dark {
+      --stage:#0f1216; --stage2:#14181d; --stage3:#0d1014; --hatch:rgba(255,255,255,.03);
+      --surface:#1a1f26; --surface2:#222830; --bug:#07090c; --ink:#f2f3f5; --mute:#9aa3ad; --line:#2c333d;
+      --shadow:0 1px 0 var(--line), 0 12px 30px rgba(0,0,0,.35);
+    }
+    .lv::before { content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; background: repeating-linear-gradient(135deg, transparent 0 14px, var(--hatch) 14px 15px); }
+    .d { font-family: "Chakra Petch", "Arial Narrow", sans-serif; }
+    .ic { flex-shrink: 0; display: block; }
+    .eb { font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--mute); }
+
+    /* ── scorebug ── */
+    .bug { background: var(--bug); color: #fff; position: relative; display: grid; grid-template-columns: 44px 1fr auto 1fr 132px; align-items: center; gap: 14px; padding: 12px 20px 14px; }
+    .bug::after { content:""; position:absolute; left:0; right:0; bottom:-6px; height:6px; background: var(--red); clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+    .tool { width: 36px; height: 36px; display:flex; align-items:center; justify-content:center; color: rgba(255,255,255,.8); cursor: pointer; }
+    .team { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .team.r { flex-direction: row-reverse; text-align: right; }
+    .crest { width: 44px; height: 44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#fff; background: var(--c); font-family:"Chakra Petch", sans-serif; font-weight:700; font-size:13px; text-transform: uppercase; position: relative; }
+    .team.poss .crest::after { content:""; position:absolute; top:16px; border:6px solid transparent; }
+    .team.l.poss .crest::after { right:-13px; border-left: 7px solid var(--amber); }
+    .team.r.poss .crest::after { left:-13px; border-right: 7px solid var(--amber); }
+    .tname { font-family:"Chakra Petch", sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tos { display:flex; gap: 3px; margin-top: 5px; }
+    .team.r .tos { justify-content: flex-end; }
+    .tos i { width: 10px; height: 4px; background: var(--amber); }
+    .tos i.used { background: rgba(255,255,255,.2); }
+    .tscore { font-family:"Chakra Petch", sans-serif; font-size: 44px; line-height: 44px; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: 6px; }
+    .team.r .tscore { margin-left: 0; margin-right: 6px; }
+    .center { display:flex; flex-direction: column; align-items:center; gap: 2px; padding: 0 22px; border-left: 1px solid rgba(255,255,255,.12); border-right: 1px solid rgba(255,255,255,.12); }
+    .qtr { font-family:"Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .2em; color: var(--amber); }
+    .clock { font-family:"Chakra Petch", sans-serif; font-size: 40px; line-height: 40px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+    .clock-tools { display:flex; gap: 6px; margin-top: 6px; }
+    .clock-tools b { font-family:"Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .1em; padding: 3px 8px; background: rgba(255,255,255,.1); color: rgba(255,255,255,.8); cursor: pointer; }
+    .bug-right { display:flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .btn { display:flex; align-items:center; justify-content:center; gap: 8px; height: 40px; padding: 0 16px; cursor:pointer; white-space:nowrap; font-family:"Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .btn-red { background: var(--red); color:#fff; clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+    .btn-black { background: var(--bug); color:#fff; }
+    .btn-ghost { background: transparent; color: var(--mute); border: 1px solid var(--line); }
+    .btn-white { background: #fff; color: #0b0d10; }
+    .sync { display:flex; align-items:center; gap: 6px; font-family:"Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: rgba(255,255,255,.55); }
+    .sync i { width: 7px; height: 7px; background: var(--green); }
+
+    /* ── situation strip ── */
+    .sit { margin: 20px 20px 0; display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: stretch; }
+    .cell { background: var(--surface); border: 1px solid var(--line); display:flex; align-items:center; gap: 0; }
+    .cell .lab { background: var(--bug); color:#fff; font-family:"Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; padding: 0 12px; align-self: stretch; display:flex; align-items:center; }
+    .seg { display:flex; }
+    .seg b { min-width: 52px; height: 44px; display:flex; align-items:center; justify-content:center; font-family:"Chakra Petch", sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .06em; color: var(--mute); cursor:pointer; border-right: 1px solid var(--line); }
+    .seg b:last-child { border-right: 0; }
+    .seg b.on { background: var(--red); color: #fff; }
+    .step { display:flex; align-items:center; }
+    .step b { width: 44px; height: 44px; display:flex; align-items:center; justify-content:center; font-family:"Chakra Petch", sans-serif; font-size: 16px; font-weight: 700; color: var(--mute); cursor:pointer; border-right: 1px solid var(--line); }
+    .step b:last-child { border-right: 0; border-left: 1px solid var(--line); }
+    .step .v { min-width: 84px; height: 44px; display:flex; align-items:center; justify-content:center; font-family:"Chakra Petch", sans-serif; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+    .step .v.spot { min-width: 118px; }
+    .sit-summary { display:flex; align-items:center; gap: 14px; padding: 0 16px; background: var(--bug); color: #fff; }
+    .sit-summary .big { font-family:"Chakra Petch", sans-serif; font-size: 22px; font-weight: 700; letter-spacing: .04em; }
+    .sit-summary .big em { font-style: normal; color: var(--amber); }
+    .sit-summary .sm { font-family:"Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .16em; color: rgba(255,255,255,.55); text-transform: uppercase; }
+
+    /* ── field ── */
+    .field-wrap { margin: 14px 20px 0; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+    .field-top { display:flex; align-items:center; justify-content:space-between; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+    .field-top .eb b { color: var(--ink); }
+    .field { position: relative; height: 128px; overflow: hidden; display: grid; grid-template-columns: 54px 1fr 54px; background: #1e6b3a; }
+    .lv.dark .field { background: #16482a; }
+    .ez { display:flex; align-items:center; justify-content:center; color:#fff; font-family:"Chakra Petch", sans-serif; font-weight: 700; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; writing-mode: vertical-rl; }
+    .ez.l { background: var(--c); transform: rotate(180deg); }
+    .ez.r { background: var(--c); }
+    .grass { position: relative; background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.55) 0 1px, transparent 1px 10%),
+      repeating-linear-gradient(90deg, transparent 0 10%, rgba(255,255,255,.045) 10% 20%); }
+    .yards { position:absolute; left:0; right:0; top: 10px; display:flex; justify-content: space-between; padding: 0 5%; font-family:"Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; color: rgba(255,255,255,.8); }
+    .yards span { width: 0; display:flex; justify-content:center; }
+    .hash { position:absolute; left:0; right:0; height: 5px; background: repeating-linear-gradient(90deg, rgba(255,255,255,.5) 0 1px, transparent 1px 2%); }
+    .hash.t { top: 40px; } .hash.b { bottom: 40px; }
+    .f-los { position:absolute; top:0; bottom:0; width: 3px; background: var(--blue); box-shadow: 0 0 8px rgba(42,120,214,.7); }
+    .f-fd { position:absolute; top:0; bottom:0; width: 3px; background: #ffd400; box-shadow: 0 0 8px rgba(255,212,0,.7); }
+    .ball { position:absolute; top: 44%; width: 22px; height: 14px; margin: -7px 0 0 -11px; border-radius: 50%; background: #6b3a1e; border: 2px solid #fff; }
+    .ball::after { content:""; position:absolute; left: 6px; right: 6px; top: 4px; height: 2px; background:#fff; }
+    .tag { position:absolute; bottom: 8px; transform: translateX(-50%); background: var(--bug); color:#fff; font-family:"Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .12em; padding: 3px 7px; white-space: nowrap; }
+    .tag.y { background: #ffd400; color: #1a1200; }
+
+    /* ── body: entry + log ── */
+    .body { flex: 1; min-height: 0; margin: 14px 20px 0; display: grid; grid-template-columns: minmax(0, 1fr) 38%; gap: 14px; }
+    .panel { background: var(--surface); border: 1px solid var(--line); display:flex; flex-direction: column; min-height: 0; }
+    .ptop { background: var(--bug); color:#fff; padding: 8px 14px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+    .ptop .eb { color: rgba(255,255,255,.6); }
+    .ptop .eb.hot { color: #fff; display:flex; align-items:center; gap: 8px; }
+    .ptop .eb.hot::before { content:""; width: 8px; height: 8px; background: var(--red); }
+    .tabs { display:flex; border-bottom: 1px solid var(--line); }
+    .tabs b { flex: 1; height: 44px; display:flex; align-items:center; justify-content:center; font-family:"Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); cursor:pointer; border-right: 1px solid var(--line); position: relative; }
+    .tabs b:last-child { border-right: 0; }
+    .tabs b.on { color: var(--ink); }
+    .tabs b.on::after { content:""; position:absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--red); }
+    .tabs b small { font-size: 9px; letter-spacing: .1em; color: var(--mute); margin-left: 6px; font-weight: 600; }
+    .pbody { padding: 12px 14px; display:flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
+    .row { display:flex; align-items:center; gap: 8px; flex-wrap: wrap; }
+    .row .eb { min-width: 104px; }
+    .row .eb small { display:block; font-size: 9px; letter-spacing: .12em; color: var(--mute); opacity: .8; margin-top: 2px; }
+    .chip { height: 40px; padding: 0 10px; display:flex; align-items:center; gap: 6px; background: var(--surface2); border: 1px solid var(--line); font-family:"Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .04em; cursor:pointer; color: var(--ink); white-space: nowrap; }
+    .chip.on { background: var(--bug); color:#fff; border-color: var(--bug); }
+    .chip.hot { background: var(--red); color:#fff; border-color: var(--red); }
+    .chip.amber { border-color: var(--amber); }
+    .chip small { font-size: 10px; letter-spacing: .12em; color: var(--mute); font-weight: 600; }
+    .chip.on small, .chip.hot small { color: rgba(255,255,255,.7); }
+    .chip .no { font-size: 15px; }
+    .chip.more { color: var(--mute); }
+    .yd { min-width: 48px; height: 40px; display:flex; align-items:center; justify-content:center; background: var(--surface2); border: 1px solid var(--line); font-family:"Chakra Petch", sans-serif; font-size: 15px; font-weight: 700; cursor:pointer; }
+    .yd.v { min-width: 72px; font-size: 22px; background: var(--surface); border-color: var(--ink); }
+    .yd.td { background: var(--amber); color: #1a1200; border-color: var(--amber); }
+    .kinds { display:flex; gap: 6px; }
+    .kinds b { flex: 1; height: 40px; display:flex; align-items:center; justify-content:center; font-family:"Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; background: var(--surface2); border: 1px solid var(--line); color: var(--mute); cursor:pointer; }
+    .kinds b.on { background: var(--bug); color:#fff; border-color: var(--bug); }
+    .pfoot { margin-top: auto; display:flex; align-items:center; justify-content:space-between; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line); }
+    .pfoot .preview { font-family:"Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .04em; }
+    .pfoot .preview small { display:block; font-family: "Manrope", sans-serif; font-size: 11px; font-weight: 500; color: var(--mute); letter-spacing: 0; margin-top: 2px; }
+    .save { height: 48px; padding: 0 26px; font-size: 14px; }
+
+    /* log */
+    .drive { display:flex; align-items:center; justify-content:space-between; padding: 8px 14px; background: var(--surface2); border-bottom: 1px solid var(--line); }
+    .drive .eb b { color: var(--ink); }
+    .drive .res { font-family:"Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .12em; padding: 2px 6px; background: var(--green); color:#fff; }
+    .drive .res.cur { background: var(--amber); color: #1a1200; }
+    .play { display:grid; grid-template-columns: 58px 1fr auto; gap: 10px; align-items:center; padding: 9px 14px; border-bottom: 1px solid var(--line); cursor:pointer; }
+    .play:hover { background: var(--surface2); }
+    .play .dd { font-family:"Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--mute); line-height: 14px; }
+    .play .dd b { display:block; color: var(--ink); font-size: 12px; }
+    .play .desc { font-size: 12px; font-weight: 500; line-height: 16px; min-width: 0; }
+    .play .desc b { font-weight: 700; }
+    .play .desc small { color: var(--mute); }
+    .play .gain { font-family:"Chakra Petch", sans-serif; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .play .gain.neg { color: var(--red); } .play .gain.fd { color: var(--green); } .play .gain.td { color: var(--amber); }
+    .play.flag .desc b { color: var(--amber); }
+    .stats { display:grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); margin-top: auto; }
+    .stats div { padding: 8px 10px; border-right: 1px solid var(--line); }
+    .stats div:last-child { border-right: 0; }
+    .stats .v { font-family:"Chakra Petch", sans-serif; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stats .v small { font-size: 11px; color: var(--mute); margin-left: 4px; }
+    .stats .eb { font-size: 9px; }
+
+  </style>
+</helmet><div class="lv dark ph" style="width:390px;height:940px">
+<div class="bug" style="grid-template-columns:1fr auto 1fr;padding:12px 14px 14px;gap:10px">
+  <div style="display:flex;align-items:center;gap:10px;min-width:0"><span class="crest" style="--c:#dc2626;width:38px;height:38px;font-size:11px">PL<i style="position:absolute;right:-11px;top:13px;border:5px solid transparent;border-left:6px solid var(--amber)"></i></span><div><div class="tscore" style="font-size:34px;line-height:34px;margin:0">14</div><div class="tos" style="margin-top:3px"><i></i><i></i><i class="used"></i></div></div></div>
+  <div class="center" style="padding:0 14px"><div class="qtr">2ND</div><div class="clock" style="font-size:30px;line-height:30px">7:28</div></div>
+  <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0"><div style="text-align:right"><div class="tscore" style="font-size:34px;line-height:34px;margin:0">6</div><div class="tos" style="margin-top:3px;justify-content:flex-end"><i></i><i></i><i></i></div></div><span class="crest" style="--c:#1d4ed8;width:38px;height:38px;font-size:11px">NC</span></div>
+</div>
+<div class="sit" style="margin:18px 12px 0;grid-template-columns:1fr 1fr;gap:8px">
+  <div class="cell"><span class="lab" style="padding:0 8px">Down</span><div class="seg"><b style="min-width:34px;height:40px;font-size:12px">1</b><b class="on" style="min-width:34px;height:40px;font-size:12px">2</b><b style="min-width:34px;height:40px;font-size:12px">3</b><b style="min-width:34px;height:40px;font-size:12px">4</b></div></div>
+  <div class="cell"><span class="lab" style="padding:0 8px">To go</span><div class="step"><b style="width:36px;height:40px">−</b><span class="v" style="min-width:44px;height:40px;font-size:18px">8</span><b style="width:36px;height:40px">+</b></div></div>
+  <div class="cell" style="grid-column:1/-1"><span class="lab" style="padding:0 8px">Ball on</span><div class="step" style="flex:1"><b style="width:44px;height:40px">−5</b><b style="width:44px;height:40px">−</b><span class="v spot" style="flex:1;height:40px">PL 27</span><b style="width:44px;height:40px">+</b><b style="width:44px;height:40px">+5</b></div></div>
+</div>
+<div class="field-wrap" style="margin:10px 12px 0"><div class="field" style="height:96px;grid-template-columns:28px 1fr 28px">
+  <div class="ez l" style="--c:#dc2626;font-size:8px">PL</div>
+  <div class="grass"><div class="yards" style="font-size:10px;top:6px"><span>10</span><span>20</span><span>30</span><span>40</span><span>50</span><span>40</span><span>30</span><span>20</span><span>10</span></div><div class="hash t" style="top:30px"></div><div class="hash b" style="bottom:30px"></div><div class="f-los" style="left:27%"></div><div class="f-fd" style="left:35%"></div><div class="ball" style="left:27%"></div><div class="tag" style="left:27%;font-size:9px">PL 27</div></div>
+  <div class="ez r" style="--c:#1d4ed8;font-size:8px">NC</div>
+</div></div>
+<div class="panel" style="margin:10px 12px 0;flex:1;min-height:0">
+  <div class="ptop" style="padding:8px 12px"><span class="eb hot">PL ball · 2nd &amp; 8 · PL 27</span></div>
+  <div class="tabs"><b class="on" style="height:40px;font-size:12px">Run</b><b style="height:40px;font-size:12px">Pass</b><b style="height:40px;font-size:12px">ST</b><b style="height:40px;font-size:12px">Pen</b></div>
+  <div class="pbody" style="padding:10px 12px;gap:10px">
+    <div class="row"><span class="eb" style="min-width:100%">Who ran?</span><span class="chip on"><span class="no">#24</span><small>DAVIS</small></span><span class="chip"><span class="no">#8</span><small>ENGLE</small></span><span class="chip"><span class="no">#3</span></span><span class="chip"><span class="no">#2</span></span><span class="chip more">More…</span></div>
+    <div class="row"><span class="eb" style="min-width:100%">Where did it end? <small style="display:inline;margin-left:6px">or tap the field</small></span><span class="yd">−1</span><span class="yd v">+7</span><span class="yd">+1</span><span class="yd">+5</span><span class="yd">0</span><span class="yd td">TD</span></div>
+    <div class="row"><span class="eb" style="min-width:100%">Tackle · Northern Cambria</span><span class="chip on"><span class="no">#11</span><small>BRAWLEY</small></span><span class="chip"><span class="no">#1</span></span><span class="chip"><span class="no">#7</span></span><span class="chip more">More…</span><span class="chip">None</span></div>
+  </div>
+  <div class="pfoot" style="padding:10px 12px"><div class="preview" style="font-size:12px">#24 Davis +7 → PL 34<small>1st &amp; 10 · first down</small></div><div class="btn btn-red save" style="height:44px;padding:0 18px;font-size:13px"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M5 12l5 5 9-10"/></svg>Save</div></div>
+</div>
+<div style="height:52px;margin:10px 0 0;background:var(--bug);color:#fff;display:flex;align-items:center;justify-content:space-around;font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase">
+  <span style="color:#fff;border-top:3px solid var(--red);padding-top:6px">Play</span><span style="color:rgba(255,255,255,.5)">Plays · 23</span><span style="color:rgba(255,255,255,.5)">Stats</span><span style="color:rgba(255,255,255,.5)">Clock</span>
+</div>
+</div>
+</x-dc>
+</body>
+</html>

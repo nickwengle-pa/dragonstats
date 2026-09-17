@@ -134,6 +134,33 @@
       "w": 390,
       "h": 620,
       "page": "page-4"
+    },
+    {
+      "file": "LiveIpadDark.dc.html",
+      "title": "L1 \u00b7 Live game \u00b7 iPad landscape \u00b7 dark",
+      "x": 0,
+      "y": 0,
+      "w": 1180,
+      "h": 820,
+      "page": "page-5"
+    },
+    {
+      "file": "LiveIpadLight.dc.html",
+      "title": "L2 \u00b7 Live game \u00b7 iPad landscape \u00b7 light",
+      "x": 0,
+      "y": 900,
+      "w": 1180,
+      "h": 820,
+      "page": "page-5"
+    },
+    {
+      "file": "LivePhone.dc.html",
+      "title": "L3 \u00b7 Live game \u00b7 phone",
+      "x": 1260,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-5"
     }
   ],
   "annotations": [
@@ -264,11 +291,35 @@
       "w": 390,
       "text": "B4 \u00b7 ICON SET\n24px grid, 2px stroke, square caps, mitre joins. Goalpost for Home, jersey for Roster, headset for Program (press box), whistle for Game Setup, film strip for Plays, box-score grid for Box. Tell me which ones to swap.",
       "page": "page-4"
+    },
+    {
+      "id": "n-liveipaddark",
+      "x": 0,
+      "y": -200,
+      "w": 560,
+      "text": "L1 \u00b7 LIVE GAME \u2014 iPad landscape, dark (Friday night)\nThe scorebug is the header: crests, timeouts as amber ticks, possession arrow, the clock in the middle with \u221210 / STOP / EDIT under it, End Game and sync status on the right. Below: the situation strip (down segmented, to-go and ball-on steppers, the summary bug), the field with a TV-style blue line of scrimmage and yellow first-down line, then the entry panel (Run/Pass/ST/Pen tabs, subtype, who / where / tackle as jersey-number chips) beside the drive log with its running team stats.",
+      "page": "page-5"
+    },
+    {
+      "id": "n-liveipadlight",
+      "x": 0,
+      "y": 780,
+      "w": 560,
+      "text": "L2 \u00b7 LIVE GAME \u2014 iPad landscape, light (day games)\nSame board on the studio stage. The toggle on Home drives this too.",
+      "page": "page-5"
+    },
+    {
+      "id": "n-livephone",
+      "x": 1260,
+      "y": -200,
+      "w": 390,
+      "text": "L3 \u00b7 LIVE GAME \u2014 phone\nCompact scorebug, two-row situation strip, a shorter field, the entry panel filling the rest, and a black pane switcher at the bottom (Play / Plays / Stats / Clock) in place of the tab bar.",
+      "page": "page-5"
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-4"
+    "page": "page-5"
   },
   "pages": [
     {
@@ -286,6 +337,10 @@
     {
       "id": "page-4",
       "name": "Broadcast \u00b7 expanded"
+    },
+    {
+      "id": "page-5",
+      "name": "Live game \u00b7 Broadcast"
     }
   ]
 }
