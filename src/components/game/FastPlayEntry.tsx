@@ -77,6 +77,24 @@ export default function FastPlayEntry(p: Props) {
   const nextLabel = p.isTD ? "Touchdown · conversion next" : p.situation.down === 4 && !firstDown
     ? `Turnover on downs · ${p.formatSpot(endSpot)}`
     : `${firstDown ? 1 : p.situation.down + 1} & ${firstDown ? Math.min(10, 100 - endSpot) : p.situation.distance - (incomplete ? 0 : p.yards)} · ${p.formatSpot(endSpot)}`;
+  /* The play in a sentence, the way it will read in the log — a last look
+     before Save that costs nothing. "#24 Davis rush, +7 to PL 34 · tackled by
+     #11 Brawley". Roles are named only when someone is picked, so an
+     incomplete pass with no target just says "Incomplete pass". */
+  const sentence = (() => {
+    const who = (role: string) => p.tagged.filter(t => t.role === role).map(playerLabel);
+    const parts: string[] = [];
+    const runner = who("rusher"), passer = who("passer"), receiver = who("receiver"), target = who("target");
+    if (passer.length) parts.push(`${passer[0]} ${incomplete ? "incomplete" : "pass"}${receiver.length ? ` to ${receiver[0]}` : target.length ? ` for ${target[0]}` : ""}`);
+    else if (runner.length) parts.push(`${runner[0]} ${p.playType.label.toLowerCase()}`);
+    else parts.push(p.playType.label);
+    if (!incomplete && (spotTouched || p.isTD)) parts.push(p.isTD ? "touchdown" : `${p.yards > 0 ? "+" : ""}${p.yards} to ${p.formatSpot(endSpot)}`);
+    if (showTacklers) {
+      if (p.tacklers.length) parts.push(`${sack ? "sacked" : "tackled"} by ${p.tacklers.map(t => t.isTeam || t.player_id === "opp_team" ? "film later" : `#${t.jersey_number ?? "?"}`).join(", ")}`);
+      else if (p.noTackle) parts.push("no tackle");
+    }
+    return parts.join(" · ");
+  })();
   const changeYards = (yards: number) => {
     setSpotTouched(true); p.onYards(yards);
     const nextSpot = Math.max(1, Math.min(99, p.situation.ballOn + yards));
@@ -162,7 +180,7 @@ export default function FastPlayEntry(p: Props) {
           </div><div className="flex gap-2 mt-2">{["left","middle","right"].map(h=><button key={h} aria-pressed={p.hashMark===h} onClick={()=>p.onHash(p.hashMark===h?null:h)} className={`${button} ${p.hashMark===h?selected:idle} flex-1`}>{h} hash</button>)}</div></details>}
         </div>
         <footer className="fast-footer safe-bottom">
-          <div className="fast-review" aria-live="polite"><strong>{p.playType.label}{!incomplete?` · ${p.yards>0?"+":""}${p.yards} yds`:""}</strong><span className={!ready ? "fast-required" : undefined}>{ready ? `Next: ${nextLabel}` : requiredMessage}</span></div>
+          <div className="fast-review" aria-live="polite"><strong>{sentence}</strong><span className={!ready ? "fast-required" : undefined}>{ready ? `Next: ${nextLabel}` : requiredMessage}</span></div>
           {p.attachedDetails && <p className="text-sm text-amber-300">{p.attachedDetails} · review before saving</p>}
           {saveError && <p role="alert" className="text-sm text-red-400">{saveError}</p>}
           <div className="fast-actions">

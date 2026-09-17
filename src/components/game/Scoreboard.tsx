@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { readableAccent } from "@/utils/teamColor";
 import { fmtClock, quarterLabel, type GameState } from "./types";
+import "@/screens/liveBroadcast.css";
 
 interface Props {
   state: GameState;
@@ -43,35 +44,25 @@ function downLabel(down: number) {
 function TimeoutButtons({
   team,
   remaining,
-  accentColor,
-  align = "left",
   onTakeTimeout,
 }: {
   team: "us" | "them";
   remaining: number;
-  accentColor: string;
-  align?: "left" | "right";
   onTakeTimeout: (team: "us" | "them") => void;
 }) {
+  /* Three amber ticks, like the bug on a broadcast. A used one goes dim. */
   return (
-    <div className={`mt-1 flex items-center gap-0.5 lg:gap-1 ${align === "right" ? "justify-end" : ""}`}>
-      <span className="text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">TO</span>
+    <div className="lv-tos" aria-label={`${remaining} timeouts left`}>
       {[0, 1, 2].map((slot) => {
         const available = slot < remaining;
         return (
           <button
             key={`${team}-${slot}`}
+            type="button"
             onClick={() => onTakeTimeout(team)}
             disabled={!available}
-            className={`h-3 w-3 lg:h-3.5 lg:w-3.5 rounded-full border transition-colors ${
-              available ? "cursor-pointer" : "cursor-default"
-            }`}
-            style={{
-              backgroundColor: available ? accentColor : "rgba(148, 163, 184, 0.15)",
-              borderColor: available ? accentColor : "rgba(148, 163, 184, 0.25)",
-              opacity: available ? 1 : 0.6,
-            }}
             title={`${team === "us" ? "Program" : "Opponent"} timeout`}
+            aria-label={available ? "Take timeout" : "Timeout used"}
           />
         );
       })}
@@ -79,15 +70,21 @@ function TimeoutButtons({
   );
 }
 
+function Crest({ logoUrl, abbr, color }: { logoUrl?: string | null; abbr: string; color: string }) {
+  if (logoUrl) return <img src={logoUrl} alt="" className="lv-crest" style={{ background: "transparent" }} />;
+  return <span className="lv-crest" style={{ background: color }} aria-hidden="true">{abbr}</span>;
+}
+
 /**
- * The correction strip is collapsed on a phone.
+ * The scorebug. Crests, timeouts and possession on either side, the clock in
+ * the middle, End Game on the right at tablet width; under it the situation
+ * strip — down, to go, ball on — as segmented control and steppers. Every
+ * handler is the same as before; only the drawing changed.
  *
- * Down, distance and the spot are READ from the possession band a few rows
- * down; this row exists to CORRECT them, and a correction is rare next to the
- * number of plays entered. Holding 46px of a 926px screen open all game for it
- * cost two rows of play buttons and pushed the rest below the fold.
- *
- * Tablets keep it open - there is room, and it is where the hands already are.
+ * The strip labels and the ±5 nudges appear from lg up. On a phone the three
+ * cells share one 36px row (down segments, to-go stepper, ball-on stepper),
+ * which is what fits beside the field without pushing the play buttons off
+ * the bottom.
  */
 export default function Scoreboard({
   state,
@@ -117,256 +114,107 @@ export default function Scoreboard({
   onFlipPossession,
   locked = false,
 }: Props) {
-  /* Lifted where a team's colour is too dark to read on the board. A school
-     that wears black had an invisible score and possession flag. Every use of
-     these is ink on the dark surface - never a fill with its own text on top -
-     so there is no identity swatch to protect here. */
+  /* The crests are filled with the team colour, so a black-wearing team
+     needs its swatch lifted just enough to read as a tile on the black bar. */
   const effOppColor = readableAccent(oppColor);
   const effPrimaryColor = readableAccent(primaryColor);
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
-
+  const distanceLabel = state.ballOn + state.distance >= 100 ? "Goal" : String(state.distance);
 
   return (
-    <div
-      className="rounded-2xl border border-surface-border overflow-hidden"
-      style={{ boxShadow: "0 2px 24px rgba(0,0,0,0.4)" }}
-    >
-      <div
-        className="h-1"
-        style={{ background: `linear-gradient(90deg, ${primaryColor}, #f59e0b 50%, ${effOppColor})` }}
-      />
-
-      <div className="px-3 py-3" style={{ background: "linear-gradient(180deg, #111820, #0d1117)" }}>
-        <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-1.5 lg:gap-2.5 min-w-0">
-            {progLogoUrl ? (
-              <img src={progLogoUrl} alt={progName} className="w-9 h-9 object-contain rounded-lg shrink-0" />
-            ) : (
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-display font-black text-white italic shrink-0"
-                style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}aa)` }}
-              >
-                {progAbbr}
-              </div>
-            )}
-            <div className="min-w-0">
-              {/* A scoreboard that truncates a team name reads as broken -
-                  "DRESS REHEA..." says less than "SIM" does. Abbreviation
-                  below lg, full name where there is room for it. */}
-              <div className="text-[9px] font-display font-bold text-surface-muted uppercase tracking-widest truncate">
-                <span className="lg:hidden">{progAbbr || progName}</span>
-                <span className="hidden lg:inline">{progName}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="text-3xl font-display font-extrabold tabular-nums leading-none score-glow cursor-pointer select-none"
-                  style={{ color: effPrimaryColor }}
-                  onClick={() => onCorrectScore?.("us")}
-                  title="Tap to correct score"
-                >
-                  {state.ourScore}
-                </span>
-                {state.possession === "us" && (
-                  <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[7px] border-l-amber-400" />
-                )}
-              </div>
-              <TimeoutButtons
-                team="us"
-                remaining={ourTimeoutsRemaining}
-                accentColor={primaryColor}
-                onTakeTimeout={onTakeTimeout}
-              />
-            </div>
+    <div className="lv-bug">
+      <div className="lv-bug-row">
+        <div className={`lv-team l ${state.possession === "us" ? "poss" : ""}`}>
+          <Crest logoUrl={progLogoUrl} abbr={progAbbr} color={effPrimaryColor} />
+          <div style={{ minWidth: 0 }}>
+            <div className="lv-tname" title={progName}><span className="lg:hidden">{progAbbr || progName}</span><span className="hidden lg:inline">{progName}</span></div>
+            <TimeoutButtons team="us" remaining={ourTimeoutsRemaining} onTakeTimeout={onTakeTimeout} />
           </div>
-
-          <div className="flex flex-col items-center gap-1 px-0.5 lg:px-1.5 shrink-0">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={onPreviousQuarter}
-                disabled={locked || !canPreviousQuarter}
-                className="border border-surface-border rounded-md p-1 text-surface-muted active:bg-surface-hover cursor-pointer transition-colors disabled:cursor-default disabled:opacity-35"
-                title="Previous quarter"
-              >
-                <ChevronLeft className="w-3 h-3" />
-              </button>
-              <div className="text-[10px] font-display font-bold text-surface-muted border border-surface-border rounded-md px-2 py-1 min-w-[58px] text-center uppercase tracking-wider">
-                {quarterLabel(state.quarter)}
-              </div>
-              <button
-                onClick={onNextQuarter}
-                disabled={locked || !canNextQuarter}
-                className="border border-surface-border rounded-md p-1 text-surface-muted active:bg-surface-hover cursor-pointer transition-colors disabled:cursor-default disabled:opacity-35"
-                title="Next quarter"
-              >
-                <ChevronRight className="w-3 h-3" />
-              </button>
-            </div>
-            <button
-              onClick={onEditClock}
-              disabled={locked}
-              className="text-xl font-mono font-bold tabular-nums text-amber-400 active:opacity-60 cursor-pointer leading-tight disabled:cursor-default"
-              style={{ textShadow: "0 0 12px rgba(245, 158, 11, 0.4)" }}
-            >
-              {fmtClock(state.clock)}
-            </button>
-            <button
-              onClick={onFlipPossession}
-              disabled={locked}
-              className="text-[8px] font-display font-bold uppercase tracking-[0.18em] cursor-pointer"
-              style={{ color: state.possession === "us" ? effPrimaryColor : effOppColor }}
-              title="Tap to flip possession (manual correction)"
-            >
-              {possessionLabel}
-            </button>
-          </div>
-
-          <div className="flex-1 flex items-center justify-end gap-1.5 lg:gap-2.5 min-w-0">
-            <div className="min-w-0 text-right">
-              <div className="text-[9px] font-display font-bold text-surface-muted uppercase tracking-widest truncate">
-                <span className="lg:hidden">{oppAbbr || oppName}</span>
-                <span className="hidden lg:inline">{oppName}</span>
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                {state.possession === "them" && (
-                  <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[7px] border-r-amber-400" />
-                )}
-                <span
-                  className="text-3xl font-display font-extrabold tabular-nums leading-none cursor-pointer select-none"
-                  style={{ color: effOppColor }}
-                  onClick={() => onCorrectScore?.("them")}
-                  title="Tap to correct score"
-                >
-                  {state.theirScore}
-                </span>
-              </div>
-              <TimeoutButtons
-                team="them"
-                remaining={theirTimeoutsRemaining}
-                accentColor={effOppColor}
-                align="right"
-                onTakeTimeout={onTakeTimeout}
-              />
-            </div>
-            {oppLogoUrl ? (
-              <img src={oppLogoUrl} alt={oppName} className="w-9 h-9 object-contain rounded-lg shrink-0" />
-            ) : (
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-display font-black text-white italic shrink-0"
-                style={{ background: `linear-gradient(135deg, ${effOppColor}, ${effOppColor}aa)` }}
-              >
-                {oppAbbr}
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={onEndGame}
-            className="hidden lg:block px-2 py-1 rounded-lg text-[10px] font-display font-bold uppercase tracking-wider text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 transition-colors shrink-0 cursor-pointer ml-1"
-            title="End Game"
-          >
-            End Game
+          <button type="button" className="lv-score" onClick={() => onCorrectScore?.("us")} title="Tap to correct score">
+            {state.ourScore}
           </button>
         </div>
 
-        {/* Phone: one no-wrap row.
-            The three cards' min-widths (116 + 104 + 176, plus 16 of gaps =
-            412) exceeded the 378 available at 428px, so Ball On wrapped onto a
-            second 66px row — a full row of height bought by 34px of overflow.
-            Below lg the micro-labels come out, the nudges shrink and the mins
-            tighten so all three fit one row (~104 + 96 + 120 + 12 = 332).
-            Every change here is a <phone> lg:<original> pair, so at 1024px and
-            up this renders exactly as it did. */}
-        {locked ? <div className="scoreboard-situation mt-3 flex flex-wrap justify-between gap-2 text-sm text-slate-200">
-          <strong>{downLabel(state.down)} & {state.distance}</strong><span>Starting spot: {ballLabel}</span>
-        </div> : <div className="mt-2 lg:mt-3 flex flex-nowrap lg:flex-wrap gap-1.5 lg:gap-2">
-          <div className="flex-1 min-w-[104px] lg:min-w-[116px] rounded-[4px] border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
-            <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Down</div>
-            <div className="mt-0 lg:mt-1 grid grid-cols-4 gap-0.5 lg:gap-1">
+        <div className="lv-center">
+          <div className="lv-qtr">
+            <button type="button" onClick={onPreviousQuarter} disabled={locked || !canPreviousQuarter} title="Previous quarter" aria-label="Previous quarter">
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <span>{quarterLabel(state.quarter)}</span>
+            <button type="button" onClick={onNextQuarter} disabled={locked || !canNextQuarter} title="Next quarter" aria-label="Next quarter">
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <button type="button" className="lv-clock" onClick={onEditClock} disabled={locked} title="Edit clock">
+            {fmtClock(state.clock)}
+          </button>
+          <button type="button" className="lv-poss" onClick={onFlipPossession} disabled={locked} title="Tap to flip possession (manual correction)">
+            {possessionLabel}
+          </button>
+        </div>
+
+        <div className={`lv-team r ${state.possession === "them" ? "poss" : ""}`}>
+          <Crest logoUrl={oppLogoUrl} abbr={oppAbbr} color={effOppColor} />
+          <div style={{ minWidth: 0 }}>
+            <div className="lv-tname" title={oppName}><span className="lg:hidden">{oppAbbr || oppName}</span><span className="hidden lg:inline">{oppName}</span></div>
+            <TimeoutButtons team="them" remaining={theirTimeoutsRemaining} onTakeTimeout={onTakeTimeout} />
+          </div>
+          <button type="button" className="lv-score" onClick={() => onCorrectScore?.("them")} title="Tap to correct score">
+            {state.theirScore}
+          </button>
+        </div>
+
+        <button type="button" className="lv-end" onClick={onEndGame} title="End Game">End Game</button>
+      </div>
+
+      {locked ? (
+        <div className="lv-locked scoreboard-situation">
+          <strong>{downLabel(state.down)} &amp; {state.distance}</strong>
+          <span>Starting spot: {ballLabel}</span>
+        </div>
+      ) : (
+        <div className="lv-sit">
+          <div className="lv-cell">
+            <span className="lab">Down</span>
+            <div className="lv-seg">
               {[1, 2, 3, 4].map((down) => (
-                <button
-                  key={down}
-                  onClick={() => onSetDown(down)}
-                  className={`h-8 rounded-[3px] text-[11px] font-display font-bold transition-colors cursor-pointer ${
-                    state.down === down
-                      ? "bg-amber-500 text-black"
-                      : "bg-surface-bg text-surface-muted active:bg-surface-hover"
-                  }`}
-                >
+                <button key={down} type="button" onClick={() => onSetDown(down)} className={state.down === down ? "on" : ""}>
                   {downLabel(down)}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="flex-1 min-w-[96px] lg:min-w-[104px] rounded-[4px] border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
-            <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">To Go</div>
-            <div className="mt-0 lg:mt-1 flex items-center gap-0.5 lg:gap-1">
-              <button
-                onClick={() => onAdjustDistance(-1)}
-                className="btn-ghost h-8 w-7 lg:w-8 text-sm font-display font-bold cursor-pointer"
-                title="Decrease distance"
-              >
-                -
-              </button>
-              {/* Stays amber. This is not chrome: tapping the field on a phone
-                  is not precise enough, so these nudges are how the spot is
-                  actually set. A control you reach for every play belongs at
-                  full strength. */}
-              <div className="flex-1 h-8 rounded-[3px] bg-surface-bg flex items-center justify-center text-sm font-display font-extrabold text-amber-400 tabular-nums">
-                {state.ballOn + state.distance >= 100 ? "Goal" : state.distance}
-              </div>
-              <button
-                onClick={() => onAdjustDistance(1)}
-                className="btn-ghost h-8 w-7 lg:w-8 text-sm font-display font-bold cursor-pointer"
-                title="Increase distance"
-              >
-                +
-              </button>
+          <div className="lv-cell">
+            <span className="lab">To go</span>
+            <div className="lv-step">
+              <button type="button" onClick={() => onAdjustDistance(-1)} title="Decrease distance">−</button>
+              {/* Amber, not chrome: on a phone this stepper is how the spot is
+                  actually set, so it stays at full strength. */}
+              <span className="v amber">{distanceLabel}</span>
+              <button type="button" onClick={() => onAdjustDistance(1)} title="Increase distance">+</button>
             </div>
           </div>
 
-          <div className="flex-[1.2] min-w-[120px] lg:min-w-[176px] rounded-[4px] border border-surface-border bg-black/20 px-1.5 lg:px-2.5 py-1.5 lg:py-2">
-            <div className="hidden lg:block text-[8px] font-display font-bold text-surface-muted uppercase tracking-[0.18em]">Ball On</div>
-            <div className="mt-0 lg:mt-1 flex items-center gap-0.5 lg:gap-1">
-              <button
-                onClick={() => onAdjustBall(-5)}
-                className="hidden lg:block btn-ghost h-8 px-1.5 text-[10px] font-display font-bold text-surface-muted cursor-pointer"
-                title="Move ball back 5 yards"
-              >
-                -5
-              </button>
-              <button
-                onClick={() => onAdjustBall(-1)}
-                className="btn-ghost h-8 w-7 lg:w-8 text-sm font-display font-bold cursor-pointer"
-                title="Move ball back 1 yard"
-              >
-                -
-              </button>
-              <button
-                onClick={onEditBall}
-                className="flex-1 min-w-[56px] lg:min-w-[72px] h-8 rounded-[3px] bg-surface-bg flex items-center justify-center text-[11px] font-display font-extrabold text-emerald-400 tabular-nums px-1 lg:px-2 cursor-pointer active:bg-surface-hover"
-                title="Set ball spot"
-              >
-                {ballLabel}
-              </button>
-              <button
-                onClick={() => onAdjustBall(1)}
-                className="btn-ghost h-8 w-7 lg:w-8 text-sm font-display font-bold cursor-pointer"
-                title="Move ball forward 1 yard"
-              >
-                +
-              </button>
-              <button
-                onClick={() => onAdjustBall(5)}
-                className="hidden lg:block btn-ghost h-8 px-1.5 text-[10px] font-display font-bold text-surface-muted cursor-pointer"
-                title="Move ball forward 5 yards"
-              >
-                +5
-              </button>
+          <div className="lv-cell spot">
+            <span className="lab">Ball on</span>
+            <div className="lv-step">
+              <button type="button" className="wide" onClick={() => onAdjustBall(-5)} title="Move ball back 5 yards">−5</button>
+              <button type="button" onClick={() => onAdjustBall(-1)} title="Move ball back 1 yard">−</button>
+              <button type="button" className="v" onClick={onEditBall} title="Set ball spot">{ballLabel}</button>
+              <button type="button" onClick={() => onAdjustBall(1)} title="Move ball forward 1 yard">+</button>
+              <button type="button" className="wide" onClick={() => onAdjustBall(5)} title="Move ball forward 5 yards">+5</button>
             </div>
           </div>
-        </div>}
-      </div>
+
+          <div className="lv-sum">
+            <div>
+              <div className="sm">{possessionLabel}</div>
+              <div className="big">{downLabel(state.down)} <em>&amp;</em> {distanceLabel}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -81,6 +81,7 @@ export const SunIcon = make("SunIcon", <>
 export const MoonIcon = make("MoonIcon", <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />);
 export const PowerIcon = make("PowerIcon", <><path d="M12 3v8" /><path d="M7 7a7 7 0 1 0 10 0" /></>);
 export const BackIcon = make("BackIcon", <path d="M15 5l-7 7 7 7" />);
+export const EyeIcon = make("EyeIcon", <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>);
 export const TrophyIcon = make("TrophyIcon", <>
   <path d="M7 4h10v5a5 5 0 0 1-10 0Z" />
   <path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3" />

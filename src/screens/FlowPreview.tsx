@@ -1,4 +1,11 @@
 import { useRef, useState } from "react";
+import { useScreenTheme } from "@/hooks/useTheme";
+
+/* ?theme=light|dark seeds the game palette, like /home-preview. */
+{
+  const t = new URLSearchParams(window.location.search).get("theme");
+  if (t === "light" || t === "dark") { try { localStorage.setItem("ds-theme-game", t); } catch { /* ignore */ } }
+}
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import FieldVisualizer from "@/components/game/FieldVisualizer";
 import Scoreboard from "@/components/game/Scoreboard";
@@ -74,7 +81,8 @@ export default function FlowPreview() {
   const shownSpot = playType && draftSpot != null ? draftSpot : situation.ballOn;
   const selectPlay = (pt: PlayTypeDef) => { setSpotRequest(null); setDraftSpot(null); setPlayType(pt); };
   const flipPossession = () => { setPlayType(null); setPracticeKickoff(false); setSituation(prev=>({...prev, possession:prev.possession==="us"?"them":"us",down:1,distance:10,ballOn:35})); };
-  return <main className={`screen live-game-screen ${playType ? "live-recording" : ""} h-dvh overflow-hidden`}>
+  const [liveTheme, toggleLiveTheme] = useScreenTheme("ds-theme-game", "dark");
+  return <main className={`bc screen live-game-screen ${playType ? "live-recording" : ""} h-dvh overflow-hidden`}>
     <header className="flex items-center flex-wrap gap-3 px-4 py-2 shrink-0">
       <h1 className="font-bold text-sm">Practice live game</h1>
       <button className="btn-ghost min-h-11" onClick={flipPossession}>Switch possession</button>

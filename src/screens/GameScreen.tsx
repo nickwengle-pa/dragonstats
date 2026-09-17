@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { RotateCcw, Home, BarChart3, Sun, Moon } from "lucide-react";
+import { RotateCcw, BarChart3 } from "lucide-react";
+import { useScreenTheme } from "@/hooks/useTheme";
+import { GoalpostIcon, SunIcon, MoonIcon, EyeIcon, PowerIcon } from "@/components/icons/BroadcastIcons";
+import "@/screens/liveBroadcast.css";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import {
@@ -701,6 +704,8 @@ export default function GameScreen() {
      never sleeps, so iOS never reclaims the tab, so unlocking between series
      is a resume and not a cold start with no signal to recover from. */
   const [keepAwake, setKeepAwake] = useState(readKeepAwake);
+  /* Dark by default whatever Home is set to; see useScreenTheme. */
+  const [liveTheme, toggleLiveTheme] = useScreenTheme("ds-theme-game", "dark");
   const { held: awakeHeld, supported: awakeSupported } = useWakeLock(keepAwake);
   /** Phones can't show the selector and the play log at once — side by side
    *  there is no room, stacked the log buries the buttons. One at a time,
@@ -2471,10 +2476,10 @@ export default function GameScreen() {
   // play-entry modal and wipes whatever the operator was entering.
   if (loading && !game) {
     return (
-      <div className="screen safe-top safe-bottom">
-        <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-          <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
-          <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game</h1>
+      <div className="bc screen safe-top safe-bottom">
+        <div className="lv-hdr">
+          <button onClick={() => navigate("/")} className="lv-tool" aria-label="Home"><GoalpostIcon size={20} /></button>
+          <h1 style={{ flex: 1 }}>Game</h1>
         </div>
         <div className="text-surface-muted text-sm text-center py-12 animate-pulse font-body">Loading game...</div>
       </div>
@@ -2492,15 +2497,15 @@ export default function GameScreen() {
     // Phone landscape can't afford a pinned block — header plus scoreboard plus
     // field already exceed the viewport, which collapses the play area to zero
     // and strands every button. There, drop the lock and let the page scroll.
-    <div className={`screen live-game-screen ${selectedPlayType ? "live-recording" : ""} safe-top safe-bottom h-dvh overflow-hidden max-lg:landscape:h-auto max-lg:landscape:overflow-visible`}>
+    <div className={`bc screen live-game-screen ${selectedPlayType ? "live-recording" : ""} safe-top safe-bottom h-dvh overflow-hidden max-lg:landscape:h-auto max-lg:landscape:overflow-visible`}>
       {/* Header */}
-      <div className="flex items-center gap-1.5 lg:gap-3 px-3 lg:px-5 pt-4 pb-2 shrink-0">
-        <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer"><Home className="w-5 h-5" /></button>
+      <div className="lv-hdr shrink-0">
+        <button onClick={() => navigate("/")} className="lv-tool" aria-label="Home" title="Home"><GoalpostIcon size={20} /></button>
         {/* The abbreviation on a phone, the full name from lg up. Truncating
             the name gave "V..." at 375 once End joined the row, which says
             less than "RTB" does in the same space. The iPad header, where the
             full name reads properly, is unchanged. */}
-        <h1 className="text-lg font-display font-extrabold uppercase tracking-[0.08em] shrink-0 lg:shrink lg:flex-1 lg:truncate whitespace-nowrap">
+        <h1 className="shrink-0 lg:shrink lg:flex-1">
           vs <span className="lg:hidden">{oppAbbr || oppName}</span>
           <span className="hidden lg:inline">{oppName}</span>
         </h1>
@@ -2516,9 +2521,7 @@ export default function GameScreen() {
               setKeepAwake(next);
               writeKeepAwake(next);
             }}
-            className={`btn-ghost p-1.5 cursor-pointer shrink-0 ${
-              keepAwake && awakeHeld ? "text-amber-400" : "text-surface-muted"
-            }`}
+            className={`lv-tool ${keepAwake && awakeHeld ? "on" : ""}`}
             title={
               !keepAwake
                 ? "Screen may sleep. Tap to keep it awake — stops the phone dropping the app between series."
@@ -2527,30 +2530,32 @@ export default function GameScreen() {
                   : "Keeping awake, but the phone refused the lock (often battery saver). Tap to turn off."
             }
           >
-            {keepAwake ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <EyeIcon size={16} />
           </button>
         )}
+        {/* The real theme toggle. Dark is the default here; a day game flips it. */}
+        <button onClick={toggleLiveTheme} className="lv-tool" title={liveTheme === "dark" ? "Switch to light" : "Switch to dark"} aria-label="Toggle theme">
+          {liveTheme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+        </button>
         <button
           onClick={() => setHurryUp((h) => !h)}
-          className={`btn-ghost px-1.5 lg:px-2 py-1 text-[10px] font-display font-bold uppercase tracking-wider cursor-pointer ${
-            hurryUp ? "text-amber-400" : "text-surface-muted"
-          }`}
+          className={`lv-tool ${hurryUp ? "on" : ""}`}
           title={hurryUp ? "Hurry-up mode ON (skip clock prompt)" : "Hurry-up mode OFF"}
         >
           {hurryUp ? "Hurry" : "Reg"}
         </button>
-        <button onClick={() => setShowLiveStats(true)} className="btn-ghost p-1.5 cursor-pointer" title="Live Stats">
-          <BarChart3 className="w-4 h-4 text-dragon-primary" />
+        <button onClick={() => setShowLiveStats(true)} className="lv-tool red" title="Live Stats" aria-label="Live stats">
+          <BarChart3 className="w-4 h-4" />
         </button>
         {/* The scroller carries its own summary link on phone, where this row
             has eight items and no room to spare. */}
-        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="hidden lg:flex btn-ghost px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer" title="Full Summary">
+        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="hidden lg:flex lv-tool" title="Full Summary">
           Summary
         </button>
-        <button onClick={() => setShowLog(true)} className="btn-ghost px-1.5 lg:px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
+        <button onClick={() => setShowLog(true)} className="lv-tool">
           {plays.length} plays
         </button>
-        <button onClick={() => setShowPregame(true)} className="btn-ghost px-1.5 lg:px-2 py-1 text-[10px] font-display font-bold text-surface-muted uppercase tracking-wider cursor-pointer">
+        <button onClick={() => setShowPregame(true)} className="lv-tool">
           Pregame
         </button>
         {/* Phone only; at lg it stays on the scoreboard row. It used to sit at
@@ -2558,9 +2563,8 @@ export default function GameScreen() {
             while the Play pane was showing - the button rendered at 0x0 and
             was simply unfindable. Amber so it never reads as another neutral
             header action. */}
-        <button onClick={() => setShowEndGame(true)}
-          className="lg:hidden btn-ghost px-1.5 py-1 text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider cursor-pointer shrink-0">
-          End
+        <button onClick={() => setShowEndGame(true)} className="lg:hidden lv-tool red" title="End Game">
+          <PowerIcon size={14} />End
         </button>
       </div>
 

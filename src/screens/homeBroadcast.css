@@ -381,11 +381,12 @@ html[data-theme="dark"] .bc {
 .bc .text-white, .bc .text-neutral-200, .bc .text-neutral-300, .bc .text-slate-200, .bc .text-slate-300 { color: var(--bc-ink); }
 .bc .text-neutral-400, .bc .text-neutral-500, .bc .text-surface-muted, .bc .text-slate-400, .bc .text-slate-500 { color: var(--bc-mute); }
 .bc .bg-neutral-800.text-neutral-400 { color: var(--bc-ink); }
-.bc .text-neutral-600, .bc .text-neutral-700, .bc .text-surface-muted\/40, .bc .text-surface-muted\/30, .bc .text-surface-muted\/50 { color: var(--bc-mute); opacity: .55; }
+.bc .text-neutral-600, .bc .text-neutral-700, .bc .text-slate-600, .bc .text-surface-muted\/40, .bc .text-surface-muted\/30, .bc .text-surface-muted\/50, .bc .text-surface-muted\/60, .bc .text-surface-muted\/70 { color: var(--bc-mute); opacity: .6; }
 .bc .placeholder\:text-neutral-600::placeholder { color: var(--bc-mute); opacity: .7; }
 .bc .text-dragon-primary, .bc .text-red-400, .bc .text-red-500, .bc .text-red-300\/90, .bc .hover\:text-red-400:hover { color: var(--bc-red-text); }
 .bc .text-emerald-400, .bc .text-emerald-300 { color: var(--bc-green-text); }
-.bc .text-amber-400, .bc .text-amber-400\/70, .bc .text-yellow-400, .bc .text-yellow-500, .bc .text-yellow-400\/80 { color: var(--bc-amber-text); }
+.bc .text-amber-400, .bc .text-amber-300, .bc .text-amber-200\/80, .bc .text-amber-400\/70, .bc .text-amber-400\/80, .bc .text-amber-400\/90, .bc .text-yellow-300, .bc .text-yellow-400, .bc .text-yellow-500, .bc .text-yellow-400\/80 { color: var(--bc-amber-text); }
+.bc .text-orange-400\/90, .bc .text-orange-400\/60, .bc .text-sky-400 { color: var(--bc-amber-text); }
 .bc .text-blue-400 { color: #2a78d6; } .bc .text-purple-400 { color: #7c3aed; } .bc .text-orange-400 { color: #c2410c; }
 html[data-theme="dark"] .bc .text-blue-400 { color: #7eaeda; } html[data-theme="dark"] .bc .text-purple-400 { color: #b39ddb; } html[data-theme="dark"] .bc .text-orange-400 { color: #fb923c; }
 
@@ -394,7 +395,11 @@ html[data-theme="dark"] .bc .text-blue-400 { color: #7eaeda; } html[data-theme="
 .bc .bg-surface-hover, .bc .bg-surface-cardHover { background-color: var(--bc-surface-2); }
 .bc .bg-dragon-primary\/10 { background-color: color-mix(in srgb, var(--bc-red) 10%, transparent); }
 .bc .bg-emerald-500\/15 { background-color: color-mix(in srgb, var(--bc-green) 15%, transparent); }
-.bc .bg-amber-500\/10, .bc .bg-amber-500\/15 { background-color: color-mix(in srgb, var(--bc-amber) 12%, transparent); }
+.bc .bg-amber-500\/5, .bc .bg-amber-500\/10, .bc .bg-amber-500\/15, .bc .bg-amber-500\/20, .bc .bg-orange-500\/10, .bc .bg-orange-500\/15, .bc .bg-orange-500\/20 { background-color: color-mix(in srgb, var(--bc-amber) 12%, transparent); }
+.bc .bg-emerald-500\/20 { background-color: color-mix(in srgb, var(--bc-green) 18%, transparent); }
+.bc .bg-red-500\/15, .bc .bg-red-500\/20, .bc .bg-dragon-primary\/15, .bc .bg-dragon-primary\/20, .bc .bg-dragon-primary\/30 { background-color: color-mix(in srgb, var(--bc-red) 16%, transparent); }
+.bc .bg-blue-500\/15, .bc .bg-blue-500\/20 { background-color: color-mix(in srgb, #2a78d6 16%, transparent); }
+.bc .bg-surface-bg\/60 { background-color: var(--bc-surface-2); }
 .bc .bg-red-500\/10 { background-color: color-mix(in srgb, var(--bc-red) 10%, transparent); }
 .bc .bg-red-600 { background-color: var(--bc-red); }
 /* Dark-only badge and panel fills: neutral-800 under mute text was unreadable
@@ -408,7 +413,11 @@ html[data-theme="dark"] .bc .text-blue-400 { color: #7eaeda; } html[data-theme="
 .bc .border-surface-border, .bc .border-surface-border\/50, .bc .border-surface-borderLight, .bc .border-neutral-500 { border-color: var(--bc-line); }
 .bc .divide-surface-border > :not([hidden]) ~ :not([hidden]) { border-color: var(--bc-line); }
 .bc .border-dragon-primary, .bc .border-red-500, .bc .border-red-500\/40 { border-color: var(--bc-red); }
-.bc .border-amber-500\/40, .bc .border-yellow-700\/40 { border-color: var(--bc-amber); }
+.bc .border-amber-500\/40, .bc .border-amber-500\/30, .bc .border-amber-500, .bc .border-amber-400, .bc .border-orange-500, .bc .border-orange-500\/50, .bc .border-yellow-700\/40 { border-color: var(--bc-amber); }
+.bc .border-emerald-500, .bc .border-emerald-500\/30 { border-color: var(--bc-green); }
+.bc .border-red-500\/50, .bc .border-dragon-primary\/30 { border-color: var(--bc-red); }
+.bc .border-slate-600, .bc .border-slate-500, .bc .border-surface-border\/40 { border-color: var(--bc-line); }
+.bc .border-blue-500 { border-color: #2a78d6; }
 
 /* component classes from index.css */
 .bc .card { background: var(--bc-surface); border: 1px solid var(--bc-line); border-radius: 0; }
@@ -440,7 +449,7 @@ html[data-theme="dark"] .bc .text-blue-400 { color: #7eaeda; } html[data-theme="
 .bc .font-display { font-family: "Chakra Petch", sans-serif; }
 .bc .font-body { font-family: "Manrope", sans-serif; }
 /* Hard corners are the look; small radii on chips and avatars can stay. */
-.bc .rounded-2xl, .bc .rounded-xl, .bc .rounded-t-2xl, .bc .rounded-3xl { border-radius: 0; }
+.bc .rounded-2xl, .bc .rounded-xl, .bc .rounded-t-2xl, .bc .rounded-t-xl, .bc .rounded-3xl, .bc .rounded-lg, .bc .rounded-md { border-radius: 0; }
 .bc .shadow-glow, .bc .shadow-card-hover, .bc .shadow-scoreboard { box-shadow: none; }
 /* Tables (season stats) */
 .bc table th { color: var(--bc-mute); font-family: "Chakra Petch", sans-serif; letter-spacing: .08em; }

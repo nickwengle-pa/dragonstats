@@ -161,32 +161,22 @@ export default function QuickActions({
           opponent had the ball). Team-colored, always present, and it carries
           the phase filter so context and filter read as one block. Sticky so
           both stay reachable while the play groups scroll under them. */}
-      <div
-        className="sticky top-0 z-10 -mx-3 -mt-3 px-3 pt-3 pb-2 rounded-t-xl border-b"
-        style={{
-          background: `linear-gradient(180deg, ${offenseColor}26, #111820)`,
-          borderColor: `${offenseAccent}59`,
-        }}
-      >
-        {/* Tier 1 of the type scale: the situation is the one thing that has
-            to be readable at arm's length, so it gets the only display size on
-            the card. Everything else here is chrome around it. Whose ball it
-            is stays small - the color already says that louder than text can. */}
-        <div className="flex items-baseline gap-2 mb-2">
+      <div className="sticky top-0 z-10 -mx-3 -mt-3">
+        {/* The possession band as a black eyebrow bar: whose ball, the down
+            and distance at display size, the spot. Team colour survives as
+            the square before the name and the tab underline. */}
+        <div className="flex items-center gap-2 px-3 py-2" style={{ background: "var(--bc-bug)", color: "#fff" }}>
+          <span className="w-2 h-2 shrink-0" style={{ backgroundColor: offenseColor }} />
           <span
-            className="w-2 h-2 rounded-full shrink-0 self-center"
-            style={{ backgroundColor: offenseColor, boxShadow: `0 0 8px ${offenseColor}` }}
-          />
-          <span
-            className="text-[10px] font-display font-bold uppercase tracking-[0.18em] truncate opacity-90 min-w-0"
-            style={{ color: offenseAccent }}
+            className="text-[10px] font-display font-bold uppercase tracking-[0.18em] truncate min-w-0"
+            style={{ color: "rgba(255,255,255,.75)" }}
           >
-            {offenseName}
+            {offenseName} ball
           </span>
           {down != null && distance != null && (
-            <span className="ml-auto text-lg leading-none font-display font-black tabular-nums text-white shrink-0">
+            <span className="ml-auto text-lg leading-none font-display font-bold tabular-nums shrink-0">
               {ordinalDown(down)}
-              <span className="opacity-40 mx-0.5">&amp;</span>
+              <span className="mx-0.5" style={{ color: "var(--bc-amber)" }}>&amp;</span>
               {distance}
             </span>
           )}
@@ -195,34 +185,28 @@ export default function QuickActions({
               <button
                 onClick={onToggleAdjust}
                 className={`text-[11px] font-display font-bold tabular-nums shrink-0 underline decoration-dotted underline-offset-4 cursor-pointer ${
-                  adjustOpen ? "text-amber-400 decoration-amber-400/60" : "text-white/50 decoration-white/25"
+                  adjustOpen ? "text-amber-400 decoration-amber-400/60" : "text-white/60 decoration-white/25"
                 }`}
                 title="Correct the down, distance or spot"
               >
                 {spotLabel}
               </button>
             ) : (
-              <span className="text-[11px] font-display font-bold tabular-nums text-white/50 shrink-0">
+              <span className="text-[11px] font-display font-bold tabular-nums text-white/60 shrink-0">
                 {spotLabel}
               </span>
             )
           )}
         </div>
 
-        <div className="flex gap-1">
+        <div className="lv-tabs" style={{ borderTop: 0 }}>
           {PHASE_TABS.map((tab) => (
             <button
               key={tab.value}
+              type="button"
               aria-pressed={phase === tab.value}
               onClick={() => { setPhase(tab.value); setManualOverride(true); }}
-              className={`flex-1 min-h-11 py-2 rounded-lg text-sm font-bold transition-colors border ${
-                phase === tab.value
-                  ? "text-white"
-                  : "bg-surface-bg/60 text-surface-muted border-transparent active:bg-surface-hover"
-              }`}
-              style={phase === tab.value
-                ? { backgroundColor: offenseColor, borderColor: offenseColor }
-                : undefined}
+              className={phase === tab.value ? "on" : ""}
             >
               {tab.label}
             </button>
@@ -232,7 +216,7 @@ export default function QuickActions({
 
       {spotlight && <div className="space-y-1.5">
         <div className="text-xs font-bold text-slate-300">{specialPrompt === "kickoff" ? "Kickoff due" : "Fourth down · Special teams"}</div>
-        <button onClick={() => onSelect(spotlight)} className="w-full min-h-24 rounded-lg border border-dragon-primary bg-dragon-primary/20 text-white text-2xl font-bold active:bg-dragon-primary/30"
+        <button onClick={() => onSelect(spotlight)} className="w-full min-h-24 rounded-lg border border-dragon-primary bg-dragon-primary/20 text-white text-2xl font-display font-bold uppercase tracking-[0.1em] active:bg-dragon-primary/30"
           >{spotlight.label}</button>
       </div>}
 
@@ -243,7 +227,7 @@ export default function QuickActions({
             <button
               key={`fast-${playType.id}`}
               onClick={() => onSelect(playType)}
-              className="min-h-16 px-3 py-4 rounded-lg text-sm font-bold border border-surface-border bg-surface-bg text-slate-200 transition-colors hover:bg-surface-hover active:bg-surface-hover"
+              className="min-h-16 px-3 py-4 rounded-lg text-base font-display font-bold uppercase tracking-[0.1em] text-center border border-surface-border bg-surface-bg text-slate-200 transition-colors hover:bg-surface-hover active:bg-surface-hover"
             >
               {playType.label}
             </button>
@@ -257,7 +241,7 @@ export default function QuickActions({
             <button
               key={playType.id}
               onClick={() => onSelect(playType)}
-              className="min-h-11 px-3 py-2 rounded-lg text-sm font-bold border border-surface-border bg-surface-bg text-slate-200 transition-colors hover:bg-surface-hover active:bg-surface-hover"
+              className="min-h-11 px-3 py-2 rounded-lg text-sm font-display font-bold uppercase tracking-[0.08em] text-center border border-surface-border bg-surface-bg text-slate-200 transition-colors hover:bg-surface-hover active:bg-surface-hover"
             >
               {playType.label}
             </button>
