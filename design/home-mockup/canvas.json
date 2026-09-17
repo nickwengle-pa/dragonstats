@@ -1,0 +1,291 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Home \u00b7 phone",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-1"
+    },
+    {
+      "file": "Tablet.dc.html",
+      "title": "Home \u00b7 iPad Pro landscape (768 max-w-tablet)",
+      "x": 470,
+      "y": 0,
+      "w": 768,
+      "h": 900,
+      "page": "page-1"
+    },
+    {
+      "file": "Current.dc.html",
+      "title": "Current (reference)",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-2"
+    },
+    {
+      "file": "OptionA.dc.html",
+      "title": "A \u00b7 Scoreboard",
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-2"
+    },
+    {
+      "file": "OptionC.dc.html",
+      "title": "C \u00b7 Bento",
+      "x": 940,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-2"
+    },
+    {
+      "file": "OptionD.dc.html",
+      "title": "D \u00b7 Season Timeline",
+      "x": 1410,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-2"
+    },
+    {
+      "file": "OptionE.dc.html",
+      "title": "E \u00b7 Leaders Board",
+      "x": 1880,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-2"
+    },
+    {
+      "file": "ThemeProgram.dc.html",
+      "title": "T1 \u00b7 Gameday Program",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-3"
+    },
+    {
+      "file": "ThemeTurf.dc.html",
+      "title": "T2 \u00b7 Turf & Chalk",
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-3"
+    },
+    {
+      "file": "ThemeBroadcast.dc.html",
+      "title": "T3 \u00b7 Broadcast",
+      "x": 940,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-3"
+    },
+    {
+      "file": "ThemeVarsity.dc.html",
+      "title": "T4 \u00b7 Varsity",
+      "x": 1410,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-3"
+    },
+    {
+      "file": "BroadcastPhone.dc.html",
+      "title": "B1 \u00b7 Broadcast \u00b7 phone",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-4"
+    },
+    {
+      "file": "BroadcastLive.dc.html",
+      "title": "B2 \u00b7 Broadcast \u00b7 game in progress",
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 940,
+      "page": "page-4"
+    },
+    {
+      "file": "BroadcastTablet.dc.html",
+      "title": "B3 \u00b7 Broadcast \u00b7 iPad Pro landscape (768)",
+      "x": 940,
+      "y": 0,
+      "w": 768,
+      "h": 900,
+      "page": "page-4"
+    },
+    {
+      "file": "BroadcastIcons.dc.html",
+      "title": "B4 \u00b7 Icon set",
+      "x": 1760,
+      "y": 0,
+      "w": 390,
+      "h": 620,
+      "page": "page-4"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "n-main",
+      "x": 0,
+      "y": -170,
+      "w": 390,
+      "text": "GAME DAY (Option B) \u2014 chosen direction\nProgram logo + primary_color in the header; opponents render through TeamCrest: their uploaded logo, or initials on their primary_color when there is none (shown here). Opponent names, colors and scores are sample data.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-tablet",
+      "x": 470,
+      "y": -170,
+      "w": 390,
+      "text": "iPad Pro landscape\nAt lg the app caps the screen at 768px (max-w-tablet). Two columns: the press-box tasks on the left, recent games on the right so a coach can open any report in one tap. Regular iPad / portrait uses the phone layout centered.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-current",
+      "x": 0,
+      "y": -150,
+      "w": 390,
+      "text": "CURRENT\nWhat the home screen looks like today, for comparison.",
+      "page": "page-2"
+    },
+    {
+      "id": "n-a",
+      "x": 470,
+      "y": -150,
+      "w": 390,
+      "text": "A \u00b7 SCOREBOARD \u2014 bold, broadcast feel\nThe record is the hero. Last 5 results as a scoreboard strip, next game as a ticket.",
+      "page": "page-2"
+    },
+    {
+      "id": "n-c",
+      "x": 940,
+      "y": -150,
+      "w": 390,
+      "text": "C \u00b7 BENTO \u2014 everything at a glance\nModular tiles; densest option, scales up well on iPad.",
+      "page": "page-2"
+    },
+    {
+      "id": "n-d",
+      "x": 1410,
+      "y": -150,
+      "w": 390,
+      "text": "D \u00b7 SEASON TIMELINE \u2014 the schedule is the home\nOne scroll tells the season story with a NOW marker on the next game.",
+      "page": "page-2"
+    },
+    {
+      "id": "n-e",
+      "x": 1880,
+      "y": -150,
+      "w": 390,
+      "text": "E \u00b7 LEADERS BOARD \u2014 coach-facing, stats-forward\nSeason leaders with bars, team per-game numbers. (Names and stats are sample data.)",
+      "page": "page-2"
+    },
+    {
+      "id": "n-t1",
+      "x": 0,
+      "y": -190,
+      "w": 390,
+      "text": "T1 \u00b7 GAMEDAY PROGRAM \u2014 printed paper, ink, one red\nThe folded program you buy at the gate. Cream stock with a paper grain, Big Shoulders Display for numbers and names, Source Serif italics for the small print. Numbered sections and hairline rules instead of cards; the only color is dragon red, used sparingly.",
+      "page": "page-3"
+    },
+    {
+      "id": "n-t2",
+      "x": 470,
+      "y": -190,
+      "w": 390,
+      "text": "T2 \u00b7 TURF & CHALK \u2014 the field itself\nDeep turf green with faint yard lines and sideline hash marks behind everything. Chalk-white 2px borders, first-down yellow for the one thing that matters next. Alumni Sans + Atkinson Hyperlegible, chosen for press-box glare.",
+      "page": "page-3"
+    },
+    {
+      "id": "n-t3",
+      "x": 940,
+      "y": -190,
+      "w": 390,
+      "text": "T3 \u00b7 BROADCAST \u2014 TV scorebug, light studio\nLight studio gray with a black scorebug header and red slash. Angled clip-paths instead of rounded corners, Chakra Petch for the on-air type, a blinking LIVE dot on the next-game eyebrow. The one light-mode dark-chrome option.",
+      "page": "page-3"
+    },
+    {
+      "id": "n-t4",
+      "x": 1410,
+      "y": -190,
+      "w": 390,
+      "text": "T4 \u00b7 VARSITY \u2014 letterman felt, chenille, cream\nNavy felt with a red/cream stripe across the top, a cream record patch, the next game as a red felt patch with a stitched inner border. Graduate for the chenille lettering, Work Sans underneath. Warm, handmade, nothing glows.",
+      "page": "page-3"
+    },
+    {
+      "id": "n-t-intro",
+      "x": 1880,
+      "y": 0,
+      "w": 390,
+      "text": "SAME LAYOUT, FOUR SKINS\nEvery board here is the chosen Game Day structure from page 1 \u2014 header + record, next-game hero, last game with its four reports, season rows, tab bar \u2014 re-clothed. Nothing was moved; only type, color, texture and shape changed. Pick one, or point at pieces of two and they get merged.",
+      "page": "page-3"
+    },
+    {
+      "id": "n-broadcastphone",
+      "x": 0,
+      "y": -190,
+      "w": 390,
+      "text": "B1 \u00b7 BROADCAST, REFINED \u2014 phone\nThe T3 direction carried through. New: a LAST 5 result strip under the record, an angular icon set drawn to sit with Chakra Petch (square caps, mitre joins), a whistle for Game Setup, subtitles on every season row. Hover/press states on cards and quick actions.",
+      "page": "page-4"
+    },
+    {
+      "id": "n-broadcastlive",
+      "x": 470,
+      "y": -190,
+      "w": 390,
+      "text": "B2 \u00b7 GAME IN PROGRESS\nWhen a game is live the next-game hero becomes a scorebug: red LIVE bar with quarter and clock, both crests, score, possession arrow, down & distance, plays logged, and one amber RESUME ENTRY button. Everything below stays where it was.",
+      "page": "page-4"
+    },
+    {
+      "id": "n-broadcasttablet",
+      "x": 940,
+      "y": -190,
+      "w": 390,
+      "text": "B3 \u00b7 iPad Pro landscape\nTwo columns at the 768 cap. Left: next game + season rows (press-box tasks). Right: five recent games, each with its stats state chip (amber = to review, green = final, gray = not started) and the opponent's color as the left rule \u2014 one tap to any report.",
+      "page": "page-4"
+    },
+    {
+      "id": "n-broadcasticons",
+      "x": 1760,
+      "y": -190,
+      "w": 390,
+      "text": "B4 \u00b7 ICON SET\n24px grid, 2px stroke, square caps, mitre joins. Goalpost for Home, jersey for Roster, headset for Program (press box), whistle for Game Setup, film strip for Plays, box-score grid for Box. Tell me which ones to swap.",
+      "page": "page-4"
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-4"
+  },
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Home \u00b7 Game Day"
+    },
+    {
+      "id": "page-2",
+      "name": "Other directions"
+    },
+    {
+      "id": "page-3",
+      "name": "Theme explorations"
+    },
+    {
+      "id": "page-4",
+      "name": "Broadcast \u00b7 expanded"
+    }
+  ]
+}

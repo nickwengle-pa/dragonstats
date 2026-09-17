@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Manrope:wght@400;500;600;700&amp;display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; -webkit-font-smoothing: antialiased; }
+    .screen { width: 390px; height: 940px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+    .scroll { flex: 1; min-height: 0; overflow: hidden; position: relative; z-index: 1; }
+    .ic { flex-shrink: 0; display: block; }
+        .hdr { display: flex; align-items: center; justify-content: space-between; padding: 24px 20px 0; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo { width: 40px; height: 40px; object-fit: contain; display: block; }
+    .next-top { display: flex; align-items: center; justify-content: space-between; }
+    .matchup { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+    .crest { display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; background: var(--c); font-weight: 900; text-transform: uppercase; }
+    .crest-lg { width: 48px; height: 48px; font-size: 14px; }
+    .crest-sm { width: 32px; height: 32px; font-size: 10px; }
+    .meta { display: flex; gap: 16px; margin-top: 10px; }
+    .meta span { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+    .cta { display: flex; gap: 10px; margin-top: 20px; }
+    .btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 22px; cursor: pointer; white-space: nowrap; }
+    .btn-primary { flex: 1; }
+    .block { padding: 24px 20px 0; }
+    .last-row { display: flex; align-items: center; gap: 12px; }
+    .last-info { flex: 1; min-width: 0; }
+    .last-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; }
+    .wl { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 900; font-size: 12px; }
+    .quick { display: flex; gap: 8px; margin-top: 12px; }
+    .q { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+    .rows { display: flex; flex-direction: column; gap: 8px; }
+    .row { display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 16px; cursor: pointer; }
+    .row-body { flex: 1; display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .tab-bar { height: 56px; flex-shrink: 0; display: flex; position: relative; z-index: 1; }
+    .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; }
+    .tab span { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .chip { display: inline-flex; align-items: center; padding: 2px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; line-height: 12px; white-space: nowrap; }
+
+    :root { --studio:#e6e8ec; --studio2:#f2f3f5; --bug:#0b0d10; --bug2:#1a1e25; --ink:#0b0d10; --mute:#5c6470; --line:#c9cdd4; --red:#d7141a; --amber:#f5a800; --green:#149a5b; }
+    body { background: var(--studio); color: var(--ink); font-family: "Manrope", system-ui, sans-serif; }
+    .screen { background: linear-gradient(160deg, #eef0f3, #dfe2e7); }
+    .screen::before { content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+      background: repeating-linear-gradient(135deg, transparent 0 14px, rgba(11,13,16,.035) 14px 15px); }
+    .d, .title, .opp, .rec-v, .score, .name, .btn, .section, .eyebrow, .q span, .tab span, .chip, .wl, .crest, .sub, .rec-l { font-family: "Chakra Petch", "Arial Narrow", sans-serif; }
+    .hdr { background: var(--bug); color: #fff; padding: 22px 20px 16px; position: relative; }
+    .hdr::after { content:""; position:absolute; left:0; right:0; bottom:-6px; height:6px; background: var(--red); clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+    .title { font-size: 20px; line-height: 22px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .sub { font-size: 10px; color: rgba(255,255,255,.55); letter-spacing:.1em; text-transform: uppercase; margin-top: 2px; }
+    .rec { display:flex; align-items:center; gap:10px; background: var(--red); color:#fff; padding: 6px 12px 6px 14px; clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%); }
+    .rec-l { font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; opacity:.8; }
+    .rec-v { font-size:22px; line-height:22px; font-weight:700; font-variant-numeric: tabular-nums; }
+    .next { margin: 26px 20px 0; padding: 0; position: relative; background: #fff; box-shadow: 0 1px 0 var(--line), 0 12px 30px rgba(11,13,16,.08); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%); }
+    .next-top { background: var(--bug); color:#fff; padding: 8px 16px; }
+    .eyebrow { font-size:11px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color: rgba(255,255,255,.6); }
+    .eb-hot { color: #fff; display:flex; align-items:center; gap:8px; }
+    .eb-hot::before { content:""; width:8px; height:8px; background: var(--red); animation: blink 1.4s steps(2,end) infinite; }
+    @keyframes blink { to { opacity:.25; } }
+    .matchup, .meta { padding: 0 16px; }
+    .matchup { margin-top: 16px; }
+    .crest { border-radius: 0; font-family:"Chakra Petch"; font-weight:700; }
+    .opp { font-size: 40px; line-height: 42px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+    .vs { font-size: 14px; font-weight: 600; color: var(--mute); margin-right: 8px; vertical-align: middle; }
+    .meta span { color: var(--mute); font-weight: 500; }
+    .cta { padding: 0 16px 16px; }
+    .btn { border-radius: 0; font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .btn-primary { background: var(--red); color: #fff; clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+    .btn-secondary { background: var(--bug); color: #fff; }
+    .section { margin-bottom: 10px; font-size:11px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color: var(--mute); display:flex; align-items:center; gap:8px; }
+    .section span { background: var(--bug); color:#fff; padding: 3px 8px; }
+    .section::after { content:""; flex:1; height:1px; background: var(--line); }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 0; }
+    .last { padding: 12px 14px; border-left: 4px solid var(--bug); }
+    .wl { border-radius: 0; font-size: 14px; font-weight:700; }
+    .wl-w { background: var(--green); color: #fff; }
+    .name { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; line-height: 20px; }
+    .last-meta span:first-child { color: var(--mute); }
+    .chip { border-radius: 0; font-size: 10px; letter-spacing:.1em; }
+    .chip-review { background: var(--amber); color: #1a1200; }
+    .score { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .dash { color: var(--line); margin: 0 3px; }
+    .quick { gap: 6px; }
+    .q { background: var(--studio2); border: 1px solid var(--line); color: var(--ink); }
+    .q .ic { color: var(--red); }
+    .q span { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .rows { gap: 6px; }
+    .row { border-left: 4px solid var(--red); }
+    .row .ic { color: var(--ink); }
+    .row-meta { font-size: 12px; color: var(--mute); font-weight: 500; }
+    .chev { color: var(--mute); }
+    .tab-bar { background: var(--bug); color: #fff; }
+    .tab { color: rgba(255,255,255,.5); position: relative; }
+    .tab.active { color: #fff; }
+    .tab.active::before { content:""; position:absolute; top:0; left:18%; right:18%; height:3px; background: var(--red); }
+    .tab span { font-size: 9px; letter-spacing:.14em; }
+    
+  </style>
+</helmet>
+<div class="screen">
+<div class="scroll">
+  <header class="hdr">
+    <div class="brand"><img src="dragon.png" alt="" class="logo"><div><div class="title">Dragon Stats</div><div class="sub">2026 Varsity · Dragons</div></div></div>
+    <div class="rec"><span class="rec-l">Record</span><span class="rec-v">4–1</span></div>
+  </header>
+
+  <section class="next">
+    <div class="next-top"><span class="eyebrow eb-hot">Next game · Friday</span><span class="eyebrow">in 2 days</span></div>
+    <div class="matchup"><span class="crest crest-lg" style="--c:#1d4ed8">RIV</span><div class="opp"><span class="vs">vs</span>Riverside</div></div>
+    <div class="meta"><span><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Sep 18 · 7:00 PM</span><span><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>Home</span></div>
+    <div class="cta"><div class="btn btn-primary"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>Start Game</div><div class="btn btn-secondary">Pregame</div></div>
+  </section>
+
+  <section class="block">
+    <div class="section"><span>Last Game</span></div>
+    <div class="card last">
+      <div class="last-row">
+        <span class="wl wl-w">W</span>
+        <span class="crest crest-sm" style="--c:#047857">HIL</span>
+        <div class="last-info"><div class="name">@ Hillcrest</div><div class="last-meta"><span>Sep 11</span><span class="chip chip-review">3 to review</span></div></div>
+        <div class="score">28<span class="dash">–</span>14</div>
+      </div>
+      <div class="quick">
+        <div class="q"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg><span>Report</span></div>
+        <div class="q"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><span>Box</span></div>
+        <div class="q"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg><span>Summary</span></div>
+        <div class="q"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg><span>Plays</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="section"><span>Season</span></div>
+    <div class="rows">
+      <div class="card row"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg><div class="row-body"><span class="name">Schedule</span><span class="row-meta">9 games · 5 played</span></div><svg class="ic chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="card row"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><div class="row-body"><span class="name">Roster</span><span class="row-meta">42 players</span></div><svg class="ic chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="card row"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg><div class="row-body"><span class="name">Season Stats</span><span class="row-meta"></span></div><svg class="ic chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="card row"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg><div class="row-body"><span class="name">Game Setup</span><span class="row-meta"></span></div><svg class="ic chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+    </div>
+  </section>
+</div>
+<nav class="tab-bar">
+  <div class="tab active"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>Home</span></div>
+  <div class="tab"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg><span>Schedule</span></div>
+  <div class="tab"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Roster</span></div>
+  <div class="tab"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg><span>Stats</span></div>
+  <div class="tab"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Program</span></div>
+</nav>
+</div>
+</x-dc>
+</body>
+</html>
