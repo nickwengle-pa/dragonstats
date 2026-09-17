@@ -293,11 +293,24 @@ html[data-theme="dark"] .bc {
 .bc-version { padding: 28px 20px 24px; text-align: center; font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--bc-mute); opacity: .5; }
 
 /* ── iPad landscape: two columns at the tablet cap ── */
-@media (min-width: 1024px) {
+/* ── Tablets ──
+   .screen caps itself at the phone width (28rem) below lg and goes edge to
+   edge above it. Neither is right for an iPad: portrait gets a phone column
+   with dead space either side, landscape gets 1366px of stretched cards. The
+   home screen sets its own caps — one column up to 720px, then two columns
+   inside 1120px — so opponents keep their full names and nothing is
+   squeezed. */
+@media (min-width: 768px) {
+  .bc-home { max-width: 720px; margin-left: auto; margin-right: auto; }
   .bc-hdr { padding: 26px 32px 16px; }
   .bc-stage { padding: 30px 32px 0; }
+}
+@media (min-width: 1024px) {
+  .bc-home { max-width: 1120px; }
+  .bc-hdr { padding: 30px 40px 18px; }
+  .bc-stage { padding: 34px 40px 0; }
   .bc-grid {
-    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0 24px; align-items: start;
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0 32px; align-items: start;
     grid-template-areas: "hero last" "season recent";
   }
   .bc-grid > * { min-width: 0; }
@@ -305,11 +318,22 @@ html[data-theme="dark"] .bc {
   .bc-a-last { grid-area: last; padding-top: 0; }
   .bc-a-recent { grid-area: recent; }
   .bc-a-season { grid-area: season; }
-  /* The right column is ~330px: pull the numbers in so names keep their room. */
-  .bc-last .bc-name, .bc-rg .bc-name { font-size: 13px; letter-spacing: .03em; }
-  .bc-last .bc-score { font-size: 22px; }
-  .bc-rg .bc-score { font-size: 16px; }
-  .bc-rg { gap: 8px; padding: 10px 10px; }
+  /* Room to breathe now that the columns are ~560 / 500. */
+  .bc-opp { font-size: 48px; line-height: 50px; }
+  .bc-opp.long { font-size: 36px; line-height: 40px; }
+  .bc-matchup { margin-top: 20px; }
+  .bc-cta { margin-top: 24px; }
+  .bc-last { padding: 16px 18px; }
+  .bc-last .bc-name { font-size: 17px; }
+  .bc-last .bc-score { font-size: 30px; }
+  .bc-quick { margin-top: 16px; gap: 8px; }
+  .bc-q { height: 64px; }
+  .bc-rows { gap: 8px; }
+  .bc-rg { gap: 12px; padding: 12px 16px; }
+  .bc-rg .bc-name { font-size: 15px; }
+  .bc-rg .bc-score { font-size: 20px; }
+  .bc-row { height: 60px; }
+  .bc-block { padding-top: 28px; }
 }
 
 /* ── tab bar (shared by every screen) ──

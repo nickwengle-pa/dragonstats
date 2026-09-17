@@ -177,7 +177,7 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
   const played = completed.length;
 
   return (
-    <div className="bc screen safe-top lg:max-w-tablet lg:mx-auto pb-20">
+    <div className="bc bc-home screen safe-top pb-20">
       {/* ── header: the bug ── */}
       <header className="bc-hdr">
         <div className="bc-brand">
