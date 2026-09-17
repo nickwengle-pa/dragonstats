@@ -23,6 +23,13 @@ export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
 }
 
+/** For screens that show the theme but do not own the toggle: make sure the
+ *  saved choice is on <html> — a reload that lands on /schedule would
+ *  otherwise render before any toggle has run. */
+export function ensureTheme() {
+  if (!document.documentElement.dataset.theme) applyTheme(initialTheme());
+}
+
 export function useTheme(): [Theme, () => void] {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   useEffect(() => {

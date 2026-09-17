@@ -40,7 +40,10 @@ const DEFAULT_BRANDING: Branding = {
   wordmarkUrl: null,
 };
 
-const ProgramContext = createContext<ProgramContextValue>({
+/* Exported for the dev-only screen previews, which stand up a fake program
+   and season so a screen can be looked at without auth. App code should use
+   ProgramProvider and the hook. */
+export const ProgramContext = createContext<ProgramContextValue>({
   program: null,
   season: null,
   seasons: [],

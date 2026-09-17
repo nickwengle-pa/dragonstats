@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { ensureTheme } from "@/hooks/useTheme";
 import { GoalpostIcon, CalendarIcon, JerseyIcon, StatsIcon, HeadsetIcon } from "@/components/icons/BroadcastIcons";
 import "@/screens/homeBroadcast.css";
 
@@ -15,6 +17,7 @@ const TABS = [
 export function TabBar() {
   const navigate = useNavigate();
   const current = useLocation().pathname;
+  useEffect(() => { ensureTheme(); }, []);
   return (
     <nav className="bc-tabbar" aria-label="Main">
       {TABS.map(({ id, Icon, label }) => (

@@ -6,6 +6,8 @@ import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
 import type { GameSummary } from "football-stats-engine";
+import BroadcastHeader from "@/components/BroadcastHeader";
+import { SheetIcon } from "@/components/icons/BroadcastIcons";
 
 /* ─── Aggregate interfaces ─── */
 
@@ -230,17 +232,17 @@ export default function SeasonStatsScreen() {
   const primaryColor = program?.primary_color ?? "#ef4444";
 
   return (
-    <div className="screen safe-top pb-20">
-      <div className="flex items-center gap-3 px-5 pt-5 pb-2">
-        <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Season Stats</h1>
-        <button className="btn-primary text-sm" onClick={() => navigate("/season-report")}>Season PDF</button>
-      </div>
-      <div className="mx-5 mt-1 mb-4 accent-line" />
+    <div className="bc screen safe-top pb-20">
+      <BroadcastHeader
+        title="Season Stats"
+        actions={
+          <button type="button" className="bc-btn bc-btn-primary" style={{ flex: "none" }} onClick={() => navigate("/season-report")}>
+            <SheetIcon size={14} />Season PDF
+          </button>
+        }
+      />
 
-      <div className="flex-1 px-5 overflow-y-auto pb-8 space-y-4">
+      <div className="flex-1 px-5 pt-7 overflow-y-auto pb-8 space-y-4">
         {loading && (
           <div className="card p-8 text-center">
             <div className="text-neutral-500 animate-pulse">Computing season stats...</div>

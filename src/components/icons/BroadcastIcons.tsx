@@ -80,3 +80,8 @@ export const SunIcon = make("SunIcon", <>
 </>);
 export const MoonIcon = make("MoonIcon", <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />);
 export const PowerIcon = make("PowerIcon", <><path d="M12 3v8" /><path d="M7 7a7 7 0 1 0 10 0" /></>);
+export const BackIcon = make("BackIcon", <path d="M15 5l-7 7 7 7" />);
+export const PlusIcon = make("PlusIcon", <path d="M12 5v14M5 12h14" />);
+export const UploadIcon = make("UploadIcon", <><path d="M12 16V4M6 10l6-6 6 6" /><path d="M4 20h16" /></>);
+export const ShieldIcon = make("ShieldIcon", <path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6Z" />);
+export const SchoolIcon = make("SchoolIcon", <><path d="M3 21V10l9-6 9 6v11" /><path d="M3 21h18M9 21v-6h6v6" /></>);

@@ -21,6 +21,9 @@
   --bc-red: #d7141a;
   --bc-amber: #f5a800;
   --bc-green: #149a5b;
+  --bc-red-text: #c1121a;
+  --bc-green-text: #0f7a48;
+  --bc-amber-text: #9a6700;
   --bc-shadow: 0 1px 0 var(--bc-line), 0 12px 30px rgba(11, 13, 16, 0.08);
   --bc-shadow-bug: 0 12px 30px rgba(11, 13, 16, 0.18);
 
@@ -28,6 +31,7 @@
   background: linear-gradient(160deg, var(--bc-stage-2), var(--bc-stage-3));
   font-family: "Manrope", system-ui, sans-serif;
   position: relative;
+  isolation: isolate;
 }
 html[data-theme="dark"] .bc {
   --bc-stage: #0f1216;
@@ -40,6 +44,9 @@ html[data-theme="dark"] .bc {
   --bc-ink: #f2f3f5;
   --bc-mute: #9aa3ad;
   --bc-line: #2c333d;
+  --bc-red-text: #ff5a60;
+  --bc-green-text: #4ade80;
+  --bc-amber-text: #fbbf24;
   --bc-shadow: 0 1px 0 var(--bc-line), 0 12px 30px rgba(0, 0, 0, 0.35);
   --bc-shadow-bug: 0 12px 30px rgba(0, 0, 0, 0.5);
 }
@@ -48,11 +55,10 @@ html[data-theme="dark"] .bc {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   background: repeating-linear-gradient(135deg, transparent 0 14px, var(--bc-hatch) 14px 15px);
 }
-.bc > * { position: relative; z-index: 1; }
 
 .bc-d { font-family: "Chakra Petch", "Arial Narrow", sans-serif; }
 /* Zero-specificity reset so the themed classes below win without !important. */
@@ -115,6 +121,19 @@ html[data-theme="dark"] .bc {
   color: rgba(255, 255, 255, .6); cursor: pointer; transition: color 200ms, background-color 200ms;
 }
 .bc-tool:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+
+/* page header (every screen but Home) */
+.bc-hdr-page { gap: 10px; padding: 18px 16px 14px; }
+.bc-hdr-page .bc-hdr-title { flex: 1; min-width: 0; }
+.bc-hdr-page .bc-back { margin-left: -6px; color: rgba(255, 255, 255, .8); }
+.bc-hdr-page .bc-rec { font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; padding: 6px 10px 6px 12px; white-space: nowrap; }
+.bc-hdr-page .bc-hdr-tools .bc-tool { color: rgba(255, 255, 255, .8); }
+.bc-hdr-page .bc-hdr-tools .bc-tool.hot { color: #fff; background: var(--bc-red); }
+.bc-hdr-page .bc-hdr-tools .bc-tool.hot:hover { background: #ef1c22; }
+.bc-hdr-page .bc-btn { height: 36px; padding: 0 14px; font-size: 12px; }
+/* Sub-header line under the bar: the season, a count, a filter. */
+.bc-subbar { padding: 22px 20px 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.bc-subbar .bc-eyebrow { color: var(--bc-mute); }
 
 /* ── stage ── */
 .bc-stage { padding: 26px 20px 0; }
@@ -312,3 +331,72 @@ html[data-theme="dark"] .bc {
 .bc-tab.active { color: #fff; }
 .bc-tab.active::before { content: ""; position: absolute; top: -1px; left: 18%; right: 18%; height: 3px; background: #d7141a; }
 .bc-tab span { font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; }
+
+/* ── Theme bridge ──────────────────────────────────────────────────────────
+   The other screens were built on the dark Tailwind tokens (surface-*,
+   neutral-*, dragon-primary) and the component classes in index.css. Rather
+   than rewrite four screens' markup, a screen opts in by adding `bc` to its
+   root and these rules re-point those classes at the Broadcast palette. The
+   double-class selectors outrank the single-class utilities and the
+   @layer components rules without !important. Anything not listed here
+   keeps its old colour, which on the light stage is a bug to fix, not a
+   feature. */
+
+.bc .text-white, .bc .text-neutral-200, .bc .text-neutral-300, .bc .text-slate-200, .bc .text-slate-300 { color: var(--bc-ink); }
+.bc .text-neutral-400, .bc .text-neutral-500, .bc .text-surface-muted, .bc .text-slate-400, .bc .text-slate-500 { color: var(--bc-mute); }
+.bc .text-neutral-600, .bc .text-neutral-700, .bc .text-surface-muted\/40, .bc .text-surface-muted\/30, .bc .text-surface-muted\/50 { color: var(--bc-mute); opacity: .55; }
+.bc .placeholder\:text-neutral-600::placeholder { color: var(--bc-mute); opacity: .7; }
+.bc .text-dragon-primary, .bc .text-red-400, .bc .text-red-500, .bc .text-red-300\/90, .bc .hover\:text-red-400:hover { color: var(--bc-red-text); }
+.bc .text-emerald-400, .bc .text-emerald-300 { color: var(--bc-green-text); }
+.bc .text-amber-400, .bc .text-amber-400\/70, .bc .text-yellow-400, .bc .text-yellow-500, .bc .text-yellow-400\/80 { color: var(--bc-amber-text); }
+.bc .text-blue-400 { color: #2a78d6; } .bc .text-purple-400 { color: #7c3aed; } .bc .text-orange-400 { color: #c2410c; }
+html[data-theme="dark"] .bc .text-blue-400 { color: #7eaeda; } html[data-theme="dark"] .bc .text-purple-400 { color: #b39ddb; } html[data-theme="dark"] .bc .text-orange-400 { color: #fb923c; }
+
+.bc .bg-surface-bg, .bc .bg-surface-raised { background-color: var(--bc-surface-2); }
+.bc .bg-surface-card { background-color: var(--bc-surface); }
+.bc .bg-surface-hover, .bc .bg-surface-cardHover { background-color: var(--bc-surface-2); }
+.bc .bg-dragon-primary\/10 { background-color: color-mix(in srgb, var(--bc-red) 10%, transparent); }
+.bc .bg-emerald-500\/15 { background-color: color-mix(in srgb, var(--bc-green) 15%, transparent); }
+.bc .bg-amber-500\/10, .bc .bg-amber-500\/15 { background-color: color-mix(in srgb, var(--bc-amber) 12%, transparent); }
+.bc .bg-red-500\/10 { background-color: color-mix(in srgb, var(--bc-red) 10%, transparent); }
+.bc .bg-red-600 { background-color: var(--bc-red); }
+.bc .border-surface-border, .bc .border-surface-border\/50, .bc .border-surface-borderLight, .bc .border-neutral-500 { border-color: var(--bc-line); }
+.bc .divide-surface-border > :not([hidden]) ~ :not([hidden]) { border-color: var(--bc-line); }
+.bc .border-dragon-primary, .bc .border-red-500, .bc .border-red-500\/40 { border-color: var(--bc-red); }
+.bc .border-amber-500\/40, .bc .border-yellow-700\/40 { border-color: var(--bc-amber); }
+
+/* component classes from index.css */
+.bc .card { background: var(--bc-surface); border: 1px solid var(--bc-line); border-radius: 0; }
+.bc .card-hover:hover { background: var(--bc-surface-2); box-shadow: none; }
+.bc .btn-primary {
+  background: var(--bc-red); color: #fff; border-radius: 0; box-shadow: none;
+  font-family: "Chakra Petch", sans-serif; letter-spacing: .12em;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}
+.bc .btn-primary:hover { background: #ef1c22; box-shadow: none; }
+.bc .btn-secondary { background: var(--bc-bug); color: #fff; border: 0; border-radius: 0; font-family: "Chakra Petch", sans-serif; letter-spacing: .12em; }
+.bc .btn-secondary:hover { background: #1a1e25; }
+.bc .btn-ghost { color: var(--bc-mute); border-radius: 0; }
+.bc .btn-ghost:hover { color: var(--bc-ink); }
+.bc .input {
+  background: var(--bc-surface); border: 1px solid var(--bc-line); color: var(--bc-ink); border-radius: 0;
+  font-family: "Manrope", sans-serif;
+}
+.bc .input:focus { border-color: var(--bc-ink); }
+.bc .input::placeholder { color: var(--bc-mute); opacity: .7; }
+.bc select.input option { color: #0b0d10; }
+.bc .label, .bc .section-title, .bc .stat-label { color: var(--bc-mute); font-family: "Chakra Petch", sans-serif; }
+.bc .section-title { display: flex; align-items: center; gap: 8px; }
+.bc .section-title::after { content: ""; flex: 1; height: 1px; background: var(--bc-line); }
+.bc .stat-value { font-family: "Chakra Petch", sans-serif; }
+.bc .sheet-panel, .bc .sheet-panel-sm { background: var(--bc-surface); border: 1px solid var(--bc-line); border-radius: 0; color: var(--bc-ink); }
+.bc .header-bar { background: var(--bc-bug); }
+.bc .accent-line { display: none; }
+.bc .font-display { font-family: "Chakra Petch", sans-serif; }
+.bc .font-body { font-family: "Manrope", sans-serif; }
+/* Hard corners are the look; small radii on chips and avatars can stay. */
+.bc .rounded-2xl, .bc .rounded-xl, .bc .rounded-t-2xl, .bc .rounded-3xl { border-radius: 0; }
+.bc .shadow-glow, .bc .shadow-card-hover, .bc .shadow-scoreboard { box-shadow: none; }
+/* Tables (season stats) */
+.bc table th { color: var(--bc-mute); font-family: "Chakra Petch", sans-serif; letter-spacing: .08em; }
+.bc .hover\:bg-surface-hover:hover { background-color: var(--bc-surface-2); }

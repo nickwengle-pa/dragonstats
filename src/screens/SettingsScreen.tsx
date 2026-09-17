@@ -21,6 +21,7 @@ import DangerZone from "@/components/settings/DangerZone";
 import TeamAccess from "@/components/settings/TeamAccess";
 import JoinWithCode from "@/components/settings/JoinWithCode";
 import { supabase } from "@/lib/supabase";
+import BroadcastHeader from "@/components/BroadcastHeader";
 import {
   SEASON_LEVELS as LEVEL_OPTIONS,
   buildSeasonName,
@@ -490,18 +491,12 @@ export default function SettingsScreen({ firstTime = false }: Props) {
   );
 
   return (
-    <div className="screen safe-top pb-20">
-      <div className="flex items-center gap-3 px-5 pt-5 pb-2">
-        {!firstTime && (
-          <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-        )}
-        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">
-          {firstTime ? "Set Up Your Program" : "Program"}
-        </h1>
-      </div>
-      <div className="mx-5 mt-1 mb-4 accent-line" />
+    <div className="bc screen safe-top pb-20">
+      <BroadcastHeader
+        title={firstTime ? "Set Up Your Program" : "Program"}
+        back={firstTime ? null : "/"}
+      />
+      <div className="pt-6" />
 
       {firstTime && (
         <div className="px-5 pb-4 space-y-4">

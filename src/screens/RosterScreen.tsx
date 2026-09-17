@@ -11,6 +11,8 @@ import { readSeasonRoster } from "@/services/offlineCache";
 import { parseCSVRoster, parseMaxPrepsRoster, type ParsedPlayer } from "@/utils/rosterImport";
 import PendingPlayersSheet from "@/components/roster/PendingPlayersSheet";
 import { loadPendingPlayers, type PendingPlayerSummary } from "@/services/pendingPlayerService";
+import BroadcastHeader from "@/components/BroadcastHeader";
+import { UploadIcon, PlusIcon } from "@/components/icons/BroadcastIcons";
 
 /* ─── Types ─── */
 
@@ -521,31 +523,21 @@ export default function RosterScreen() {
   };
 
   return (
-    <div className="screen safe-top lg:max-w-tablet lg:mx-auto pb-20">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 pt-5 pb-2">
-        <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Roster</h1>
-        <span className="text-[11px] font-display font-bold text-surface-muted uppercase tracking-wider">{roster.length} players</span>
-        <button onClick={() => setShowImport(true)} className="btn-ghost p-2 text-surface-muted cursor-pointer" title="Import roster">
-          <Upload className="w-5 h-5" />
-        </button>
-        <button onClick={() => { setEditingEntry(null); setShowAdd(true); }} className="btn-ghost p-2 text-dragon-primary cursor-pointer">
-          <Plus className="w-5 h-5" />
-        </button>
-      </div>
-      <div className="mx-5 mt-1 mb-3 accent-line" />
-
-      {/* Season label */}
-      {season && (
-        <div className="px-5 pb-3">
-          <span className="text-[11px] font-display font-semibold text-surface-muted uppercase tracking-wider">
-            {season.name ?? `${season.year} ${season.level}`}
-          </span>
-        </div>
-      )}
+    <div className="bc screen safe-top lg:max-w-tablet lg:mx-auto pb-20">
+      <BroadcastHeader
+        title="Roster"
+        subtitle={season ? (season.name ?? `${season.year} ${season.level}`) : undefined}
+        chip={`${roster.length} players`}
+        actions={<>
+          <button type="button" onClick={() => setShowImport(true)} className="bc-tool" title="Import roster" aria-label="Import roster">
+            <UploadIcon size={18} />
+          </button>
+          <button type="button" onClick={() => { setEditingEntry(null); setShowAdd(true); }} className="bc-tool hot" title="Add player" aria-label="Add player">
+            <PlusIcon size={18} />
+          </button>
+        </>}
+      />
+      <div className="pt-6" />
 
       {/* Jerseys recorded during a game with nobody rostered under them. */}
       {pending.length > 0 && (

@@ -15,6 +15,8 @@ import {
 } from "@/services/opponentService";
 import { parseMaxPrepsRoster, parseCSVRoster, type ParsedPlayer } from "@/utils/rosterImport";
 import { deleteGame } from "@/services/dangerZone";
+import BroadcastHeader from "@/components/BroadcastHeader";
+import { ShieldIcon, PlusIcon } from "@/components/icons/BroadcastIcons";
 
 /* ─── Types ─── */
 
@@ -677,31 +679,22 @@ export default function ScheduleScreen() {
   };
 
   return (
-    <div className="screen safe-top lg:max-w-tablet lg:mx-auto pb-20">
-      <div className="flex items-center gap-3 px-5 pt-5 pb-2 lg:px-8">
-        <button onClick={() => navigate("/")} className="btn-ghost p-2 cursor-pointer">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Schedule</h1>
-        <button onClick={() => setOppModal({ open: true, editing: null })} className="btn-ghost p-2 text-surface-muted cursor-pointer" title="Manage opponents">
-          <Users className="w-5 h-5" />
-        </button>
-        <button onClick={() => setShowAddGame(true)} className="btn-ghost p-2 text-dragon-primary cursor-pointer">
-          <Plus className="w-5 h-5" />
-        </button>
-      </div>
-      <div className="mx-5 mt-1 mb-3 accent-line" />
-
-      {season && (
-        <div className="px-5 pb-3">
-          <span className="text-[11px] font-display font-semibold text-surface-muted uppercase tracking-wider">
-            {season.name ?? `${season.year} ${season.level}`}
-          </span>
-        </div>
-      )}
+    <div className="bc screen safe-top lg:max-w-tablet lg:mx-auto pb-20">
+      <BroadcastHeader
+        title="Schedule"
+        subtitle={season ? (season.name ?? `${season.year} ${season.level}`) : undefined}
+        actions={<>
+          <button type="button" onClick={() => setOppModal({ open: true, editing: null })} className="bc-tool" title="Manage opponents" aria-label="Manage opponents">
+            <ShieldIcon size={18} />
+          </button>
+          <button type="button" onClick={() => setShowAddGame(true)} className="bc-tool hot" title="Add game" aria-label="Add game">
+            <PlusIcon size={18} />
+          </button>
+        </>}
+      />
 
       {/* Games list */}
-      <div className="flex-1 px-5 lg:px-8 overflow-y-auto pb-4">
+      <div className="flex-1 px-5 lg:px-8 pt-7 overflow-y-auto pb-4">
         {loading ? (
           <div className="text-neutral-500 text-sm text-center py-12 animate-pulse">Loading schedule...</div>
         ) : games.length === 0 ? (
