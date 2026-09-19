@@ -1,11 +1,13 @@
 import GameHomeLink from "@/components/game/GameHomeLink";
-import { useState, useEffect } from "react";
+import PrintReportButton from "@/components/report/PrintReportButton";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStatsBundle } from "@/services/statsService";
 import { buildGameReport, type GameReport, type TeamStatRow } from "@/services/gameReport";
+import { pdfFilename } from "@/services/reportPrint";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GAME REPORT — a letter-sized document, laid out in inches.
@@ -322,6 +324,7 @@ export default function GameReportScreen() {
 
   const [report, setReport] = useState<GameReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const sheetsRoot = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!gameId || !program || !season) return;
@@ -414,21 +417,21 @@ export default function GameReportScreen() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Report</h1>
-        <button
-          onClick={() => window.print()}
+        <PrintReportButton
+          sheets={() => Array.from(sheetsRoot.current?.querySelectorAll<HTMLElement>(".game-report-sheet") ?? [])}
+          filename={report ? pdfFilename(`${report.us.abbr} vs ${report.them.abbr} ${report.dateLabel}`) : "Game Report.pdf"}
           className="btn-ghost p-2 cursor-pointer"
-          title="Print / Save as PDF"
           disabled={!report}
         >
           <Printer className="w-5 h-5" />
-        </button>
+        </PrintReportButton>
       </div>
       <div className="mx-5 mt-1 mb-4 accent-line print:hidden" />
 
       {/* The pages are a fixed 8 inches. Narrower than that on screen and this
           scrolls sideways rather than reflowing — reflowing is exactly how the
           printed version stopped matching what was on screen. */}
-      <div className="flex-1 overflow-auto print:overflow-visible pb-10 print:pb-0">
+      <div ref={sheetsRoot} className="flex-1 overflow-auto print:overflow-visible pb-10 print:pb-0">
         {loading && (
           <div className="card p-8 mx-5 text-center text-slate-500 animate-pulse print:hidden">
             Building report…

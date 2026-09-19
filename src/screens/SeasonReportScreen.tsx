@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import PrintReportButton from "@/components/report/PrintReportButton";
 import { useNavigate } from "react-router-dom";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStatsBundle } from "@/services/statsService";
 import { buildSeasonReport, combineSeasonBundles, paginateSeasonSections, type ReportSection } from "@/services/seasonReport";
 import { formatSeasonName } from "@/services/seasonService";
+import { pdfFilename } from "@/services/reportPrint";
 
 export default function SeasonReportScreen() {
   const { program, season } = useProgramContext(); const navigate = useNavigate();
@@ -74,12 +76,13 @@ export function SeasonReportDocument({ program, title, sections, loading = false
   title: string; sections: ReportSection[]; loading?: boolean; error?: string; record: string; onBack: () => void; preview?: boolean;
 }) {
   const pages = paginateSeasonSections(sections);
+  const sheetsRoot = useRef<HTMLDivElement>(null);
   useEffect(() => { const previous = document.title; document.title = `${program?.abbreviation ?? "Team"} ${title} Season Stats`; return () => { document.title = previous; }; }, [program, title]);
   return <div className="min-h-dvh bg-surface-bg print:bg-white">
-    <div className="p-5 flex items-center gap-4 print:hidden"><button onClick={onBack}>← {preview ? "Game Preview" : "Season Stats"}</button><h1 className="flex-1 font-bold">Season Report{preview ? " · Sample Preview" : ""}</h1><button className="btn-primary" disabled={loading || !!error} onClick={() => window.print()}>Print / Save PDF</button></div>
+    <div className="p-5 flex items-center gap-4 print:hidden"><button onClick={onBack}>← {preview ? "Game Preview" : "Season Stats"}</button><h1 className="flex-1 font-bold">Season Report{preview ? " · Sample Preview" : ""}</h1><PrintReportButton sheets={() => Array.from(sheetsRoot.current?.querySelectorAll<HTMLElement>(".game-report-sheet") ?? [])} filename={pdfFilename(`${program?.abbreviation ?? "Team"} ${title} Season Stats`)} className="btn-primary" disabled={loading || !!error}>Print / Save PDF</PrintReportButton></div>
     <p className="px-5 pb-4 text-sm text-slate-400 print:hidden">{preview ? "Sample data to review the layout. " : ""}Save as PDF from the print dialog, then attach the saved report to your email.</p>
     {loading ? <p className="p-6">Preparing season totals…</p> : error ? <p role="alert" className="p-6">{error}</p> :
-      <div className="overflow-auto print:overflow-visible"><div className="flex flex-col items-center gap-6 pb-6 print:gap-0 print:pb-0">
+      <div ref={sheetsRoot} className="overflow-auto print:overflow-visible"><div className="flex flex-col items-center gap-6 pb-6 print:gap-0 print:pb-0">
         {pages.map((page, i) => <section key={i} className="game-report-sheet bg-white text-black flex flex-col shadow-xl print:shadow-none" style={{ width: "8in", minHeight: "10.5in", padding: "0.3in 0.34in", breakAfter: i < pages.length-1 ? "page" : "auto", printColorAdjust: "exact" }}>
           <header className="border-b-2 border-black pb-2 mb-3 flex items-center gap-3">{program?.logo_url && <img src={program.logo_url} alt="" className="w-12 h-12 object-contain" />}<div><h1 className="font-black uppercase text-xl">{program?.name}</h1><p className="text-xs">{title} · Season statistics · {record}</p></div></header>
           <div className="flex-1">{page.map((s,j) => <div key={j} className="mb-4"><h2 className="bg-black text-white uppercase font-bold text-[8pt] px-2 py-1 mb-1">{s.title}</h2><table className="w-full border-collapse tabular-nums text-[8pt]" style={{ tableLayout: "fixed" }}><colgroup><col style={{ width: "34%" }}/>{s.headers.slice(1).map((_,k) => <col key={k}/>)}</colgroup><thead><tr className="border-b border-black">{s.headers.map((h,k) => <th key={k} className={`p-1 text-[6.5pt] uppercase ${k ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead><tbody>{s.rows.map((r,k) => <tr key={k} className="border-b border-neutral-200">{r.map((v,n) => <td key={n} className={`px-1 py-[3px] ${n ? "text-right" : "text-left font-semibold"}`}>{typeof v === "number" && !Number.isInteger(v) ? v.toFixed(1) : v}</td>)}</tr>)}</tbody>{s.total && <tfoot><tr className="border-t-2 border-black font-bold">{s.total.map((v,k) => <td key={k} className={`p-1 ${k ? "text-right" : "text-left"}`}>{typeof v === "number" && !Number.isInteger(v) ? v.toFixed(1) : v}</td>)}</tr></tfoot>}</table></div>)}</div>
