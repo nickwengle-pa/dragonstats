@@ -17,6 +17,7 @@
  */
 
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import { canDiscardSnapshot, sameSyncEntity } from "./syncDiscard";
 import type { PlayWithPlayers, PlayInsert } from "./gameService";
 
 /* "game" patches the games row itself — score, live situation, final status.
@@ -593,6 +594,29 @@ export async function markSynced(queueId: string): Promise<void> {
   if (!isOfflineSupported()) return;
   const db = await getDb();
   await db.delete("sync_queue", queueId);
+}
+
+/** Discard only the reviewed local intent, restoring the server's copy atomically. */
+export async function discardQueuedEntity(expected: SyncQueueItem[], serverPlay: PlayWithPlayers | null, serverGame?: unknown): Promise<void> {
+  if (!isOfflineSupported() || !expected.length) throw new Error("The queued change is no longer available.");
+  const db = await getDb();
+  const tx = db.transaction(["sync_queue", "plays_cache", "meta"], "readwrite");
+  const queue = tx.objectStore("sync_queue");
+  const current = (await queue.getAll()).filter(item => sameSyncEntity(item, expected[0]));
+  if (!canDiscardSnapshot(expected, current)) {
+    await tx.done;
+    throw new Error("This change was updated or is syncing. Review the current details and try again.");
+  }
+  for (const item of current) await queue.delete(item.id);
+  if (expected[0].op === "game") {
+    if (serverGame) await tx.objectStore("meta").put({ key: `cache:game:${expected[0].gameId}`, value: serverGame });
+    else await tx.objectStore("meta").delete(`cache:game:${expected[0].gameId}`);
+  } else if (serverPlay) {
+    await tx.objectStore("plays_cache").put(serverPlay);
+  } else {
+    await tx.objectStore("plays_cache").delete(expected[0].playId);
+  }
+  await tx.done;
 }
 
 export async function markFailed(queueId: string, error: string): Promise<void> {

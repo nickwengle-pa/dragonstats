@@ -6,6 +6,7 @@ export interface LiveDriveRow {
   plays: number;
   yards: number;
   seconds: number;
+  playIds: string[];
 }
 
 /** Anchor each finished drive to its last recorded play. Drive numbers mirror
@@ -37,6 +38,7 @@ export function liveDriveRows(
     const elapsed = (endQuarter - drive.startQuarter) * quarterLength + minutes * 60 + seconds - endClock;
     rows.set(last.id, {
       possession: last.possession, plays: drive.plays, yards: drive.yards,
+      playIds: run.map(play => play.id),
       seconds: Math.max(0, Number.isFinite(elapsed) ? elapsed : drive.timeOfPossessionSeconds),
     });
   });

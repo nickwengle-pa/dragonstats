@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, RefreshCw } from "lucide-react";
-import { getSyncDetails, isStuck } from "@/services/offlineDb";
-import { drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
+import { getSyncDetails, isStuck, type SyncQueueItem } from "@/services/offlineDb";
+import { discardSyncChange, drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
 import { syncOperationLabel, syncPlayDetails } from "@/services/syncDetails";
 import { quarterLabel } from "./types";
 
@@ -13,6 +13,8 @@ export default function SyncDetails({ gameId, onClose }: { gameId: string | null
   const [draining, setDraining] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   useEffect(() => {
     let alive = true;
     let revision = 0;
@@ -46,6 +48,19 @@ export default function SyncDetails({ gameId, onClose }: { gameId: string | null
     finally { setRetrying(false); }
   };
 
+  const discard = async (item: SyncQueueItem) => {
+    const guard = new Event("app:before-sync-discard", { cancelable: true });
+    if (!window.dispatchEvent(guard)) { setError("Finish or cancel the current play entry before deleting a queued change."); return; }
+    setDeleting(true);
+    setError("");
+    try {
+      await discardSyncChange(item);
+      setConfirmDelete(null);
+      setRows(await getSyncDetails());
+    } catch (err) { setError(err instanceof Error ? err.message : "Nothing was removed. Please try again."); }
+    finally { setDeleting(false); }
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-[110] bg-black/75 flex items-end sm:items-center justify-center p-2" onClick={onClose}>
       <section role="dialog" aria-modal="true" aria-labelledby="sync-details-title" className="w-full max-w-lg max-h-[85dvh] flex flex-col rounded-2xl border border-slate-600 bg-slate-950 text-slate-100 shadow-2xl" onClick={event => event.stopPropagation()}>
@@ -56,7 +71,7 @@ export default function SyncDetails({ gameId, onClose }: { gameId: string | null
         <div className="overflow-y-auto p-4 space-y-3">
           <p className="text-sm text-slate-300">These changes are saved on this device. Retry sync first—entering a play again could create a duplicate when the original syncs.</p>
           {loading && <p role="status">Loading saved changes…</p>}
-          {!loading && !rows.length && !error && <p className="text-emerald-400" role="status">All changes are synced.</p>}
+          {!loading && !rows.length && !error && <p className="text-emerald-400" role="status">No pending or stuck changes.</p>}
           {error && <p role="alert" className="text-red-300">{error}</p>}
           {[...rows].sort((a, b) => Number(b.item.gameId === gameId) - Number(a.item.gameId === gameId)).map(({ item, play: cached, opponent, date }) => {
             const play = syncPlayDetails(item, cached);
@@ -83,11 +98,18 @@ export default function SyncDetails({ gameId, onClose }: { gameId: string | null
                 <p className="break-all mt-2">{play ? `Play ID: ${item.playId}` : `Game ID: ${item.gameId}`}</p>
                 <pre className="mt-2 whitespace-pre-wrap break-all text-[11px]">{JSON.stringify(play ? { ...play, players: item.payload?.players ?? cached?.play_players } : item.payload?.patch, null, 2)}</pre>
               </details>
+              {confirmDelete === item.id ? <div className="rounded-lg border border-red-500/50 p-3 space-y-2">
+                <p className="text-sm">Delete this device’s queued {item.op === "game" ? "game change" : "copy and edits for this play"}? Unsynced changes will be lost. Any copy already on the server stays unchanged.</p>
+                <div className="flex gap-3">
+                  <button disabled={deleting || draining || !online} onClick={() => void discard(item)} className="text-sm font-bold text-red-300 disabled:opacity-50">{deleting ? "Deleting…" : "Confirm delete"}</button>
+                  <button disabled={deleting} onClick={() => setConfirmDelete(null)} className="text-sm text-slate-300">Cancel</button>
+                </div>
+              </div> : <button disabled={retrying || deleting || draining || !online} onClick={() => setConfirmDelete(item.id)} className="text-xs font-bold text-red-300 disabled:opacity-50">Delete queued change from this device</button>}
             </article>;
           })}
         </div>
         <footer className="p-4 border-t border-slate-700">
-          <button onClick={retry} disabled={!online || retrying || draining || !rows.length} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50">
+          <button onClick={retry} disabled={!online || retrying || deleting || draining || !rows.length} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${retrying || draining ? "animate-spin" : ""}`} />
             {!online ? "Offline — retry when connected" : retrying || draining ? "Syncing…" : "Retry sync"}
           </button>

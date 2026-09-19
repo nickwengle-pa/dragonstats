@@ -21,6 +21,8 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { sameSyncEntity } from "./syncDiscard";
+import type { PlayWithPlayers } from "./gameService";
 import { savePlayAtomic } from "./gameService";
 import {
   getDrainableForGame,
@@ -346,6 +348,34 @@ export async function drainQueue(
   }
 
   return { drained, failed, remaining: _status.pending };
+}
+
+/** Local discard only: never delete the server/iPad's saved play. */
+export async function discardSyncChange(reviewed: SyncQueueItem): Promise<void> {
+  if (_draining) throw new Error("Wait for the current sync to finish, then try again.");
+  if (!navigator.onLine) throw new Error("Connect first so we can preserve any copy already saved on the server.");
+  _draining = true;
+  _status.draining = true;
+  emit();
+  try {
+    const { getUnsyncedForGame, discardQueuedEntity } = await import("./offlineDb");
+    const expected = (await getUnsyncedForGame(reviewed.gameId)).filter(item => sameSyncEntity(item, reviewed));
+    if (!expected.some(item => JSON.stringify(item) === JSON.stringify(reviewed))) throw new Error("The queued change has changed. Review it again before deleting.");
+    if (reviewed.op === "game") {
+      const { data, error } = await supabase.from("games").select("*, opponent:opponents(*)").eq("id", reviewed.gameId).maybeSingle();
+      if (error) throw new Error("Could not check the saved game. Nothing was removed.");
+      await discardQueuedEntity(expected, null, data);
+    } else {
+      const { data, error } = await supabase.from("plays").select("*, play_players(*, player:players(first_name, last_name))").eq("id", reviewed.playId).maybeSingle();
+      if (error) throw new Error("Could not check the saved play. Nothing was removed.");
+      await discardQueuedEntity(expected, data as PlayWithPlayers | null);
+    }
+    window.dispatchEvent(new CustomEvent("app:sync-discarded", { detail: { gameId: reviewed.gameId } }));
+  } finally {
+    _draining = false;
+    _status.draining = false;
+    await refreshPendingCount();
+  }
 }
 
 /**

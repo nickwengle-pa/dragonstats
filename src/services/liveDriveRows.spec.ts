@@ -19,7 +19,7 @@ describe("live play list drive summaries", () => {
       type: "punt", clock: 510, playData: { recorded_end_clock_seconds: 502 },
     })], [drive()], "them", false, 720);
     expect([...rows.keys()]).toEqual(["punt"]);
-    expect(rows.get("punt")).toEqual({ possession: "us", plays: 3, yards: 24, seconds: 98 });
+    expect(rows.get("punt")).toEqual({ possession: "us", plays: 3, yards: 24, seconds: 98, playIds: ["first", "punt"] });
   });
   it("does not show an ongoing drive, and removes the divider after undoing the possession change", () => {
     expect(liveDriveRows([play("first")], [drive()], "us", false, 720).size).toBe(0);
@@ -29,6 +29,7 @@ describe("live play list drive summaries", () => {
     const rows = liveDriveRows(plays, [drive({ driveNumber: 2, startTime: "9:50", yards: 11 })], "us", false, 720);
     expect([...rows.keys()]).toEqual(["run"]);
     expect(rows.get("run")).toMatchObject({ possession: "them", yards: 11, seconds: 90 });
+    expect(rows.get("run")?.playIds).toEqual(["run"]);
   });
   it("keeps a quarter marker inside the same drive and counts time across quarters", () => {
     const plays = [play("first", { clock: 30 }), play("period", { type: "quarter_change", quarter: 2, clock: 720 }), play("last", { quarter: 2, clock: 680, playData: { recorded_end_clock_seconds: 675 } })];

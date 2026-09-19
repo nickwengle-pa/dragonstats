@@ -1,5 +1,6 @@
 import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { liveDriveRows } from "@/services/liveDriveRows";
+import DriveDetails from "@/components/game/DriveDetails";
 import { useNavigate, useParams } from "react-router-dom";
 import { RotateCcw, BarChart3 } from "lucide-react";
 import { useScreenTheme } from "@/hooks/useTheme";
@@ -616,6 +617,15 @@ export default function GameScreen() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  useEffect(() => {
+    const reload = (event: Event) => {
+      const changedGame = (event as CustomEvent<{ gameId: string }>).detail.gameId;
+      if (!changedGame || changedGame === gameId) void loadData();
+    };
+    window.addEventListener("app:sync-discarded", reload);
+    return () => window.removeEventListener("app:sync-discarded", reload);
+  }, [gameId, loadData]);
+
   /* ── Offline sync: one push on entry for this game. The online/visible
      triggers and the retry timer live at the app root now, so the queue keeps
      draining after the operator leaves this screen — marking a game final and
@@ -708,6 +718,8 @@ export default function GameScreen() {
   const [fieldSpotRequest, setFieldSpotRequest] = useState<{ ballOn: number; id: number } | null>(null);
   const fieldPickId = useRef(0);
   const [showLog, setShowLog] = useState(false);
+  const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
+  const closeDriveDetails = useCallback(() => setSelectedDriveId(null), []);
   const [showLiveStats, setShowLiveStats] = useState(false);
   const [hurryUp, setHurryUp] = useState(false);
   /* Keeps the screen lit for as long as this screen is open, so the phone
@@ -2520,7 +2532,11 @@ export default function GameScreen() {
       if (isSubmitting.current || loading || finalizing || selectedPlayType || editPlay || pendingClockCapture || showSituationAdj || showClockEditor || scoreCorrectTeam || showBallEditor || showTimeoutModal || showPregame || savingPregame) event.preventDefault();
     };
     window.addEventListener("app:before-refresh", guard);
-    return () => window.removeEventListener("app:before-refresh", guard);
+    window.addEventListener("app:before-sync-discard", guard);
+    return () => {
+      window.removeEventListener("app:before-refresh", guard);
+      window.removeEventListener("app:before-sync-discard", guard);
+    };
   }, [loading, finalizing, selectedPlayType, editPlay, pendingClockCapture, showSituationAdj, showClockEditor, scoreCorrectTeam, showBallEditor, showTimeoutModal, showPregame, savingPregame]);
 
   // Only gate on the FIRST load. Re-running loadData (context refresh, manual
@@ -2891,9 +2907,10 @@ export default function GameScreen() {
                 return (
                 <Fragment key={play.id}>
                 {drive && (
-                  <div className="!my-2 rounded-lg border border-slate-400/40 border-l-[3px] border-l-slate-300 bg-slate-400/15 py-2.5 px-3 text-xs font-semibold text-slate-100 tabular-nums">
+                  <button onClick={() => setSelectedDriveId(play.id)} aria-label={`View ${drive.possession === "us" ? progAbbr : oppAbbr} drive: ${drive.plays} plays, ${drive.yards} yards, possession time ${fmtClock(drive.seconds)}`} className="!my-2 w-full text-left rounded-lg border border-slate-400/40 border-l-[3px] border-l-slate-300 bg-slate-400/15 hover:bg-slate-400/25 py-2.5 px-3 text-xs font-semibold text-slate-100 tabular-nums cursor-pointer">
                     <span className="font-bold">{drive.possession === "us" ? progAbbr : oppAbbr} drive</span> · {drive.plays} {drive.plays === 1 ? "play" : "plays"} · {drive.yards} yards · TOP {fmtClock(drive.seconds)}
-                  </div>
+                    <span aria-hidden="true" className="float-right pl-2 text-slate-300">›</span>
+                  </button>
                 )}
                 <button
                   onClick={() => { if (!isTimeout) setEditPlay(play); }}
@@ -2995,6 +3012,14 @@ export default function GameScreen() {
       )}
 
       {/* Live Stats Panel */}
+      {selectedDriveId && driveRows.has(selectedDriveId) && (
+        <DriveDetails
+          drive={driveRows.get(selectedDriveId)!}
+          plays={plays.filter(play => driveRows.get(selectedDriveId)!.playIds.includes(play.id))}
+          team={driveRows.get(selectedDriveId)!.possession === "us" ? progAbbr : oppAbbr}
+          onClose={closeDriveDetails}
+        />
+      )}
       {showLiveStats && (
         <LiveStatsPanel
           summary={liveSummary}
