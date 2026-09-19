@@ -1,7 +1,7 @@
 # Graph Report - dragonstats  (2026-09-18)
 
 ## Corpus Check
-- 168 files · ~287,877 words
+- 168 files · ~287,889 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 39 file(s) not represented in the graph (top: .csv 24, .css 6, (none) 5)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `43de9a92`
+- Built from commit: `4433a73d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 

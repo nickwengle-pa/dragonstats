@@ -136,8 +136,11 @@ export default function FastPlayEntry(p: Props) {
                 try { await p.onKneel(); } catch { setSaveError("Could not save. Try again."); } finally { setSaving(false); }
               }} className={`${button} ${idle} w-full disabled:opacity-40`}>Kneel · QB or Team · −1 yd</button>}
               {p.playType.id === "bad_snap" && <p className="text-sm text-slate-300"><strong>Team rushing</strong> · Set where the ball ended. No individual runner is charged.</p>}
-              {p.playType.roles.map(role => <PlayerPicker key={role} label={`${labels[role] ?? role}${role === "target" ? " (optional)" : ""}`} team={p.offenseName}
-                players={p.offensePlayers} usage={p.playerUsage} role={role} selected={p.tagged.filter(t => t.role === role)} onSelect={player => p.onTag(role, player)} />)}
+              {p.playType.roles.length > 0 && <div className="offense-selection" role="group" aria-label={`${p.offenseName} offense players`}>
+                {p.playType.roles.map(role => <PlayerPicker key={role} label={`${labels[role] ?? role}${role === "target" ? " (optional)" : ""}`} team={p.offenseName}
+                  players={p.offensePlayers} usage={p.playerUsage} role={role} accentColor={p.accentColor}
+                  selected={p.tagged.filter(t => t.role === role)} onSelect={player => p.onTag(role, player)} />)}
+              </div>}
               {incomplete && <PassDefenderPicker team={p.defenseName} players={p.defensePlayers} accentColor={p.defenseAccentColor}
                 selected={p.tagged.filter(t => t.role === "defender")} onSelect={player => p.onTag("defender", player)}
                 onClear={() => p.onClearTag("defender")} />}

@@ -52,7 +52,9 @@
 .player-picker-popup [aria-selected=true] { font-weight:700; }
 .player-jersey { min-width:38px; font-weight:800; }
 .player-empty { font-size:13px; color:#cbd5e1; padding:12px; }
-.defense-selection { padding:12px; border:1px solid var(--defense-accent); border-left-width:4px; border-radius:8px; background:color-mix(in srgb, var(--defense-accent) 12%, var(--bc-surface, #101722)); }
+.offense-selection { --selection-accent:var(--fast-accent); display:flex; flex-direction:column; gap:12px; }
+.defense-selection { --selection-accent:var(--defense-accent); }
+.offense-selection, .defense-selection { padding:12px; border:1px solid var(--selection-accent); border-left-width:4px; border-radius:8px; background:color-mix(in srgb, var(--selection-accent) 12%, var(--bc-surface, #101722)); }
 .player-picker.player-picker-team .player-picker-input { border:2px solid var(--picker-accent); background:color-mix(in srgb, var(--picker-accent) 12%, var(--bc-surface, #0c131e)); }
 .player-picker.player-picker-team .player-picker-input:focus-within { outline-color:var(--picker-accent); }
 .player-picker-popup.player-picker-team { border:2px solid var(--picker-accent); }
