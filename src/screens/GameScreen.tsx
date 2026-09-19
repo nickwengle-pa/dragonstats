@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { liveDriveRows } from "@/services/liveDriveRows";
 import { useNavigate, useParams } from "react-router-dom";
 import { RotateCcw, BarChart3 } from "lucide-react";
 import { useScreenTheme } from "@/hooks/useTheme";
@@ -865,6 +866,10 @@ export default function GameScreen() {
       return null;
     }
   }, [plays, liveSessionConfig]);
+
+  const driveRows = useMemo(() => liveDriveRows(
+    plays, liveSummary?.drives ?? [], possession, game?.status === "completed", gc.quarter_length_secs,
+  ), [plays, liveSummary, possession, game?.status, gc.quarter_length_secs]);
 
   const rosterNameById = useMemo<Record<string, string>>(() => {
     const map: Record<string, string> = {};
@@ -2874,8 +2879,15 @@ export default function GameScreen() {
                 // engine reads play type, not this number, so nothing downstream
                 // is affected either way.
                 const isTurnover = play.type === "int" || play.turnover === true;
+                const drive = driveRows.get(play.id);
                 return (
-                <button key={play.id}
+                <Fragment key={play.id}>
+                {drive && (
+                  <div className="border-y border-surface-border py-2 px-3 text-[11px] font-semibold text-surface-muted tabular-nums">
+                    {drive.possession === "us" ? progAbbr : oppAbbr} drive · {drive.plays} {drive.plays === 1 ? "play" : "plays"} · {drive.yards} yards · TOP {fmtClock(drive.seconds)}
+                  </div>
+                )}
+                <button
                   onClick={() => { if (!isTimeout) setEditPlay(play); }}
                   className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 border-l-[3px] border-y border-r border-y-surface-border border-r-surface-border text-left ${
                     isTimeout ? "" : "active:bg-surface-hover cursor-pointer"
@@ -2922,6 +2934,7 @@ export default function GameScreen() {
                   {play.isTouchdown && <span className="text-[10px] font-display font-bold text-amber-400 uppercase tracking-wider">TD</span>}
                   {play.penalty && <span title={play.penalty} className="text-[9px] font-bold text-amber-300">PEN</span>}
                 </button>
+                </Fragment>
                 );
               })}
             </div>
