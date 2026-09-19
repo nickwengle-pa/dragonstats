@@ -1,11 +1,13 @@
 import GameHomeLink from "@/components/game/GameHomeLink";
-import { useState, useEffect } from "react";
+import PrintReportButton from "@/components/report/PrintReportButton";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Share2, Film, FileText, ClipboardList } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
 import { exportGameSummaryCsv } from "@/services/csvExport";
+import { pdfFilename } from "@/services/reportPrint";
 import { loadGamePlays } from "@/services/gameService";
 import { subscribeSyncStatus } from "@/services/syncWorker";
 import DrivesList from "@/components/game/DrivesList";
@@ -145,6 +147,7 @@ export default function GameSummaryScreen() {
 
   const [summary, setSummary] = useState<GameSummary | null>(null);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
+  const screenRoot = useRef<HTMLDivElement>(null);
   /* "Final" written on a tablet with no signal looks exactly like "Final" the
      server has. It is not the same thing, and the operator is the only person
      who can keep the app open long enough to fix it.
@@ -269,7 +272,7 @@ export default function GameSummaryScreen() {
   const topDefender = summary ? topPlayer<DefensiveStats>(summary.defense, "totalTackles", roster) : null;
 
   return (
-    <div className="screen safe-top safe-bottom">
+    <div ref={screenRoot} className="screen safe-top safe-bottom">
       {/* Header */}
       <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2">
@@ -277,14 +280,14 @@ export default function GameSummaryScreen() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Summary</h1>
-        <button
-          onClick={() => window.print()}
+        <PrintReportButton
+          root={() => screenRoot.current}
+          filename={pdfFilename(`${program?.abbreviation ?? "Team"} vs ${gameInfo?.opponent_name ?? "Opponent"} ${gameInfo?.game_date?.slice(0, 10) ?? ""} Summary`)}
           className="btn-ghost p-2 cursor-pointer"
-          title="Print / Save as PDF"
           disabled={!summary}
         >
           <Share2 className="w-5 h-5" />
-        </button>
+        </PrintReportButton>
         <button
           onClick={() => {
             if (!summary || !gameInfo || !program) return;

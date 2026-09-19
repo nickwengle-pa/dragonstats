@@ -1,50 +1,28 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { pdfFilename, printBlockedByStandalone, shareReportPdf } from "./reportPrint";
-
-const file = new File(["%PDF"], "PL vs OPP.pdf", { type: "application/pdf" });
-const nav = (overrides: Record<string, unknown>) => overrides as unknown as Navigator;
-
-afterEach(() => { vi.unstubAllGlobals(); });
-
-describe("standalone print detection", () => {
-  it("is blocked only by the iOS home-screen flag, not by an installed desktop PWA", () => {
-    expect(printBlockedByStandalone(nav({ standalone: true }))).toBe(true);
-    expect(printBlockedByStandalone(nav({ standalone: false }))).toBe(false);
-    expect(printBlockedByStandalone(nav({}))).toBe(false);
-  });
-});
-
-describe("sharing the report PDF", () => {
-  it("hands the file to the share sheet", async () => {
-    const share = vi.fn().mockResolvedValue(undefined);
-    expect(await shareReportPdf(file, nav({ share, canShare: () => true }))).toBe("shared");
-    expect(share).toHaveBeenCalledWith({ files: [file], title: "PL vs OPP.pdf" });
-  });
-
-  it("treats the user dismissing the sheet as nothing to report", async () => {
-    const share = vi.fn().mockRejectedValue(new DOMException("cancelled", "AbortError"));
-    expect(await shareReportPdf(file, nav({ share, canShare: () => true }))).toBe("cancelled");
-  });
-
-  it("asks for a fresh tap when the render outlasted the gesture Safari requires", async () => {
-    const share = vi.fn().mockRejectedValue(new DOMException("no gesture", "NotAllowedError"));
-    expect(await shareReportPdf(file, nav({ share, canShare: () => true }))).toBe("needs-gesture");
-  });
-
-  it("falls back to a download where files cannot be shared", async () => {
-    const click = vi.fn();
-    vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: vi.fn() });
-    vi.stubGlobal("document", {
-      createElement: () => ({ click, set href(_: string) {}, set download(_: string) {} }),
-      body: { appendChild: vi.fn(), removeChild: vi.fn() },
-    });
-    expect(await shareReportPdf(file, nav({ share: vi.fn(), canShare: () => false }))).toBe("downloaded");
-    expect(click).toHaveBeenCalled();
-  });
-});
+import { describe, expect, it } from "vitest";
+import { pdfFilename } from "./reportPrint";
+import { pageBreakRows } from "./pdfPagination";
 
 describe("pdf file names", () => {
   it("strips the characters a filesystem rejects", () => {
     expect(pdfFilename("PL vs OPP 9/19/2026")).toBe("PL vs OPP 9-19-2026.pdf");
+  });
+});
+
+describe("slicing a tall capture into pages", () => {
+  it("cuts on a blank row near the foot of the page rather than through a table row", () => {
+    const blank = new Set([180, 181, 370]);
+    expect(pageBreakRows(500, 200, y => blank.has(y))).toEqual([[0, 181], [181, 370], [370, 500]]);
+  });
+
+  it("cuts at the page edge when the bottom fifth has no blank row", () => {
+    expect(pageBreakRows(450, 200, () => false)).toEqual([[0, 200], [200, 400], [400, 450]]);
+  });
+
+  it("does not look for a break above the bottom fifth, which would waste most of a sheet", () => {
+    expect(pageBreakRows(300, 200, y => y === 150)).toEqual([[0, 200], [200, 300]]);
+  });
+
+  it("is a single page when the capture fits", () => {
+    expect(pageBreakRows(120, 200, () => true)).toEqual([[0, 120]]);
   });
 });

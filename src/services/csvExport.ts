@@ -1,10 +1,12 @@
 /**
  * CSV export helpers for game and season stats.
- * Browser-only: builds a Blob and triggers a download via a hidden anchor.
+ * Browser-only: builds a File and hands it to deliverFile, which downloads it
+ * in a browser and opens the share sheet in the iOS home-screen app.
  */
 
 import type { GameSummary } from "football-stats-engine";
 import type { PlayerGameLine } from "./statsService";
+import { deliverFile } from "./deliverFile";
 
 /** RFC 4180-ish escape: wrap in quotes if the value contains comma / quote / newline. */
 function csvEscape(value: unknown): string {
@@ -21,17 +23,7 @@ function rowsToCsv(rows: Array<Array<unknown>>): string {
 }
 
 function downloadCsv(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Defer revoke so the browser has time to start the download.
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  void deliverFile(new File([content], filename, { type: "text/csv;charset=utf-8;" }));
 }
 
 interface ExportGameOptions {

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Loader2, Share } from "lucide-react";
-import { printBlockedByStandalone, renderSheetsToPdf, shareReportPdf } from "@/services/reportPrint";
+import { printBlockedByStandalone, shareFile } from "@/services/deliverFile";
+import { renderReportPdf } from "@/services/reportPrint";
 
 type Phase =
   | { kind: "idle" }
@@ -10,12 +11,12 @@ type Phase =
   | { kind: "ready"; file: File }
   | { kind: "error"; message: string };
 
-/** The print control for a report. On a laptop or in a browser tab it is
+/** The print control for a screen. On a laptop or in a browser tab it is
  *  window.print(); in the iOS home-screen app, where that call is a silent
- *  no-op, it builds a PDF and opens the share sheet instead. */
-export default function PrintReportButton({ sheets, filename, disabled, className, children }: {
-  /** The .game-report-sheet elements to print, one per page. */
-  sheets: () => HTMLElement[];
+ *  no-op, it renders the screen to a PDF and opens the share sheet instead. */
+export default function PrintReportButton({ root, filename, disabled, className, children }: {
+  /** The element to print — the whole screen; the print stylesheet hides its chrome. */
+  root: () => HTMLElement | null;
   filename: string;
   disabled?: boolean;
   className?: string;
@@ -25,7 +26,7 @@ export default function PrintReportButton({ sheets, filename, disabled, classNam
 
   const share = async (file: File) => {
     try {
-      const outcome = await shareReportPdf(file);
+      const outcome = await shareFile(file);
       setPhase(outcome === "needs-gesture" ? { kind: "ready", file } : { kind: "idle" });
     } catch (error) {
       setPhase({ kind: "error", message: error instanceof Error ? error.message : "Could not share the report." });
@@ -36,9 +37,11 @@ export default function PrintReportButton({ sheets, filename, disabled, classNam
     if (phase.kind === "building") return;
     if (phase.kind === "ready") { await share(phase.file); return; }
     if (!printBlockedByStandalone()) { window.print(); return; }
+    const el = root();
+    if (!el) return;
     setPhase({ kind: "building" });
     try {
-      await share(await renderSheetsToPdf(sheets(), filename));
+      await share(await renderReportPdf(el, filename));
     } catch (error) {
       setPhase({ kind: "error", message: error instanceof Error ? error.message : "Could not build the report PDF." });
     }

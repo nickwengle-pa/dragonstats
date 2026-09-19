@@ -324,7 +324,7 @@ export default function GameReportScreen() {
 
   const [report, setReport] = useState<GameReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const sheetsRoot = useRef<HTMLDivElement>(null);
+  const screenRoot = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!gameId || !program || !season) return;
@@ -410,7 +410,7 @@ export default function GameReportScreen() {
     /* Deliberately NOT .screen: that class is max-w-app (28rem) below the lg
        breakpoint, and print lays out at about 768px, so the app frame used to
        squeeze the whole document into a phone-width column on paper. */
-    <div className="min-h-dvh flex flex-col bg-surface-bg print:bg-white">
+    <div ref={screenRoot} className="min-h-dvh flex flex-col bg-surface-bg print:bg-white">
       <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2 print:hidden">
         <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-2 cursor-pointer">
@@ -418,7 +418,7 @@ export default function GameReportScreen() {
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Report</h1>
         <PrintReportButton
-          sheets={() => Array.from(sheetsRoot.current?.querySelectorAll<HTMLElement>(".game-report-sheet") ?? [])}
+          root={() => screenRoot.current}
           filename={report ? pdfFilename(`${report.us.abbr} vs ${report.them.abbr} ${report.dateLabel}`) : "Game Report.pdf"}
           className="btn-ghost p-2 cursor-pointer"
           disabled={!report}
@@ -431,7 +431,7 @@ export default function GameReportScreen() {
       {/* The pages are a fixed 8 inches. Narrower than that on screen and this
           scrolls sideways rather than reflowing — reflowing is exactly how the
           printed version stopped matching what was on screen. */}
-      <div ref={sheetsRoot} className="flex-1 overflow-auto print:overflow-visible pb-10 print:pb-0">
+      <div className="flex-1 overflow-auto print:overflow-visible pb-10 print:pb-0">
         {loading && (
           <div className="card p-8 mx-5 text-center text-slate-500 animate-pulse print:hidden">
             Building report…

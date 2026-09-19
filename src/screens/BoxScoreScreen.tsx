@@ -1,5 +1,6 @@
 import GameHomeLink from "@/components/game/GameHomeLink";
-import { useState, useEffect, useMemo } from "react";
+import PrintReportButton from "@/components/report/PrintReportButton";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
@@ -8,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { computeGameStatsBundle } from "@/services/statsService";
 import { scoringEvents, scoreByQuarter } from "@/services/scoringLedger";
 import { buildGameReport, type ScoringRow } from "@/services/gameReport";
+import { pdfFilename } from "@/services/reportPrint";
 
 import { TEAM_JERSEY, TEAM_PLAYER_ID, fmtClock } from "@/components/game/types";
 import type {
@@ -156,6 +158,7 @@ export default function BoxScoreScreen() {
      score and a report end up describing the same game differently. */
   const [scoringRows, setScoringRows] = useState<ScoringRow[]>([]);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
+  const screenRoot = useRef<HTMLDivElement>(null);
   const [roster, setRoster] = useState<Map<string, RosterEntry>>(new Map());
   const [loading, setLoading] = useState(true);
 
@@ -352,16 +355,21 @@ export default function BoxScoreScreen() {
   };
 
   return (
-    <div className="screen safe-top safe-bottom print:bg-white print:text-black">
+    <div ref={screenRoot} className="screen safe-top safe-bottom print:bg-white print:text-black">
       <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2 print:hidden">
         <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Box Score</h1>
-        <button onClick={() => window.print()} className="btn-ghost p-2 cursor-pointer" title="Print / Save as PDF" disabled={!summary}>
+        <PrintReportButton
+          root={() => screenRoot.current}
+          filename={pdfFilename(`${progAbbr} vs ${gameInfo?.opponent_name ?? "Opponent"} ${gameInfo?.game_date ?? ""} Box Score`)}
+          className="btn-ghost p-2 cursor-pointer"
+          disabled={!summary}
+        >
           <Printer className="w-5 h-5" />
-        </button>
+        </PrintReportButton>
       </div>
       <div className="mx-5 mt-1 mb-4 accent-line print:hidden" />
 
