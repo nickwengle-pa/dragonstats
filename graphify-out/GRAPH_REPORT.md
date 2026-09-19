@@ -1,17 +1,17 @@
 # Graph Report - dragonstats  (2026-09-18)
 
 ## Corpus Check
-- 168 files · ~287,814 words
+- 168 files · ~287,877 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 39 file(s) not represented in the graph (top: .csv 24, .css 6, (none) 5)
 
 ## Summary
-- 1512 nodes · 3533 edges · 92 communities (73 shown, 19 thin omitted)
+- 1512 nodes · 3534 edges · 92 communities (73 shown, 19 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 32 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `6f57d658`
+- Built from commit: `43de9a92`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -104,7 +104,7 @@
 
 ## God Nodes (most connected - your core abstractions)
 1. `GameScreen()` - 66 edges
-2. `react` - 53 edges
+2. `react` - 54 edges
 3. `isOfflineSupported()` - 34 edges
 4. `useProgramContext()` - 31 edges
 5. `getDb()` - 29 edges
@@ -438,7 +438,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `react` connect `react` to `offlineDb.ts`, `PostGameReview.tsx`, `package.json`, `dangerZone.ts`, `PlayRecord`, `GameScreen.tsx`, `PlayerScreen.tsx`, `SettingsScreen.tsx`, `GameSummaryScreen.tsx`, `PlayEntryModal.tsx`, `App.tsx`, `PregameSetupSheet.tsx`, `useProgramContext.tsx`, `GameReportScreen.tsx`, `BroadcastIcons.tsx`, `lucide-react`, `UiPreview.tsx`, `RosterScreen.tsx`, `SeasonStatsScreen.tsx`, `FieldVisualizer.tsx`, `BoxScoreScreen.tsx`, `FlowPreview.tsx`, `LiveStatsPanel.tsx`, `ScheduleScreen.tsx`, `HomePreview.tsx`, `pendingPlayerService.ts`, `HomeBroadcast.tsx`, `DashboardScreen.tsx`, `TeamAccess.tsx`?**
   _High betweenness centrality (0.092) - this node is a cross-community bridge._
 - **Why does `lucide-react` connect `lucide-react` to `offlineDb.ts`, `PostGameReview.tsx`, `package.json`, `dangerZone.ts`, `PlayRecord`, `GameScreen.tsx`, `PlayerScreen.tsx`, `SettingsScreen.tsx`, `GameSummaryScreen.tsx`, `PlayEntryModal.tsx`, `App.tsx`, `PregameSetupSheet.tsx`, `GameReportScreen.tsx`, `UiPreview.tsx`, `RosterScreen.tsx`, `SeasonStatsScreen.tsx`, `FieldVisualizer.tsx`, `BoxScoreScreen.tsx`, `LiveStatsPanel.tsx`, `ScheduleScreen.tsx`, `pendingPlayerService.ts`, `TeamAccess.tsx`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Why does `football-stats-engine` connect `vitest` to `playTransformer.ts`, `liveGameSession.ts`, `SeasonStatsScreen.tsx`, `package.json`, `BoxScoreScreen.tsx`, `PlayerScreen.tsx`, `seasonReport.ts`, `GameSummaryScreen.tsx`, `LiveStatsPanel.tsx`, `gameReport.ts`, `ref_node_assert`, `liveVsPostgame.spec.ts`, `getPenaltyEngineCode`, `statsService.ts`?**
   _High betweenness centrality (0.023) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `GameScreen()` (e.g. with `isRosterTag()` and `readKeepAwake()`) actually correct?**

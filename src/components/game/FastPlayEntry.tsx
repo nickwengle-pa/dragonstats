@@ -31,6 +31,7 @@ interface Props {
   yards: number;
   offenseDirection: "left" | "right";
   accentColor: string;
+  defenseAccentColor: string;
   formatSpot: (spot: number) => string;
   onTag: (role: string, player: TaggedPlayer | null) => void;
   onClearTag: (role: string) => void;
@@ -137,11 +138,11 @@ export default function FastPlayEntry(p: Props) {
               {p.playType.id === "bad_snap" && <p className="text-sm text-slate-300"><strong>Team rushing</strong> · Set where the ball ended. No individual runner is charged.</p>}
               {p.playType.roles.map(role => <PlayerPicker key={role} label={`${labels[role] ?? role}${role === "target" ? " (optional)" : ""}`} team={p.offenseName}
                 players={p.offensePlayers} usage={p.playerUsage} role={role} selected={p.tagged.filter(t => t.role === role)} onSelect={player => p.onTag(role, player)} />)}
-              {incomplete && <PassDefenderPicker team={p.defenseName} players={p.defensePlayers}
+              {incomplete && <PassDefenderPicker team={p.defenseName} players={p.defensePlayers} accentColor={p.defenseAccentColor}
                 selected={p.tagged.filter(t => t.role === "defender")} onSelect={player => p.onTag("defender", player)}
                 onClear={() => p.onClearTag("defender")} />}
-              {showTacklers && <div className="fast-tacklers">
-                <PlayerPicker label={labels[defenseRole]} team={p.defenseName} players={p.defensePlayers} selected={p.tacklers} multiple
+              {showTacklers && <div className="fast-tacklers defense-selection" style={{ "--defense-accent": p.defenseAccentColor } as CSSProperties}>
+                <PlayerPicker label={labels[defenseRole]} team={p.defenseName} players={p.defensePlayers} selected={p.tacklers} multiple accentColor={p.defenseAccentColor}
                   onSelectTeam={p.onTeamTackle}
                   onSelect={player => player ? p.onTackler(player) : p.onUnknownTackle()} />
                 <div className="fast-tackle-options">

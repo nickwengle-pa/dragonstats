@@ -2467,7 +2467,7 @@ export default function PlayEntryModal({
       tagged={tagged} tacklers={tacklers} noTackle={noTackle}
       trackTacklers={trackTacklers} trackFormations={trackFormations}
       isTD={isTD} yards={isTD ? 100 - gameState.ballOn : yards}
-      offenseDirection={offenseDirection} accentColor={offenseAccent}
+      offenseDirection={offenseDirection} accentColor={offenseAccent} defenseAccentColor={defenseAccent}
       formatSpot={b => formatFieldSpot(b, gameState.possession)}
       onTag={(role, player) => {
         const usesOpponent = roleUsesOpponentRoster(role, isTheirBall, { playTypeId: playType.id });
@@ -3366,6 +3366,7 @@ export default function PlayEntryModal({
           {currentStep === "yards" && (
             <>
               {playType.id === "pass_inc" && <PassDefenderPicker
+                accentColor={defenseAccent}
                 team={isTheirBall ? progName : oppName}
                 players={isTheirBall
                   ? roster.map(p => ({ id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number, name: `${p.player.first_name} ${p.player.last_name}`, role: "defender" }))

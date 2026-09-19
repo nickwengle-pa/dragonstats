@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Film } from "lucide-react";
 import type { TaggedPlayer } from "./types";
@@ -11,7 +11,8 @@ export function playerLabel(player: TaggedPlayer) {
     : `#${player.jersey_number ?? "?"} ${player.name}`;
 }
 
-export default function PlayerPicker({ label, team, players, selected, multiple = false, onSelect, usage, role = "", onSelectTeam }: {
+export default function PlayerPicker({ label, team, players, selected, multiple = false, onSelect, usage, role = "", onSelectTeam, accentColor }: {
+  accentColor?: string;
   onSelectTeam?: () => void;
   usage?: PlayerUsage;
   role?: string;
@@ -23,6 +24,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
   onSelect: (player: TaggedPlayer | null) => void;
 }) {
   const id = useId();
+  const teamStyle = accentColor ? { "--picker-accent": accentColor } as CSSProperties : undefined;
   const anchor = useRef<HTMLDivElement>(null);
   const popup = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -75,7 +77,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
 
-  return <div className="player-picker" ref={anchor}>
+  return <div className={`player-picker${accentColor ? " player-picker-team" : ""}`} style={teamStyle} ref={anchor}>
     <label htmlFor={id}>{label}<span>{team}</span></label>
     <div className="player-picker-input">
       <input id={id} ref={input} role="combobox" aria-expanded={open} aria-controls={`${id}-list`}
@@ -100,7 +102,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
         }} />
       <button type="button" aria-label={`Open ${label} list`} onClick={() => { setOpen(true); input.current?.focus(); }}><ChevronDown size={18} /></button>
     </div>
-    {open && createPortal(<div ref={popup} className="player-picker-popup" style={position}>
+    {open && createPortal(<div ref={popup} className={`player-picker-popup${accentColor ? " player-picker-team" : ""}`} style={{ ...position, ...teamStyle }}>
       <div className="player-picker-heading"><strong>{label} · {team}</strong><button type="button" onClick={() => { close(); input.current?.blur(); }}>Done</button></div>
       <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => choose(null)}><Film size={16} /> Identify on film later</button>
       {onSelectTeam && <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => { onSelectTeam(); close(); input.current?.blur(); }}>Team{selected.some(player => player.teamCreditConfirmed) && <Check size={17} />}</button>}
