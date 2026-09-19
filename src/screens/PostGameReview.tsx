@@ -1,5 +1,6 @@
 import { buildHudlCsv } from "@/services/hudlExport";
 import GameHomeLink from "@/components/game/GameHomeLink";
+import { PlayTacklers } from "@/components/game/PlayRowDetails";
 import { needsNextSpotReview, normalizeBlockedTouchdown } from "@/services/blockedKickOutcome";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -1367,7 +1368,10 @@ export default function PostGameReview() {
                       <Td className="font-mono">{c?.personnel ?? "—"}</Td>
                       <Td className="truncate max-w-[80px]">{c?.offensive_formation ?? p.offensive_formation ?? "—"}</Td>
                       <Td className="truncate max-w-[80px]">{c?.defensive_formation ?? p.defensive_formation ?? "—"}</Td>
-                      <Td className="text-slate-300 truncate max-w-[180px]">{p.description ?? typeLabel(p)}</Td>
+                      <Td className="text-slate-300 !whitespace-normal min-w-[220px] max-w-[360px]">
+                        <div>{p.description ?? typeLabel(p)}</div>
+                        <PlayTacklers play={rowToPlayRecord(p, rosterJerseys)} />
+                      </Td>
                       <Td className="font-bold">{runPassFor(p)}</Td>
                       <Td className="text-right font-mono font-bold">{gainLabel(p)}</Td>
                       <Td>
