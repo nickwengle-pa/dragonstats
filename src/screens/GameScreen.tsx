@@ -66,7 +66,7 @@ import SyncBadge from "@/components/game/SyncBadge";
 import { useWakeLock, readKeepAwake, writeKeepAwake } from "@/hooks/useWakeLock";
 import ClockInput from "@/components/game/ClockInput";
 import { drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
-import { getUnsyncedForGame } from "@/services/offlineDb";
+import { getUnsyncedForGame, setMeta } from "@/services/offlineDb";
 import { cachedRead, cacheKeys, readSeasonRoster } from "@/services/offlineCache";
 import {
   type RosterPlayer,
@@ -401,7 +401,14 @@ export default function GameScreen() {
       loadGamePlays(gameId),
     ]);
 
-    const gameData = gameRead.value;
+    // A locally finalized game can still be waiting for the server to sync.
+    const pendingGameUpdates = (await getUnsyncedForGame(gameId))
+      .filter((item) => item.op === "game")
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const gameData = gameRead.value && pendingGameUpdates.reduce(
+      (value, item) => ({ ...value, ...item.payload?.patch }), gameRead.value,
+    );
+    if (gameData && pendingGameUpdates.length) await setMeta(cacheKeys.game(gameId), gameData);
     const gameConfig = resolveGameConfig(baseGc, gameData?.rules_config as Record<string, unknown> | null);
     const pregameConfig = getPregameConfig(gameData);
 
@@ -962,6 +969,10 @@ export default function GameScreen() {
      - Q4+: end of game (or move into OT)
      Only fires once per (quarter, "end") key to avoid retriggering on edits. */
   useEffect(() => {
+    if (game?.status === "completed") {
+      setEndOfPeriodPrompt(null);
+      return;
+    }
     if (loading) return;
     if (clock > 0) return;
     if (plays.length === 0) return; // game hasn't started
@@ -977,7 +988,7 @@ export default function GameScreen() {
     } else {
       setEndOfPeriodPrompt({ kind: "quarter", targetQuarter: quarter + 1 });
     }
-  }, [clock, quarter, loading, plays.length]);
+  }, [clock, quarter, loading, plays.length, game?.status]);
 
   const toBoardScore = useCallback((score: ScoreSnapshot) => {
     const isHome = game?.is_home ?? true;
@@ -2488,6 +2499,11 @@ export default function GameScreen() {
        that exists only on this tablet looks identical to "Final" the server
        has, and the difference matters the moment a coach opens his phone. */
     await updateGameScore(gameId, ourScore, theirScore, "completed");
+    const completedGame = { ...game, our_score: ourScore, opponent_score: theirScore, status: "completed" };
+    await setMeta(cacheKeys.game(gameId), completedGame);
+    setGame(completedGame);
+    setEndOfPeriodPrompt(null);
+    setShowEndGame(false);
     setFinalizing(false);
     navigate(`/game/${gameId}/summary`);
   };
@@ -3015,7 +3031,7 @@ export default function GameScreen() {
       )}
 
       {/* End-of-period auto-prompt */}
-      {endOfPeriodPrompt && (
+      {endOfPeriodPrompt && game?.status !== "completed" && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center">
           <div className="bg-surface-bg w-full sm:w-[400px] rounded-t-2xl sm:rounded-2xl border border-surface-border shadow-2xl p-5 space-y-4">
             <div>
@@ -3037,20 +3053,21 @@ export default function GameScreen() {
               >
                 Not yet
               </button>
-              {endOfPeriodPrompt.kind === "endgame" && quarter === MAX_QUARTER ? (
+              {endOfPeriodPrompt.kind === "endgame" && (
                 <button
                   onClick={() => { setShowEndGame(true); setEndOfPeriodPrompt(null); }}
                   className="btn-primary text-sm"
                 >
-                  Finalize
+                  End Game
                 </button>
-              ) : endOfPeriodPrompt.kind === "endgame" ? (
+              )}
+              {endOfPeriodPrompt.kind === "endgame" ? quarter < MAX_QUARTER && (
                 <button
                   onClick={() => {
                     changeQuarter(1);
                     setEndOfPeriodPrompt(null);
                   }}
-                  className="btn-primary text-sm"
+                  className="btn-primary text-sm col-span-2"
                 >
                   Start OT
                 </button>

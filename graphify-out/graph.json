@@ -45,56 +45,17 @@
   },
   "nodes": [
     {
-      "id": "src_services_playtransformer_transformcontext",
-      "label": "TransformContext",
+      "id": "src_services_livegamesession_livesessionconfig",
+      "label": "LiveSessionConfig",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
+      "community": 1,
+      "community_name": "liveGameSession.ts",
       "file_type": "code",
-      "norm_label": "transformcontext",
-      "source_file": "src/services/playTransformer.ts",
-      "source_location": "L43"
-    },
-    {
-      "id": "src_services_tacklecredit_credittag",
-      "label": "CreditTag",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
-      "file_type": "code",
-      "norm_label": "credittag",
-      "source_file": "src/services/tackleCredit.ts",
-      "source_location": "L15"
-    },
-    {
-      "id": "src_services_tacklecredit_tacklecredit",
-      "label": "TackleCredit",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
-      "file_type": "code",
-      "norm_label": "tacklecredit",
-      "source_file": "src/services/tackleCredit.ts",
-      "source_location": "L21"
-    },
-    {
-      "id": "src_services_tacklecredit_test_tag",
-      "label": "Tag",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
-      "file_type": "code",
-      "norm_label": "tag",
-      "source_file": "src/services/tackleCredit.test.ts",
-      "source_location": "L25"
+      "norm_label": "livesessionconfig",
+      "source_file": "src/services/liveGameSession.ts",
+      "source_location": "L48"
     },
     {
       "id": "src_services_livegamesession_livesessionreplay",
@@ -121,6 +82,19 @@
       "norm_label": "livesessionscore",
       "source_file": "src/services/liveGameSession.ts",
       "source_location": "L62"
+    },
+    {
+      "id": "src_services_programservice_gameconfig",
+      "label": "GameConfig",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "liveGameSession.ts",
+      "file_type": "code",
+      "norm_label": "gameconfig",
+      "source_file": "src/services/programService.ts",
+      "source_location": "L5"
     },
     {
       "id": "src_services_gameservice_currentgamestateupdate",
@@ -461,45 +435,6 @@
       "source_location": "L157"
     },
     {
-      "id": "src_components_game_yardreel_props",
-      "label": "Props",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "props",
-      "source_file": "src/components/game/YardReel.tsx",
-      "source_location": "L3"
-    },
-    {
-      "id": "src_services_gameflow_livesituation",
-      "label": "LiveSituation",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "livesituation",
-      "source_file": "src/services/gameFlow.ts",
-      "source_location": "L22"
-    },
-    {
-      "id": "src_services_kickoffoutofbounds_kickoffoutofboundschoice",
-      "label": "KickoffOutOfBoundsChoice",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "kickoffoutofboundschoice",
-      "source_file": "src/services/kickoffOutOfBounds.ts",
-      "source_location": "L3"
-    },
-    {
       "id": "src_errorboundary_errorboundary",
       "label": "ErrorBoundary",
       "_callable": true,
@@ -511,19 +446,6 @@
       "norm_label": "errorboundary",
       "source_file": "src/ErrorBoundary.tsx",
       "source_location": "L5"
-    },
-    {
-      "id": "src_services_seasonreport_reportsection",
-      "label": "ReportSection",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "react",
-      "file_type": "code",
-      "norm_label": "reportsection",
-      "source_file": "src/services/seasonReport.ts",
-      "source_location": "L34"
     },
     {
       "id": "src_components_game_pregamesetupsheet_props",
@@ -656,19 +578,6 @@
       "source_location": "L13"
     },
     {
-      "id": "src_services_gamereport_buildreportinput",
-      "label": "BuildReportInput",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 20,
-      "community_name": "gameReport.ts",
-      "file_type": "code",
-      "norm_label": "buildreportinput",
-      "source_file": "src/services/gameReport.ts",
-      "source_location": "L296"
-    },
-    {
       "id": "src_services_gamereport_defensiverow",
       "label": "DefensiveRow",
       "_callable": true,
@@ -786,19 +695,6 @@
       "source_location": "L78"
     },
     {
-      "id": "src_services_statsservice_gamestatsbundle",
-      "label": "GameStatsBundle",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 20,
-      "community_name": "gameReport.ts",
-      "file_type": "code",
-      "norm_label": "gamestatsbundle",
-      "source_file": "src/services/statsService.ts",
-      "source_location": "L121"
-    },
-    {
       "id": "src_components_settings_dangerzone_props",
       "label": "Props",
       "_callable": true,
@@ -903,6 +799,19 @@
       "source_location": "L340"
     },
     {
+      "id": "src_components_game_types_playcategory",
+      "label": "PlayCategory",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 22,
+      "community_name": "types.ts",
+      "file_type": "code",
+      "norm_label": "playcategory",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L201"
+    },
+    {
       "id": "src_services_penaltyspot_reviewspot",
       "label": "ReviewSpot",
       "_callable": true,
@@ -994,7 +903,7 @@
       "source_location": "L12"
     },
     {
-      "id": "src_components_game_fastplayentry_props",
+      "id": "src_components_game_yardreel_props",
       "label": "Props",
       "_callable": true,
       "_callable_class": true,
@@ -1003,99 +912,8 @@
       "community_name": "lucide-react",
       "file_type": "code",
       "norm_label": "props",
-      "source_file": "src/components/game/FastPlayEntry.tsx",
-      "source_location": "L13"
-    },
-    {
-      "id": "src_components_game_playentrymodal_playsubmitdata",
-      "label": "PlaySubmitData",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "playsubmitdata",
-      "source_file": "src/components/game/PlayEntryModal.tsx",
-      "source_location": "L112"
-    },
-    {
-      "id": "src_components_game_playentrymodal_props",
-      "label": "Props",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "props",
-      "source_file": "src/components/game/PlayEntryModal.tsx",
-      "source_location": "L53"
-    },
-    {
-      "id": "src_components_game_playerusage_playerusage",
-      "label": "PlayerUsage",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "playerusage",
-      "source_file": "src/components/game/playerUsage.ts",
+      "source_file": "src/components/game/YardReel.tsx",
       "source_location": "L3"
-    },
-    {
-      "id": "src_components_game_types_gamestate",
-      "label": "GameState",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "gamestate",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L183"
-    },
-    {
-      "id": "src_components_game_types_playtypedef",
-      "label": "PlayTypeDef",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "playtypedef",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L203"
-    },
-    {
-      "id": "src_components_game_types_taggedplayer",
-      "label": "TaggedPlayer",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "taggedplayer",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L26"
-    },
-    {
-      "id": "src_screens_flowpreview_practiceplay",
-      "label": "PracticePlay",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "practiceplay",
-      "source_file": "src/screens/FlowPreview.tsx",
-      "source_location": "L37"
     },
     {
       "id": "src_services_gameservice_playinsert",
@@ -1332,17 +1150,43 @@
       "source_location": "L49"
     },
     {
-      "id": "src_services_kickspots_kickspots",
-      "label": "KickSpots",
+      "id": "src_services_driveresults_driveresultvalue",
+      "label": "DriveResultValue",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 31,
       "community_name": "statsService.ts",
       "file_type": "code",
-      "norm_label": "kickspots",
-      "source_file": "src/services/kickSpots.ts",
-      "source_location": "L19"
+      "norm_label": "driveresultvalue",
+      "source_file": "src/services/driveResults.ts",
+      "source_location": "L36"
+    },
+    {
+      "id": "src_services_driveresults_localdriveresult",
+      "label": "LocalDriveResult",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 31,
+      "community_name": "statsService.ts",
+      "file_type": "code",
+      "norm_label": "localdriveresult",
+      "source_file": "src/services/driveResults.ts",
+      "source_location": "L48"
+    },
+    {
+      "id": "src_services_playtransformer_transformcontext",
+      "label": "TransformContext",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 31,
+      "community_name": "statsService.ts",
+      "file_type": "code",
+      "norm_label": "transformcontext",
+      "source_file": "src/services/playTransformer.ts",
+      "source_location": "L43"
     },
     {
       "id": "src_services_statsservice_gamerecord",
@@ -1397,20 +1241,7 @@
       "source_location": "L45"
     },
     {
-      "id": "src_components_game_playlog_logfilter",
-      "label": "LogFilter",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "logfilter",
-      "source_file": "src/components/game/PlayLog.tsx",
-      "source_location": "L8"
-    },
-    {
-      "id": "src_components_game_playlog_props",
+      "id": "src_components_game_scoreboard_props",
       "label": "Props",
       "_callable": true,
       "_callable_class": true,
@@ -1419,34 +1250,8 @@
       "community_name": "UiPreview.tsx",
       "file_type": "code",
       "norm_label": "props",
-      "source_file": "src/components/game/PlayLog.tsx",
-      "source_location": "L32"
-    },
-    {
-      "id": "src_components_game_types_playrecord",
-      "label": "PlayRecord",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "playrecord",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L146"
-    },
-    {
-      "id": "src_screens_gamescreen_pendingclockcapture",
-      "label": "PendingClockCapture",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "pendingclockcapture",
-      "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L103"
+      "source_file": "src/components/game/Scoreboard.tsx",
+      "source_location": "L6"
     },
     {
       "id": "src_screens_uipreview_draft",
@@ -1473,19 +1278,6 @@
       "norm_label": "entry",
       "source_file": "src/screens/UiPreview.tsx",
       "source_location": "L15"
-    },
-    {
-      "id": "src_services_livegamesession_livesessionplayresult",
-      "label": "LiveSessionPlayResult",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "livesessionplayresult",
-      "source_file": "src/services/liveGameSession.ts",
-      "source_location": "L67"
     },
     {
       "id": "src_components_broadcastheader_props",
@@ -1644,13 +1436,26 @@
       "source_location": "L56"
     },
     {
+      "id": "src_components_game_fieldvisualizer_props",
+      "label": "Props",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "props",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L5"
+    },
+    {
       "id": "src_components_game_quickactions_phasefilter",
       "label": "PhaseFilter",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "phasefilter",
       "source_file": "src/components/game/QuickActions.tsx",
@@ -1663,37 +1468,11 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "props",
       "source_file": "src/components/game/QuickActions.tsx",
       "source_location": "L12"
-    },
-    {
-      "id": "src_components_game_scoreboard_props",
-      "label": "Props",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 37,
-      "community_name": "QuickActions.tsx",
-      "file_type": "code",
-      "norm_label": "props",
-      "source_file": "src/components/game/Scoreboard.tsx",
-      "source_location": "L6"
-    },
-    {
-      "id": "src_components_game_types_playcategory",
-      "label": "PlayCategory",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 37,
-      "community_name": "QuickActions.tsx",
-      "file_type": "code",
-      "norm_label": "playcategory",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L201"
     },
     {
       "id": "src_utils_teamcolor_hsl",
@@ -1702,7 +1481,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "hsl",
       "source_file": "src/utils/teamColor.ts",
@@ -1813,58 +1592,6 @@
       "source_location": "L62"
     },
     {
-      "id": "src_services_scoringledger_scorableplay",
-      "label": "ScorablePlay",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "scorableplay",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L25"
-    },
-    {
-      "id": "src_services_scoringledger_score",
-      "label": "Score",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "score",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L149"
-    },
-    {
-      "id": "src_services_scoringledger_scoringevent",
-      "label": "ScoringEvent",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "scoringevent",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L52"
-    },
-    {
-      "id": "src_services_scoringledger_scoringkind",
-      "label": "ScoringKind",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "scoringkind",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L42"
-    },
-    {
       "id": "github_prompts_ui_ux_pro_max_scripts_design_system_designsystemgenerator",
       "label": "DesignSystemGenerator",
       "_callable": true,
@@ -1878,7 +1605,7 @@
       "source_location": "L37"
     },
     {
-      "id": "src_components_game_fieldvisualizer_props",
+      "id": "src_components_game_fastplayentry_props",
       "label": "Props",
       "_callable": true,
       "_callable_class": true,
@@ -1887,21 +1614,73 @@
       "community_name": "FlowPreview.tsx",
       "file_type": "code",
       "norm_label": "props",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L5"
+      "source_file": "src/components/game/FastPlayEntry.tsx",
+      "source_location": "L13"
     },
     {
-      "id": "src_components_game_playrowdetails_rowplay",
-      "label": "RowPlay",
+      "id": "src_components_game_playentrymodal_playsubmitdata",
+      "label": "PlaySubmitData",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 40,
       "community_name": "FlowPreview.tsx",
       "file_type": "code",
-      "norm_label": "rowplay",
-      "source_file": "src/components/game/PlayRowDetails.tsx",
+      "norm_label": "playsubmitdata",
+      "source_file": "src/components/game/PlayEntryModal.tsx",
+      "source_location": "L112"
+    },
+    {
+      "id": "src_components_game_playentrymodal_props",
+      "label": "Props",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 40,
+      "community_name": "FlowPreview.tsx",
+      "file_type": "code",
+      "norm_label": "props",
+      "source_file": "src/components/game/PlayEntryModal.tsx",
+      "source_location": "L53"
+    },
+    {
+      "id": "src_components_game_playerusage_playerusage",
+      "label": "PlayerUsage",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 40,
+      "community_name": "FlowPreview.tsx",
+      "file_type": "code",
+      "norm_label": "playerusage",
+      "source_file": "src/components/game/playerUsage.ts",
       "source_location": "L3"
+    },
+    {
+      "id": "src_components_game_types_gamestate",
+      "label": "GameState",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 40,
+      "community_name": "FlowPreview.tsx",
+      "file_type": "code",
+      "norm_label": "gamestate",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L183"
+    },
+    {
+      "id": "src_components_game_types_playtypedef",
+      "label": "PlayTypeDef",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 40,
+      "community_name": "FlowPreview.tsx",
+      "file_type": "code",
+      "norm_label": "playtypedef",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L203"
     },
     {
       "id": "src_components_game_types_rosterplayer",
@@ -1917,17 +1696,30 @@
       "source_location": "L5"
     },
     {
-      "id": "src_services_livegamesession_livesessionconfig",
-      "label": "LiveSessionConfig",
+      "id": "src_components_game_types_taggedplayer",
+      "label": "TaggedPlayer",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
-      "community": 43,
-      "community_name": "quarterChange.spec.ts",
+      "community": 40,
+      "community_name": "FlowPreview.tsx",
       "file_type": "code",
-      "norm_label": "livesessionconfig",
-      "source_file": "src/services/liveGameSession.ts",
-      "source_location": "L48"
+      "norm_label": "taggedplayer",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L26"
+    },
+    {
+      "id": "src_screens_flowpreview_practiceplay",
+      "label": "PracticePlay",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 40,
+      "community_name": "FlowPreview.tsx",
+      "file_type": "code",
+      "norm_label": "practiceplay",
+      "source_file": "src/screens/FlowPreview.tsx",
+      "source_location": "L37"
     },
     {
       "id": "src_vite_env_d_importmeta",
@@ -2125,6 +1917,19 @@
       "source_location": "L23"
     },
     {
+      "id": "src_components_game_playlog_props",
+      "label": "Props",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 53,
+      "community_name": "programService.ts",
+      "file_type": "code",
+      "norm_label": "props",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L32"
+    },
+    {
       "id": "src_components_game_specialteamsprompt_previousplay",
       "label": "PreviousPlay",
       "_callable": true,
@@ -2151,17 +1956,43 @@
       "source_location": "L3"
     },
     {
-      "id": "src_services_programservice_gameconfig",
-      "label": "GameConfig",
+      "id": "src_components_game_types_playrecord",
+      "label": "PlayRecord",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 53,
       "community_name": "programService.ts",
       "file_type": "code",
-      "norm_label": "gameconfig",
-      "source_file": "src/services/programService.ts",
-      "source_location": "L5"
+      "norm_label": "playrecord",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L146"
+    },
+    {
+      "id": "src_screens_gamescreen_pendingclockcapture",
+      "label": "PendingClockCapture",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 53,
+      "community_name": "programService.ts",
+      "file_type": "code",
+      "norm_label": "pendingclockcapture",
+      "source_file": "src/screens/GameScreen.tsx",
+      "source_location": "L103"
+    },
+    {
+      "id": "src_services_livegamesession_livesessionplayresult",
+      "label": "LiveSessionPlayResult",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 53,
+      "community_name": "programService.ts",
+      "file_type": "code",
+      "norm_label": "livesessionplayresult",
+      "source_file": "src/services/liveGameSession.ts",
+      "source_location": "L67"
     },
     {
       "id": "src_services_badsnap_test_tag",
@@ -2170,63 +2001,24 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
       "norm_label": "tag",
       "source_file": "src/services/badSnap.test.ts",
       "source_location": "L19"
     },
     {
-      "id": "src_services_loosetags_test_join",
-      "label": "Join",
+      "id": "src_services_kickspots_kickspots",
+      "label": "KickSpots",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
-      "norm_label": "join",
-      "source_file": "src/services/looseTags.test.ts",
-      "source_location": "L21"
-    },
-    {
-      "id": "src_services_loosetags_test_loose",
-      "label": "Loose",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "loose",
-      "source_file": "src/services/looseTags.test.ts",
-      "source_location": "L22"
-    },
-    {
-      "id": "src_services_loosetags_test_play",
-      "label": "Play",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "play",
-      "source_file": "src/services/looseTags.test.ts",
-      "source_location": "L23"
-    },
-    {
-      "id": "src_services_penaltystep_test_step",
-      "label": "Step",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "step",
-      "source_file": "src/services/penaltyStep.test.ts",
-      "source_location": "L16"
+      "norm_label": "kickspots",
+      "source_file": "src/services/kickSpots.ts",
+      "source_location": "L19"
     },
     {
       "id": "src_screens_schedulescreen_gamerow",
@@ -2333,6 +2125,32 @@
       "source_location": "L419"
     },
     {
+      "id": "src_services_gameflow_livesituation",
+      "label": "LiveSituation",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 59,
+      "community_name": "kickoffOutOfBounds.ts",
+      "file_type": "code",
+      "norm_label": "livesituation",
+      "source_file": "src/services/gameFlow.ts",
+      "source_location": "L22"
+    },
+    {
+      "id": "src_services_kickoffoutofbounds_kickoffoutofboundschoice",
+      "label": "KickoffOutOfBoundsChoice",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 59,
+      "community_name": "kickoffOutOfBounds.ts",
+      "file_type": "code",
+      "norm_label": "kickoffoutofboundschoice",
+      "source_file": "src/services/kickoffOutOfBounds.ts",
+      "source_location": "L3"
+    },
+    {
       "id": "src_components_home_homebroadcast_homedata",
       "label": "HomeData",
       "_callable": true,
@@ -2359,19 +2177,6 @@
       "source_location": "L24"
     },
     {
-      "id": "src_services_gameservice_playwithplayers",
-      "label": "PlayWithPlayers",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "playwithplayers",
-      "source_file": "src/services/gameService.ts",
-      "source_location": "L426"
-    },
-    {
       "id": "src_services_livevspostgame_spec_tag",
       "label": "Tag",
       "_callable": true,
@@ -2383,19 +2188,6 @@
       "norm_label": "tag",
       "source_file": "src/services/liveVsPostgame.spec.ts",
       "source_location": "L131"
-    },
-    {
-      "id": "src_services_offlinedb_dragonstatsdb",
-      "label": "DragonStatsDB",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "dragonstatsdb",
-      "source_file": "src/services/offlineDb.ts",
-      "source_location": "L52"
     },
     {
       "id": "src_components_roster_pendingplayerssheet_mergecandidate",
@@ -2586,37 +2378,11 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 8,
-      "community_name": "driveResults.ts",
+      "community_name": "driveResults.test.ts",
       "file_type": "code",
       "norm_label": "driveresultplay",
       "source_file": "src/services/driveResults.ts",
       "source_location": "L51"
-    },
-    {
-      "id": "src_services_driveresults_driveresultvalue",
-      "label": "DriveResultValue",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "driveresultvalue",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L36"
-    },
-    {
-      "id": "src_services_driveresults_localdriveresult",
-      "label": "LocalDriveResult",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "localdriveresult",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L48"
     },
     {
       "id": "src_services_driveresults_test_side",
@@ -2625,7 +2391,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 8,
-      "community_name": "driveResults.ts",
+      "community_name": "driveResults.test.ts",
       "file_type": "code",
       "norm_label": "side",
       "source_file": "src/services/driveResults.test.ts",
@@ -2643,6 +2409,58 @@
       "norm_label": "gamerow",
       "source_file": "src/screens/DashboardScreen.tsx",
       "source_location": "L16"
+    },
+    {
+      "id": "src_components_game_playlog_logfilter",
+      "label": "LogFilter",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "logfilter",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L8"
+    },
+    {
+      "id": "src_components_game_playrowdetails_rowplay",
+      "label": "RowPlay",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "rowplay",
+      "source_file": "src/components/game/PlayRowDetails.tsx",
+      "source_location": "L3"
+    },
+    {
+      "id": "src_services_gameservice_playwithplayers",
+      "label": "PlayWithPlayers",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "playwithplayers",
+      "source_file": "src/services/gameService.ts",
+      "source_location": "L426"
+    },
+    {
+      "id": "src_services_offlinedb_dragonstatsdb",
+      "label": "DragonStatsDB",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "dragonstatsdb",
+      "source_file": "src/services/offlineDb.ts",
+      "source_location": "L52"
     },
     {
       "id": "src_components_game_syncbadge_props",
@@ -2723,6 +2541,45 @@
       "source_location": "L115"
     },
     {
+      "id": "src_services_gamereport_buildreportinput",
+      "label": "BuildReportInput",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "buildreportinput",
+      "source_file": "src/services/gameReport.ts",
+      "source_location": "L296"
+    },
+    {
+      "id": "src_services_seasonreport_reportsection",
+      "label": "ReportSection",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "reportsection",
+      "source_file": "src/services/seasonReport.ts",
+      "source_location": "L34"
+    },
+    {
+      "id": "src_services_statsservice_gamestatsbundle",
+      "label": "GameStatsBundle",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "gamestatsbundle",
+      "source_file": "src/services/statsService.ts",
+      "source_location": "L121"
+    },
+    {
       "id": "src_components_settings_teamaccess_invitecode",
       "label": "InviteCode",
       "_callable": true,
@@ -2760,6 +2617,149 @@
       "norm_label": "authstate",
       "source_file": "src/hooks/useAuth.ts",
       "source_location": "L6"
+    },
+    {
+      "id": "src_services_scoringledger_scorableplay",
+      "label": "ScorablePlay",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "scorableplay",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L25"
+    },
+    {
+      "id": "src_services_scoringledger_score",
+      "label": "Score",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "score",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L149"
+    },
+    {
+      "id": "src_services_scoringledger_scoringevent",
+      "label": "ScoringEvent",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "scoringevent",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L52"
+    },
+    {
+      "id": "src_services_scoringledger_scoringkind",
+      "label": "ScoringKind",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "scoringkind",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L42"
+    },
+    {
+      "id": "src_services_tacklecredit_credittag",
+      "label": "CreditTag",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "credittag",
+      "source_file": "src/services/tackleCredit.ts",
+      "source_location": "L15"
+    },
+    {
+      "id": "src_services_tacklecredit_tacklecredit",
+      "label": "TackleCredit",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "tacklecredit",
+      "source_file": "src/services/tackleCredit.ts",
+      "source_location": "L21"
+    },
+    {
+      "id": "src_services_tacklecredit_test_tag",
+      "label": "Tag",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "tag",
+      "source_file": "src/services/tackleCredit.test.ts",
+      "source_location": "L25"
+    },
+    {
+      "id": "src_services_loosetags_test_join",
+      "label": "Join",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "looseTags.test.ts",
+      "file_type": "code",
+      "norm_label": "join",
+      "source_file": "src/services/looseTags.test.ts",
+      "source_location": "L21"
+    },
+    {
+      "id": "src_services_loosetags_test_loose",
+      "label": "Loose",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "looseTags.test.ts",
+      "file_type": "code",
+      "norm_label": "loose",
+      "source_file": "src/services/looseTags.test.ts",
+      "source_location": "L22"
+    },
+    {
+      "id": "src_services_loosetags_test_play",
+      "label": "Play",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "looseTags.test.ts",
+      "file_type": "code",
+      "norm_label": "play",
+      "source_file": "src/services/looseTags.test.ts",
+      "source_location": "L23"
+    },
+    {
+      "id": "src_services_penaltystep_test_step",
+      "label": "Step",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "penaltyStep.test.ts",
+      "file_type": "code",
+      "norm_label": "step",
+      "source_file": "src/services/penaltyStep.test.ts",
+      "source_location": "L16"
     },
     {
       "id": "src_components_game_types_getpenaltyenginecode",
@@ -2978,52 +2978,16 @@
       "source_location": "L5"
     },
     {
-      "id": "src_services_tacklecredit_splittacklecredit",
-      "label": "splitTackleCredit()",
+      "id": "src_components_game_types_getpenaltydefaultside",
+      "label": "getPenaltyDefaultSide()",
       "_callable": true,
       "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
+      "community": 1,
+      "community_name": "liveGameSession.ts",
       "file_type": "code",
-      "norm_label": "splittacklecredit()",
-      "source_file": "src/services/tackleCredit.ts",
-      "source_location": "L40"
-    },
-    {
-      "id": "src_services_tacklecredit_test_enginetotals",
-      "label": "engineTotals()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
-      "file_type": "code",
-      "norm_label": "enginetotals()",
-      "source_file": "src/services/tackleCredit.test.ts",
-      "source_location": "L36"
-    },
-    {
-      "id": "src_services_tacklecredit_test_splittackles",
-      "label": "splitTackles()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
-      "file_type": "code",
-      "norm_label": "splittackles()",
-      "source_file": "src/services/tackleCredit.test.ts",
-      "source_location": "L28"
-    },
-    {
-      "id": "src_services_tacklecredit_test_test",
-      "label": "test()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
-      "file_type": "code",
-      "norm_label": "test()",
-      "source_file": "src/services/tackleCredit.test.ts",
-      "source_location": "L54"
+      "norm_label": "getpenaltydefaultside()",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L391"
     },
     {
       "id": "src_components_game_types_grantsautofirstdown",
@@ -3036,6 +3000,18 @@
       "norm_label": "grantsautofirstdown()",
       "source_file": "src/components/game/types.ts",
       "source_location": "L417"
+    },
+    {
+      "id": "src_components_game_types_ispenaltyonoffense",
+      "label": "isPenaltyOnOffense()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "liveGameSession.ts",
+      "file_type": "code",
+      "norm_label": "ispenaltyonoffense()",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L395"
     },
     {
       "id": "src_services_gameflow_normalizequarter",
@@ -3276,18 +3252,6 @@
       "norm_label": "toengineplay()",
       "source_file": "src/services/liveGameSession.ts",
       "source_location": "L328"
-    },
-    {
-      "id": "src_services_gameflow_createinitialsituation",
-      "label": "createInitialSituation()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 10,
-      "community_name": "gameService.ts",
-      "file_type": "code",
-      "norm_label": "createinitialsituation()",
-      "source_file": "src/services/gameFlow.ts",
-      "source_location": "L252"
     },
     {
       "id": "src_services_gameflow_getrecordednextsituation",
@@ -3722,30 +3686,6 @@
       "source_location": "L72"
     },
     {
-      "id": "src_components_settings_joinwithcode_joinwithcode",
-      "label": "JoinWithCode()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "SettingsScreen.tsx",
-      "file_type": "code",
-      "norm_label": "joinwithcode()",
-      "source_file": "src/components/settings/JoinWithCode.tsx",
-      "source_location": "L17"
-    },
-    {
-      "id": "src_screens_seasonreportscreen_seasonreportscreen",
-      "label": "SeasonReportScreen()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "SettingsScreen.tsx",
-      "file_type": "code",
-      "norm_label": "seasonreportscreen()",
-      "source_file": "src/screens/SeasonReportScreen.tsx",
-      "source_location": "L9"
-    },
-    {
       "id": "src_screens_settingsscreen_coachrow",
       "label": "CoachRow()",
       "_callable": true,
@@ -4094,42 +4034,6 @@
       "source_location": "L241"
     },
     {
-      "id": "src_components_game_yardreel_clampspot",
-      "label": "clampSpot()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "clampspot()",
-      "source_file": "src/components/game/YardReel.tsx",
-      "source_location": "L45"
-    },
-    {
-      "id": "src_components_game_yardreel_yardnumber",
-      "label": "yardNumber()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "yardnumber()",
-      "source_file": "src/components/game/YardReel.tsx",
-      "source_location": "L52"
-    },
-    {
-      "id": "src_components_game_yardreel_yardreel",
-      "label": "YardReel()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "yardreel()",
-      "source_file": "src/components/game/YardReel.tsx",
-      "source_location": "L70"
-    },
-    {
       "id": "src_app_app",
       "label": "App()",
       "_callable": true,
@@ -4212,6 +4116,18 @@
       "norm_label": "homeloading()",
       "source_file": "src/components/game/HomeLoading.tsx",
       "source_location": "L1"
+    },
+    {
+      "id": "src_components_settings_joinwithcode_joinwithcode",
+      "label": "JoinWithCode()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 18,
+      "community_name": "react",
+      "file_type": "code",
+      "norm_label": "joinwithcode()",
+      "source_file": "src/components/settings/JoinWithCode.tsx",
+      "source_location": "L17"
     },
     {
       "id": "src_errorboundary_errorboundary_getderivedstatefromerror",
@@ -4334,28 +4250,16 @@
       "source_location": "L24"
     },
     {
-      "id": "src_screens_seasonreportpreview_seasonreportpreview",
-      "label": "SeasonReportPreview()",
+      "id": "src_screens_seasonreportscreen_seasonreportscreen",
+      "label": "SeasonReportScreen()",
       "_callable": true,
       "_origin": "ast",
       "community": 18,
       "community_name": "react",
       "file_type": "code",
-      "norm_label": "seasonreportpreview()",
-      "source_file": "src/screens/SeasonReportPreview.tsx",
-      "source_location": "L21"
-    },
-    {
-      "id": "src_screens_seasonreportscreen_seasonreportdocument",
-      "label": "SeasonReportDocument()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "react",
-      "file_type": "code",
-      "norm_label": "seasonreportdocument()",
+      "norm_label": "seasonreportscreen()",
       "source_file": "src/screens/SeasonReportScreen.tsx",
-      "source_location": "L72"
+      "source_location": "L9"
     },
     {
       "id": "src_components_game_pregamesetupsheet_pregamesetupsheet",
@@ -4430,6 +4334,18 @@
       "source_location": "L15"
     },
     {
+      "id": "src_services_gameflow_clampballon",
+      "label": "clampBallOn()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 19,
+      "community_name": "gameFlow.ts",
+      "file_type": "code",
+      "norm_label": "clampballon()",
+      "source_file": "src/services/gameFlow.ts",
+      "source_location": "L92"
+    },
+    {
       "id": "src_services_gameflow_createdefaultpregameconfig",
       "label": "createDefaultPregameConfig()",
       "_callable": true,
@@ -4440,6 +4356,18 @@
       "norm_label": "createdefaultpregameconfig()",
       "source_file": "src/services/gameFlow.ts",
       "source_location": "L116"
+    },
+    {
+      "id": "src_services_gameflow_createinitialsituation",
+      "label": "createInitialSituation()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 19,
+      "community_name": "gameFlow.ts",
+      "file_type": "code",
+      "norm_label": "createinitialsituation()",
+      "source_file": "src/services/gameFlow.ts",
+      "source_location": "L252"
     },
     {
       "id": "src_services_gameflow_createkickoffsituation",
@@ -4476,6 +4404,18 @@
       "norm_label": "deriveopeningkickoffreceiver()",
       "source_file": "src/services/gameFlow.ts",
       "source_location": "L120"
+    },
+    {
+      "id": "src_services_gameflow_flipfieldposition",
+      "label": "flipFieldPosition()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 19,
+      "community_name": "gameFlow.ts",
+      "file_type": "code",
+      "norm_label": "flipfieldposition()",
+      "source_file": "src/services/gameFlow.ts",
+      "source_location": "L96"
     },
     {
       "id": "src_services_gameflow_getpregameconfig",
@@ -4572,6 +4512,18 @@
       "norm_label": "parsestoreddirection()",
       "source_file": "src/services/gameFlow.ts",
       "source_location": "L85"
+    },
+    {
+      "id": "src_services_gameflow_todisplayfieldposition",
+      "label": "toDisplayFieldPosition()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 19,
+      "community_name": "gameFlow.ts",
+      "file_type": "code",
+      "norm_label": "todisplayfieldposition()",
+      "source_file": "src/services/gameFlow.ts",
+      "source_location": "L329"
     },
     {
       "id": "src_services_gamereport_avg",
@@ -4682,40 +4634,16 @@
       "source_location": "L183"
     },
     {
-      "id": "src_services_seasonreport_buildseasonreport",
-      "label": "buildSeasonReport()",
+      "id": "src_services_kickspots_netkickyards",
+      "label": "netKickYards()",
       "_callable": true,
       "_origin": "ast",
       "community": 20,
       "community_name": "gameReport.ts",
       "file_type": "code",
-      "norm_label": "buildseasonreport()",
-      "source_file": "src/services/seasonReport.ts",
-      "source_location": "L30"
-    },
-    {
-      "id": "src_services_seasonreport_combineseasonbundles",
-      "label": "combineSeasonBundles()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 20,
-      "community_name": "gameReport.ts",
-      "file_type": "code",
-      "norm_label": "combineseasonbundles()",
-      "source_file": "src/services/seasonReport.ts",
-      "source_location": "L5"
-    },
-    {
-      "id": "src_services_seasonreport_paginateseasonsections",
-      "label": "paginateSeasonSections()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 20,
-      "community_name": "gameReport.ts",
-      "file_type": "code",
-      "norm_label": "paginateseasonsections()",
-      "source_file": "src/services/seasonReport.ts",
-      "source_location": "L36"
+      "norm_label": "netkickyards()",
+      "source_file": "src/services/kickSpots.ts",
+      "source_location": "L119"
     },
     {
       "id": "src_hooks_useprogramcontext_derivebranding",
@@ -4910,6 +4838,18 @@
       "source_location": "L27"
     },
     {
+      "id": "src_components_game_gamehomelink_gamehomelink",
+      "label": "GameHomeLink()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 24,
+      "community_name": "GameReportScreen.tsx",
+      "file_type": "code",
+      "norm_label": "gamehomelink()",
+      "source_file": "src/components/game/GameHomeLink.tsx",
+      "source_location": "L4"
+    },
+    {
       "id": "src_screens_gamereportscreen_band",
       "label": "Band()",
       "_callable": true,
@@ -5078,18 +5018,6 @@
       "source_location": "L63"
     },
     {
-      "id": "src_components_game_kneelentry_kneelentry",
-      "label": "KneelEntry()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "kneelentry()",
-      "source_file": "src/components/game/KneelEntry.tsx",
-      "source_location": "L8"
-    },
-    {
       "id": "src_components_game_passdefenderpicker_passdefenderpicker",
       "label": "PassDefenderPicker()",
       "_callable": true,
@@ -5174,16 +5102,40 @@
       "source_location": "L4"
     },
     {
-      "id": "src_components_game_quickkneel_quickkneel",
-      "label": "quickKneel()",
+      "id": "src_components_game_yardreel_clampspot",
+      "label": "clampSpot()",
       "_callable": true,
       "_origin": "ast",
       "community": 28,
       "community_name": "lucide-react",
       "file_type": "code",
-      "norm_label": "quickkneel()",
-      "source_file": "src/components/game/quickKneel.ts",
-      "source_location": "L4"
+      "norm_label": "clampspot()",
+      "source_file": "src/components/game/YardReel.tsx",
+      "source_location": "L45"
+    },
+    {
+      "id": "src_components_game_yardreel_yardnumber",
+      "label": "yardNumber()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 28,
+      "community_name": "lucide-react",
+      "file_type": "code",
+      "norm_label": "yardnumber()",
+      "source_file": "src/components/game/YardReel.tsx",
+      "source_location": "L52"
+    },
+    {
+      "id": "src_components_game_yardreel_yardreel",
+      "label": "YardReel()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 28,
+      "community_name": "lucide-react",
+      "file_type": "code",
+      "norm_label": "yardreel()",
+      "source_file": "src/components/game/YardReel.tsx",
+      "source_location": "L70"
     },
     {
       "id": "src_app_synccoordinator",
@@ -5882,6 +5834,42 @@
       "source_location": "L15"
     },
     {
+      "id": "src_services_driveresults_classify",
+      "label": "classify()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 31,
+      "community_name": "statsService.ts",
+      "file_type": "code",
+      "norm_label": "classify()",
+      "source_file": "src/services/driveResults.ts",
+      "source_location": "L71"
+    },
+    {
+      "id": "src_services_driveresults_possessionruns",
+      "label": "possessionRuns()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 31,
+      "community_name": "statsService.ts",
+      "file_type": "code",
+      "norm_label": "possessionruns()",
+      "source_file": "src/services/driveResults.ts",
+      "source_location": "L104"
+    },
+    {
+      "id": "src_services_driveresults_resolvedriveresults",
+      "label": "resolveDriveResults()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 31,
+      "community_name": "statsService.ts",
+      "file_type": "code",
+      "norm_label": "resolvedriveresults()",
+      "source_file": "src/services/driveResults.ts",
+      "source_location": "L121"
+    },
+    {
       "id": "src_services_gameservice_calcdefensestats",
       "label": "calcDefenseStats()",
       "_callable": true,
@@ -5904,66 +5892,6 @@
       "norm_label": "isinsidetwenty()",
       "source_file": "src/services/kickSpots.ts",
       "source_location": "L107"
-    },
-    {
-      "id": "src_services_kickspots_kickinfofromdescription",
-      "label": "kickInfoFromDescription()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 31,
-      "community_name": "statsService.ts",
-      "file_type": "code",
-      "norm_label": "kickinfofromdescription()",
-      "source_file": "src/services/kickSpots.ts",
-      "source_location": "L43"
-    },
-    {
-      "id": "src_services_kickspots_netkickyards",
-      "label": "netKickYards()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 31,
-      "community_name": "statsService.ts",
-      "file_type": "code",
-      "norm_label": "netkickyards()",
-      "source_file": "src/services/kickSpots.ts",
-      "source_location": "L119"
-    },
-    {
-      "id": "src_services_kickspots_num",
-      "label": "num()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 31,
-      "community_name": "statsService.ts",
-      "file_type": "code",
-      "norm_label": "num()",
-      "source_file": "src/services/kickSpots.ts",
-      "source_location": "L30"
-    },
-    {
-      "id": "src_services_kickspots_resolvekickspots",
-      "label": "resolveKickSpots()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 31,
-      "community_name": "statsService.ts",
-      "file_type": "code",
-      "norm_label": "resolvekickspots()",
-      "source_file": "src/services/kickSpots.ts",
-      "source_location": "L64"
-    },
-    {
-      "id": "src_services_kickspots_test_test",
-      "label": "test()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 31,
-      "community_name": "statsService.ts",
-      "file_type": "code",
-      "norm_label": "test()",
-      "source_file": "src/services/kickSpots.test.ts",
-      "source_location": "L16"
     },
     {
       "id": "src_services_playtransformer_collectopponentplayerids",
@@ -6062,64 +5990,52 @@
       "source_location": "L349"
     },
     {
-      "id": "src_components_game_playlog_playlog",
-      "label": "PlayLog()",
+      "id": "src_components_game_scoreboard_crest",
+      "label": "Crest()",
       "_callable": true,
       "_origin": "ast",
       "community": 33,
       "community_name": "UiPreview.tsx",
       "file_type": "code",
-      "norm_label": "playlog()",
-      "source_file": "src/components/game/PlayLog.tsx",
-      "source_location": "L78"
+      "norm_label": "crest()",
+      "source_file": "src/components/game/Scoreboard.tsx",
+      "source_location": "L73"
     },
     {
-      "id": "src_components_game_playlog_unitof",
-      "label": "unitOf()",
+      "id": "src_components_game_scoreboard_downlabel",
+      "label": "downLabel()",
       "_callable": true,
       "_origin": "ast",
       "community": 33,
       "community_name": "UiPreview.tsx",
       "file_type": "code",
-      "norm_label": "unitof()",
-      "source_file": "src/components/game/PlayLog.tsx",
-      "source_location": "L19"
+      "norm_label": "downlabel()",
+      "source_file": "src/components/game/Scoreboard.tsx",
+      "source_location": "L40"
     },
     {
-      "id": "src_components_game_quarterchangerow_quarterchangerow",
-      "label": "QuarterChangeRow()",
+      "id": "src_components_game_scoreboard_scoreboard",
+      "label": "Scoreboard()",
       "_callable": true,
       "_origin": "ast",
       "community": 33,
       "community_name": "UiPreview.tsx",
       "file_type": "code",
-      "norm_label": "quarterchangerow()",
-      "source_file": "src/components/game/QuarterChangeRow.tsx",
-      "source_location": "L3"
+      "norm_label": "scoreboard()",
+      "source_file": "src/components/game/Scoreboard.tsx",
+      "source_location": "L89"
     },
     {
-      "id": "src_components_game_types_fmtclock",
-      "label": "fmtClock()",
+      "id": "src_components_game_scoreboard_timeoutbuttons",
+      "label": "TimeoutButtons()",
       "_callable": true,
       "_origin": "ast",
       "community": 33,
       "community_name": "UiPreview.tsx",
       "file_type": "code",
-      "norm_label": "fmtclock()",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L445"
-    },
-    {
-      "id": "src_components_game_types_yardlabel",
-      "label": "yardLabel()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "yardlabel()",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L451"
+      "norm_label": "timeoutbuttons()",
+      "source_file": "src/components/game/Scoreboard.tsx",
+      "source_location": "L44"
     },
     {
       "id": "src_screens_uipreview_clamp",
@@ -6518,12 +6434,72 @@
       "source_location": "L133"
     },
     {
+      "id": "src_components_game_fieldvisualizer_endzonelabel",
+      "label": "endZoneLabel()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "endzonelabel()",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L45"
+    },
+    {
+      "id": "src_components_game_fieldvisualizer_endzonelogo",
+      "label": "EndZoneLogo()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "endzonelogo()",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L58"
+    },
+    {
+      "id": "src_components_game_fieldvisualizer_fieldvisualizer",
+      "label": "FieldVisualizer()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "fieldvisualizer()",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L71"
+    },
+    {
+      "id": "src_components_game_fieldvisualizer_fromwidgetpercent",
+      "label": "fromWidgetPercent()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "fromwidgetpercent()",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L30"
+    },
+    {
+      "id": "src_components_game_fieldvisualizer_towidgetpercent",
+      "label": "toWidgetPercent()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "towidgetpercent()",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L40"
+    },
+    {
       "id": "src_components_game_quickactions_fastpathids",
       "label": "fastPathIds()",
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "fastpathids()",
       "source_file": "src/components/game/QuickActions.tsx",
@@ -6535,7 +6511,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "ordinaldown()",
       "source_file": "src/components/game/QuickActions.tsx",
@@ -6547,59 +6523,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "quickactions()",
       "source_file": "src/components/game/QuickActions.tsx",
       "source_location": "L90"
-    },
-    {
-      "id": "src_components_game_scoreboard_crest",
-      "label": "Crest()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 37,
-      "community_name": "QuickActions.tsx",
-      "file_type": "code",
-      "norm_label": "crest()",
-      "source_file": "src/components/game/Scoreboard.tsx",
-      "source_location": "L73"
-    },
-    {
-      "id": "src_components_game_scoreboard_downlabel",
-      "label": "downLabel()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 37,
-      "community_name": "QuickActions.tsx",
-      "file_type": "code",
-      "norm_label": "downlabel()",
-      "source_file": "src/components/game/Scoreboard.tsx",
-      "source_location": "L40"
-    },
-    {
-      "id": "src_components_game_scoreboard_scoreboard",
-      "label": "Scoreboard()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 37,
-      "community_name": "QuickActions.tsx",
-      "file_type": "code",
-      "norm_label": "scoreboard()",
-      "source_file": "src/components/game/Scoreboard.tsx",
-      "source_location": "L89"
-    },
-    {
-      "id": "src_components_game_scoreboard_timeoutbuttons",
-      "label": "TimeoutButtons()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 37,
-      "community_name": "QuickActions.tsx",
-      "file_type": "code",
-      "norm_label": "timeoutbuttons()",
-      "source_file": "src/components/game/Scoreboard.tsx",
-      "source_location": "L44"
     },
     {
       "id": "src_utils_teamcolor_hsltohex",
@@ -6607,7 +6535,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "hsltohex()",
       "source_file": "src/utils/teamColor.ts",
@@ -6619,7 +6547,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "parsehex()",
       "source_file": "src/utils/teamColor.ts",
@@ -6631,7 +6559,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "readableaccent()",
       "source_file": "src/utils/teamColor.ts",
@@ -6643,7 +6571,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "rgbtohsl()",
       "source_file": "src/utils/teamColor.ts",
@@ -6655,7 +6583,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "hueof()",
       "source_file": "src/utils/teamColor.test.ts",
@@ -6667,7 +6595,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "lightnessof()",
       "source_file": "src/utils/teamColor.test.ts",
@@ -6679,7 +6607,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "test()",
       "source_file": "src/utils/teamColor.test.ts",
@@ -6782,18 +6710,6 @@
       "source_location": "L101"
     },
     {
-      "id": "src_components_game_gamehomelink_gamehomelink",
-      "label": "GameHomeLink()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "gamehomelink()",
-      "source_file": "src/components/game/GameHomeLink.tsx",
-      "source_location": "L4"
-    },
-    {
       "id": "src_screens_boxscorescreen_boxscorescreen",
       "label": "BoxScoreScreen()",
       "_callable": true,
@@ -6878,42 +6794,6 @@
       "source_location": "L79"
     },
     {
-      "id": "src_services_livegamesession_applyscoredelta",
-      "label": "applyScoreDelta()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "applyscoredelta()",
-      "source_file": "src/services/liveGameSession.ts",
-      "source_location": "L671"
-    },
-    {
-      "id": "src_services_scoringledger_isreturntouchdown",
-      "label": "isReturnTouchdown()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "isreturntouchdown()",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L81"
-    },
-    {
-      "id": "src_services_scoringledger_other",
-      "label": "other()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "other()",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L64"
-    },
-    {
       "id": "src_services_scoringledger_scorebyquarter",
       "label": "scoreByQuarter()",
       "_callable": true,
@@ -6924,54 +6804,6 @@
       "norm_label": "scorebyquarter()",
       "source_file": "src/services/scoringLedger.ts",
       "source_location": "L163"
-    },
-    {
-      "id": "src_services_scoringledger_scoringevents",
-      "label": "scoringEvents()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "scoringevents()",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L145"
-    },
-    {
-      "id": "src_services_scoringledger_scoringeventsforplay",
-      "label": "scoringEventsForPlay()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "scoringeventsforplay()",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L91"
-    },
-    {
-      "id": "src_services_scoringledger_spec_play",
-      "label": "play()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "play()",
-      "source_file": "src/services/scoringLedger.spec.ts",
-      "source_location": "L17"
-    },
-    {
-      "id": "src_services_scoringledger_totalscore",
-      "label": "totalScore()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "totalscore()",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L151"
     },
     {
       "id": "github_prompts_ui_ux_pro_max_scripts_design_system_designsystemgenerator_apply_reasoning",
@@ -7070,88 +6902,28 @@
       "source_location": "L122"
     },
     {
-      "id": "src_components_game_fieldvisualizer_endzonelabel",
-      "label": "endZoneLabel()",
+      "id": "src_components_game_kneelentry_kneelentry",
+      "label": "KneelEntry()",
       "_callable": true,
       "_origin": "ast",
       "community": 40,
       "community_name": "FlowPreview.tsx",
       "file_type": "code",
-      "norm_label": "endzonelabel()",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L45"
+      "norm_label": "kneelentry()",
+      "source_file": "src/components/game/KneelEntry.tsx",
+      "source_location": "L8"
     },
     {
-      "id": "src_components_game_fieldvisualizer_endzonelogo",
-      "label": "EndZoneLogo()",
+      "id": "src_components_game_quickkneel_quickkneel",
+      "label": "quickKneel()",
       "_callable": true,
       "_origin": "ast",
       "community": 40,
       "community_name": "FlowPreview.tsx",
       "file_type": "code",
-      "norm_label": "endzonelogo()",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L58"
-    },
-    {
-      "id": "src_components_game_fieldvisualizer_fieldvisualizer",
-      "label": "FieldVisualizer()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 40,
-      "community_name": "FlowPreview.tsx",
-      "file_type": "code",
-      "norm_label": "fieldvisualizer()",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L71"
-    },
-    {
-      "id": "src_components_game_fieldvisualizer_fromwidgetpercent",
-      "label": "fromWidgetPercent()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 40,
-      "community_name": "FlowPreview.tsx",
-      "file_type": "code",
-      "norm_label": "fromwidgetpercent()",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L30"
-    },
-    {
-      "id": "src_components_game_fieldvisualizer_towidgetpercent",
-      "label": "toWidgetPercent()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 40,
-      "community_name": "FlowPreview.tsx",
-      "file_type": "code",
-      "norm_label": "towidgetpercent()",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L40"
-    },
-    {
-      "id": "src_components_game_playrowdetails_offensiveplaybadge",
-      "label": "OffensivePlayBadge()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 40,
-      "community_name": "FlowPreview.tsx",
-      "file_type": "code",
-      "norm_label": "offensiveplaybadge()",
-      "source_file": "src/components/game/PlayRowDetails.tsx",
-      "source_location": "L5"
-    },
-    {
-      "id": "src_components_game_playrowdetails_playtacklers",
-      "label": "PlayTacklers()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 40,
-      "community_name": "FlowPreview.tsx",
-      "file_type": "code",
-      "norm_label": "playtacklers()",
-      "source_file": "src/components/game/PlayRowDetails.tsx",
-      "source_location": "L11"
+      "norm_label": "quickkneel()",
+      "source_file": "src/components/game/quickKneel.ts",
+      "source_location": "L4"
     },
     {
       "id": "src_components_game_types_quarterlabel",
@@ -7898,6 +7670,30 @@
       "source_location": "L7"
     },
     {
+      "id": "src_screens_flowpreview_flowpreview",
+      "label": "FlowPreview()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 53,
+      "community_name": "programService.ts",
+      "file_type": "code",
+      "norm_label": "flowpreview()",
+      "source_file": "src/screens/FlowPreview.tsx",
+      "source_location": "L39"
+    },
+    {
+      "id": "src_services_gameflow_advancesituationafterplay",
+      "label": "advanceSituationAfterPlay()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 53,
+      "community_name": "programService.ts",
+      "file_type": "code",
+      "norm_label": "advancesituationafterplay()",
+      "source_file": "src/services/gameFlow.ts",
+      "source_location": "L360"
+    },
+    {
       "id": "src_services_manualaudit_spec_row",
       "label": "row()",
       "_callable": true,
@@ -7975,7 +7771,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
       "norm_label": "rusherfor()",
       "source_file": "src/services/badSnap.test.ts",
@@ -7987,7 +7783,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
       "norm_label": "tagsatsubmit()",
       "source_file": "src/services/badSnap.test.ts",
@@ -7999,131 +7795,59 @@
       "_callable": true,
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
       "norm_label": "test()",
       "source_file": "src/services/badSnap.test.ts",
       "source_location": "L37"
     },
     {
-      "id": "src_services_loosetags_test_alltagsforrole",
-      "label": "allTagsForRole()",
+      "id": "src_services_kickspots_kickinfofromdescription",
+      "label": "kickInfoFromDescription()",
       "_callable": true,
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
-      "norm_label": "alltagsforrole()",
-      "source_file": "src/services/looseTags.test.ts",
-      "source_location": "L33"
+      "norm_label": "kickinfofromdescription()",
+      "source_file": "src/services/kickSpots.ts",
+      "source_location": "L43"
     },
     {
-      "id": "src_services_loosetags_test_test",
+      "id": "src_services_kickspots_num",
+      "label": "num()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 54,
+      "community_name": "resolveKickSpots",
+      "file_type": "code",
+      "norm_label": "num()",
+      "source_file": "src/services/kickSpots.ts",
+      "source_location": "L30"
+    },
+    {
+      "id": "src_services_kickspots_resolvekickspots",
+      "label": "resolveKickSpots()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 54,
+      "community_name": "resolveKickSpots",
+      "file_type": "code",
+      "norm_label": "resolvekickspots()",
+      "source_file": "src/services/kickSpots.ts",
+      "source_location": "L64"
+    },
+    {
+      "id": "src_services_kickspots_test_test",
       "label": "test()",
       "_callable": true,
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
       "norm_label": "test()",
-      "source_file": "src/services/looseTags.test.ts",
-      "source_location": "L54"
-    },
-    {
-      "id": "src_services_mergequeuedplays_mergequeuedplays",
-      "label": "mergeQueuedPlays()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "mergequeuedplays()",
-      "source_file": "src/services/mergeQueuedPlays.ts",
-      "source_location": "L22"
-    },
-    {
-      "id": "src_services_mergequeuedplays_test_ids",
-      "label": "ids()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "ids()",
-      "source_file": "src/services/mergeQueuedPlays.test.ts",
-      "source_location": "L13"
-    },
-    {
-      "id": "src_services_mergequeuedplays_test_play",
-      "label": "play()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "play()",
-      "source_file": "src/services/mergeQueuedPlays.test.ts",
-      "source_location": "L10"
-    },
-    {
-      "id": "src_services_mergequeuedplays_test_test",
-      "label": "test()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "test()",
-      "source_file": "src/services/mergeQueuedPlays.test.ts",
+      "source_file": "src/services/kickSpots.test.ts",
       "source_location": "L16"
-    },
-    {
-      "id": "src_services_penaltystep_test_assertlandsonpenalty",
-      "label": "assertLandsOnPenalty()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "assertlandsonpenalty()",
-      "source_file": "src/services/penaltyStep.test.ts",
-      "source_location": "L74"
-    },
-    {
-      "id": "src_services_penaltystep_test_buildsteps",
-      "label": "buildSteps()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "buildsteps()",
-      "source_file": "src/services/penaltyStep.test.ts",
-      "source_location": "L19"
-    },
-    {
-      "id": "src_services_penaltystep_test_targetindex",
-      "label": "targetIndex()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "targetindex()",
-      "source_file": "src/services/penaltyStep.test.ts",
-      "source_location": "L52"
-    },
-    {
-      "id": "src_services_penaltystep_test_test",
-      "label": "test()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "test()",
-      "source_file": "src/services/penaltyStep.test.ts",
-      "source_location": "L60"
     },
     {
       "id": "src_screens_schedulescreen_addgamemodal",
@@ -8294,96 +8018,12 @@
       "source_location": "L19"
     },
     {
-      "id": "src_components_game_types_getpenaltydefaultside",
-      "label": "getPenaltyDefaultSide()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "advanceSituationAfterPlay",
-      "file_type": "code",
-      "norm_label": "getpenaltydefaultside()",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L391"
-    },
-    {
-      "id": "src_components_game_types_ispenaltyonoffense",
-      "label": "isPenaltyOnOffense()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "advanceSituationAfterPlay",
-      "file_type": "code",
-      "norm_label": "ispenaltyonoffense()",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L395"
-    },
-    {
-      "id": "src_screens_flowpreview_flowpreview",
-      "label": "FlowPreview()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "advanceSituationAfterPlay",
-      "file_type": "code",
-      "norm_label": "flowpreview()",
-      "source_file": "src/screens/FlowPreview.tsx",
-      "source_location": "L39"
-    },
-    {
-      "id": "src_services_gameflow_advancesituationafterplay",
-      "label": "advanceSituationAfterPlay()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "advanceSituationAfterPlay",
-      "file_type": "code",
-      "norm_label": "advancesituationafterplay()",
-      "source_file": "src/services/gameFlow.ts",
-      "source_location": "L360"
-    },
-    {
-      "id": "src_services_gameflow_clampballon",
-      "label": "clampBallOn()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "advanceSituationAfterPlay",
-      "file_type": "code",
-      "norm_label": "clampballon()",
-      "source_file": "src/services/gameFlow.ts",
-      "source_location": "L92"
-    },
-    {
-      "id": "src_services_gameflow_flipfieldposition",
-      "label": "flipFieldPosition()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "advanceSituationAfterPlay",
-      "file_type": "code",
-      "norm_label": "flipfieldposition()",
-      "source_file": "src/services/gameFlow.ts",
-      "source_location": "L96"
-    },
-    {
-      "id": "src_services_gameflow_todisplayfieldposition",
-      "label": "toDisplayFieldPosition()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "advanceSituationAfterPlay",
-      "file_type": "code",
-      "norm_label": "todisplayfieldposition()",
-      "source_file": "src/services/gameFlow.ts",
-      "source_location": "L329"
-    },
-    {
       "id": "src_services_kickoffoutofbounds_kickoffoutofboundssituation",
       "label": "kickoffOutOfBoundsSituation()",
       "_callable": true,
       "_origin": "ast",
       "community": 59,
-      "community_name": "advanceSituationAfterPlay",
+      "community_name": "kickoffOutOfBounds.ts",
       "file_type": "code",
       "norm_label": "kickoffoutofboundssituation()",
       "source_file": "src/services/kickoffOutOfBounds.ts",
@@ -8424,42 +8064,6 @@
       "norm_label": "iso()",
       "source_file": "src/screens/HomePreview.tsx",
       "source_location": "L33"
-    },
-    {
-      "id": "src_services_badsnap_spec_dbplay",
-      "label": "dbPlay()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "dbplay()",
-      "source_file": "src/services/badSnap.spec.ts",
-      "source_location": "L29"
-    },
-    {
-      "id": "src_services_badsnap_spec_rushing",
-      "label": "rushing()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "rushing()",
-      "source_file": "src/services/badSnap.spec.ts",
-      "source_location": "L79"
-    },
-    {
-      "id": "src_services_badsnap_spec_summarise",
-      "label": "summarise()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "summarise()",
-      "source_file": "src/services/badSnap.spec.ts",
-      "source_location": "L52"
     },
     {
       "id": "src_services_highschoolsacks_spec_summary",
@@ -9134,48 +8738,12 @@
       "source_location": "L644"
     },
     {
-      "id": "src_services_driveresults_classify",
-      "label": "classify()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "classify()",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L71"
-    },
-    {
-      "id": "src_services_driveresults_possessionruns",
-      "label": "possessionRuns()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "possessionruns()",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L104"
-    },
-    {
-      "id": "src_services_driveresults_resolvedriveresults",
-      "label": "resolveDriveResults()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "resolvedriveresults()",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L121"
-    },
-    {
       "id": "src_services_driveresults_test_drivesfor",
       "label": "drivesFor()",
       "_callable": true,
       "_origin": "ast",
       "community": 8,
-      "community_name": "driveResults.ts",
+      "community_name": "driveResults.test.ts",
       "file_type": "code",
       "norm_label": "drivesfor()",
       "source_file": "src/services/driveResults.test.ts",
@@ -9187,7 +8755,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 8,
-      "community_name": "driveResults.ts",
+      "community_name": "driveResults.test.ts",
       "file_type": "code",
       "norm_label": "firstresultof()",
       "source_file": "src/services/driveResults.test.ts",
@@ -9199,7 +8767,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 8,
-      "community_name": "driveResults.ts",
+      "community_name": "driveResults.test.ts",
       "file_type": "code",
       "norm_label": "p()",
       "source_file": "src/services/driveResults.test.ts",
@@ -9211,7 +8779,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 8,
-      "community_name": "driveResults.ts",
+      "community_name": "driveResults.test.ts",
       "file_type": "code",
       "norm_label": "resultsof()",
       "source_file": "src/services/driveResults.test.ts",
@@ -9223,7 +8791,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 8,
-      "community_name": "driveResults.ts",
+      "community_name": "driveResults.test.ts",
       "file_type": "code",
       "norm_label": "test()",
       "source_file": "src/services/driveResults.test.ts",
@@ -9360,6 +8928,174 @@
       "norm_label": "warmgamedaycache()",
       "source_file": "src/services/offlineCache.ts",
       "source_location": "L171"
+    },
+    {
+      "id": "src_components_game_playlog_playlog",
+      "label": "PlayLog()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "playlog()",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L78"
+    },
+    {
+      "id": "src_components_game_playlog_unitof",
+      "label": "unitOf()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "unitof()",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L19"
+    },
+    {
+      "id": "src_components_game_playrowdetails_offensiveplaybadge",
+      "label": "OffensivePlayBadge()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "offensiveplaybadge()",
+      "source_file": "src/components/game/PlayRowDetails.tsx",
+      "source_location": "L5"
+    },
+    {
+      "id": "src_components_game_playrowdetails_playtacklers",
+      "label": "PlayTacklers()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "playtacklers()",
+      "source_file": "src/components/game/PlayRowDetails.tsx",
+      "source_location": "L11"
+    },
+    {
+      "id": "src_components_game_quarterchangerow_quarterchangerow",
+      "label": "QuarterChangeRow()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "quarterchangerow()",
+      "source_file": "src/components/game/QuarterChangeRow.tsx",
+      "source_location": "L3"
+    },
+    {
+      "id": "src_components_game_types_fmtclock",
+      "label": "fmtClock()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "fmtclock()",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L445"
+    },
+    {
+      "id": "src_components_game_types_yardlabel",
+      "label": "yardLabel()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "yardlabel()",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L451"
+    },
+    {
+      "id": "src_services_badsnap_spec_dbplay",
+      "label": "dbPlay()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "dbplay()",
+      "source_file": "src/services/badSnap.spec.ts",
+      "source_location": "L29"
+    },
+    {
+      "id": "src_services_badsnap_spec_rushing",
+      "label": "rushing()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "rushing()",
+      "source_file": "src/services/badSnap.spec.ts",
+      "source_location": "L79"
+    },
+    {
+      "id": "src_services_badsnap_spec_summarise",
+      "label": "summarise()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "summarise()",
+      "source_file": "src/services/badSnap.spec.ts",
+      "source_location": "L52"
+    },
+    {
+      "id": "src_services_mergequeuedplays_mergequeuedplays",
+      "label": "mergeQueuedPlays()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "mergequeuedplays()",
+      "source_file": "src/services/mergeQueuedPlays.ts",
+      "source_location": "L22"
+    },
+    {
+      "id": "src_services_mergequeuedplays_test_ids",
+      "label": "ids()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "ids()",
+      "source_file": "src/services/mergeQueuedPlays.test.ts",
+      "source_location": "L13"
+    },
+    {
+      "id": "src_services_mergequeuedplays_test_play",
+      "label": "play()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "play()",
+      "source_file": "src/services/mergeQueuedPlays.test.ts",
+      "source_location": "L10"
+    },
+    {
+      "id": "src_services_mergequeuedplays_test_test",
+      "label": "test()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "test()",
+      "source_file": "src/services/mergeQueuedPlays.test.ts",
+      "source_location": "L16"
     },
     {
       "id": "src_components_game_syncbadge_syncbadge",
@@ -9926,6 +9662,66 @@
       "source_location": "L81"
     },
     {
+      "id": "src_screens_seasonreportpreview_seasonreportpreview",
+      "label": "SeasonReportPreview()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "seasonreportpreview()",
+      "source_file": "src/screens/SeasonReportPreview.tsx",
+      "source_location": "L21"
+    },
+    {
+      "id": "src_screens_seasonreportscreen_seasonreportdocument",
+      "label": "SeasonReportDocument()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "seasonreportdocument()",
+      "source_file": "src/screens/SeasonReportScreen.tsx",
+      "source_location": "L72"
+    },
+    {
+      "id": "src_services_seasonreport_buildseasonreport",
+      "label": "buildSeasonReport()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "buildseasonreport()",
+      "source_file": "src/services/seasonReport.ts",
+      "source_location": "L30"
+    },
+    {
+      "id": "src_services_seasonreport_combineseasonbundles",
+      "label": "combineSeasonBundles()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "combineseasonbundles()",
+      "source_file": "src/services/seasonReport.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "src_services_seasonreport_paginateseasonsections",
+      "label": "paginateSeasonSections()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "paginateseasonsections()",
+      "source_file": "src/services/seasonReport.ts",
+      "source_location": "L36"
+    },
+    {
       "id": "src_components_settings_teamaccess_expirylabel",
       "label": "expiryLabel()",
       "_callable": true,
@@ -9974,6 +9770,210 @@
       "source_location": "L59"
     },
     {
+      "id": "src_services_livegamesession_applyscoredelta",
+      "label": "applyScoreDelta()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "applyscoredelta()",
+      "source_file": "src/services/liveGameSession.ts",
+      "source_location": "L671"
+    },
+    {
+      "id": "src_services_scoringledger_isreturntouchdown",
+      "label": "isReturnTouchdown()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "isreturntouchdown()",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L81"
+    },
+    {
+      "id": "src_services_scoringledger_other",
+      "label": "other()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "other()",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L64"
+    },
+    {
+      "id": "src_services_scoringledger_scoringevents",
+      "label": "scoringEvents()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "scoringevents()",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L145"
+    },
+    {
+      "id": "src_services_scoringledger_scoringeventsforplay",
+      "label": "scoringEventsForPlay()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "scoringeventsforplay()",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L91"
+    },
+    {
+      "id": "src_services_scoringledger_spec_play",
+      "label": "play()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "play()",
+      "source_file": "src/services/scoringLedger.spec.ts",
+      "source_location": "L17"
+    },
+    {
+      "id": "src_services_scoringledger_totalscore",
+      "label": "totalScore()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "totalscore()",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L151"
+    },
+    {
+      "id": "src_services_tacklecredit_splittacklecredit",
+      "label": "splitTackleCredit()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "splittacklecredit()",
+      "source_file": "src/services/tackleCredit.ts",
+      "source_location": "L40"
+    },
+    {
+      "id": "src_services_tacklecredit_test_enginetotals",
+      "label": "engineTotals()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "enginetotals()",
+      "source_file": "src/services/tackleCredit.test.ts",
+      "source_location": "L36"
+    },
+    {
+      "id": "src_services_tacklecredit_test_splittackles",
+      "label": "splitTackles()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "splittackles()",
+      "source_file": "src/services/tackleCredit.test.ts",
+      "source_location": "L28"
+    },
+    {
+      "id": "src_services_tacklecredit_test_test",
+      "label": "test()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "test()",
+      "source_file": "src/services/tackleCredit.test.ts",
+      "source_location": "L54"
+    },
+    {
+      "id": "src_services_loosetags_test_alltagsforrole",
+      "label": "allTagsForRole()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "looseTags.test.ts",
+      "file_type": "code",
+      "norm_label": "alltagsforrole()",
+      "source_file": "src/services/looseTags.test.ts",
+      "source_location": "L33"
+    },
+    {
+      "id": "src_services_loosetags_test_test",
+      "label": "test()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "looseTags.test.ts",
+      "file_type": "code",
+      "norm_label": "test()",
+      "source_file": "src/services/looseTags.test.ts",
+      "source_location": "L54"
+    },
+    {
+      "id": "src_services_penaltystep_test_assertlandsonpenalty",
+      "label": "assertLandsOnPenalty()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "penaltyStep.test.ts",
+      "file_type": "code",
+      "norm_label": "assertlandsonpenalty()",
+      "source_file": "src/services/penaltyStep.test.ts",
+      "source_location": "L74"
+    },
+    {
+      "id": "src_services_penaltystep_test_buildsteps",
+      "label": "buildSteps()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "penaltyStep.test.ts",
+      "file_type": "code",
+      "norm_label": "buildsteps()",
+      "source_file": "src/services/penaltyStep.test.ts",
+      "source_location": "L19"
+    },
+    {
+      "id": "src_services_penaltystep_test_targetindex",
+      "label": "targetIndex()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "penaltyStep.test.ts",
+      "file_type": "code",
+      "norm_label": "targetindex()",
+      "source_file": "src/services/penaltyStep.test.ts",
+      "source_location": "L52"
+    },
+    {
+      "id": "src_services_penaltystep_test_test",
+      "label": "test()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "penaltyStep.test.ts",
+      "file_type": "code",
+      "norm_label": "test()",
+      "source_file": "src/services/penaltyStep.test.ts",
+      "source_location": "L60"
+    },
+    {
       "id": "src_services_playtransformer",
       "label": "playTransformer.ts",
       "_origin": "ast",
@@ -9993,28 +9993,6 @@
       "file_type": "code",
       "norm_label": "statauditrules.ts",
       "source_file": "src/services/statAuditRules.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_services_tacklecredit",
-      "label": "tackleCredit.ts",
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
-      "file_type": "code",
-      "norm_label": "tacklecredit.ts",
-      "source_file": "src/services/tackleCredit.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_services_tacklecredit_test",
-      "label": "tackleCredit.test.ts",
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "playTransformer.ts",
-      "file_type": "code",
-      "norm_label": "tacklecredit.test.ts",
-      "source_file": "src/services/tackleCredit.test.ts",
       "source_location": "L1"
     },
     {
@@ -10643,17 +10621,6 @@
       "source_location": "L44"
     },
     {
-      "id": "src_components_settings_joinwithcode",
-      "label": "JoinWithCode.tsx",
-      "_origin": "ast",
-      "community": 14,
-      "community_name": "SettingsScreen.tsx",
-      "file_type": "code",
-      "norm_label": "joinwithcode.tsx",
-      "source_file": "src/components/settings/JoinWithCode.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "src_screens_settingsscreen",
       "label": "SettingsScreen.tsx",
       "_origin": "ast",
@@ -10883,39 +10850,6 @@
       "norm_label": "opp_team_player",
       "source_file": "src/components/game/PlayEntryModal.tsx",
       "source_location": "L219"
-    },
-    {
-      "id": "src_components_game_yardreel",
-      "label": "YardReel.tsx",
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "yardreel.tsx",
-      "source_file": "src/components/game/YardReel.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_services_kickoffoutofbounds",
-      "label": "kickoffOutOfBounds.ts",
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "kickoffoutofbounds.ts",
-      "source_file": "src/services/kickoffOutOfBounds.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_services_kickoffoutofbounds_kickoff_out_of_bounds",
-      "label": "KICKOFF_OUT_OF_BOUNDS",
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "PlayEntryModal.tsx",
-      "file_type": "code",
-      "norm_label": "kickoff_out_of_bounds",
-      "source_file": "src/services/kickoffOutOfBounds.ts",
-      "source_location": "L4"
     },
     {
       "id": "claude_conventions",
@@ -11403,6 +11337,17 @@
       "source_location": "L1"
     },
     {
+      "id": "src_app_dashboardscreen",
+      "label": "DashboardScreen",
+      "_origin": "ast",
+      "community": 18,
+      "community_name": "react",
+      "file_type": "code",
+      "norm_label": "dashboardscreen",
+      "source_file": "src/App.tsx",
+      "source_location": "L35"
+    },
+    {
       "id": "src_app_gamescreen",
       "label": "GameScreen",
       "_origin": "ast",
@@ -11491,6 +11436,17 @@
       "source_location": "L1"
     },
     {
+      "id": "src_components_settings_joinwithcode",
+      "label": "JoinWithCode.tsx",
+      "_origin": "ast",
+      "community": 18,
+      "community_name": "react",
+      "file_type": "code",
+      "norm_label": "joinwithcode.tsx",
+      "source_file": "src/components/settings/JoinWithCode.tsx",
+      "source_location": "L1"
+    },
+    {
       "id": "src_errorboundary",
       "label": "ErrorBoundary.tsx",
       "_origin": "ast",
@@ -11555,39 +11511,6 @@
       "norm_label": "resetpasswordscreen.tsx",
       "source_file": "src/screens/ResetPasswordScreen.tsx",
       "source_location": "L1"
-    },
-    {
-      "id": "src_screens_seasonreportpreview",
-      "label": "SeasonReportPreview.tsx",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "react",
-      "file_type": "code",
-      "norm_label": "seasonreportpreview.tsx",
-      "source_file": "src/screens/SeasonReportPreview.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_screens_seasonreportpreview_program",
-      "label": "program",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "react",
-      "file_type": "code",
-      "norm_label": "program",
-      "source_file": "src/screens/SeasonReportPreview.tsx",
-      "source_location": "L20"
-    },
-    {
-      "id": "src_screens_seasonreportpreview_sections",
-      "label": "sections",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "react",
-      "file_type": "code",
-      "norm_label": "sections",
-      "source_file": "src/screens/SeasonReportPreview.tsx",
-      "source_location": "L5"
     },
     {
       "id": "src_screens_seasonreportscreen",
@@ -11744,26 +11667,26 @@
       "source_location": "L49"
     },
     {
-      "id": "src_services_seasonreport",
-      "label": "seasonReport.ts",
+      "id": "src_services_gamereportcolumns_spec",
+      "label": "gameReportColumns.spec.ts",
       "_origin": "ast",
       "community": 20,
       "community_name": "gameReport.ts",
       "file_type": "code",
-      "norm_label": "seasonreport.ts",
-      "source_file": "src/services/seasonReport.ts",
+      "norm_label": "gamereportcolumns.spec.ts",
+      "source_file": "src/services/gameReportColumns.spec.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_services_seasonreport_spec",
-      "label": "seasonReport.spec.ts",
+      "id": "ref_football_stats_engine",
+      "label": "football-stats-engine",
       "_origin": "ast",
       "community": 20,
       "community_name": "gameReport.ts",
-      "file_type": "code",
-      "norm_label": "seasonreport.spec.ts",
-      "source_file": "src/services/seasonReport.spec.ts",
-      "source_location": "L1"
+      "file_type": "concept",
+      "norm_label": "football-stats-engine",
+      "source_file": "package.json",
+      "source_location": "L14"
     },
     {
       "id": "src_hooks_useprogramcontext",
@@ -11918,17 +11841,6 @@
       "norm_label": "user",
       "source_file": "src/services/completeProgramJoin.spec.ts",
       "source_location": "L11"
-    },
-    {
-      "id": "src_services_offlinecache_cachekeys",
-      "label": "cacheKeys",
-      "_origin": "ast",
-      "community": 21,
-      "community_name": "useProgramContext.tsx",
-      "file_type": "code",
-      "norm_label": "cachekeys",
-      "source_file": "src/services/offlineCache.ts",
-      "source_location": "L27"
     },
     {
       "id": "src_components_game_types",
@@ -12314,6 +12226,17 @@
       "norm_label": "gamereportscreen",
       "source_file": "src/App.tsx",
       "source_location": "L49"
+    },
+    {
+      "id": "src_components_game_gamehomelink",
+      "label": "GameHomeLink.tsx",
+      "_origin": "ast",
+      "community": 24,
+      "community_name": "GameReportScreen.tsx",
+      "file_type": "code",
+      "norm_label": "gamehomelink.tsx",
+      "source_file": "src/components/game/GameHomeLink.tsx",
+      "source_location": "L1"
     },
     {
       "id": "src_screens_gamereportscreen",
@@ -13213,17 +13136,6 @@
       "source_location": "L58"
     },
     {
-      "id": "src_components_game_kneelentry",
-      "label": "KneelEntry.tsx",
-      "_origin": "ast",
-      "community": 28,
-      "community_name": "lucide-react",
-      "file_type": "code",
-      "norm_label": "kneelentry.tsx",
-      "source_file": "src/components/game/KneelEntry.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "src_components_game_passdefenderpicker",
       "label": "PassDefenderPicker.tsx",
       "_origin": "ast",
@@ -13268,14 +13180,14 @@
       "source_location": "L1"
     },
     {
-      "id": "src_components_game_quickkneel",
-      "label": "quickKneel.ts",
+      "id": "src_components_game_yardreel",
+      "label": "YardReel.tsx",
       "_origin": "ast",
       "community": 28,
       "community_name": "lucide-react",
       "file_type": "code",
-      "norm_label": "quickkneel.ts",
-      "source_file": "src/components/game/quickKneel.ts",
+      "norm_label": "yardreel.tsx",
+      "source_file": "src/components/game/YardReel.tsx",
       "source_location": "L1"
     },
     {
@@ -13620,37 +13532,48 @@
       "source_location": "L54"
     },
     {
-      "id": "src_services_kickreturntouchdown_spec",
-      "label": "kickReturnTouchdown.spec.ts",
+      "id": "src_services_driveresults",
+      "label": "driveResults.ts",
       "_origin": "ast",
       "community": 31,
       "community_name": "statsService.ts",
       "file_type": "code",
-      "norm_label": "kickreturntouchdown.spec.ts",
-      "source_file": "src/services/kickReturnTouchdown.spec.ts",
+      "norm_label": "driveresults.ts",
+      "source_file": "src/services/driveResults.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_services_kickspots",
-      "label": "kickSpots.ts",
+      "id": "src_services_driveresults_aftermath",
+      "label": "AFTERMATH",
       "_origin": "ast",
       "community": 31,
       "community_name": "statsService.ts",
       "file_type": "code",
-      "norm_label": "kickspots.ts",
-      "source_file": "src/services/kickSpots.ts",
-      "source_location": "L1"
+      "norm_label": "aftermath",
+      "source_file": "src/services/driveResults.ts",
+      "source_location": "L63"
     },
     {
-      "id": "src_services_kickspots_test",
-      "label": "kickSpots.test.ts",
+      "id": "src_services_driveresults_driveresult",
+      "label": "DriveResult",
       "_origin": "ast",
       "community": 31,
       "community_name": "statsService.ts",
       "file_type": "code",
-      "norm_label": "kickspots.test.ts",
-      "source_file": "src/services/kickSpots.test.ts",
-      "source_location": "L1"
+      "norm_label": "driveresult",
+      "source_file": "src/services/driveResults.ts",
+      "source_location": "L37"
+    },
+    {
+      "id": "src_services_driveresults_punt_types",
+      "label": "PUNT_TYPES",
+      "_origin": "ast",
+      "community": 31,
+      "community_name": "statsService.ts",
+      "file_type": "code",
+      "norm_label": "punt_types",
+      "source_file": "src/services/driveResults.ts",
+      "source_location": "L69"
     },
     {
       "id": "src_services_statsservice",
@@ -13840,81 +13763,15 @@
       "source_location": "L23"
     },
     {
-      "id": "src_components_game_playlog",
-      "label": "PlayLog.tsx",
+      "id": "src_components_game_scoreboard",
+      "label": "Scoreboard.tsx",
       "_origin": "ast",
       "community": 33,
       "community_name": "UiPreview.tsx",
       "file_type": "code",
-      "norm_label": "playlog.tsx",
-      "source_file": "src/components/game/PlayLog.tsx",
+      "norm_label": "scoreboard.tsx",
+      "source_file": "src/components/game/Scoreboard.tsx",
       "source_location": "L1"
-    },
-    {
-      "id": "src_components_game_playlog_filters",
-      "label": "FILTERS",
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "filters",
-      "source_file": "src/components/game/PlayLog.tsx",
-      "source_location": "L25"
-    },
-    {
-      "id": "src_components_game_playlog_kicking_types",
-      "label": "KICKING_TYPES",
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "kicking_types",
-      "source_file": "src/components/game/PlayLog.tsx",
-      "source_location": "L13"
-    },
-    {
-      "id": "src_components_game_playlog_play_icon_colors",
-      "label": "PLAY_ICON_COLORS",
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "play_icon_colors",
-      "source_file": "src/components/game/PlayLog.tsx",
-      "source_location": "L61"
-    },
-    {
-      "id": "src_components_game_playlog_play_icons",
-      "label": "PLAY_ICONS",
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "play_icons",
-      "source_file": "src/components/game/PlayLog.tsx",
-      "source_location": "L44"
-    },
-    {
-      "id": "src_components_game_quarterchangerow",
-      "label": "QuarterChangeRow.tsx",
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "quarterchangerow.tsx",
-      "source_file": "src/components/game/QuarterChangeRow.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_components_game_types_team_jersey",
-      "label": "TEAM_JERSEY",
-      "_origin": "ast",
-      "community": 33,
-      "community_name": "UiPreview.tsx",
-      "file_type": "code",
-      "norm_label": "team_jersey",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L124"
     },
     {
       "id": "src_screens_uipreview",
@@ -14170,11 +14027,44 @@
       "source_location": "L1"
     },
     {
+      "id": "src_components_game_fieldvisualizer",
+      "label": "FieldVisualizer.tsx",
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "fieldvisualizer.tsx",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_components_game_fieldvisualizer_five_yard_lines",
+      "label": "FIVE_YARD_LINES",
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "five_yard_lines",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L38"
+    },
+    {
+      "id": "src_components_game_fieldvisualizer_yard_numbers",
+      "label": "YARD_NUMBERS",
+      "_origin": "ast",
+      "community": 37,
+      "community_name": "FieldVisualizer.tsx",
+      "file_type": "code",
+      "norm_label": "yard_numbers",
+      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "source_location": "L35"
+    },
+    {
       "id": "src_components_game_quickactions",
       "label": "QuickActions.tsx",
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "quickactions.tsx",
       "source_file": "src/components/game/QuickActions.tsx",
@@ -14185,7 +14075,7 @@
       "label": "FAST_PATH_COLS",
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "fast_path_cols",
       "source_file": "src/components/game/QuickActions.tsx",
@@ -14196,29 +14086,18 @@
       "label": "PHASE_TABS",
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "phase_tabs",
       "source_file": "src/components/game/QuickActions.tsx",
       "source_location": "L83"
     },
     {
-      "id": "src_components_game_scoreboard",
-      "label": "Scoreboard.tsx",
-      "_origin": "ast",
-      "community": 37,
-      "community_name": "QuickActions.tsx",
-      "file_type": "code",
-      "norm_label": "scoreboard.tsx",
-      "source_file": "src/components/game/Scoreboard.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "src_utils_teamcolor",
       "label": "teamColor.ts",
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "teamcolor.ts",
       "source_file": "src/utils/teamColor.ts",
@@ -14229,7 +14108,7 @@
       "label": "teamColor.test.ts",
       "_origin": "ast",
       "community": 37,
-      "community_name": "QuickActions.tsx",
+      "community_name": "FieldVisualizer.tsx",
       "file_type": "code",
       "norm_label": "teamcolor.test.ts",
       "source_file": "src/utils/teamColor.test.ts",
@@ -14302,17 +14181,6 @@
       "source_location": "L48"
     },
     {
-      "id": "src_components_game_gamehomelink",
-      "label": "GameHomeLink.tsx",
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "gamehomelink.tsx",
-      "source_file": "src/components/game/GameHomeLink.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "src_screens_boxscorescreen",
       "label": "BoxScoreScreen.tsx",
       "_origin": "ast",
@@ -14344,28 +14212,6 @@
       "norm_label": "unit_groups",
       "source_file": "src/screens/BoxScoreScreen.tsx",
       "source_location": "L72"
-    },
-    {
-      "id": "src_services_scoringledger",
-      "label": "scoringLedger.ts",
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "scoringledger.ts",
-      "source_file": "src/services/scoringLedger.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_services_scoringledger_spec",
-      "label": "scoringLedger.spec.ts",
-      "_origin": "ast",
-      "community": 39,
-      "community_name": "BoxScoreScreen.tsx",
-      "file_type": "code",
-      "norm_label": "scoringledger.spec.ts",
-      "source_file": "src/services/scoringLedger.spec.ts",
-      "source_location": "L1"
     },
     {
       "id": "github_prompts_ui_ux_pro_max_scripts_design_system_rationale_123",
@@ -14456,58 +14302,25 @@
       "source_location": "L89"
     },
     {
-      "id": "src_components_game_fieldvisualizer",
-      "label": "FieldVisualizer.tsx",
+      "id": "src_components_game_kneelentry",
+      "label": "KneelEntry.tsx",
       "_origin": "ast",
       "community": 40,
       "community_name": "FlowPreview.tsx",
       "file_type": "code",
-      "norm_label": "fieldvisualizer.tsx",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
+      "norm_label": "kneelentry.tsx",
+      "source_file": "src/components/game/KneelEntry.tsx",
       "source_location": "L1"
     },
     {
-      "id": "src_components_game_fieldvisualizer_five_yard_lines",
-      "label": "FIVE_YARD_LINES",
+      "id": "src_components_game_quickkneel",
+      "label": "quickKneel.ts",
       "_origin": "ast",
       "community": 40,
       "community_name": "FlowPreview.tsx",
       "file_type": "code",
-      "norm_label": "five_yard_lines",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L38"
-    },
-    {
-      "id": "src_components_game_fieldvisualizer_yard_numbers",
-      "label": "YARD_NUMBERS",
-      "_origin": "ast",
-      "community": 40,
-      "community_name": "FlowPreview.tsx",
-      "file_type": "code",
-      "norm_label": "yard_numbers",
-      "source_file": "src/components/game/FieldVisualizer.tsx",
-      "source_location": "L35"
-    },
-    {
-      "id": "src_components_game_playrowdetails",
-      "label": "PlayRowDetails.tsx",
-      "_origin": "ast",
-      "community": 40,
-      "community_name": "FlowPreview.tsx",
-      "file_type": "code",
-      "norm_label": "playrowdetails.tsx",
-      "source_file": "src/components/game/PlayRowDetails.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_components_game_playrowdetails_spec",
-      "label": "PlayRowDetails.spec.ts",
-      "_origin": "ast",
-      "community": 40,
-      "community_name": "FlowPreview.tsx",
-      "file_type": "code",
-      "norm_label": "playrowdetails.spec.ts",
-      "source_file": "src/components/game/PlayRowDetails.spec.ts",
+      "norm_label": "quickkneel.ts",
+      "source_file": "src/components/game/quickKneel.ts",
       "source_location": "L1"
     },
     {
@@ -15501,54 +15314,43 @@
       "label": "badSnap.test.ts",
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
       "norm_label": "badsnap.test.ts",
       "source_file": "src/services/badSnap.test.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_services_loosetags_test",
-      "label": "looseTags.test.ts",
+      "id": "src_services_kickreturntouchdown_spec",
+      "label": "kickReturnTouchdown.spec.ts",
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
-      "norm_label": "loosetags.test.ts",
-      "source_file": "src/services/looseTags.test.ts",
+      "norm_label": "kickreturntouchdown.spec.ts",
+      "source_file": "src/services/kickReturnTouchdown.spec.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_services_mergequeuedplays",
-      "label": "mergeQueuedPlays.ts",
+      "id": "src_services_kickspots",
+      "label": "kickSpots.ts",
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
-      "norm_label": "mergequeuedplays.ts",
-      "source_file": "src/services/mergeQueuedPlays.ts",
+      "norm_label": "kickspots.ts",
+      "source_file": "src/services/kickSpots.ts",
       "source_location": "L1"
     },
     {
-      "id": "src_services_mergequeuedplays_test",
-      "label": "mergeQueuedPlays.test.ts",
+      "id": "src_services_kickspots_test",
+      "label": "kickSpots.test.ts",
       "_origin": "ast",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "file_type": "code",
-      "norm_label": "mergequeuedplays.test.ts",
-      "source_file": "src/services/mergeQueuedPlays.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_services_penaltystep_test",
-      "label": "penaltyStep.test.ts",
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "ref_node_assert",
-      "file_type": "code",
-      "norm_label": "penaltystep.test.ts",
-      "source_file": "src/services/penaltyStep.test.ts",
+      "norm_label": "kickspots.test.ts",
+      "source_file": "src/services/kickSpots.test.ts",
       "source_location": "L1"
     },
     {
@@ -15759,6 +15561,28 @@
       "norm_label": "rfc-4180",
       "source_file": "src/services/csvExport.ts",
       "source_location": "L9"
+    },
+    {
+      "id": "src_services_kickoffoutofbounds",
+      "label": "kickoffOutOfBounds.ts",
+      "_origin": "ast",
+      "community": 59,
+      "community_name": "kickoffOutOfBounds.ts",
+      "file_type": "code",
+      "norm_label": "kickoffoutofbounds.ts",
+      "source_file": "src/services/kickoffOutOfBounds.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_kickoffoutofbounds_kickoff_out_of_bounds",
+      "label": "KICKOFF_OUT_OF_BOUNDS",
+      "_origin": "ast",
+      "community": 59,
+      "community_name": "kickoffOutOfBounds.ts",
+      "file_type": "code",
+      "norm_label": "kickoff_out_of_bounds",
+      "source_file": "src/services/kickoffOutOfBounds.ts",
+      "source_location": "L4"
     },
     {
       "id": "package",
@@ -16366,50 +16190,6 @@
       "source_location": "L51"
     },
     {
-      "id": "src_components_game_types_team_player_id",
-      "label": "TEAM_PLAYER_ID",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "team_player_id",
-      "source_file": "src/components/game/types.ts",
-      "source_location": "L120"
-    },
-    {
-      "id": "src_services_badsnap_spec",
-      "label": "badSnap.spec.ts",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "badsnap.spec.ts",
-      "source_file": "src/services/badSnap.spec.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_services_badsnap_spec_bad_snap",
-      "label": "BAD_SNAP",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "bad_snap",
-      "source_file": "src/services/badSnap.spec.ts",
-      "source_location": "L84"
-    },
-    {
-      "id": "src_services_gamereportcolumns_spec",
-      "label": "gameReportColumns.spec.ts",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "code",
-      "norm_label": "gamereportcolumns.spec.ts",
-      "source_file": "src/services/gameReportColumns.spec.ts",
-      "source_location": "L1"
-    },
-    {
       "id": "src_services_highschoolsacks_spec",
       "label": "highSchoolSacks.spec.ts",
       "_origin": "ast",
@@ -16518,17 +16298,6 @@
       "norm_label": "two_pt_db",
       "source_file": "src/services/liveVsPostgame.spec.ts",
       "source_location": "L280"
-    },
-    {
-      "id": "ref_football_stats_engine",
-      "label": "football-stats-engine",
-      "_origin": "ast",
-      "community": 62,
-      "community_name": "liveVsPostgame.spec.ts",
-      "file_type": "concept",
-      "norm_label": "football-stats-engine",
-      "source_file": "package.json",
-      "source_location": "L14"
     },
     {
       "id": "src_components_roster_pendingplayerssheet",
@@ -17101,55 +16870,11 @@
       "source_location": ""
     },
     {
-      "id": "src_services_driveresults",
-      "label": "driveResults.ts",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "driveresults.ts",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "src_services_driveresults_aftermath",
-      "label": "AFTERMATH",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "aftermath",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L63"
-    },
-    {
-      "id": "src_services_driveresults_driveresult",
-      "label": "DriveResult",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "driveresult",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L37"
-    },
-    {
-      "id": "src_services_driveresults_punt_types",
-      "label": "PUNT_TYPES",
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "driveResults.ts",
-      "file_type": "code",
-      "norm_label": "punt_types",
-      "source_file": "src/services/driveResults.ts",
-      "source_location": "L69"
-    },
-    {
       "id": "src_services_driveresults_test",
       "label": "driveResults.test.ts",
       "_origin": "ast",
       "community": 8,
-      "community_name": "driveResults.ts",
+      "community_name": "driveResults.test.ts",
       "file_type": "code",
       "norm_label": "driveresults.test.ts",
       "source_file": "src/services/driveResults.test.ts",
@@ -17233,17 +16958,6 @@
       "source_location": "L1"
     },
     {
-      "id": "src_app_dashboardscreen",
-      "label": "DashboardScreen",
-      "_origin": "ast",
-      "community": 87,
-      "community_name": "DashboardScreen.tsx",
-      "file_type": "code",
-      "norm_label": "dashboardscreen",
-      "source_file": "src/App.tsx",
-      "source_location": "L35"
-    },
-    {
       "id": "src_screens_dashboardscreen",
       "label": "DashboardScreen.tsx",
       "_origin": "ast",
@@ -17263,6 +16977,160 @@
       "file_type": "code",
       "norm_label": "offlinecache.ts",
       "source_file": "src/services/offlineCache.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_components_game_playlog",
+      "label": "PlayLog.tsx",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "playlog.tsx",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_components_game_playlog_filters",
+      "label": "FILTERS",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "filters",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L25"
+    },
+    {
+      "id": "src_components_game_playlog_kicking_types",
+      "label": "KICKING_TYPES",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "kicking_types",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L13"
+    },
+    {
+      "id": "src_components_game_playlog_play_icon_colors",
+      "label": "PLAY_ICON_COLORS",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "play_icon_colors",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L61"
+    },
+    {
+      "id": "src_components_game_playlog_play_icons",
+      "label": "PLAY_ICONS",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "play_icons",
+      "source_file": "src/components/game/PlayLog.tsx",
+      "source_location": "L44"
+    },
+    {
+      "id": "src_components_game_playrowdetails",
+      "label": "PlayRowDetails.tsx",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "playrowdetails.tsx",
+      "source_file": "src/components/game/PlayRowDetails.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_components_game_playrowdetails_spec",
+      "label": "PlayRowDetails.spec.ts",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "playrowdetails.spec.ts",
+      "source_file": "src/components/game/PlayRowDetails.spec.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_components_game_quarterchangerow",
+      "label": "QuarterChangeRow.tsx",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "quarterchangerow.tsx",
+      "source_file": "src/components/game/QuarterChangeRow.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_components_game_types_team_jersey",
+      "label": "TEAM_JERSEY",
+      "_origin": "ast",
+      "community": 88,
+      "community_name": "PlayLog.tsx",
+      "file_type": "code",
+      "norm_label": "team_jersey",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L124"
+    },
+    {
+      "id": "src_components_game_types_team_player_id",
+      "label": "TEAM_PLAYER_ID",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "team_player_id",
+      "source_file": "src/components/game/types.ts",
+      "source_location": "L120"
+    },
+    {
+      "id": "src_services_badsnap_spec",
+      "label": "badSnap.spec.ts",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "badsnap.spec.ts",
+      "source_file": "src/services/badSnap.spec.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_badsnap_spec_bad_snap",
+      "label": "BAD_SNAP",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "bad_snap",
+      "source_file": "src/services/badSnap.spec.ts",
+      "source_location": "L84"
+    },
+    {
+      "id": "src_services_mergequeuedplays",
+      "label": "mergeQueuedPlays.ts",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "mergequeuedplays.ts",
+      "source_file": "src/services/mergeQueuedPlays.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_mergequeuedplays_test",
+      "label": "mergeQueuedPlays.test.ts",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "PlayWithPlayers",
+      "file_type": "code",
+      "norm_label": "mergequeuedplays.test.ts",
+      "source_file": "src/services/mergeQueuedPlays.test.ts",
       "source_location": "L1"
     },
     {
@@ -17310,6 +17178,61 @@
       "source_location": "L243"
     },
     {
+      "id": "src_screens_seasonreportpreview",
+      "label": "SeasonReportPreview.tsx",
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "seasonreportpreview.tsx",
+      "source_file": "src/screens/SeasonReportPreview.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_screens_seasonreportpreview_program",
+      "label": "program",
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "program",
+      "source_file": "src/screens/SeasonReportPreview.tsx",
+      "source_location": "L20"
+    },
+    {
+      "id": "src_screens_seasonreportpreview_sections",
+      "label": "sections",
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "sections",
+      "source_file": "src/screens/SeasonReportPreview.tsx",
+      "source_location": "L5"
+    },
+    {
+      "id": "src_services_seasonreport",
+      "label": "seasonReport.ts",
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "seasonreport.ts",
+      "source_file": "src/services/seasonReport.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_seasonreport_spec",
+      "label": "seasonReport.spec.ts",
+      "_origin": "ast",
+      "community": 90,
+      "community_name": "seasonReport.ts",
+      "file_type": "code",
+      "norm_label": "seasonreport.spec.ts",
+      "source_file": "src/services/seasonReport.spec.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "src_components_settings_teamaccess",
       "label": "TeamAccess.tsx",
       "_origin": "ast",
@@ -17354,6 +17277,17 @@
       "source_location": "L76"
     },
     {
+      "id": "src_services_offlinecache_cachekeys",
+      "label": "cacheKeys",
+      "_origin": "ast",
+      "community": 91,
+      "community_name": "supabase.ts",
+      "file_type": "code",
+      "norm_label": "cachekeys",
+      "source_file": "src/services/offlineCache.ts",
+      "source_location": "L27"
+    },
+    {
       "id": "ref_supabase_supabase_js",
       "label": "@supabase/supabase-js",
       "_origin": "ast",
@@ -17363,6 +17297,72 @@
       "norm_label": "@supabase/supabase-js",
       "source_file": "package.json",
       "source_location": "L13"
+    },
+    {
+      "id": "src_services_scoringledger",
+      "label": "scoringLedger.ts",
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "scoringledger.ts",
+      "source_file": "src/services/scoringLedger.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_scoringledger_spec",
+      "label": "scoringLedger.spec.ts",
+      "_origin": "ast",
+      "community": 92,
+      "community_name": "scoringLedger.ts",
+      "file_type": "code",
+      "norm_label": "scoringledger.spec.ts",
+      "source_file": "src/services/scoringLedger.spec.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_tacklecredit",
+      "label": "tackleCredit.ts",
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "tacklecredit.ts",
+      "source_file": "src/services/tackleCredit.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_tacklecredit_test",
+      "label": "tackleCredit.test.ts",
+      "_origin": "ast",
+      "community": 93,
+      "community_name": "splitTackleCredit",
+      "file_type": "code",
+      "norm_label": "tacklecredit.test.ts",
+      "source_file": "src/services/tackleCredit.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_loosetags_test",
+      "label": "looseTags.test.ts",
+      "_origin": "ast",
+      "community": 94,
+      "community_name": "looseTags.test.ts",
+      "file_type": "code",
+      "norm_label": "loosetags.test.ts",
+      "source_file": "src/services/looseTags.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_services_penaltystep_test",
+      "label": "penaltyStep.test.ts",
+      "_origin": "ast",
+      "community": 95,
+      "community_name": "penaltyStep.test.ts",
+      "file_type": "code",
+      "norm_label": "penaltystep.test.ts",
+      "source_file": "src/services/penaltyStep.test.ts",
+      "source_location": "L1"
     },
     {
       "id": "database_schema",
@@ -17782,6 +17782,18 @@
       "type": "external"
     },
     {
+      "id": "src_screens_livebroadcast",
+      "label": "src_screens_livebroadcast",
+      "_origin": "semantic",
+      "community": 33,
+      "community_name": "UiPreview.tsx",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "src_screens_livebroadcast",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "collections",
       "label": "collections",
       "_origin": "semantic",
@@ -17854,18 +17866,6 @@
       "type": "external"
     },
     {
-      "id": "src_screens_livebroadcast",
-      "label": "src_screens_livebroadcast",
-      "_origin": "semantic",
-      "community": 37,
-      "community_name": "QuickActions.tsx",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "src_screens_livebroadcast",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "datetime",
       "label": "datetime",
       "_origin": "semantic",
@@ -17906,7 +17906,7 @@
       "label": "ref_node_assert",
       "_origin": "semantic",
       "community": 54,
-      "community_name": "ref_node_assert",
+      "community_name": "resolveKickSpots",
       "external": true,
       "file_type": "concept",
       "norm_label": "ref_node_assert",
@@ -20144,7 +20144,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1002",
+      "source_location": "L1013",
       "weight": 1.0
     },
     {
@@ -20156,7 +20156,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1003",
+      "source_location": "L1014",
       "weight": 1.0
     },
     {
@@ -20168,7 +20168,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1009",
+      "source_location": "L1020",
       "weight": 1.0
     },
     {
@@ -20180,7 +20180,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1013",
+      "source_location": "L1024",
       "weight": 1.0
     },
     {
@@ -20192,7 +20192,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1026",
+      "source_location": "L1037",
       "weight": 1.0
     },
     {
@@ -20204,7 +20204,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1027",
+      "source_location": "L1038",
       "weight": 1.0
     },
     {
@@ -20216,7 +20216,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1044",
+      "source_location": "L1055",
       "weight": 1.0
     },
     {
@@ -20228,7 +20228,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1102",
+      "source_location": "L1113",
       "weight": 1.0
     },
     {
@@ -20240,7 +20240,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1123",
+      "source_location": "L1134",
       "weight": 1.0
     },
     {
@@ -20252,7 +20252,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1204",
+      "source_location": "L1215",
       "weight": 1.0
     },
     {
@@ -20264,7 +20264,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1218",
+      "source_location": "L1229",
       "weight": 1.0
     },
     {
@@ -20276,7 +20276,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1236",
+      "source_location": "L1247",
       "weight": 1.0
     },
     {
@@ -20288,7 +20288,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1264",
+      "source_location": "L1275",
       "weight": 1.0
     },
     {
@@ -20300,7 +20300,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1280",
+      "source_location": "L1291",
       "weight": 1.0
     },
     {
@@ -20312,7 +20312,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1288",
+      "source_location": "L1299",
       "weight": 1.0
     },
     {
@@ -20324,7 +20324,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1293",
+      "source_location": "L1304",
       "weight": 1.0
     },
     {
@@ -20336,7 +20336,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1323",
+      "source_location": "L1334",
       "weight": 1.0
     },
     {
@@ -20348,7 +20348,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1332",
+      "source_location": "L1343",
       "weight": 1.0
     },
     {
@@ -20360,7 +20360,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1384",
+      "source_location": "L1395",
       "weight": 1.0
     },
     {
@@ -20372,7 +20372,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1420",
+      "source_location": "L1431",
       "weight": 1.0
     },
     {
@@ -20384,7 +20384,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1468",
+      "source_location": "L1479",
       "weight": 1.0
     },
     {
@@ -20396,7 +20396,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1513",
+      "source_location": "L1524",
       "weight": 1.0
     },
     {
@@ -20408,7 +20408,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1759",
+      "source_location": "L1770",
       "weight": 1.0
     },
     {
@@ -20420,7 +20420,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1820",
+      "source_location": "L1831",
       "weight": 1.0
     },
     {
@@ -20432,7 +20432,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1831",
+      "source_location": "L1842",
       "weight": 1.0
     },
     {
@@ -20444,7 +20444,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2159",
+      "source_location": "L2170",
       "weight": 1.0
     },
     {
@@ -20456,7 +20456,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2163",
+      "source_location": "L2174",
       "weight": 1.0
     },
     {
@@ -20468,7 +20468,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2196",
+      "source_location": "L2207",
       "weight": 1.0
     },
     {
@@ -20480,7 +20480,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2390",
+      "source_location": "L2401",
       "weight": 1.0
     },
     {
@@ -20492,7 +20492,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2413",
+      "source_location": "L2424",
       "weight": 1.0
     },
     {
@@ -20504,7 +20504,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2423",
+      "source_location": "L2434",
       "weight": 1.0
     },
     {
@@ -20516,7 +20516,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2444",
+      "source_location": "L2455",
       "weight": 1.0
     },
     {
@@ -20528,7 +20528,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2545",
+      "source_location": "L2561",
       "weight": 1.0
     },
     {
@@ -20540,7 +20540,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L2659",
+      "source_location": "L2675",
       "weight": 1.0
     },
     {
@@ -20653,6 +20653,30 @@
     },
     {
       "source": "src_screens_gamescreen_gamescreen",
+      "target": "src_services_offlinedb_getunsyncedforgame",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src/screens/GameScreen.tsx",
+      "source_location": "L405",
+      "weight": 1.0
+    },
+    {
+      "source": "src_screens_gamescreen_gamescreen",
+      "target": "src_services_offlinedb_setmeta",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "src/screens/GameScreen.tsx",
+      "source_location": "L411",
+      "weight": 1.0
+    },
+    {
+      "source": "src_screens_gamescreen_gamescreen",
       "target": "src_screens_gamescreen_parseclocktext",
       "relation": "calls",
       "_origin": "ast",
@@ -20660,7 +20684,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L452",
+      "source_location": "L459",
       "weight": 1.0
     },
     {
@@ -20672,7 +20696,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L496",
+      "source_location": "L503",
       "weight": 1.0
     },
     {
@@ -20684,7 +20708,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L506",
+      "source_location": "L513",
       "weight": 1.0
     },
     {
@@ -20696,7 +20720,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L508",
+      "source_location": "L515",
       "weight": 1.0
     },
     {
@@ -20708,7 +20732,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L511",
+      "source_location": "L518",
       "weight": 1.0
     },
     {
@@ -20720,7 +20744,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L520",
+      "source_location": "L527",
       "weight": 1.0
     },
     {
@@ -20732,7 +20756,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L540",
+      "source_location": "L547",
       "weight": 1.0
     },
     {
@@ -20744,7 +20768,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L558",
+      "source_location": "L565",
       "weight": 1.0
     },
     {
@@ -20756,7 +20780,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L559",
+      "source_location": "L566",
       "weight": 1.0
     },
     {
@@ -20768,7 +20792,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L573",
+      "source_location": "L580",
       "weight": 1.0
     },
     {
@@ -20780,19 +20804,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L617",
-      "weight": 1.0
-    },
-    {
-      "source": "src_screens_gamescreen_gamescreen",
-      "target": "src_services_offlinedb_getunsyncedforgame",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L630",
+      "source_location": "L624",
       "weight": 1.0
     },
     {
@@ -20804,7 +20816,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L636",
+      "source_location": "L643",
       "weight": 1.0
     },
     {
@@ -20816,7 +20828,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L676",
+      "source_location": "L683",
       "weight": 1.0
     },
     {
@@ -20828,7 +20840,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L710",
+      "source_location": "L717",
       "weight": 1.0
     },
     {
@@ -20840,7 +20852,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L711",
+      "source_location": "L718",
       "weight": 1.0
     },
     {
@@ -20852,7 +20864,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L848",
+      "source_location": "L855",
       "weight": 1.0
     },
     {
@@ -20864,7 +20876,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L910",
+      "source_location": "L917",
       "weight": 1.0
     },
     {
@@ -20876,7 +20888,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L926",
+      "source_location": "L933",
       "weight": 1.0
     },
     {
@@ -20888,7 +20900,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L927",
+      "source_location": "L934",
       "weight": 1.0
     },
     {
@@ -20900,7 +20912,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L933",
+      "source_location": "L940",
       "weight": 1.0
     },
     {
@@ -20912,7 +20924,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L940",
+      "source_location": "L947",
       "weight": 1.0
     },
     {
@@ -32276,6 +32288,18 @@
     {
       "source": "src_screens_gamescreen",
       "target": "src_services_offlinedb_getunsyncedforgame",
+      "relation": "imports",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "src/screens/GameScreen.tsx",
+      "source_location": "L69",
+      "weight": 1.0
+    },
+    {
+      "source": "src_screens_gamescreen",
+      "target": "src_services_offlinedb_setmeta",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -58997,7 +59021,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L1742",
+      "source_location": "L1753",
       "weight": 1.0
     },
     {
@@ -59009,7 +59033,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "src/screens/GameScreen.tsx",
-      "source_location": "L708",
+      "source_location": "L715",
       "weight": 1.0
     },
     {
@@ -59628,5 +59652,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "4e016d1942250e37e79ccb319b0af56b4af84a50"
+  "built_at_commit": "4b1777fea949f110ab5b71e4f790f029191878c8"
 }
