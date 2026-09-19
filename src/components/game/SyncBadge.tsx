@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Cloud, CloudOff, RefreshCw, AlertTriangle } from "lucide-react";
-import { subscribeSyncStatus, drainQueue, type SyncStatus } from "@/services/syncWorker";
+import { subscribeSyncStatus, type SyncStatus } from "@/services/syncWorker";
+import SyncDetails from "./SyncDetails";
 
 interface Props {
   gameId: string | null;
@@ -13,7 +14,7 @@ interface Props {
 const NAG_AFTER_MS = 60_000;
 
 /**
- * Compact sync indicator + manual "Sync Now" trigger.
+ * Compact sync indicator. Opens details before the operator chooses to retry.
  * - Green cloud    → online and queue is empty
  * - Amber spinning → currently draining
  * - Amber          → pending, but recently so
@@ -21,6 +22,8 @@ const NAG_AFTER_MS = 60_000;
  * - Red triangle   → the drain gave up; these plays are not on the server
  */
 export default function SyncBadge({ gameId }: Props) {
+  const [showDetails, setShowDetails] = useState(false);
+  const closeDetails = useCallback(() => setShowDetails(false), []);
   const [status, setStatus] = useState<SyncStatus>({
     online: navigator.onLine,
     draining: false,
@@ -44,14 +47,7 @@ export default function SyncBadge({ gameId }: Props) {
     return () => clearInterval(id);
   }, [waiting]);
 
-  const onClick = async () => {
-    if (!gameId) return;
-    if (!navigator.onLine) return;
-    // Tapping the badge while it is complaining about stuck ops has to retry
-    // THOSE ops. It used to call a drain that could not select them, so the
-    // one control offered for the problem did nothing.
-    await drainQueue(gameId, { includeStuck: status.stuck > 0 });
-  };
+  const onClick = () => setShowDetails(true);
 
   const isOffline = !status.online;
   const hasPending = status.pending > 0;
@@ -78,8 +74,8 @@ export default function SyncBadge({ gameId }: Props) {
     cls = RED;
     pulse = true;
     title =
-      `${status.stuck} ${status.stuck === 1 ? "play is" : "plays are"} not on the server ` +
-      `and retrying has stopped helping. They are still saved on this device. ` +
+      `${status.stuck} saved ${status.stuck === 1 ? "change needs" : "changes need"} attention. ` +
+      `They are still saved on this device. ` +
       (status.lastError ? `Last error: ${status.lastError}` : "");
   } else if (status.draining) {
     icon = <RefreshCw className="w-3.5 h-3.5 animate-spin" />;
@@ -91,7 +87,7 @@ export default function SyncBadge({ gameId }: Props) {
     label = hasPending ? `Off · ${status.pending}` : "Offline";
     cls = RED;
     title = hasPending
-      ? `Offline. ${status.pending} plays queued — will sync when you reconnect.`
+      ? `Offline. ${status.pending} changes queued — will sync when you reconnect.`
       : "Offline. Plays save locally and sync when you reconnect.";
   } else if (hasPending) {
     icon = overdue ? <AlertTriangle className="w-3.5 h-3.5" /> : <RefreshCw className="w-3.5 h-3.5" />;
@@ -99,28 +95,27 @@ export default function SyncBadge({ gameId }: Props) {
     cls = overdue ? RED : AMBER;
     pulse = overdue;
     title = overdue
-      ? `${status.pending} plays have been waiting over a minute. They are saved on this ` +
-        `device and still in the play log — but they are not on the server yet. Tap to retry.`
-      : `${status.pending} plays waiting to sync. Tap to sync now.`;
+      ? `${status.pending} changes have been waiting over a minute. They are saved on this device.`
+      : `${status.pending} changes waiting to sync.`;
   }
 
   /* "Synced" says nothing the green cloud does not, and it costs ~40px of a
      375px header. Every other state carries a COUNT, which the icon cannot
      show, so those keep their label at every width. */
   const labelEarnsItsWidth = status.draining || isOffline || hasPending || hasStuck;
-  const disabled = status.draining || (!status.online && !hasPending && !hasStuck);
 
   return (
+    <>
     <button
       onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] font-display font-bold uppercase tracking-wider transition-colors ${cls} ${
-        disabled ? "" : "cursor-pointer"
-      } ${pulse ? "animate-pulse" : ""}`}
+      title={`${title} Tap to view sync details.`}
+      aria-label={`${label}. View sync details`}
+      className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] font-display font-bold uppercase tracking-wider transition-colors cursor-pointer ${cls} ${pulse ? "animate-pulse" : ""}`}
     >
       {icon}
       <span className={labelEarnsItsWidth ? undefined : "hidden lg:inline"}>{label}</span>
     </button>
+    {showDetails && <SyncDetails gameId={gameId} onClose={closeDetails} />}
+    </>
   );
 }

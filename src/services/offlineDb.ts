@@ -459,6 +459,21 @@ export async function getUnsyncedForGame(gameId: string): Promise<SyncQueueItem[
   return [...all, ...orphaned].sort((a, b) => a.createdAt - b.createdAt);
 }
 
+/** Read the same device-wide queue counted by the badge, including other games. */
+export async function getSyncDetails() {
+  if (!isOfflineSupported()) return [];
+  const db = await getDb();
+  const items = await db.getAll("sync_queue");
+  return Promise.all(items.sort((a, b) => a.createdAt - b.createdAt).map(async item => {
+    const [play, game] = await Promise.all([
+      db.get("plays_cache", item.playId),
+      db.get("meta", `cache:game:${item.gameId}`),
+    ]);
+    const info = game?.value as { opponent?: { name?: string }; game_date?: string } | undefined;
+    return { item, play, opponent: info?.opponent?.name, date: info?.game_date };
+  }));
+}
+
 /**
  * What the drain is allowed to pick up.
  *
