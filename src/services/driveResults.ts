@@ -106,6 +106,7 @@ function possessionRuns(plays: DriveResultPlay[]): DriveResultPlay[][] {
   let current: DriveResultPlay[] | null = null;
   let last: "us" | "them" | null = null;
   for (const play of plays) {
+    if (play.playType === "quarter_change") continue;
     if (!current || play.possession !== last) {
       current = [];
       runs.push(current);

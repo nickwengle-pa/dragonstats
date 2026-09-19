@@ -1337,6 +1337,9 @@ export default function PostGameReview() {
               </thead>
               <tbody>
                 {visiblePlays.map((p) => {
+                  if (p.play_type === "quarter_change") return <tr key={p.id} className="border-b border-amber-500/30 bg-amber-500/10">
+                    <td colSpan={16} className="px-3 py-3 font-semibold">{p.description} <span className="ml-3 text-surface-muted font-normal">{p.clock}</span></td>
+                  </tr>;
                   const c = charting[p.id];
                   const charted = hasChartingDetail(c);
                   const unit = unitFor(p);

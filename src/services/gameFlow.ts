@@ -366,7 +366,7 @@ export function advanceSituationAfterPlay(
   if (["kickoff", "onside_kick"].includes(play.type) && (outOfBoundsChoice === "rekick" || outOfBoundsChoice === "take_35")) {
     return kickoffOutOfBoundsSituation(before, outOfBoundsChoice, config.first_down_distance);
   }
-  if (play.type === "timeout") {
+  if (play.type === "timeout" || play.type === "quarter_change") {
     return {
       possession: before.possession,
       down: before.down,
@@ -632,6 +632,11 @@ export function rebuildPlaySituations(
 
   const nextPlays = plays.map((play) => {
     const playQuarter = normalizeQuarter(play.quarter);
+    if (play.type === "quarter_change") {
+      currentQuarter = playQuarter;
+      currentSituation = getRecordedNextSituation(play) ?? { possession: play.possession, down: play.down, distance: play.distance, ballOn: play.ballOn };
+      return play;
+    }
     if (playQuarter > currentQuarter) {
       const transition = moveToQuarter(
         currentQuarter,

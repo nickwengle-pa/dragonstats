@@ -70,6 +70,7 @@ export function transformPlays(
   let lastPossTeamId: string | null = null;
 
   for (const play of plays) {
+    if (play.play_type === "quarter_change") continue;
     const possTeamId = play.possession === "us" ? ctx.programTeamId : otherTeam(ctx.programTeamId, ctx);
     if (possTeamId !== lastPossTeamId) {
       driveNumber += 1;

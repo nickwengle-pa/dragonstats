@@ -57,6 +57,8 @@ import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import PlayLog from "@/components/game/PlayLog";
+import QuarterChangeRow from "@/components/game/QuarterChangeRow";
+import { createQuarterChange, quarterChangeBefore } from "@/services/quarterChange";
 import { countPlayerUsage } from "@/components/game/playerUsage";
 import { OffensivePlayBadge, PlayTacklers } from "@/components/game/PlayRowDetails";
 import LiveStatsPanel from "@/components/game/LiveStatsPanel";
@@ -1258,7 +1260,7 @@ export default function GameScreen() {
   );
   const kickoffDue = useMemo(() => {
     const preceding = insertContext ? plays.slice(0, insertContext.index + 1) : plays;
-    const previous = [...preceding].reverse().find(p => !["timeout", "penalty_only"].includes(p.type));
+    const previous = [...preceding].reverse().find(p => !["timeout", "penalty_only", "quarter_change"].includes(p.type));
     return isKickoffDue(entrySituation, previous, gc);
   }, [entrySituation, insertContext, plays, gc]);
   const suggestedPhase = useMemo(() => {
@@ -2158,6 +2160,12 @@ export default function GameScreen() {
     if (!deleted) return;
 
     await recalcScoreAndState(plays.slice(0, -1));
+    const beforeQuarterChange = quarterChangeBefore(last);
+    if (beforeQuarterChange) {
+      setQuarter(beforeQuarterChange.quarter);
+      setClock(beforeQuarterChange.clock);
+      applySituation(beforeQuarterChange);
+    }
   };
 
   /* ── Edit play (full) ── */
@@ -2391,7 +2399,8 @@ export default function GameScreen() {
     setShowPatGate(false);
   };
 
-  const changeQuarter = useCallback((delta: number) => {
+  const changeQuarter = useCallback(async (delta: number) => {
+    if (!gameId || !season || isSubmitting.current) return;
     const targetQuarter = Math.max(1, Math.min(MAX_QUARTER, quarter + delta));
     if (targetQuarter === quarter) return;
 
@@ -2428,10 +2437,32 @@ export default function GameScreen() {
 
     if (!transition) return;
 
-    setQuarter(transition.quarter);
-    setClock(transition.clock);
-    applySituation(transition.situation);
-  }, [applySituation, ballOn, clock, distance, down, gc, plays, possession, pregame, quarter]);
+    isSubmitting.current = true;
+    try {
+      const beforeState: GameState = { ...liveSituation, quarter, clock, ourScore, theirScore };
+      const afterState: GameState = { ...transition.situation, quarter: transition.quarter, clock: transition.clock, ourScore, theirScore };
+      const entry = createQuarterChange(beforeState, afterState, plays.length + 1);
+      const stored = buildStoredPlayData(entry, transition.situation, { us: ourScore, them: theirScore });
+      const saved = await insertPlay({
+        game_id: gameId, quarter: entry.quarter, clock: fmtClock(entry.clock),
+        possession: entry.possession, down: entry.down, distance: entry.distance, yard_line: entry.ballOn,
+        play_type: entry.type, play_data: { ...stored.playData, season_id: season.id },
+        yards_gained: 0, is_touchdown: false, is_turnover: false, is_penalty: false,
+        primary_player_id: null, description: entry.description, end_yard_line: entry.ballOn,
+        play_start_time: entry.clock, play_end_time: entry.clock,
+      }, []);
+      if (!saved) throw new Error("Quarter change could not be saved");
+      setPlays(prev => [...prev, { ...entry, id: saved.id, sequence: saved.sequence, playData: { ...stored.playData, season_id: season.id } }]);
+      setQuarter(transition.quarter);
+      setClock(transition.clock);
+      applySituation(transition.situation);
+    } catch (error) {
+      console.error("Error recording quarter change:", error);
+      window.alert("Couldn't save the quarter change. Your quarter is unchanged; please try again.");
+    } finally {
+      isSubmitting.current = false;
+    }
+  }, [applySituation, ballOn, buildStoredPlayData, clock, distance, down, gameId, gc, ourScore, plays, possession, pregame, quarter, season, theirScore]);
 
   const goToPreviousQuarter = useCallback(() => {
     changeQuarter(-1);
@@ -2814,6 +2845,7 @@ export default function GameScreen() {
                 list moves the list while the page stays put. */}
             <div className="space-y-1">
               {plays.slice().reverse().map(play => {
+                if (play.type === "quarter_change") return <QuarterChangeRow key={play.id} play={play} />;
                 // Which unit was on the field, from OUR sideline: a play with
                 // us in possession is our offense, otherwise our defense.
                 // Timeouts belong to neither.
@@ -2913,7 +2945,7 @@ export default function GameScreen() {
       {showLog && (
         <PlayLog
           plays={plays}
-          onEdit={p => { setShowLog(false); setEditPlay(p); }}
+          onEdit={p => { if (p.type === "quarter_change") return; setShowLog(false); setEditPlay(p); }}
           /* Back to the play pane as well: the pending-insert banner and the
              quick actions both live there, and the operator arrives here FROM
              the plays pane, so without this the tap looks like it did nothing

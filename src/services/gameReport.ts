@@ -393,7 +393,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
 
     if (play.is_touchdown) {
       // The try is the next non-timeout play, and only if it IS a try.
-      const next = plays.slice(idx + 1).find(p => p.play_type !== "timeout");
+      const next = plays.slice(idx + 1).find(p => !["timeout", "quarter_change"].includes(p.play_type));
       const tryPlay = next && ["pat", "two_pt"].includes(next.play_type) ? next : undefined;
       const conversionPoints = tryPlay && String(tryPlay.play_data?.result ?? "") === "Good"
         ? (tryPlay.play_type === "pat" ? 1 : 2)

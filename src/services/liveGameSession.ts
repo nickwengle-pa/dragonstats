@@ -723,7 +723,7 @@ export function replayLiveGame(
 
   for (const play of plays) {
     const beforeState = getBeforeStateForPlay(play, score);
-    if (beforeState.possession !== lastDrivePossession) {
+    if (play.type !== "quarter_change" && beforeState.possession !== lastDrivePossession) {
       driveNumber += 1;
       lastDrivePossession = beforeState.possession;
     }

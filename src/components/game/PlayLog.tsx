@@ -3,6 +3,7 @@ import { X, Pencil, RotateCcw, CloudOff, Plus } from "lucide-react";
 import { fmtClock, quarterLabel, yardLabel, TEAM_JERSEY, type PlayRecord } from "./types";
 
 import { OffensivePlayBadge, PlayTacklers } from "./PlayRowDetails";
+import QuarterChangeRow from "./QuarterChangeRow";
 
 type LogFilter = "all" | "off" | "def" | "k";
 
@@ -16,7 +17,7 @@ const KICKING_TYPES = new Set([
 /** Which unit was on the field. Timeouts belong to no unit and show only
  *  under All. */
 function unitOf(play: PlayRecord): LogFilter | "none" {
-  if (play.type === "timeout") return "none";
+  if (play.type === "timeout" || play.type === "quarter_change") return "none";
   if (KICKING_TYPES.has(play.type)) return "k";
   return play.possession === "us" ? "off" : "def";
 }
@@ -220,6 +221,7 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
               </div>
             ) :
             visible.map(({ play, number }) => {
+              if (play.type === "quarter_change") return <QuarterChangeRow key={play.id} play={play} pending={pendingPlayIds?.has(play.id)} />;
               // "Last" means the most recent play overall, not the most recent
               // one passing the filter.
               const isLast = number === plays.length;
