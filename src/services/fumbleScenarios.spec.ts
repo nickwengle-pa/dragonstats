@@ -5,6 +5,11 @@ import { DEFAULT_GAME_CONFIG as config } from "./programService";
 const before = { possession: "us" as const, down: 1, distance: 10, ballOn: 35 };
 const play = { type: "rush", yards: 5, result: "", penalty: null, flagYards: 0, isTouchdown: false, firstDown: false, turnover: false, fumbleRecoveredAt: 40, fumbleReturnYards: 0 };
 describe("fumble recovery situations", () => {
+  for (const type of ["rush", "pass_comp"]) {
+    it(`${type}: gain from 24 to 35, loose ball recovered at 41 and returned to 25`, () => {
+      expect(advanceSituationAfterPlay({ ...play, type, yards: 11, turnover: true, fumbleRecoveredAt: 41, fumbleReturnYards: 16 }, { ...before, ballOn: 24 }, config)).toEqual({ possession: "them", down: 1, distance: 10, ballOn: 75 });
+    });
+  }
   for (const possession of ["us", "them"] as const) {
     for (const returned of [0, 15]) {
       it(`${possession} throws an interception with a ${returned}-yard return`, () => {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { X, Flag } from "lucide-react";
 import YardReel from "./YardReel";
 import PlayerPicker, { playerLabel } from "./PlayerPicker";
+import PassDefenderPicker from "./PassDefenderPicker";
 import type { PlayerUsage } from "./playerUsage";
 import "./liveEntry.css";
 import {
@@ -32,6 +33,7 @@ interface Props {
   accentColor: string;
   formatSpot: (spot: number) => string;
   onTag: (role: string, player: TaggedPlayer | null) => void;
+  onClearTag: (role: string) => void;
   onTackler: (player: TaggedPlayer) => void;
   onNoTackle: () => void;
   onUnknownTackle: () => void;
@@ -89,6 +91,7 @@ export default function FastPlayEntry(p: Props) {
     else if (runner.length) parts.push(`${runner[0]} ${p.playType.label.toLowerCase()}`);
     else parts.push(p.playType.label);
     if (!incomplete && (spotTouched || p.isTD)) parts.push(p.isTD ? "touchdown" : `${p.yards > 0 ? "+" : ""}${p.yards} to ${p.formatSpot(endSpot)}`);
+    if (incomplete && who("defender").length) parts.push(`pass breakup by ${who("defender").join(", ")}`);
     if (showTacklers) {
       if (p.tacklers.length) parts.push(`${sack ? "sacked" : "tackled"} by ${p.tacklers.map(t => t.isTeam || t.player_id === "opp_team" ? "film later" : `#${t.jersey_number ?? "?"}`).join(", ")}`);
       else if (p.noTackle) parts.push("no tackle");
@@ -134,6 +137,9 @@ export default function FastPlayEntry(p: Props) {
               {p.playType.id === "bad_snap" && <p className="text-sm text-slate-300"><strong>Team rushing</strong> · Set where the ball ended. No individual runner is charged.</p>}
               {p.playType.roles.map(role => <PlayerPicker key={role} label={`${labels[role] ?? role}${role === "target" ? " (optional)" : ""}`} team={p.offenseName}
                 players={p.offensePlayers} usage={p.playerUsage} role={role} selected={p.tagged.filter(t => t.role === role)} onSelect={player => p.onTag(role, player)} />)}
+              {incomplete && <PassDefenderPicker team={p.defenseName} players={p.defensePlayers}
+                selected={p.tagged.filter(t => t.role === "defender")} onSelect={player => p.onTag("defender", player)}
+                onClear={() => p.onClearTag("defender")} />}
               {showTacklers && <div className="fast-tacklers">
                 <PlayerPicker label={labels[defenseRole]} team={p.defenseName} players={p.defensePlayers} selected={p.tacklers} multiple
                   onSelectTeam={p.onTeamTackle}
@@ -150,7 +156,7 @@ export default function FastPlayEntry(p: Props) {
             <section className="fast-position" aria-label="Field position">
               {!incomplete ? <>
                 <div className="fast-spot-heading"><h3>Ending spot</h3><strong aria-live="polite">{p.isTD ? "Touchdown" : p.formatSpot(endSpot)}</strong></div>
-                <p className="fast-hint">Enter the yard line or gain / loss.</p>
+                <p className="fast-hint">Enter the yard line or gain / loss. If fumbled, use where the ball carrier lost the ball, then select Fumble on this play.</p>
                 <div className="fast-side-buttons">
                   <button type="button" aria-pressed={endSpot <= 50} onClick={() => changeYards((endSpot <= 50 ? endSpot : 100 - endSpot) - p.situation.ballOn)} className={`${button} ${endSpot <= 50 ? selected : idle}`}>{p.offenseName} side</button>
                   <button type="button" aria-pressed={endSpot > 50} onClick={() => changeYards((endSpot > 50 ? endSpot : 100 - endSpot) - p.situation.ballOn)} className={`${button} ${endSpot > 50 ? selected : idle}`}>{p.defenseName} side</button>
@@ -185,7 +191,7 @@ export default function FastPlayEntry(p: Props) {
           {saveError && <p role="alert" className="text-sm text-red-400">{saveError}</p>}
           <div className="fast-actions">
             <button onClick={()=>p.onDetailed("penalty")} className={`${button} ${idle}`}><Flag size={15} />Penalty</button>
-            {!incomplete && <button onClick={()=>p.onDetailed("fumble")} className={`${button} ${idle}`}>Fumble</button>}
+            {!incomplete && <button onClick={()=>p.onDetailed("fumble")} className={`${button} ${idle}`}>Fumble on this play</button>}
             <button onClick={()=>p.onDetailed("players")} className={`${button} ${idle}`}>Full details</button>
             <button disabled={!ready||saving} onClick={async()=>{setSaving(true);setSaveError("");try{await p.onSubmit();}catch{setSaveError("Could not save. Try again.");}finally{setSaving(false);}}} className="btn-primary fast-save disabled:opacity-40">{saving?"Saving…":p.attachedDetails?"Review details":"Save Play"}</button>
           </div>

@@ -32,6 +32,7 @@ import { readableAccent } from "@/utils/teamColor";
 import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
 import FastPlayEntry from "./FastPlayEntry";
+import PassDefenderPicker from "./PassDefenderPicker";
 import { FAST_PLAY_IDS, toggleFastTackler } from "./fastEntry";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
 import KneelEntry from "./KneelEntry";
@@ -2469,12 +2470,14 @@ export default function PlayEntryModal({
       offenseDirection={offenseDirection} accentColor={offenseAccent}
       formatSpot={b => formatFieldSpot(b, gameState.possession)}
       onTag={(role, player) => {
-        const pick = player ? { ...player, role } : isTheirBall
+        const usesOpponent = roleUsesOpponentRoster(role, isTheirBall, { playTypeId: playType.id });
+        const pick = player ? { ...player, role } : usesOpponent
           ? { id: OPP_TEAM_PLAYER.id, player_id: OPP_TEAM_PLAYER.id, jersey_number: null, name: "TEAM", role, isOpponent: true }
           : makeTeamTag(role);
         setTagged(prev => [...prev.filter(t => t.role !== role), pick]);
         setCarriedRoles(prev => { const next = new Set(prev); next.delete(role); return next; });
       }}
+      onClearTag={role => setTagged(prev => prev.filter(t => t.role !== role))}
       onTackler={player => {
         setNoTackle(false);
         if (player.isTeam || player.player_id === OPP_TEAM_PLAYER.id) { setTacklers([]); return; }
@@ -2527,7 +2530,7 @@ export default function PlayEntryModal({
   };
   const detailHeadings: Record<Step, { title: string; hint: string }> = {
     players: { title: playerStepNames[currentRole] ?? "Players", hint: `${activeTeamName} · Choose the ${playerStepNames[currentRole]?.toLowerCase() ?? "player"}.` },
-    yards: { title: isDeadBall ? "Play options" : needsResult ? "Play result" : "Ending spot", hint: isDeadBall ? "Add any flag or other play details." : "Record where the play ended and its result." },
+    yards: { title: isDeadBall ? "Play options" : canHaveFumble && hasFumble ? "1. Ball carrier fumbled at" : needsResult ? "Play result" : "Ending spot", hint: isDeadBall ? "Add any flag or other play details." : canHaveFumble && hasFumble ? "Set where the carrier lost the ball. Recovery and return spots come next." : "Record where the play ended and its result." },
     penalty: { title: "Penalty", hint: "Choose the foul, the team, and enforcement." },
     formations: { title: "Formations & hash", hint: "Optional charting for this play." },
     defense: { title: playType.id === "sack" ? "Sackers" : "Tacklers", hint: `${tacklersAreOurs ? progName : oppName} · Who stopped the ball carrier?` },
@@ -3065,6 +3068,14 @@ export default function PlayEntryModal({
                   : `${isTheirBall ? progName : oppName} recovered it.`}
                 {" "}Who came up with it, how far he carried it, and who stopped him.
               </div>
+              <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 text-sm space-y-1" aria-live="polite">
+                <p>Ball carrier fumbled at <strong>{formatFieldSpot(fumbleSpotBallOn, gameState.possession)}</strong> · {yards} yards before the fumble</p>
+                <p>Recovered at <strong>{formatFieldSpot(fumbleRecoveredAtBallOn, gameState.possession)}</strong></p>
+                <p>Return ended at <strong>{formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</strong> · {fumbleReturnYards} return yards</p>
+                {!fumbleRecoveredByUs && ["rush", "pass_comp"].includes(playType.id)
+                  ? <p className="text-xs text-slate-300">NFHS credited {playType.id === "pass_comp" ? "passing / receiving" : "rushing"} yards: <strong>{fumbleRecoveredAtBallOn - gameState.ballOn}</strong>. Includes the loose ball's travel to recovery. Return yards start at recovery.</p>
+                  : <p className="text-xs text-slate-300">Return yards start where the loose ball was recovered.</p>}
+              </div>
 
               {recoveryUsesOpponentRoster ? (
                 <OpponentPlayerGrid
@@ -3094,10 +3105,10 @@ export default function PlayEntryModal({
               )}
 
               <div className="mt-3">
-                <label className="label block mb-1">Recovered At</label>
-                <div className="text-[10px] text-slate-600 mb-1">
-                  Defaults to where the play ended{" "}
-                  ({formatFieldSpot(fumbleSpotBallOn, gameState.possession)}) - move it if the ball bounced
+                <label className="label block mb-1">2. Loose ball recovered at</label>
+                <div className="text-xs text-slate-400 mb-1">
+                  Set where the recovering player gained possession. Starts at the fumble spot{" "}
+                  ({formatFieldSpot(fumbleSpotBallOn, gameState.possession)}); move it if the ball bounced forward or backward.
                 </div>
                 <YardReel
                   value={fumbleRecoveredAtBallOn}
@@ -3111,12 +3122,12 @@ export default function PlayEntryModal({
               {/* Same spot picking the yards step uses, because a recovery
                   return is a spot on the field like any other. */}
               <div className="mt-3">
-                <label className="label block mb-2">Returned To</label>
+                <label className="label block mb-2">3. Return ended at</label>
                 <FieldVisualizer
                   compact
                   ballOn={fumbleReturnBallOn}
                   ballPosition={toFieldDisplay(fumbleReturnBallOn)}
-                  firstDownPosition={toFieldDisplay(gameState.ballOn)}
+                  firstDownPosition={toFieldDisplay(fumbleRecoveredAtBallOn)}
                   possession={gameState.possession}
                   ourEndZoneSide={ourEndZoneSide}
                   primaryColor={progColor}
@@ -3153,7 +3164,7 @@ export default function PlayEntryModal({
                   onChange={e => setFumbleReturnRaw(e.target.value)}
                   className="input w-24 text-center text-sm font-black"
                 />
-                <span className="text-[10px] text-slate-600">by the recoverer</span>
+                <span className="text-xs text-slate-400">from the recovery spot to the end of the return</span>
               </div>
 
               <div className="mt-3">
@@ -3354,6 +3365,14 @@ export default function PlayEntryModal({
           {/* ── STEP: Yards / Result ── */}
           {currentStep === "yards" && (
             <>
+              {playType.id === "pass_inc" && <PassDefenderPicker
+                team={isTheirBall ? progName : oppName}
+                players={isTheirBall
+                  ? roster.map(p => ({ id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number, name: `${p.player.first_name} ${p.player.last_name}`, role: "defender" }))
+                  : localOppPlayers.map(p => ({ id: p.id, player_id: p.id, jersey_number: p.jersey_number, name: p.name, role: "defender", isOpponent: true }))}
+                selected={tagged.filter(t => t.role === "defender")}
+                onSelect={player => setTagged(prev => [...prev.filter(t => t.role !== "defender"), player ? { ...player, role: "defender" } : isTheirBall ? makeTeamTag("defender") : { id: OPP_TEAM_PLAYER.id, player_id: OPP_TEAM_PLAYER.id, jersey_number: null, name: "TEAM", role: "defender", isOpponent: true }])}
+                onClear={() => setTagged(prev => prev.filter(t => t.role !== "defender"))} />}
               {/* Down and distance while the yardage is being chosen. Picking
                   yards is the one step where what's NEEDED matters as much as
                   what happened, and the operator was having to remember it
@@ -3487,7 +3506,8 @@ export default function PlayEntryModal({
                     </div>
                   ) : (
                     <>
-                      <label className="label block mb-2">Ball Spotted At</label>
+                      <label className="label block mb-2">{canHaveFumble && hasFumble ? "Ball carrier fumbled at" : "Ball Spotted At"}</label>
+                      {canHaveFumble && hasFumble && <p className="text-sm text-orange-300 mb-3">Count only the carrier's gain before losing the ball here. On the next step, set where the loose ball was recovered and where the return ended.</p>}
 
                       {/* Tap the field to drop the ball where you saw it. The
                           orientation matches the main screen so the mental map
@@ -3728,7 +3748,7 @@ export default function PlayEntryModal({
                   {/* How far the recoverer carried it. Separate from the play's
                       own yardage: a sack is -7 to the QB whether or not the
                       recovery was returned 20 yards afterwards. */}
-                  <div className="flex items-center gap-2 mt-2">
+                  {canHaveFumble && hasFumble ? <p className="text-xs text-slate-400 mt-2">Next: set the recovery spot and the end of the return.</p> : <div className="flex items-center gap-2 mt-2">
                     <span className="text-[10px] text-slate-500">Return yards:</span>
                     <input
                       type="number"
@@ -3739,7 +3759,7 @@ export default function PlayEntryModal({
                       className="input w-24 text-center text-sm font-black"
                     />
                     <span className="text-[10px] text-slate-600">by the recoverer</span>
-                  </div>
+                  </div>}
                 </div>
               )}
 

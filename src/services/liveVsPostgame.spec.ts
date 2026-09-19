@@ -31,6 +31,22 @@ import { DEFAULT_GAME_CONFIG } from "./programService";
 import { describe, it, expect } from "vitest";
 
 const PROGRAM = "team-us";
+describe("incomplete pass defender credit", () => {
+  for (const possession of ["us", "them"] as const) {
+    for (const hasDefender of [false, true]) {
+      it(`${possession}: ${hasDefender ? "selected defender earns a breakup" : "blank defender earns no breakup"} in live and saved stats`, () => {
+        const tags = [{ id: "qb1", role: "passer" }, { id: "wr1", role: "target" }, ...(hasDefender ? [{ id: "lb1", role: "defender" }] : [])];
+        const live = livesummary([appPlay({ id: "incomplete", type: "pass_inc", possession, tagged: tags })]);
+        const post = postgameSummary([dbPlay({ id: "incomplete", play_type: "pass_inc", possession, credits: tags })]);
+        for (const summary of [live, post]) {
+          expect(summary?.passing.qb1).toMatchObject({ attempts: 1, completions: 0, yards: 0, interceptions: 0 });
+          if (hasDefender) expect(summary?.defense.lb1).toMatchObject({ passesDefended: 1, totalTackles: 0, interceptions: 0 });
+          else expect(summary?.defense.lb1?.passesDefended ?? 0).toBe(0);
+        }
+      });
+    }
+  }
+});
 describe("touchdown kick return yardage", () => {
   for (const type of ["kickoff", "punt"]) {
     for (const possession of ["us", "them"] as const) {
@@ -50,6 +66,21 @@ describe("touchdown kick return yardage", () => {
   }
 });
 describe("turnover player credits in live and postgame reports", () => {
+  for (const type of ["rush", "pass_comp"]) {
+    it(`${type}: NFHS credits 17 yards through recovery and 16 recovery return yards`, () => {
+      const tags = [{ id: "qb1", role: "passer" }, { id: "wr1", role: type === "rush" ? "rusher" : "receiver" }, { id: "lb1", role: "fumble_recovery" }];
+      const live = livesummary([appPlay({ id: "forward-fumble", type, ballOn: 24, yards: 11, possession: "us", turnover: true, fumbleRecoveredAt: 41, fumbleReturnYards: 16, tagged: tags })]);
+      const post = postgameSummary([dbPlay({ id: "forward-fumble", play_type: type, yard_line: 24, yards_gained: 11, possession: "us", is_turnover: true, play_data: { fumble_recovered_at: 41, fumble_return_yards: 16 }, credits: tags })]);
+      for (const summary of [live, post]) {
+        expect(summary?.defense.lb1).toMatchObject({ fumbleRecoveries: 1, fumbleRecoveryYards: 16, fumbleRecoveryTouchdowns: 0 });
+        if (type === "rush") expect(summary?.rushing.wr1).toMatchObject({ carries: 1, yards: 17 });
+        else {
+          expect(summary?.passing.qb1).toMatchObject({ attempts: 1, completions: 1, yards: 17, interceptions: 0 });
+          expect(summary?.receiving.wr1).toMatchObject({ receptions: 1, yards: 17 });
+        }
+      }
+    });
+  }
   for (const type of ["rush", "pass_comp", "sack"]) {
     it(`${type} fumble return retains the return tackler in both reports`, () => {
       const tags = [{ id: "qb1", role: "passer" }, { id: "wr1", role: "rusher" }, { id: "wr1", role: "receiver" }, { id: "lb1", role: "fumble_recovery" }, { id: "pu1", role: "recovery_tackler" }];

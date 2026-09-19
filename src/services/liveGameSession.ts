@@ -334,7 +334,7 @@ function toEnginePlay(
 ): Play | null {
   const context = buildPlayContext(stateBefore, scoreBefore, config, driveNumber);
   // Share audited conversions with saved-game reports, using the live situation.
-  if (["rush", "pass_comp", "sack", "safety", "fum_rec", "blocked_kick", "onside_kick", "kickoff", "punt", "penalty", "penalty_only"].includes(play.type)) {
+  if (["rush", "pass_comp", "pass_inc", "sack", "safety", "fum_rec", "blocked_kick", "onside_kick", "kickoff", "punt", "penalty", "penalty_only"].includes(play.type)) {
     const row = {
       id: play.id, game_id: config.gameId, play_type: play.type,
       possession: play.possession, yard_line: stateBefore.ballOn, down: stateBefore.down,
@@ -348,6 +348,7 @@ function toEnginePlay(
         play_category: play.penaltyCategory,
         fumble_return_yards: play.fumbleReturnYards,
         ...play.playData,
+        fumble_recovered_at: play.fumbleRecoveredAt ?? play.playData?.fumble_recovered_at,
       },
       play_players: play.tagged.map(t => ({ player_id: t.player_id, role: t.role, credit: t.credit })),
     } as unknown as PlayWithPlayers;

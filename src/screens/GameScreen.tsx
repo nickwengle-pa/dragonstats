@@ -1343,21 +1343,13 @@ export default function GameScreen() {
 
   const openPostPlayClockCapture = useCallback((capture: PendingClockCapture) => {
     setPendingClockCapture(capture);
-    // Smart default: most prompts are stoppage events (TD/FG/safety/COP) where
-    // the clock did NOT run, so default to current. For in-bounds run/pass
-    // completions the operator overrides — but those don't trigger a prompt
-    // today anyway (no possession change). The previous default of `clock`
-    // was already correct for the stoppage case; keep it.
-    const stoppage = !!capture.play.isTouchdown
-      || capture.play.type === "fg"
-      || capture.play.type === "safety"
-      || capture.play.type === "spike"
-      || capture.before.possession !== capture.resolved?.afterSituation.possession;
-    const defaultSecs = stoppage ? clock : Math.max(0, clock - 6);
+    // Carry forward the submitted time, including edits made in play entry.
+    // The operator can enter the observed end time; do not guess elapsed time.
+    const defaultSecs = capture.play.clock;
     setPostPlayClockMins(Math.floor(defaultSecs / 60));
     setPostPlayClockSecs(defaultSecs % 60);
     setShowPostPlayClockModal(true);
-  }, [clock]);
+  }, []);
 
   const persistPlaySituations = useCallback((
     nextPlays: PlayRecord[],
