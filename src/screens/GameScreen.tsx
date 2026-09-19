@@ -2907,7 +2907,7 @@ export default function GameScreen() {
                 return (
                 <Fragment key={play.id}>
                 {drive && (
-                  <button onClick={() => setSelectedDriveId(play.id)} aria-label={`View ${drive.possession === "us" ? progAbbr : oppAbbr} drive: ${drive.plays} plays, ${drive.yards} yards, possession time ${fmtClock(drive.seconds)}`} className="!my-2 w-full text-left rounded-lg border border-slate-400/40 border-l-[3px] border-l-slate-300 bg-slate-400/15 hover:bg-slate-400/25 py-2.5 px-3 text-xs font-semibold text-slate-100 tabular-nums cursor-pointer">
+                  <button onClick={() => setSelectedDriveId(play.id)} aria-label={`View ${drive.possession === "us" ? progAbbr : oppAbbr} drive: ${drive.plays} plays, ${drive.yards} yards, possession time ${fmtClock(drive.seconds)}`} className="!my-2 w-full text-left rounded-lg border border-solid border-slate-400/40 border-l-[3px] border-l-slate-300 bg-slate-400/15 hover:bg-slate-400/25 py-2.5 px-3 text-xs font-semibold text-slate-100 tabular-nums cursor-pointer">
                     <span className="font-bold">{drive.possession === "us" ? progAbbr : oppAbbr} drive</span> · {drive.plays} {drive.plays === 1 ? "play" : "plays"} · {drive.yards} yards · TOP {fmtClock(drive.seconds)}
                     <span aria-hidden="true" className="float-right pl-2 text-slate-300">›</span>
                   </button>
