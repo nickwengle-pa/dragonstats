@@ -28,6 +28,8 @@ import type {
 import type { GameStatsBundle } from "./statsService";
 import type { PlayWithPlayers } from "./gameService";
 import { netKickYards, resolveKickSpots } from "./kickSpots";
+import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
+import { firstPlayerByRole } from "./playTransformer";
 import { TEAM_JERSEY, TEAM_PLAYER_ID } from "@/components/game/types";
 import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
 
@@ -644,19 +646,32 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   });
 
   /* ── Kickoffs ─────────────────────────────────────────────────────────── */
+  // Sum actual eligible distances. Multiplying a rounded average by ALL
+  // kickoffs would give excluded out-of-bounds kicks yardage again.
+  const measuredKickoffs = plays.flatMap(play => {
+    if (!["kickoff", "onside_kick"].includes(play.play_type) || isOutOfBoundsKickoff(play)) return [];
+    const kicker = firstPlayerByRole(play, "kicker");
+    const spots = resolveKickSpots({ ballOn: play.yard_line ?? 0, playData: play.play_data, description: play.description });
+    return kicker && spots ? [{ id: kicker, side: play.possession, yards: spots.kickDistance }] : [];
+  });
+  const kickoffDistance = (entries: typeof measuredKickoffs) => ({
+    yards: entries.reduce((total, entry) => total + entry.yards, 0), count: entries.length,
+  });
   const kickoffs: KickoffRow[] = ourRows<KickingStats>(
     summary.kicking, ours, s => s.kickoffs > 0, s => s.kickoffs,
-  ).map(([id, s]) => ({
+  ).map(([id, s]) => {
+    const measured = kickoffDistance(measuredKickoffs.filter(kick => kick.id === id));
+    return {
     name: names.get(id) ?? s.playerName,
     no: s.kickoffs,
-    yds: Math.round((s.averageKickoffDistance ?? 0) * s.kickoffs),
-    avg: Math.round((s.averageKickoffDistance ?? 0) * 10) / 10,
+    yds: measured.yards,
+    avg: avg(measured.yards, measured.count),
     tb: s.kickoffTouchbacks ?? 0,
-  }));
+  }; });
   const kickoffsTotal: KickoffRow = kickoffs.reduce((t, r) => ({
     name: "Total", no: t.no + r.no, yds: t.yds + r.yds, avg: 0, tb: t.tb + r.tb,
   }), { name: "Total", no: 0, yds: 0, avg: 0, tb: 0 });
-  kickoffsTotal.avg = avg(kickoffsTotal.yds, kickoffsTotal.no);
+  kickoffsTotal.avg = avg(kickoffsTotal.yds, measuredKickoffs.filter(kick => ours.has(kick.id)).length);
   const onsideRecovered = Object.entries(summary.kicking)
     .filter(([id]) => ours.has(id))
     .reduce((s, [, k]) => s + (k.onsideKickRecoveries ?? 0), 0);
@@ -735,8 +750,8 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const theirPuntYards = sumTheirs<PuntingStats>(summary.punting, s => s.puntYards);
   const theirPuntsInside20 = sumTheirs<PuntingStats>(summary.punting, s => s.puntsInside20);
   const theirKickoffs = sumTheirs<KickingStats>(summary.kicking, s => s.kickoffs);
-  const theirKickoffYards = Math.round(
-    sumTheirs<KickingStats>(summary.kicking, s => (s.averageKickoffDistance ?? 0) * s.kickoffs));
+  const theirMeasuredKickoffs = kickoffDistance(measuredKickoffs.filter(kick => kick.side === "them"));
+  const theirKickoffYards = theirMeasuredKickoffs.yards;
   const theirKickoffTBs = sumTheirs<KickingStats>(summary.kicking, s => s.kickoffTouchbacks);
   const theirKoReturns = sumTheirs<ReturnStats>(summary.returns, s => s.kickReturns);
   const theirKoReturnYards = sumTheirs<ReturnStats>(summary.returns, s => s.kickReturnYards);
@@ -779,6 +794,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const netKickFor = (side: "us" | "them", types: string[]): { yards: number; count: number } =>
     plays
       .filter(p => p.possession === side && types.includes(p.play_type))
+      .filter(p => !isOutOfBoundsKickoff(p))
       .reduce((acc, p) => {
         const spots = resolveKickSpots({
           ballOn: p.yard_line ?? 0,
@@ -861,7 +877,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     row("KICKOFF-YARDS", dash(kickoffsTotal.no, kickoffsTotal.yds),
       dash(theirKickoffs, theirKickoffYards), "head"),
     row("Average Yards Per Kickoff", kickoffsTotal.avg.toFixed(1),
-      avg(theirKickoffYards, theirKickoffs).toFixed(1), "sub"),
+      avg(theirKickoffYards, theirMeasuredKickoffs.count).toFixed(1), "sub"),
     row("Net Average Per Kickoff", avg(netKoUs.yards, netKoUs.count).toFixed(1),
       avg(netKoThem.yards, netKoThem.count).toFixed(1), "sub"),
     row("Touchbacks", kickoffsTotal.tb, theirKickoffTBs, "sub"),

@@ -17,6 +17,7 @@ import { TEAM_PLAYER_ID } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
 import { resolveKickSpots } from "./kickSpots";
+import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import {
   type Play,
   type PassPlay,
@@ -309,7 +310,7 @@ function playersByRole(play: PlayWithPlayers, role: string): string[] {
   return allTagsForRole(play, role).map((t) => t.id);
 }
 
-function firstPlayerByRole(play: PlayWithPlayers, role: string): string | undefined {
+export function firstPlayerByRole(play: PlayWithPlayers, role: string): string | undefined {
   return allTagsForRole(play, role)[0]?.id;
 }
 
@@ -649,7 +650,8 @@ export function convertPlay(
 
     case "kickoff": {
       const kicker = firstPlayerByRole(play, "kicker");
-      const returner = firstPlayerByRole(play, "returner");
+      const outOfBounds = isOutOfBoundsKickoff(play);
+      const returner = outOfBounds ? undefined : firstPlayerByRole(play, "returner");
       const isTouchback = !!(pd?.is_touchback);
       const spots = kickSpotsFor(play);
       let stResult: SpecialTeamsResult = SpecialTeamsResult.Normal;
@@ -660,7 +662,7 @@ export function convertPlay(
         kicker,
         returner,
         result: stResult,
-        kickDistance: spots?.kickDistance,
+        kickDistance: outOfBounds ? undefined : spots?.kickDistance,
         returnYards: returner ? spots?.returnYards : undefined,
         isTouchback,
         isTouchdown: play.is_touchdown,
@@ -697,14 +699,15 @@ export function convertPlay(
 
     case "onside_kick": {
       const kicker = firstPlayerByRole(play, "kicker");
+      const outOfBounds = isOutOfBoundsKickoff(play);
       const recoverer = firstPlayerByRole(play, "recoverer") ?? firstPlayerByRole(play, "returner");
       const spots = kickSpotsFor(play);
       return {
         type: PlayType.Kickoff,
         kicker,
-        returner: pd?.onside_recovered_by_kicker ? undefined : recoverer,
+        returner: outOfBounds || pd?.onside_recovered_by_kicker ? undefined : recoverer,
         result: SpecialTeamsResult.Normal,
-        kickDistance: spots?.kickDistance,
+        kickDistance: outOfBounds ? undefined : spots?.kickDistance,
         returnYards: recoverer ? spots?.returnYards : undefined,
         isOnsideKick: true,
         isTouchdown: play.is_touchdown,
