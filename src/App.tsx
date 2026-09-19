@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import HomeLoading from "@/components/game/HomeLoading";
+import PullToRefresh from "@/components/PullToRefresh";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { ProgramProvider, useProgramContext } from "@/hooks/useProgramContext";
@@ -189,6 +190,7 @@ export default function App() {
   return (
     <ProgramProvider>
       <SyncCoordinator />
+      <PullToRefresh />
       <AppRoutes />
     </ProgramProvider>
   );

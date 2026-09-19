@@ -2515,6 +2515,14 @@ export default function GameScreen() {
 
   /* ── Render ── */
 
+  useEffect(() => {
+    const guard = (event: Event) => {
+      if (isSubmitting.current || loading || finalizing || selectedPlayType || editPlay || pendingClockCapture || showSituationAdj || showClockEditor || scoreCorrectTeam || showBallEditor || showTimeoutModal || showPregame || savingPregame) event.preventDefault();
+    };
+    window.addEventListener("app:before-refresh", guard);
+    return () => window.removeEventListener("app:before-refresh", guard);
+  }, [loading, finalizing, selectedPlayType, editPlay, pendingClockCapture, showSituationAdj, showClockEditor, scoreCorrectTeam, showBallEditor, showTimeoutModal, showPregame, savingPregame]);
+
   // Only gate on the FIRST load. Re-running loadData (context refresh, manual
   // reload) must not swap the live screen for a spinner — that unmounts the
   // play-entry modal and wipes whatever the operator was entering.
