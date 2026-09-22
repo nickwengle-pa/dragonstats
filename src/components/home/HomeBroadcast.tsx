@@ -63,6 +63,7 @@ export interface HomeData {
 /** District 6 football rankings (PIAA). Sits beside the record so the
  *  standings are one tap from the score that feeds them. */
 export const D6_RANKINGS_URL = "https://sports.blkline.com/sports/reports/d6FootballRanking.action";
+const PL_MAXPREPS_URL = "https://www.maxpreps.com/pa/commodore/purchase-line-red-dragons/football/";
 
 interface Props {
   data: HomeData;
@@ -198,6 +199,9 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
             <div className="bc-rec"><span className="bc-rec-l">Record</span><span className="bc-rec-v">{record}</span></div>
             <a className="bc-rank" href={D6_RANKINGS_URL} target="_blank" rel="noopener noreferrer" title="District 6 football rankings">
               <TrophyIcon size={14} /><span>D6</span>
+            </a>
+            <a className="bc-rank" href={PL_MAXPREPS_URL} target="_blank" rel="noopener noreferrer" title="PL Dragons football on MaxPreps" aria-label="PL Dragons football on MaxPreps">
+              <span>MaxPreps</span>
             </a>
           </div>
           <div className="bc-hdr-tools">
