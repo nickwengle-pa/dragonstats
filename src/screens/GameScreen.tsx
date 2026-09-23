@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { liveDriveRows } from "@/services/liveDriveRows";
 import DriveDetails from "@/components/game/DriveDetails";
+import { claimRefreshGuard } from "@/services/appRefresh";
 import { useNavigate, useParams } from "react-router-dom";
 import { RotateCcw, BarChart3 } from "lucide-react";
 import { useScreenTheme } from "@/hooks/useTheme";
@@ -2530,6 +2531,10 @@ export default function GameScreen() {
 
   useEffect(() => {
     const guard = (event: Event) => {
+      // The veto below covers every open entry, and a saved play is on this
+      // device already, so the generic "you typed here" check would only
+      // ask about the clock box after every snap.
+      claimRefreshGuard(event);
       if (isSubmitting.current || loading || finalizing || selectedPlayType || editPlay || pendingClockCapture || showSituationAdj || showClockEditor || scoreCorrectTeam || showBallEditor || showTimeoutModal || showPregame || savingPregame) event.preventDefault();
     };
     window.addEventListener("app:before-refresh", guard);

@@ -1,3 +1,34 @@
+/** Sent as "app:before-refresh" before a pull-down refresh. A screen calls
+ *  preventDefault() to veto it. A screen whose own veto already covers
+ *  everything unsaved on it sets `screenGuarded`, so the generic "you typed
+ *  here" check does not second-guess it. */
+export interface BeforeRefreshDetail {
+  screenGuarded: boolean;
+}
+
+export function claimRefreshGuard(event: Event) {
+  const detail = (event as CustomEvent<BeforeRefreshDetail | null>).detail;
+  if (detail) detail.screenGuarded = true;
+}
+
+/** A control the operator types into or sets, as opposed to a button. */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+  if (target instanceof HTMLInputElement) return !["button", "submit", "reset", "image", "hidden"].includes(target.type);
+  return target.isContentEditable;
+}
+
+export type RefreshGate = "vetoed" | "confirm" | "refresh";
+
+/** Whether a pull may reload now. Typing on a screen that does not guard
+ *  itself may be an unsaved form, so it asks first; a veto always wins. */
+export function refreshGate(o: { vetoed: boolean; screenGuarded: boolean; edited: boolean; confirmed: boolean }): RefreshGate {
+  if (o.vetoed) return "vetoed";
+  if (o.edited && !o.screenGuarded && !o.confirmed) return "confirm";
+  return "refresh";
+}
+
 /** Install the current app shell before reloading. Never delete offline data. */
 export async function prepareAppRefresh(container?: ServiceWorkerContainer): Promise<void> {
   const registration = await container?.getRegistration();

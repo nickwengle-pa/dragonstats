@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { prepareAppRefresh, refreshApp } from "./appRefresh";
+import { claimRefreshGuard, prepareAppRefresh, refreshApp, refreshGate, type BeforeRefreshDetail } from "./appRefresh";
 
 class Worker extends EventTarget {
   state = "installing";
@@ -71,5 +71,33 @@ describe("app update refresh", () => {
     vi.stubGlobal("window", { location: { reload } });
     await refreshApp();
     expect(reload).toHaveBeenCalledOnce();
+  });
+});
+
+/* Film review, schedule, roster and settings save on a button. A pull that
+   reloads one of them silently threw away whatever had been typed. */
+describe("pull-to-refresh with unsaved typing", () => {
+  const gate = (o: Partial<Parameters<typeof refreshGate>[0]>) =>
+    refreshGate({ vetoed: false, screenGuarded: false, edited: false, confirmed: false, ...o });
+
+  it("refreshes straight away when nothing was typed", () => {
+    expect(gate({})).toBe("refresh");
+  });
+  it("asks first when something was typed on a screen that does not guard itself", () => {
+    expect(gate({ edited: true })).toBe("confirm");
+    expect(gate({ edited: true, confirmed: true })).toBe("refresh");
+  });
+  it("leaves a self-guarding screen to its own judgement", () => {
+    expect(gate({ edited: true, screenGuarded: true })).toBe("refresh");
+  });
+  it("never refreshes over a veto, even after the operator confirms", () => {
+    expect(gate({ vetoed: true, edited: true, confirmed: true })).toBe("vetoed");
+  });
+  it("lets a screen claim the guard through the event it is sent", () => {
+    const event = new CustomEvent<BeforeRefreshDetail>("app:before-refresh", { detail: { screenGuarded: false } });
+    claimRefreshGuard(event);
+    expect(event.detail.screenGuarded).toBe(true);
+    // The same handler also hears a plain Event (the sync-discard guard).
+    expect(() => claimRefreshGuard(new Event("app:before-sync-discard"))).not.toThrow();
   });
 });
