@@ -36,6 +36,36 @@ describe("out-of-bounds kickoff report yardage", () => {
     expect(isOutOfBoundsKickoff(kick("1", {}, { description: "Kickoff 55 yds · Out of Bounds" }))).toBe(true);
     expect(isOutOfBoundsKickoff(kick("1", { kick_outcome: "out_of_bounds" }, { play_type: "punt" }))).toBe(false);
   });
+  /* "Pushed out of bounds" is how a return ends, not how a kick goes out.
+     Reading it as the penalty cost the kicker his distance and dropped the
+     returner from the play entirely. */
+  it("keeps a returned kick whose description says the returner went out of bounds", () => {
+    const players = [
+      { player_id: "k", role: "kicker", player: { first_name: "Test", last_name: "Kicker" } },
+      { player_id: "r", role: "returner", player: { first_name: "Their", last_name: "Returner" } },
+    ] as PlayWithPlayers["play_players"];
+    const returned = kick("1", { kicked_to_yard: 10, return_to_ball_on: 75, kick_outcome: "returned" }, {
+      description: "Kickoff #1 50 yds to OPP 10, ret #22 15 yds, pushed out of bounds", play_players: players,
+    });
+    expect(isOutOfBoundsKickoff(returned)).toBe(false);
+    const result = report([returned]);
+    expect(result.report.kickoffsTotal).toMatchObject({ no: 1, yds: 50, avg: 50 });
+    expect(result.summary.returns.r).toMatchObject({ kickReturns: 1, kickReturnYards: 15 });
+  });
+
+  it("trusts the words only on an older play that nobody returned", () => {
+    const words = { description: "Kickoff 55 yds, ret 12 yds, out of bounds" };
+    expect(isOutOfBoundsKickoff(kick("1", {}, {
+      ...words, play_players: [{ player_id: "r", role: "returner" }] as PlayWithPlayers["play_players"],
+    }))).toBe(false);
+    expect(isOutOfBoundsKickoff(kick("1", { opp_tagged: [{ id: "opp_team", role: "returner" }] }, words))).toBe(false);
+    expect(isOutOfBoundsKickoff(kick("1", { kick_outcome: "fair_catch" }, words))).toBe(false);
+    // A recorded out-of-bounds outcome still wins over any tag.
+    expect(isOutOfBoundsKickoff(kick("1", { kick_outcome: "out_of_bounds" }, {
+      play_players: [{ player_id: "r", role: "returner" }] as PlayWithPlayers["play_players"],
+    }))).toBe(true);
+  });
+
   it("keeps a re-kick out of the attempt count", () => {
     const result = report([kick("1", { kicked_to_yard: 5, kickoff_out_of_bounds_choice: "rekick" }), kick("2", { kicked_to_yard: 0, is_touchback: true })]);
     expect(result.report.kickoffsTotal).toMatchObject({ no: 1, yds: 60, avg: 60 });
