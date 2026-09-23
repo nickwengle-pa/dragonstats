@@ -268,7 +268,10 @@ export const PENALTY_CATALOG = {
         autoFirstDown: { nfl: true, college: true, high_school: true },
         lossOfDown: false, isPreSnap: false, isOffensivePenalty: false,
         canCauseEjection: false, tenSecondRunoff: false, isPersonalFoul: false,
-        replayDown: false,
+        // Dragon Stats local patch: NFHS replays the down, so an accepted flag
+        // is a no-play and nobody keeps a stat from the snap. Upstream ships
+        // false (NFL auto first down). Guarded by penaltyNullification.spec.ts.
+        replayDown: true,
     },
     defensive_pass_interference: {
         code: "defensive_pass_interference",
@@ -279,7 +282,8 @@ export const PENALTY_CATALOG = {
         autoFirstDown: { nfl: true, college: true, high_school: true },
         lossOfDown: false, isPreSnap: false, isOffensivePenalty: false,
         canCauseEjection: false, tenSecondRunoff: false, isPersonalFoul: false,
-        replayDown: false,
+        // Dragon Stats local patch — see holding_defense above.
+        replayDown: true,
         maxYards: { nfl: null, college: 15, high_school: 15 },
         notes: "NFL: spot foul (no max). College/HS: 15-yard penalty from previous spot (not spot foul)",
     },
