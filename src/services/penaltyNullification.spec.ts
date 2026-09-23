@@ -18,8 +18,9 @@
  * PENALTY_RULES table, which is why this only ever showed up in the stat line.
  *
  * The fix lives in `packages/football-stats-engine/dist` — a vendored,
- * prebuilt dist with no source in this repo. Re-copying the package from
- * upstream silently reverts it, so this file is the thing that catches it.
+ * prebuilt dist with no source in this repo. The engine repo carries the
+ * same fix since 86bd3ee; this file catches a dist copied from any older
+ * engine build.
  */
 import { describe, it, expect } from "vitest";
 import { FootballStatsEngine } from "football-stats-engine";
