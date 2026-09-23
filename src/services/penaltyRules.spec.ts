@@ -48,10 +48,12 @@ describe("NFHS penalty rules", () => {
       expect(penaltyDefaultYards("PI-OFF")).toBe(15);
     });
 
-    it("uses 5 for pre-snap fouls and 10 for offensive holding", () => {
+    it("uses 5 for pre-snap fouls and 10 for holding on either side", () => {
       expect(penaltyDefaultYards("False Start")).toBe(5);
       expect(penaltyDefaultYards("Encroachment")).toBe(5);
       expect(penaltyDefaultYards("Holding-OFF")).toBe(10);
+      // 5 is the NFL distance, inherited from an older default map.
+      expect(penaltyDefaultYards("Holding-DEF")).toBe(10);
     });
 
     it("uses 15 for personal fouls", () => {

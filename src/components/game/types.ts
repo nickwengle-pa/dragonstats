@@ -351,7 +351,7 @@ export const PENALTY_RULES: Record<string, PenaltyRule> = {
   Offsides: { engineCode: "offsides", defaultSide: "defense", yards: 5 },
   "False Start": { engineCode: "false_start", defaultSide: "offense", yards: 5 },
   "Holding-OFF": { engineCode: "holding_offense", defaultSide: "offense", yards: 10 },
-  "Holding-DEF": { engineCode: "holding_defense", defaultSide: "defense", yards: 5 },
+  "Holding-DEF": { engineCode: "holding_defense", defaultSide: "defense", yards: 10 },
   "PI-OFF": { engineCode: "offensive_pass_interference", defaultSide: "offense", yards: 15 },
   "PI-DEF": { engineCode: "defensive_pass_interference", defaultSide: "defense", yards: 15 },
   Facemask: { engineCode: "face_mask", yards: 15 },
