@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pdfFilename } from "./reportPrint";
-import { pageBreakRows } from "./pdfPagination";
+import { pageBreakAfter, pageBreakRows } from "./pdfPagination";
 
 describe("pdf file names", () => {
   it("strips the characters a filesystem rejects", () => {
@@ -24,5 +24,26 @@ describe("slicing a tall capture into pages", () => {
 
   it("is a single page when the capture fits", () => {
     expect(pageBreakRows(120, 200, () => true)).toEqual([[0, 120]]);
+  });
+
+  /* The iPad cannot hold a long screen as one canvas, so each page is
+     captured on its own: rows top..top+pageHeight and nothing else. That only
+     works if a break never needs to look outside that window. */
+  it("decides each break from the page's own rows plus the one below it", () => {
+    const blank = new Set([180, 181, 370, 555, 560]);
+    let top = 0;
+    const pages: Array<[number, number]> = [];
+    while (top < 700) {
+      const start = top;
+      const bottom = pageBreakAfter(start, 700, 200, y => {
+        expect(y).toBeGreaterThan(start + 160);
+        expect(y).toBeLessThanOrEqual(start + 200);
+        return blank.has(y);
+      });
+      pages.push([start, bottom]);
+      top = bottom;
+    }
+    expect(pages).toEqual(pageBreakRows(700, 200, y => blank.has(y)));
+    expect(pages).toEqual([[0, 181], [181, 370], [370, 560], [560, 700]]);
   });
 });

@@ -17,11 +17,18 @@
  *
  * A report laid out in .game-report-sheet boxes (game report, season report)
  * is already 8in × 10.5in per sheet, so each sheet is one page. Anything else
- * is one tall capture sliced into letter pages, cutting on a blank row where
- * one falls near the page edge so a table row is not split in half.
+ * is cut into letter pages, on a blank row where one falls near the page edge
+ * so a table row is not split in half.
+ *
+ * A long screen is captured a few pages at a time, never whole, and each page
+ * goes into the PDF straight away. iOS Safari will not draw a canvas over
+ * 16,777,216 pixels, and at this width and scale that is about 5,400 CSS px
+ * of screen: a long box score captured whole came out as blank pages, or not
+ * at all. It also caps total canvas memory, so each canvas is released once
+ * it is in the PDF rather than all of them being kept to the end.
  */
 
-import { pageBreakRows } from "./pdfPagination";
+import { pageBreakAfter } from "./pdfPagination";
 
 /** Letter is 612 × 792 pt; the sheets leave a quarter inch (18 pt) all round. */
 const MARGIN_PT = 18;
@@ -43,26 +50,92 @@ export async function renderReportPdf(root: HTMLElement, filename: string): Prom
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   const stage = await stagePrintDocument(root);
   try {
-    const capture = (el: HTMLElement) => html2canvas(el, {
+    /** `region` crops to rows [y, y + height) of `el`, in CSS px. */
+    const capture = (el: HTMLElement, region?: { y: number; height: number }) => html2canvas(el, {
       scale: SCALE, useCORS: true, backgroundColor: "#ffffff", logging: false,
       windowWidth: PAGE_W_PX, windowHeight: Math.max(el.offsetHeight, 1),
+      ...region,
     });
-    const sheets = Array.from(stage.doc.querySelectorAll<HTMLElement>(".game-report-sheet"));
-    const pages: HTMLCanvasElement[] = sheets.length > 0
-      ? await Promise.all(sheets.map(capture))
-      : sliceIntoPages(await capture(stage.root));
-    if (pages.length === 0) throw new Error("There is no report on the page to print.");
 
     const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait", compress: true });
-    pages.forEach((canvas, i) => {
+    let pageCount = 0;
+    const addPage = (canvas: HTMLCanvasElement) => {
       const height = Math.min(CONTENT_H_PT, (canvas.height / canvas.width) * CONTENT_W_PT);
-      if (i > 0) pdf.addPage();
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", MARGIN_PT, MARGIN_PT, CONTENT_W_PT, height);
-    });
+      if (pageCount > 0) pdf.addPage();
+      // jsPDF re-deflates a PNG in JavaScript; "FAST" is ~3x quicker per page
+      // for the same file size, which matters on an iPad twenty pages in.
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", MARGIN_PT, MARGIN_PT, CONTENT_W_PT, height, undefined, "FAST");
+      pageCount++;
+      releaseCanvas(canvas);
+    };
+
+    // One at a time: every capture clones the whole document.
+    const sheets = Array.from(stage.doc.querySelectorAll<HTMLElement>(".game-report-sheet"));
+    for (const sheet of sheets) addPage(await capture(sheet));
+    if (sheets.length === 0) await capturePages(stage.root, capture, addPage);
+    if (pageCount === 0) throw new Error("There is no report on the page to print.");
     return new File([pdf.output("blob")], filename, { type: "application/pdf" });
   } finally {
     stage.dispose();
   }
+}
+
+/** Letter pages per capture. Every capture re-clones the whole document, so
+ *  one page each made a long screen slow; three pages at 2x is 1536 × ~6050
+ *  px, about 9.3M pixels — well inside the iOS limit. */
+const PAGES_PER_CAPTURE = 3;
+
+/** Walk down a screen a few letter pages at a time. A capture runs one row
+ *  past its last page so that page's break search can see beyond its edge;
+ *  a page whose search window is not in the capture starts the next one. */
+async function capturePages(
+  root: HTMLElement,
+  capture: (el: HTMLElement, region: { y: number; height: number }) => Promise<HTMLCanvasElement>,
+  addPage: (canvas: HTMLCanvasElement) => void,
+): Promise<void> {
+  const total = Math.max(root.scrollHeight, root.offsetHeight);
+  const pageH = Math.floor((CONTENT_H_PT / CONTENT_W_PT) * PAGE_W_PX);
+  let top = 0;
+  while (top < total) {
+    const chunkTop = top;
+    const chunk = await capture(root, { y: chunkTop, height: Math.min(PAGES_PER_CAPTURE * pageH + 1, total - chunkTop) });
+    const chunkEnd = chunkTop + chunk.height / SCALE;
+    const isBlank = (y: number) => isBlankRow(chunk, (y - chunkTop) * SCALE);
+    while (top < total && (top + pageH < chunkEnd || chunkEnd >= total)) {
+      const bottom = pageBreakAfter(top, total, pageH, isBlank);
+      addPage(copyRows(chunk, (top - chunkTop) * SCALE, (bottom - chunkTop) * SCALE));
+      top = bottom;
+    }
+    releaseCanvas(chunk);
+    // An empty capture would otherwise loop here for ever.
+    if (top === chunkTop) throw new Error("Could not capture the screen for the PDF.");
+  }
+}
+
+/** A row of near-white pixels, sampled every fourth pixel. Out of range is not blank. */
+function isBlankRow(canvas: HTMLCanvasElement, y: number): boolean {
+  if (y < 0 || y >= canvas.height) return false;
+  const row = canvas.getContext("2d")!.getImageData(0, y, canvas.width, 1).data;
+  for (let i = 0; i < row.length; i += 16) {
+    if (row[i] < 245 || row[i + 1] < 245 || row[i + 2] < 245) return false;
+  }
+  return true;
+}
+
+/** Rows [from, to) of a canvas, as a canvas of their own. */
+function copyRows(canvas: HTMLCanvasElement, from: number, to: number): HTMLCanvasElement {
+  const rows = Math.min(to, canvas.height) - from;
+  const page = document.createElement("canvas");
+  page.width = canvas.width;
+  page.height = rows;
+  page.getContext("2d")!.drawImage(canvas, 0, from, canvas.width, rows, 0, 0, canvas.width, rows);
+  return page;
+}
+
+/** iOS keeps counting a canvas's memory until it is shrunk to nothing. */
+function releaseCanvas(canvas: HTMLCanvasElement) {
+  canvas.width = 0;
+  canvas.height = 0;
 }
 
 /** Build the hidden iframe: the app's stylesheets, the print rules unwrapped,
@@ -111,24 +184,4 @@ function printRulesUnwrapped(): string {
     }
   }
   return out.join("\n");
-}
-
-/** Cut a tall capture into page-sized canvases. */
-function sliceIntoPages(canvas: HTMLCanvasElement): HTMLCanvasElement[] {
-  const pageH = Math.floor((CONTENT_H_PT / CONTENT_W_PT) * canvas.width);
-  const ctx = canvas.getContext("2d")!;
-  const isBlank = (y: number) => {
-    const row = ctx.getImageData(0, y, canvas.width, 1).data;
-    for (let i = 0; i < row.length; i += 16) {
-      if (row[i] < 245 || row[i + 1] < 245 || row[i + 2] < 245) return false;
-    }
-    return true;
-  };
-  return pageBreakRows(canvas.height, pageH, isBlank).map(([top, bottom]) => {
-    const page = document.createElement("canvas");
-    page.width = canvas.width;
-    page.height = bottom - top;
-    page.getContext("2d")!.drawImage(canvas, 0, top, canvas.width, bottom - top, 0, 0, canvas.width, bottom - top);
-    return page;
-  });
 }
