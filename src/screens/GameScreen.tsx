@@ -41,6 +41,7 @@ import {
   resolveGameConfig,
   toDisplayFieldPosition,
   MAX_QUARTER,
+  canStartOvertime,
   type PregameConfig,
 } from "@/services/gameFlow";
 import {
@@ -3088,7 +3089,9 @@ export default function GameScreen() {
                 {endOfPeriodPrompt.kind === "halftime"
                   ? "Halftime"
                   : endOfPeriodPrompt.kind === "endgame"
-                    ? (quarter >= 4 && quarter < MAX_QUARTER ? "End of regulation — go to overtime?" : "End of game")
+                    ? (canStartOvertime(quarter, ourScore, theirScore)
+                      ? (quarter === 4 ? "Tied after regulation — go to overtime?" : "Still tied — another overtime?")
+                      : "End of game")
                     : `End of Q${quarter}`}
               </div>
             </div>
@@ -3107,7 +3110,7 @@ export default function GameScreen() {
                   End Game
                 </button>
               )}
-              {endOfPeriodPrompt.kind === "endgame" ? quarter < MAX_QUARTER && (
+              {endOfPeriodPrompt.kind === "endgame" ? canStartOvertime(quarter, ourScore, theirScore) && (
                 <button
                   onClick={() => {
                     changeQuarter(1);

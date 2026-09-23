@@ -113,6 +113,12 @@ export function normalizeQuarter(quarter: number | null | undefined): number {
   return Math.min(Math.round(quarter), MAX_QUARTER);
 }
 
+/** Overtime settles a tie and nothing else: offered at the end of the 4th or
+ *  of an OT period only while the score is level and an OT period is left. */
+export function canStartOvertime(quarter: number, ourScore: number, theirScore: number): boolean {
+  return quarter >= 4 && quarter < MAX_QUARTER && ourScore === theirScore;
+}
+
 export function createDefaultPregameConfig(): PregameConfig {
   return { ...DEFAULT_PREGAME };
 }
