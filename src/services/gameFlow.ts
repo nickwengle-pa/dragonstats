@@ -364,6 +364,103 @@ export function getRecordedNextSituation(
   };
 }
 
+/* Which stored next-situations are facts, and which are caches.
+
+   Every play has next_* written onto it after every recalc, and until now the
+   replay honoured all of them. That froze the chain: correct play 12's yardage
+   and play 13 moved, but play 13 still handed on the spot it was stored with,
+   so 14 onward never moved and play 13 showed a gain its own spots disagreed
+   with. Only two sources are anything but a copy of what the rules would
+   compute again - a spot the operator stated, and one the app enforced from a
+   foul spot the operator gave. Everything else is re-derived. */
+const AUTHORITATIVE_NEXT_SOURCES = new Set(["manual_override", "penalty_enforced"]);
+
+export function getAuthoritativeNextSituation(
+  play: Pick<AdvanceablePlay, "nextPossession" | "nextDown" | "nextDistance" | "nextBallOn" | "playData">,
+): LiveSituation | null {
+  const source = play.playData?.next_situation_source;
+  if (typeof source !== "string" || !AUTHORITATIVE_NEXT_SOURCES.has(source)) return null;
+  return getRecordedNextSituation(play);
+}
+
+type SituatedPlay = Pick<PlayRecord, "possession" | "down" | "distance" | "ballOn" | "playData" | "type" | "quarter"
+  | "nextPossession" | "nextDown" | "nextDistance" | "nextBallOn">;
+
+const sameSituation = (a: LiveSituation, b: LiveSituation) =>
+  a.possession === b.possession && a.down === b.down && a.distance === b.distance && a.ballOn === b.ballOn;
+
+/** The situation a play was recorded as starting from. A quarter change is
+ *  stored as where it LEFT the ball, so its start is the snapshot it kept. */
+function recordedStart(play: SituatedPlay): LiveSituation | null {
+  if (play.type === "quarter_change") {
+    const before = play.playData?.quarter_change_before as Partial<LiveSituation> | undefined;
+    if (!before || !isTeamSide(before.possession)) return null;
+    const { down, distance, ballOn } = before;
+    if (![down, distance, ballOn].every(Number.isFinite)) return null;
+    return { possession: before.possession, down: down!, distance: distance!, ballOn: ballOn! };
+  }
+  return { possession: play.possession, down: play.down, distance: play.distance, ballOn: play.ballOn };
+}
+
+/**
+ * Flag the plays whose starting spot somebody set by hand.
+ *
+ * The scoreboard's ball, down and distance buttons and the film chart's
+ * situation editor change where the NEXT play starts without touching the play
+ * before it. Nothing wrote that down as an override; it survived only because
+ * every stored next-state was frozen, which is also what stopped edits from
+ * re-chaining. Now that the chain is re-derived, those corrections have to be
+ * named or the replay walks straight over them.
+ *
+ * Read off stored data: a play recorded from anywhere other than where the
+ * play before it said the ball went was put there by hand. Only compared where
+ * the previous play actually carries a stored next - a film-chart edit clears
+ * it, and a stale start behind one of those is exactly what should re-chain.
+ */
+export function markHandSetStarts<T extends SituatedPlay>(
+  plays: T[],
+  pregame: PregameConfig | null,
+  config: GameConfig,
+): T[] {
+  return plays.map((play, index) => {
+    if (play.playData?.start_override === true) return play;
+    const start = recordedStart(play);
+    if (!start) return play;
+    const playQuarter = normalizeQuarter(play.quarter);
+    let expected: LiveSituation | null;
+    let fromQuarter: number;
+    if (index === 0) {
+      expected = createInitialSituation(pregame, config);
+      fromQuarter = 1;
+    } else {
+      const prev = plays[index - 1];
+      expected = getRecordedNextSituation(prev);
+      fromQuarter = normalizeQuarter(prev.quarter);
+    }
+    if (!expected) return play;
+    // A quarter change carries its own transition; anything else crossing a
+    // quarter gets the one the replay would apply.
+    if (play.type !== "quarter_change" && playQuarter > fromQuarter) {
+      expected = moveToQuarter(fromQuarter, playQuarter, expected, pregame, config).situation;
+    }
+    if (sameSituation(start, expected)) return play;
+    return { ...play, playData: { ...(play.playData ?? {}), start_override: true } };
+  });
+}
+
+/** The same check for one play as it is recorded, against the play it follows.
+ *  Flagged at the snap, a scoreboard correction survives an edit made later in
+ *  the same session, before any reload could read it back off stored data. */
+export function withHandSetStart<T extends SituatedPlay>(
+  play: T,
+  previous: SituatedPlay | undefined,
+  pregame: PregameConfig | null,
+  config: GameConfig,
+): T {
+  const marked = markHandSetStarts<SituatedPlay>(previous ? [previous, play] : [play], pregame, config);
+  return marked[marked.length - 1] as T;
+}
+
 export function advanceSituationAfterPlay(
   play: AdvanceablePlay,
   before: LiveSituation,
@@ -373,7 +470,9 @@ export function advanceSituationAfterPlay(
   if (["kickoff", "onside_kick"].includes(play.type) && (outOfBoundsChoice === "rekick" || outOfBoundsChoice === "take_35")) {
     return kickoffOutOfBoundsSituation(before, outOfBoundsChoice, config.first_down_distance);
   }
-  if (play.type === "timeout" || play.type === "quarter_change") {
+  // Not snaps. A score correction used to fall through to the scrimmage
+  // branch and cost a down; its stored next-state was what hid that.
+  if (play.type === "timeout" || play.type === "quarter_change" || play.type === "score_correction") {
     return {
       possession: before.possession,
       down: before.down,
@@ -542,7 +641,11 @@ export function advanceSituationAfterPlay(
     // picks who recovered. Fall through to the default (kicking-team retains)
     // when the recoverer is on the kicking team; flip when the receiving team
     // gets it. The caller normally provides nextPossession so this is a safety net.
-    const recoveredByKicker = play.nextPossession === possession;
+    // The modal writes who recovered onto the play itself; an edit re-derives
+    // the next state, so possession must not hang on a stored nextPossession
+    // an edit has just cleared.
+    const recorded = play.playData?.onside_recovered_by_kicker;
+    const recoveredByKicker = typeof recorded === "boolean" ? recorded : play.nextPossession === possession;
     return {
       possession: recoveredByKicker ? possession : oppositeTeam(possession),
       down: 1,
@@ -647,6 +750,38 @@ export function advanceSituationAfterPlay(
   };
 }
 
+/**
+ * An override says where the ball went from where its play STARTED.
+ *
+ * Nearly every flag and turnover carries one: the adjust sheet opens after
+ * each and confirming it, changed or not, stores the spot as stated. Taken as
+ * an absolute spot, every one of them was a wall - an edit upstream moved the
+ * play's start and left its end behind, the same broken play the cached spots
+ * produced, just at every flag instead of every snap. So it travels with its
+ * play: started five yards further back, it ends five yards further back.
+ *
+ * `recordedFrom` is the start the override was stated against - the play's
+ * own stored start, which is always written in the same pass as its next.
+ * The team is relative too: what the override records is whether the offense
+ * kept the ball or the defense got it. If an edit upstream changes who had the
+ * ball at this snap - an earlier play turned into a turnover, the opening
+ * receiver corrected - keeping the stated team would hand the ball back
+ * mid-drive.
+ */
+function carryOverride(
+  override: LiveSituation,
+  recordedFrom: Pick<LiveSituation, "possession" | "ballOn">,
+  start: LiveSituation,
+): LiveSituation {
+  const offenseKept = override.possession === recordedFrom.possession;
+  const possession = offenseKept ? start.possession : oppositeTeam(start.possession);
+  const shift = start.ballOn - recordedFrom.ballOn;
+  if (shift === 0 && possession === override.possession) return override;
+  // ballOn is measured from the goal of whoever has the ball NEXT.
+  const ballOn = clampBallOn(offenseKept ? override.ballOn + shift : override.ballOn - shift);
+  return { ...override, possession, ballOn, distance: Math.max(1, Math.min(override.distance, 100 - ballOn)) };
+}
+
 export function rebuildPlaySituations(
   plays: PlayRecord[],
   pregame: PregameConfig | null,
@@ -658,6 +793,34 @@ export function rebuildPlaySituations(
   const nextPlays = plays.map((play) => {
     const playQuarter = normalizeQuarter(play.quarter);
     if (play.type === "quarter_change") {
+      /* Going forward a quarter is the same transition the replay applies to
+         any play that crosses one, so it follows the chain - Q1 edits have to
+         reach Q2. Its stored spot wins only when it was recorded somewhere
+         the chain did not put it, or when it is a correction backwards. */
+      if (playQuarter > currentQuarter && play.playData?.start_override !== true) {
+        const endedAt = currentSituation;
+        currentSituation = moveToQuarter(currentQuarter, playQuarter, currentSituation, pregame, config).situation;
+        currentQuarter = playQuarter;
+        /* The entry keeps where the quarter ended, for Undo and as its own
+           start. Left as recorded, an edit before it made that disagree with
+           the chain, and the next reload read it as a hand-set start and froze
+           the quarter change where it was. */
+        const recordedBefore = play.playData?.quarter_change_before as Record<string, unknown> | undefined;
+        return {
+          ...play,
+          playData: recordedBefore
+            ? { ...play.playData, quarter_change_before: { ...recordedBefore, ...endedAt } }
+            : play.playData,
+          possession: currentSituation.possession,
+          down: currentSituation.down,
+          distance: currentSituation.distance,
+          ballOn: currentSituation.ballOn,
+          nextPossession: currentSituation.possession,
+          nextDown: currentSituation.down,
+          nextDistance: currentSituation.distance,
+          nextBallOn: currentSituation.ballOn,
+        };
+      }
       currentQuarter = playQuarter;
       currentSituation = getRecordedNextSituation(play) ?? { possession: play.possession, down: play.down, distance: play.distance, ballOn: play.ballOn };
       return play;
@@ -674,6 +837,11 @@ export function rebuildPlaySituations(
       currentSituation = transition.situation;
     }
 
+    // Where the operator put the ball by hand outranks where the chain left it.
+    if (play.playData?.start_override === true) {
+      currentSituation = { possession: play.possession, down: play.down, distance: play.distance, ballOn: play.ballOn };
+    }
+
     const nextPlay: PlayRecord = {
       ...play,
       quarter: playQuarter,
@@ -683,7 +851,10 @@ export function rebuildPlaySituations(
       possession: currentSituation.possession,
     };
 
-    const nextSituation = getRecordedNextSituation(nextPlay) ?? advanceSituationAfterPlay(nextPlay, currentSituation, config);
+    const override = getAuthoritativeNextSituation(nextPlay);
+    const nextSituation = override
+      ? carryOverride(override, { possession: play.possession, ballOn: play.ballOn }, currentSituation)
+      : advanceSituationAfterPlay(nextPlay, currentSituation, config);
     currentSituation = nextSituation;
     currentQuarter = playQuarter;
     return {

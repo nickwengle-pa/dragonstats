@@ -35,12 +35,14 @@ import {
   getOurDriveDirectionForQuarter,
   getPregameConfig,
   getRecordedNextSituation,
+  markHandSetStarts,
   moveToQuarter,
   normalizeQuarter,
   oppositeFieldDirection,
   rebuildPlaySituations,
   resolveGameConfig,
   toDisplayFieldPosition,
+  withHandSetStart,
   MAX_QUARTER,
   canStartOvertime,
   type PregameConfig,
@@ -487,10 +489,14 @@ export default function GameScreen() {
         ) ? pd.blocked_kick_type as BlockedKickType : null,
         // Read back so a reload or an edit keeps the recovery return. Without
         // this the value survives one save and is dropped on the next.
-        fumbleReturnYards: Number.isFinite(Number(pd.fumble_return_yards))
+        /* Every save writes these as null on a play with no fumble, and
+           Number(null) is 0 - which read back as "recovered, returned 0" on
+           every such play, and the replay then decided its first down from
+           the yardage instead of the recorded flag. */
+        fumbleReturnYards: pd.fumble_return_yards != null && Number.isFinite(Number(pd.fumble_return_yards))
           ? Number(pd.fumble_return_yards)
           : null,
-        fumbleRecoveredAt: Number.isFinite(Number(pd.fumble_recovered_at))
+        fumbleRecoveredAt: pd.fumble_recovered_at != null && Number.isFinite(Number(pd.fumble_recovered_at))
           ? Number(pd.fumble_recovered_at)
           : null,
         tagged: [
@@ -551,7 +557,9 @@ export default function GameScreen() {
       };
     });
 
-    const rebuilt = rebuildPlaySituations(localPlays, pregameConfig, gameConfig);
+    /* Read hand-set starts off the stored rows before the replay re-derives
+       every spot: a scoreboard correction is recorded nowhere else. */
+    const rebuilt = rebuildPlaySituations(markHandSetStarts(localPlays, pregameConfig, gameConfig), pregameConfig, gameConfig);
     setPlays(rebuilt.plays);
 
     const sessionConfig = program && gameData?.opponent?.id
@@ -1711,7 +1719,10 @@ export default function GameScreen() {
        it re-chains, so the rest of the game is recomputed from a list that
        now runs in the order it was played. */
     const insertAt = insertContext;
-    const previewPlay: PlayRecord = {
+    /* Recorded from wherever the scoreboard says the ball is. If that is not
+       where the previous play left it, somebody moved it by hand - flag it,
+       or the next replay puts the ball back. */
+    const previewPlay: PlayRecord = withHandSetStart({
       id: "pending",
       sequence: insertAt ? insertAt.index + 2 : plays.length + 1,
       quarter: insertAt ? insertAt.quarter : quarter,
@@ -1765,7 +1776,7 @@ export default function GameScreen() {
           ? data.nextSituation.source
           : data.penalty || (data.playType.id === "blocked_kick" && !data.isTouchdown) || isTurnover ? "pending_review" : "auto",
       },
-    };
+    }, insertAt ? plays[insertAt.index] : plays[plays.length - 1], pregame, gc);
     const liveReplay = liveSessionConfig ? replayLiveGame([...plays, previewPlay], liveSessionConfig) : null;
     const resolution = liveReplay?.playResults[liveReplay.playResults.length - 1];
     const storedPreview = buildStoredPlayData(
@@ -1919,7 +1930,7 @@ export default function GameScreen() {
       const timeoutLabel = timeoutTeamLocal === "us"
         ? (program?.name ?? "Team")
         : (game?.opponent?.name ?? "Opponent");
-      const previewPlay: PlayRecord = {
+      const previewPlay: PlayRecord = withHandSetStart({
         id: "pending-timeout",
         sequence: plays.length + 1,
         quarter,
@@ -1953,7 +1964,7 @@ export default function GameScreen() {
           timeout_remaining_after: Math.max(0, remaining - 1),
           next_situation_source: "timeout",
         },
-      };
+      }, plays[plays.length - 1], pregame, gc);
 
       const storedPreview = buildStoredPlayData(previewPlay, before, scoreBefore);
       const savedPlay = await insertPlay({
@@ -2011,10 +2022,11 @@ export default function GameScreen() {
     distance,
     down,
     gameId,
-    gc.quarter_length_secs,
+    gc,
     ourScore,
     plays,
     possession,
+    pregame,
     quarter,
     season,
     theirScore,
@@ -2049,6 +2061,12 @@ export default function GameScreen() {
 
     // Record a synthetic play so it's visible in the log and reversible via Undo.
     if (season) {
+      // Passes the situation straight through, so a hand-moved ball before it
+      // has to be named here as on any other play.
+      const startOverride = withHandSetStart(
+        { type: "score_correction", quarter, possession, down, distance, ballOn, playData: {} as Record<string, unknown> },
+        plays[plays.length - 1], pregame, gc,
+      ).playData?.start_override === true;
       try {
         const savedPlay = await insertPlay({
           game_id: gameId,
@@ -2067,6 +2085,7 @@ export default function GameScreen() {
             score_after_them: nextTheir,
             recorded_clock: fmtClock(clock),
             recorded_clock_seconds: clock,
+            ...(startOverride ? { start_override: true } : {}),
             next_situation_source: "score_correction",
             next_possession: possession,
             next_down: down,
@@ -2112,6 +2131,7 @@ export default function GameScreen() {
             playData: {
               score_delta_team: team,
               score_delta: appliedDelta,
+              ...(startOverride ? { start_override: true } : {}),
               next_situation_source: "score_correction",
             },
           };
@@ -2122,7 +2142,7 @@ export default function GameScreen() {
       }
     }
     setScoreCorrectTeam(null);
-  }, [gameId, season, ourScore, theirScore, quarter, clock, possession, down, distance, ballOn]);
+  }, [gameId, season, ourScore, theirScore, quarter, clock, possession, down, distance, ballOn, plays, pregame, gc]);
 
   const closePendingClockCapture = useCallback((showPatGateAfter = false) => {
     const patPossession = pendingClockCapture?.patGatePossession;
@@ -2243,7 +2263,7 @@ export default function GameScreen() {
     // A spot the operator set by hand outranks the computed enforcement, the
     // same way it does on entry.
     const editSource = result.nextSituation
-      ? "manual_override"
+      ? result.nextSituation.source
       : (result.penalty || (result.playType.id === "blocked_kick" && !result.isTouchdown) ? "pending_review" : "auto");
 
     // Persist to DB
@@ -2495,7 +2515,7 @@ export default function GameScreen() {
     try {
       const beforeState: GameState = { ...liveSituation, quarter, clock, ourScore, theirScore };
       const afterState: GameState = { ...transition.situation, quarter: transition.quarter, clock: transition.clock, ourScore, theirScore };
-      const entry = createQuarterChange(beforeState, afterState, plays.length + 1);
+      const entry = withHandSetStart(createQuarterChange(beforeState, afterState, plays.length + 1), plays[plays.length - 1], pregame, gc);
       const stored = buildStoredPlayData(entry, transition.situation, { us: ourScore, them: theirScore });
       const saved = await insertPlay({
         game_id: gameId, quarter: entry.quarter, clock: fmtClock(entry.clock),
