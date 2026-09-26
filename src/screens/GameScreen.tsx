@@ -1,5 +1,6 @@
 import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { liveDriveRows } from "@/services/liveDriveRows";
+import { runOutFinalClock } from "@/services/finalClock";
 import DriveDetails from "@/components/game/DriveDetails";
 import { claimRefreshGuard } from "@/services/appRefresh";
 import { useNavigate, useParams } from "react-router-dom";
@@ -885,12 +886,18 @@ export default function GameScreen() {
   const liveSummary = useMemo(() => {
     if (!liveSessionConfig || plays.length === 0) return null;
     try {
-      return replayLiveGame(plays, liveSessionConfig).summary;
+      const summary = replayLiveGame(plays, liveSessionConfig).summary;
+      if (!summary || game?.status !== "completed") return summary;
+      // Once final, the clock left after the last snap is the team with the
+      // ball's, as the report counts it. See finalClock.ts.
+      const last = plays[plays.length - 1];
+      const side = last.nextPossession ?? last.possession;
+      return runOutFinalClock(summary, side === "us" ? liveSessionConfig.programTeamId : liveSessionConfig.opponentTeamId);
     } catch (err) {
       console.warn("liveSummary derive failed", err);
       return null;
     }
-  }, [plays, liveSessionConfig]);
+  }, [plays, liveSessionConfig, game?.status]);
 
   const driveRows = useMemo(() => liveDriveRows(
     plays, liveSummary?.drives ?? [], possession, game?.status === "completed", gc.quarter_length_secs,

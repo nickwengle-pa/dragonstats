@@ -31,7 +31,10 @@ export function liveDriveRows(
     // Kickoff-only possessions have no offensive drive to summarize.
     if (!drive || drive.plays === 0) return;
     const storedEnd = last.playData?.recorded_end_clock_seconds;
-    const endClock = typeof storedEnd === "number" && Number.isFinite(storedEnd)
+    // A final game ran its clock out: the drive still holding the ball at the
+    // end runs to 0:00 of the fourth, not to its last snap. See finalClock.ts.
+    const ranOut = !next && completed && last.quarter === 4 && (last.nextPossession ?? possession) === last.possession;
+    const endClock = ranOut ? 0 : typeof storedEnd === "number" && Number.isFinite(storedEnd)
       ? storedEnd : next?.clock ?? last.clock;
     const endQuarter = typeof storedEnd === "number" ? last.quarter : next?.quarter ?? last.quarter;
     const [minutes, seconds] = drive.startTime.split(":").map(Number);
