@@ -12,7 +12,7 @@ import { opponentPlayerService } from "./opponentService";
 import { getPregameConfig } from "./gameFlow";
 import { resolveDriveResults } from "./driveResults";
 import { isInsideTwenty, resolveKickSpots } from "./kickSpots";
-import { TEAM_JERSEY, TEAM_PLAYER_ID, isVoidedKickRow } from "@/components/game/types";
+import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import {
   FootballStatsEngine,
   CoinTossChoice,
@@ -355,7 +355,7 @@ function supplementPuntsInside20(
   for (const play of plays) {
     if (play.play_type !== "punt" && play.play_type !== "fair_catch") continue;
     // Wiped out by roughing the kicker: not a punt, so not one inside the 20.
-    if (isVoidedKickRow(play)) continue;
+    if (isWipedByPenaltyRow(play)) continue;
     const punter = play.play_players?.find(p => p.role === "punter" || p.role === "kicker");
     if (!punter) continue;
     const stat = summary.punting[punter.player_id];
