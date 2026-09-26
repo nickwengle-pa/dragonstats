@@ -13,8 +13,13 @@ interface ReviewPlay {
 export function needsNextSpotReview(play: ReviewPlay): boolean {
   const pd = (play.play_data ?? {}) as Record<string, unknown>;
   if (pd.next_situation_source !== "pending_review") return false;
-  // The touchdown determines the next situation. Penalties still need review.
-  return !(play.play_type === "blocked_kick" && play.is_touchdown && !play.is_penalty);
+  /* A touchdown decides the next situation by itself - a try for whoever
+     scored - so there is no spot to review. This was true only for a blocked
+     kick, which left every pick-six and scoop-and-score (a turnover, so saved
+     as pending) asking for a spot that does not exist, and holding the game
+     off "Stats final". Read here rather than rewritten on the rows, so games
+     already recorded clear too. A flag on the play still needs a look. */
+  return !(play.is_touchdown && !play.is_penalty);
 }
 
 /** Read older blocked TDs consistently without rewriting recorded games. */

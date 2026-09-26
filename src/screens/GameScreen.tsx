@@ -1178,7 +1178,8 @@ export default function GameScreen() {
     const nextSituationSource = existingSource
       ?? (play.type === "timeout"
         ? "timeout"
-        : (play.penalty || (play.type === "blocked_kick" && !play.isTouchdown) || isTurnoverPlay) ? "pending_review" : "auto");
+        // A turnover returned for a score needs no spot: the try comes next.
+        : (play.penalty || (play.type === "blocked_kick" && !play.isTouchdown) || (isTurnoverPlay && !play.isTouchdown)) ? "pending_review" : "auto");
     const worksheetRow = buildWorksheetRow(play, before, after, scoreBefore, scoreAfter);
 
     return {

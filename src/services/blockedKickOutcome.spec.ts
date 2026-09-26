@@ -15,6 +15,12 @@ describe("blocked punt recovered for a touchdown", () => {
     expect(needsNextSpotReview(play)).toBe(false);
     expect(needsNextSpotReview({ ...play, is_penalty: true })).toBe(true);
     expect(needsNextSpotReview({ ...play, is_touchdown: false })).toBe(true);
-    expect(needsNextSpotReview({ ...play, play_type: "rush" })).toBe(true);
+  });
+  it("does not ask for a spot after a defensive touchdown either", () => {
+    // A pick-six and a scoop-and-score are turnovers, saved as pending.
+    expect(needsNextSpotReview({ ...play, play_type: "int" })).toBe(false);
+    expect(needsNextSpotReview({ ...play, play_type: "rush" })).toBe(false);
+    expect(needsNextSpotReview({ ...play, play_type: "sack", is_penalty: true })).toBe(true);
+    expect(needsNextSpotReview({ ...play, play_type: "int", is_touchdown: false })).toBe(true);
   });
 });
