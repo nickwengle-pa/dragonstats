@@ -16,6 +16,9 @@ import {
   type PlayWithPlayers,
 } from "@/services/gameService";
 import { isMarkedStatsFinal } from "@/services/gameCompletion";
+import { getPregameConfig, resolveGameConfig, type PregameConfig } from "@/services/gameFlow";
+import { getGameConfig } from "@/services/programService";
+import { rechainStoredPlays } from "@/services/rechainStored";
 import { opponentPlayerService } from "@/services/opponentService";
 import {
   loadGameCharting,
@@ -213,6 +216,14 @@ function rowToPlayRecord(
       pd.blocked_kick_type === "kickoff"
     )
       ? (pd.blocked_kick_type as BlockedKickType)
+      : null,
+    /* The editor seeds the recovery spot and return from these. Left off, a
+       fumble opened here came up with no return and saved it as zero. */
+    fumbleReturnYards: pd.fumble_return_yards != null && Number.isFinite(Number(pd.fumble_return_yards))
+      ? Number(pd.fumble_return_yards)
+      : null,
+    fumbleRecoveredAt: pd.fumble_recovered_at != null && Number.isFinite(Number(pd.fumble_recovered_at))
+      ? Number(pd.fumble_recovered_at)
       : null,
     tagged,
     ballOn: p.yard_line,
@@ -658,6 +669,9 @@ interface GameMeta {
   /** Quarter length in seconds, so the clock editor bounds a typo at the
    *  actual period rather than at a guess. */
   quarter_length_secs: number;
+  /** What the replay needs to re-chain the spots after an edit here. */
+  pregame: PregameConfig | null;
+  rules_config: Record<string, unknown> | null;
 }
 
 type SituationDraft = {
@@ -726,7 +740,7 @@ export default function PostGameReview() {
         loadGameCharting(gameId),
         supabase
           .from("games")
-          .select("season_id, opponent_id, is_home, game_date, rules_config, tags, opponent:opponents(*)")
+          .select("season_id, opponent_id, is_home, game_date, rules_config, opening_kickoff_receiver, direction, tags, opponent:opponents(*)")
           .eq("id", gameId)
           .single(),
       ]);
@@ -746,6 +760,8 @@ export default function PostGameReview() {
         quarter_length_secs: Number.isFinite(quarterMinutes) && quarterMinutes > 0
           ? Math.round(quarterMinutes * 60)
           : 12 * 60,
+        pregame: getPregameConfig(g),
+        rules_config: (g?.rules_config ?? null) as Record<string, unknown> | null,
       });
 
       // Roster + opponent players (needed by the play editor)
@@ -774,6 +790,19 @@ export default function PostGameReview() {
 
   useEffect(() => { load(); }, [load]);
 
+  /* The game screen re-derives every later play's spot after an edit and
+     writes it back; this screen never did, so a gain changed here left every
+     play after it on the spot it had before - on this list, in the editor,
+     and in every report that reads the stored spots. Same replay, same writes. */
+  const rechain = useCallback(async (rows: PlayWithPlayers[]): Promise<PlayWithPlayers[]> => {
+    if (!meta || rows.length === 0) return rows;
+    const gc = resolveGameConfig(getGameConfig(program ?? null), meta.rules_config);
+    const rewrites = rechainStoredPlays(rows, meta.pregame, gc);
+    if (rewrites.length === 0) return rows;
+    await Promise.all(rewrites.map((r) => updatePlaySituation(r.id, r.fields, r.playData, { gameId })));
+    return load();
+  }, [meta, program, gameId, load]);
+
   const openCharting = useCallback((play: PlayWithPlayers) => {
     setEditingPlay(play);
     setDraft(emptyDraft(play, gameId!, charting[play.id]));
@@ -784,22 +813,28 @@ export default function PostGameReview() {
   const handleSaveSituation = useCallback(async () => {
     if (!editingPlay || !sitDraft) return;
     setSavingSit(true);
+    /* A start typed in here is a hand-set spot, and the replay re-derives
+       every spot it is not told about - so say so, or the next rebuild on the
+       game screen puts the ball back where the chain left it. */
+    const before = situationFromPlay(editingPlay);
+    const moved = before.possession !== sitDraft.possession || before.down !== sitDraft.down
+      || before.distance !== sitDraft.distance || before.yard_line !== sitDraft.yard_line;
     const ok = await updatePlaySituation(editingPlay.id, {
       possession: sitDraft.possession,
       down: sitDraft.down,
       distance: sitDraft.distance,
       yard_line: sitDraft.yard_line,
-    }, undefined, { gameId });
+    }, moved ? { ...(editingPlay.play_data ?? {}), start_override: true } : undefined, { gameId });
     setSavingSit(false);
     if (!ok) {
       setError("Couldn't save the situation — check your connection and try again.");
       return;
     }
-    const refreshed = await load();
+    const refreshed = await rechain(await load());
     const row = refreshed.find((p) => p.id === editingPlay.id) ?? null;
     setEditingPlay(row);
     if (row) setSitDraft(situationFromPlay(row));
-  }, [editingPlay, gameId, sitDraft, load]);
+  }, [editingPlay, gameId, sitDraft, load, rechain]);
 
   const handleSaveCharting = useCallback(async () => {
     if (!draft) return;
@@ -867,12 +902,15 @@ export default function PostGameReview() {
              to hardcode all four to null, which was harmless while the old
              editor had no way to set one - and became a silent data loss the
              moment editing moved to the entry modal, which does. */
-          next_possession: result.nextSituation ? original?.possession ?? null : null,
+          /* Who has the ball NEXT, which a flag on a return or a turnover
+             hands to the other team. This stored the snap's possession
+             instead, pairing the new team's spot with the old team's frame. */
+          next_possession: result.nextSituation?.possession ?? null,
           next_down: result.nextSituation?.down ?? null,
           next_distance: result.nextSituation?.distance ?? null,
           next_yard_line: result.nextSituation?.ballOn ?? null,
           next_situation_source: result.nextSituation
-            ? "manual_override"
+            ? result.nextSituation.source
             : result.penalty || (result.playType.id === "blocked_kick" && !result.isTouchdown) ? "pending_review" : "auto",
           // Rewritten from the edit result rather than inherited from `pd`,
           // so removing a pending tag in the editor actually removes it.
@@ -908,11 +946,11 @@ export default function PostGameReview() {
     }
 
     setEditRecord(null);
-    const refreshed = await load();
+    const refreshed = await rechain(await load());
     const row = refreshed.find((p) => p.id === playId) ?? null;
     setEditingPlay(row);
     if (row) setSitDraft(situationFromPlay(row));
-  }, [plays, load]);
+  }, [plays, load, rechain]);
 
   /* Same two facts as the live screen, written the same way. */
   const handleSaveTimeoutEdit = useCallback(async (playId: string, edit: TimeoutEdit) => {
@@ -954,8 +992,8 @@ export default function PostGameReview() {
     setEditRecord(null);
     setEditingPlay(null);
     setDraft(null);
-    await load();
-  }, [gameId, load]);
+    await rechain(await load());
+  }, [gameId, load, rechain]);
 
   /* ── Filtering ────────────────────────────────────────────────────────
      A film chart is read looking for something: our defensive snaps, or every
