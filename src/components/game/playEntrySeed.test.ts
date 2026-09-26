@@ -225,4 +225,26 @@ test("an interception keeps both of its spots", () => {
   assert.equal(seed.intReturnYardLine, 45);
 });
 
+/* The touchdown on a fumble is the recovery's. Seeded like a carry that
+   scored, the carrier went back to the line of scrimmage and an unchanged save
+   wrote his gain as zero. */
+test("a fumble returned for a touchdown keeps the carrier's own spot", () => {
+  const seed = buildEditSeed(play({
+    type: "rush", ballOn: 40, yards: 6, turnover: true, isTouchdown: true,
+    fumbleRecoveredAt: 46, fumbleReturnYards: 46,
+    tagged: [tag("rusher", 21, "V"), tag("fumble_recovery", 55, "D")],
+  }));
+  assert.equal(seed.hasFumble, true);
+  assert.equal(seed.isTD, false);
+  assert.equal(seed.resultSide, "our");
+  assert.equal(seed.resultYardLine, 46);
+});
+
+test("a carry that scored still seeds to the line with the TD flag", () => {
+  const seed = buildEditSeed(play({ type: "rush", ballOn: 75, yards: 25, isTouchdown: true }));
+  assert.equal(seed.isTD, true);
+  assert.equal(seed.resultSide, "opp");
+  assert.equal(seed.resultYardLine, 25);
+});
+
 console.log(`\n${passed}/${total} passed`);
