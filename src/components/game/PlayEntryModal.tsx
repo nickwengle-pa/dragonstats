@@ -1273,6 +1273,13 @@ export default function PlayEntryModal({
   const currentStep = steps[stepIdx] ?? "review";
 
   const canGoNext = (): boolean => {
+    // A PAT kick is good or it isn't, and that answer is the whole play. Left
+    // blank it recorded a try that neither scored nor missed, so the result is
+    // required before leaving the step that asks it, and again before saving.
+    // (Blocked switches the play type, so a block is never held up here.)
+    if (playType.id === "pat" && !result && (currentStep === "yards" || currentStep === "review")) {
+      return false;
+    }
     // A penalty-only play with no flag chosen is meaningless — this is the one
     // step worth hard-blocking on, since there's nothing else to record.
     if (currentStep === "penalty") {
@@ -3666,9 +3673,15 @@ export default function PlayEntryModal({
 
               {needsResult && (
                 <div>
-                  <label className="label block mb-1.5">Result</label>
+                  <label className="label block mb-1.5">
+                    Result
+                    {playType.id === "pat" && !result && <span className="text-amber-400"> · pick one to continue</span>}
+                  </label>
                   <div className="flex gap-2">
-                    {(["pat", "two_pt"].includes(playType.id)
+                    {/* Returned is a 2-point try's defensive return. A kicked PAT
+                        has none worth offering, so it shows only on a PAT that
+                        was already saved with it, to keep an edit honest. */}
+                    {(playType.id === "two_pt" || result === "Returned"
                       ? (["Good", "No Good", "Returned"] as const)
                       : (["Good", "No Good"] as const)
                     ).map(r => (
