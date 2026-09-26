@@ -76,6 +76,12 @@
   .live-log-column { display:block !important; width:25% !important; min-width:180px; flex-shrink:0; overflow-y:auto; }
   .live-pane-switch { display:none !important; }
   .live-game-screen .fast-columns { gap:14px; }
+  /* Save Play pinned to the bottom of the entry column. In landscape the card
+     runs 140-230px past the fold on every iPad but the 12.9", so the button
+     that ends every snap sat behind a scroll. Sticking it costs nothing when
+     the card fits, and tackler tags or a save error can no longer push it
+     off. Phones already fix it to the viewport (below). */
+  .live-inline-entry .fast-footer { position:sticky; bottom:0; z-index:20; }
 }
 @media (min-width:768px) and (max-width:1000px) {
   .live-game-screen .live-entry-column { flex:1; }
