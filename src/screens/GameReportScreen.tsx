@@ -574,6 +574,24 @@ export default function GameReportScreen() {
               />
 
               <p className="mt-1 text-[6.5pt] text-neutral-500">Loss excludes sacks · Sack = sack yards lost</p>
+              {/* The Total above and NET YARDS RUSHING on page 1 disagree only
+                  when a play's runner and its possession do. Say which plays,
+                  so the sheet explains itself and film review can fix them. */}
+              {report.rushingChecks.length > 0 && (
+                <p className="mt-1 text-[6.5pt] text-red-700">
+                  <strong>
+                    Total differs from Net Yards Rushing ({report.teamStats.find(r => r.label === "NET YARDS RUSHING")?.us}):
+                  </strong>{" "}
+                  {report.rushingChecks.length === 1 ? "this carry doesn't" : "these carries don't"} match the possession recorded for the play. Fix in film review:{" "}
+                  {report.rushingChecks.map((c, i) => (
+                    <span key={i}>
+                      {i > 0 && " · "}
+                      Q{c.quarter} {c.clock} {c.runner} {c.yards > 0 ? "+" : ""}{c.yards}{" "}
+                      ({c.kind === "their_snap" ? `on ${report.them.abbr}'s possession` : "runner not on our roster"})
+                    </span>
+                  ))}
+                </p>
+              )}
 
               <SubHead>Passing</SubHead>
               <StatTable

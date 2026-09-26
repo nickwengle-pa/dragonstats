@@ -32,6 +32,7 @@ import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { firstPlayerByRole } from "./playTransformer";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
+import { nullifiedStats } from "./statAuditRules";
 
 /* ── Play-type groupings ──────────────────────────────────────────────────── */
 
@@ -81,6 +82,17 @@ export interface RushingRow {
   name: string; att: number; gain: number; loss: number; sackYds: number;
   net: number; td: number; long: number; avg: number; fum: number;
 }
+/** A carry that sits on one side of the rushing table / team-net comparison
+ *  and not the other, with enough to find it in film review. */
+export interface RushingCheck {
+  quarter: number;
+  clock: string;
+  runner: string;
+  yards: number;
+  /** "their_snap": our runner on a play recorded as the opponent's possession.
+   *  "our_snap": their runner on a play recorded as ours. */
+  kind: "their_snap" | "our_snap";
+}
 export interface PassingRow {
   name: string; att: number; comp: number; int: number;
   yds: number; long: number; sack: number; td: number;
@@ -129,6 +141,9 @@ export interface GameReport {
   points: PointsRow[];
   pointsTotal: number;
   rushing: RushingRow[]; rushingTotal: RushingRow;
+  /** Why the rushing Total and NET YARDS RUSHING disagree, play by play.
+   *  Empty when they agree. */
+  rushingChecks: RushingCheck[];
   passing: PassingRow[]; passingTotal: PassingRow;
   receiving: ReceivingRow[]; receivingTotal: ReceivingRow;
   punting: PuntingRow[]; puntingTotal: PuntingRow;
@@ -341,7 +356,10 @@ export function buildGameReport(input: BuildReportInput): GameReport {
      not in the totals either. */
   jerseys.set(TEAM_PLAYER_ID, TEAM_JERSEY);
   names.set(TEAM_PLAYER_ID, "TEAM");
-  const ours = new Set([...roster.map(r => r.player_id), TEAM_PLAYER_ID]);
+  /* Unrostered jerseys too: they were given names above and then left out of
+     this set, so an unrostered back's carries counted in NET YARDS RUSHING
+     and on no line of the rushing table - the Total came up short of it. */
+  const ours = new Set([...roster.map(r => r.player_id), ...names.keys(), TEAM_PLAYER_ID]);
 
   const usTeam: TeamStats = summary.homeTeamStats.teamId === program.id
     ? summary.homeTeamStats
@@ -540,6 +558,35 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     avg: 0, fum: t.fum + r.fum,
   }), { name: "Total", att: 0, gain: 0, loss: 0, sackYds: 0, net: 0, td: 0, long: 0, avg: 0, fum: 0 });
   rushingTotal.avg = avg(rushingTotal.net, rushingTotal.att);
+
+  /* ── Where the rushing Total and NET YARDS RUSHING part ways ─────────────
+     A carry goes on the RUNNER's line but into the team total of whoever had
+     POSSESSION on that snap. They disagree when a play's tags and its
+     possession do: game state is replayed from the play list and rewrites
+     each play's possession, so an edit upstream (a turnover added or
+     removed, a play inserted) can flip later plays to the other team while
+     their runner tags stay ours. The Total then runs past the team net by
+     exactly those carries. Naming them is the fix - it says which plays to
+     correct in film review. */
+  const rushingChecks: RushingCheck[] = [];
+  for (const play of plays) {
+    const isCarry = RUSH_TYPES.has(play.play_type) || ["fumble", "sack"].includes(play.play_type);
+    if (!isCarry || nullifiedStats(play)) continue;
+    const carrier = tagWithRole(play, ["sack", "scramble"].includes(play.play_type) ? ["passer"] : ["rusher"]);
+    if (!carrier) continue;
+    const carrierIsOurs = ours.has(carrier.id);
+    const kind = play.possession === "them" && carrierIsOurs ? "their_snap"
+      : play.possession === "us" && !carrierIsOurs ? "our_snap"
+        : null;
+    if (!kind) continue;
+    rushingChecks.push({
+      quarter: play.quarter,
+      clock: play.clock ?? "",
+      runner: labelFor({ ...carrier, name: carrier.name || (names.get(carrier.id)?.startsWith("#") ? "" : names.get(carrier.id) ?? "") }, jerseys),
+      yards: num(play.yards_gained),
+      kind,
+    });
+  }
 
   /* ── Passing ──────────────────────────────────────────────────────────── */
   const passing: PassingRow[] = ourRows<PassingStats>(
@@ -935,7 +982,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     },
     scoring,
     points, pointsTotal,
-    rushing, rushingTotal,
+    rushing, rushingTotal, rushingChecks,
     passing, passingTotal,
     receiving, receivingTotal,
     punting, puntingTotal,

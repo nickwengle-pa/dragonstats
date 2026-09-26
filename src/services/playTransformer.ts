@@ -430,8 +430,12 @@ export function convertPlay(
     // ── OFFENSIVE PLAYS (typically possession="us") ──────────────────────
 
     case "rush": {
+      /* An untagged carrier on OUR snap is TEAM - ours, unidentified - not
+         "opp_unknown", which filed our yards under an opponent: in the team
+         net but on nobody's line, so the rushing table could not add up to
+         it. Same for scramble, sack, fumble and kneel below. */
       const rusher = firstPlayerByRole(play, "rusher")
-        ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
+        ?? (isOurOffense ? play.primary_player_id ?? TEAM_PLAYER_ID : getOppPlayerId(play));
       const result = play.is_touchdown ? RushResult.Touchdown : RushResult.Normal;
       return {
         type: PlayType.Rush,
@@ -474,7 +478,7 @@ export function convertPlay(
       // engine flags it as a designed-pass-turned-run for split passing/rushing stats.
       const rusher = firstPlayerByRole(play, "passer")
         ?? firstPlayerByRole(play, "rusher")
-        ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
+        ?? (isOurOffense ? play.primary_player_id ?? TEAM_PLAYER_ID : getOppPlayerId(play));
       const result = play.is_touchdown ? RushResult.Touchdown : RushResult.Normal;
       return {
         type: PlayType.Rush,
@@ -570,7 +574,7 @@ export function convertPlay(
 
     case "sack": {
       const passer = firstPlayerByRole(play, "passer")
-        ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
+        ?? (isOurOffense ? play.primary_player_id ?? TEAM_PLAYER_ID : getOppPlayerId(play));
       const sackers = playersByRole(play, "sacker");
       return {
         type: PlayType.Pass,
@@ -614,7 +618,7 @@ export function convertPlay(
 
     case "fumble": {
       const rusher = firstPlayerByRole(play, "rusher")
-        ?? (isOurOffense ? play.primary_player_id ?? "opp_unknown" : getOppPlayerId(play));
+        ?? (isOurOffense ? play.primary_player_id ?? TEAM_PLAYER_ID : getOppPlayerId(play));
       return {
         type: PlayType.Rush,
         rusher,
@@ -631,7 +635,8 @@ export function convertPlay(
     }
 
     case "kneel": {
-      const rusher = firstPlayerByRole(play, "rusher") ?? play.primary_player_id ?? "opp_unknown";
+      const rusher = firstPlayerByRole(play, "rusher") ?? play.primary_player_id
+        ?? (isOurOffense ? TEAM_PLAYER_ID : getOppPlayerId(play));
       return {
         type: PlayType.Rush,
         rusher,
