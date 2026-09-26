@@ -15,6 +15,12 @@ import {
   PLAY_TYPES,
   PENALTIES,
   PENALTY_DEFAULT_YARDS,
+  PENALTY_RULES,
+  penaltiesFor,
+  penaltyContextFor,
+  penaltyCostsDown,
+  grantsAutoFirstDown,
+  kickVoidedByPenalty,
   STICKY_ROLES,
   OFFENSIVE_FORMATIONS,
   DEFENSIVE_FORMATIONS,
@@ -847,6 +853,9 @@ export default function PlayEntryModal({
     edit?.penalty != null && !PENALTIES.includes(edit.penalty),
   );
   const [showPenalties, setShowPenalties] = useState(edit?.penalty != null);
+  /* The penalty list is long enough to need a second tier: the fouls usually
+     called on this kind of snap, then everything else behind one tap. */
+  const [showAllPenalties, setShowAllPenalties] = useState(false);
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(
     () => edit?.blockedKickType ?? defaultBlockedKickType(gameState),
   );
@@ -1966,18 +1975,24 @@ export default function PlayEntryModal({
       ? interceptionReturnBallOn
       : resultBallOn;
 
+  /** Roughing or running into the punter, accepted: the punt is wiped out.
+   *  Enforced from the previous spot with the kicking team keeping the ball,
+   *  so it is marked off exactly like a loose-ball foul by the defense - which
+   *  is also what it is in this frame, since possession sat with the kicker. */
+  const kickVoided = kickVoidedByPenalty(playType.id, penalty, penaltyCategory, penaltyEnforcement);
+
   /** The rulebook category of this play, which is what fixes the basic spot. */
   const enforcementKind: PlayKind =
     playType.category === "penalty"
       ? "dead_ball"
-      : LOOSE_BALL_TYPES.has(playType.id)
+      : LOOSE_BALL_TYPES.has(playType.id) || kickVoided
         ? "loose_ball"
         : "running";
 
   /** Who had the ball when the play ended, named against the PRE-SNAP
    *  possession because that is the frame every number here uses. */
   const possessionAtEnd: PenaltySide =
-    playType.id === "onside_kick" && onsideRecoveredByKicker
+    kickVoided || (playType.id === "onside_kick" && onsideRecoveredByKicker)
       ? "offense"
       : ballCarrier === "returner"
         ? "defense"
@@ -2003,6 +2018,8 @@ export default function PlayEntryModal({
           kind: enforcementKind,
           possessionAtEnd,
           firstDownDistance: gameConfig.first_down_distance,
+          autoFirstDown: grantsAutoFirstDown(penalty, penaltyCategory),
+          lossOfDown: penaltyCostsDown(penalty, penaltyCategory),
         })
       : null;
 
@@ -2260,23 +2277,50 @@ export default function PlayEntryModal({
     return category;
   };
 
+  const penaltyGroups = penaltiesFor(penaltyContextFor(playType.id, playType.category));
+  /* A pick from the second tier keeps it open, or the highlighted choice
+     would vanish the moment it was made. */
+  const allPenaltiesOpen = showAllPenalties || (!!penalty && penaltyGroups.rest.includes(penalty));
+  const penaltyButton = (p: string) => {
+    const rule = PENALTY_RULES[p];
+    // What the foul does besides the yards, where it does something: the
+    // two NFHS roughing fouls carry a first down, grounding costs the down.
+    const extra = rule?.autoFirstDown ? "+1st" : rule?.lossOfDown ? "+LOD" : "";
+    return (
+      <button key={p} onClick={() => selectPenalty(p)}
+        className={`text-[11px] font-bold py-2 px-2 rounded-lg border text-left transition-all duration-200 flex items-center justify-between gap-1 ${
+          penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-slate-400"
+        }`}>
+        <span className="truncate">{p}</span>
+        <span className={`shrink-0 tabular-nums ${penalty === p ? "text-orange-300/80" : "text-slate-600"}`}>
+          {PENALTY_DEFAULT_YARDS[p] ?? 5}{extra && <span className="ml-1 text-[9px]">{extra}</span>}
+        </span>
+      </button>
+    );
+  };
+
   const penaltyPicker = (
     <div className="space-y-3">
       <div>
         <span className="text-xs text-slate-500 block mb-1.5">Penalty · standard yards</span>
-        <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto">
-          {PENALTIES.map(p => (
-            <button key={p} onClick={() => selectPenalty(p)}
-              className={`text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-all duration-200 flex items-center justify-between gap-1 ${
-                penalty === p ? "border-orange-500 bg-orange-500/15 text-orange-400" : "border-surface-border text-slate-400"
-              }`}>
-              <span className="truncate">{p}</span>
-              <span className={`shrink-0 tabular-nums ${penalty === p ? "text-orange-300/80" : "text-slate-600"}`}>
-                {PENALTY_DEFAULT_YARDS[p] ?? 5}
-              </span>
-            </button>
-          ))}
+        <div className="grid grid-cols-2 gap-1.5">
+          {penaltyGroups.likely.map(penaltyButton)}
         </div>
+        {allPenaltiesOpen ? (
+          <>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mt-3 mb-1.5">All other penalties</span>
+            <div className="grid grid-cols-2 gap-1.5">
+              {penaltyGroups.rest.map(penaltyButton)}
+            </div>
+          </>
+        ) : (
+          <button
+            onClick={() => setShowAllPenalties(true)}
+            className="mt-1.5 w-full text-[11px] font-bold py-2 px-2 rounded-lg border border-dashed border-surface-border text-slate-400 text-left"
+          >
+            More penalties ({penaltyGroups.rest.length}) ▾
+          </button>
+        )}
         <button
           onClick={startCustomPenalty}
           className={`mt-1.5 w-full text-[11px] font-bold py-1.5 px-2 rounded-lg border text-left transition-all duration-200 ${
@@ -2356,6 +2400,16 @@ export default function PlayEntryModal({
                 </button>
               ))}
             </div>
+            {/* The one flag that rewrites the play above it, so say so where
+                the choice is made rather than leaving the operator to wonder
+                why the punt they just entered is not in the stats. */}
+            {kickVoided && (
+              <p className="mt-2 text-[11px] font-bold text-orange-300">
+                Punt doesn't count · ball stays with {flagTeamName("offense")}
+                {grantsAutoFirstDown(penalty, penaltyCategory) ? ", 1st down" : ""}.
+                Decline to keep the punt and return instead.
+              </p>
+            )}
           </div>
 
           <div>

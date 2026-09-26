@@ -3,6 +3,7 @@ import {
   isPenaltyOnOffense,
   grantsAutoFirstDown,
   getPenaltyDefaultSide,
+  penaltyCostsDown,
   type PlayRecord,
 } from "@/components/game/types";
 import type { GameConfig } from "./programService";
@@ -409,6 +410,24 @@ export function advanceSituationAfterPlay(
         const appliedYards = Math.min(play.flagYards, halfDistance);
         const newOffenseBallOn = Math.max(1, before.ballOn - appliedYards);
         const distanceAdded = before.ballOn - newOffenseBallOn;
+        // Grounding and an illegal forward pass cost the down too; on fourth
+        // down that hands the ball over at the enforced spot.
+        if (penaltyCostsDown(play.penalty, "offense")) {
+          if (before.down >= 4) {
+            return {
+              possession: oppositeTeam(possession),
+              down: 1,
+              distance: Math.min(config.first_down_distance, newOffenseBallOn),
+              ballOn: flipFieldPosition(newOffenseBallOn),
+            };
+          }
+          return {
+            possession,
+            down: before.down + 1,
+            distance: Math.min(99, before.distance + distanceAdded),
+            ballOn: newOffenseBallOn,
+          };
+        }
         return {
           possession,
           down: before.down,
