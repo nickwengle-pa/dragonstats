@@ -11,6 +11,7 @@ import { transformPlays, collectOpponentPlayerIds, type TransformContext } from 
 import { opponentPlayerService } from "./opponentService";
 import { getPregameConfig } from "./gameFlow";
 import { resolveDriveResults } from "./driveResults";
+import { runOutFinalClock } from "./finalClock";
 import { isInsideTwenty, resolveKickSpots } from "./kickSpots";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import {
@@ -274,6 +275,15 @@ export async function computeGameStatsBundle(
     isTurnover: p.is_turnover,
     result: String(p.play_data?.result ?? ""),
   })));
+
+  // 11. A final game ran its clock out, set to 0:00 or not. The time left
+  //     after the last snap goes to whoever had the ball. See finalClock.ts.
+  if (game.status === "completed") {
+    const last = plays[plays.length - 1];
+    const side = last.play_data?.next_possession ?? last.possession;
+    const holder = side === "us" ? program.id : side === "them" ? game.opponent.id : null;
+    return { summary: runOutFinalClock(summary, holder), plays, roster, game };
+  }
 
   return { summary, plays, roster, game };
 }
