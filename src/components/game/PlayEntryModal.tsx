@@ -1614,32 +1614,25 @@ export default function PlayEntryModal({
     id: p.id, player_id: p.id, jersey_number: p.jersey_number, name: p.name, role, isOpponent: true,
   });
 
+  /** TEAM as one of the tacklers: alone it is the whole tackle, with a
+   *  player it is half. Tapped again, it comes back off. */
+  const toggleTeamTackler = () => {
+    setNoTackle(false);
+    setTacklers(prev => toggleFastTackler(prev, { ...makeTeamTag(defensiveCreditRole), teamCreditConfirmed: true }));
+  };
+
+  /* Same rule as live entry: tapping a tackler toggles him, credit re-splits,
+     and a film-later placeholder gives way to a real name. It used to stay
+     on as a half-tackle nobody made. */
   const handleAddTackler = (p: RosterPlayer) => {
-    if (tacklers.some(t => t.player_id === p.player_id)) {
-      // De-selecting: if that leaves exactly one tackler, it's a solo again.
-      setTacklers(prev => {
-        const next = prev.filter(t => t.player_id !== p.player_id);
-        return next.length === 1 ? next.map(t => ({ ...t, credit: 1 })) : next;
-      });
-      return;
-    }
-    if (tacklers.length >= 3) return;
-    const credit = tacklers.length === 0 ? 1 : 0.5;
-    const tp: TaggedPlayer = {
+    setNoTackle(false);
+    setTacklers(prev => toggleFastTackler(prev, {
       id: p.player_id,
       player_id: p.player_id,
       jersey_number: p.jersey_number,
       name: `${p.player.first_name} ${p.player.last_name}`,
       role: defensiveCreditRole,
-      credit,
-    };
-    setTacklers(prev => {
-      const updated = [...prev, tp];
-      if (updated.length > 1) {
-        return updated.map(t => ({ ...t, credit: 0.5 }));
-      }
-      return updated;
-    });
+    }));
     setTacklerSearch("");
   };
 
@@ -2586,7 +2579,9 @@ export default function PlayEntryModal({
       onClearTag={role => setTagged(prev => prev.filter(t => t.role !== role))}
       onTackler={player => {
         setNoTackle(false);
-        if (player.isTeam || player.player_id === OPP_TEAM_PLAYER.id) { setTacklers([]); return; }
+        // The film-later placeholder stands for the whole tackle; removing it
+        // clears the tackle. Confirmed TEAM is a tackler and toggles like one.
+        if ((player.isTeam && !player.teamCreditConfirmed) || player.player_id === OPP_TEAM_PLAYER.id) { setTacklers([]); return; }
         setTacklers(prev => toggleFastTackler(prev, { ...player, role: defensiveCreditRole }));
       }}
       onNoTackle={() => { setNoTackle(!noTackle); setTacklers([]); }}
@@ -2598,10 +2593,7 @@ export default function PlayEntryModal({
         }), credit: 1 }]);
       }}
       onAddOpponent={jersey => opponentTag(addOpponentJersey(jersey))}
-      onTeamTackle={tacklersAreOurs ? () => {
-        setNoTackle(false);
-        setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1, teamCreditConfirmed: true }]);
-      } : undefined}
+      onTeamTackle={tacklersAreOurs ? toggleTeamTackler : undefined}
       onYards={value => { setFastSpotConfirmed(true); setResultFromTotalYards(value); }}
       onTouchdown={() => { setIsTD(!isTD); setTacklers([]); setNoTackle(false); }}
       onDetailed={section => {
@@ -4136,20 +4128,28 @@ export default function PlayEntryModal({
               {/* Three outcomes, all one tap: name them, owe it to TEAM, or say
                   no tackle happened. Only the last two are here — naming is the
                   grid below. */}
-              {tacklersAreOurs && tacklers.length === 0 && (
+              {tacklersAreOurs && (tacklers.length === 0 || tacklers.every(t => !t.isTeam || t.teamCreditConfirmed)) && (
                 <div className="flex gap-2 mb-2">
+                  {/* A toggle, not a replace: TEAM can take the whole tackle or
+                      share one with the players picked below (half each). */}
                   <button
-                    onClick={() => { setNoTackle(false); setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1, teamCreditConfirmed: true }]); setSkipWarning(null); }}
-                    className="flex-1 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-400 text-xs font-bold uppercase tracking-wide"
+                    onClick={() => { toggleTeamTackler(); setSkipWarning(null); }}
+                    aria-pressed={tacklers.some(t => t.isTeam && t.teamCreditConfirmed)}
+                    className={`flex-1 py-2 rounded-xl border text-xs font-bold uppercase tracking-wide ${
+                      tacklers.some(t => t.isTeam && t.teamCreditConfirmed)
+                        ? "border-amber-400 bg-amber-500/25 text-amber-300"
+                        : "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                    }`}
                   >
+                    {tacklers.some(t => t.isTeam && t.teamCreditConfirmed) ? "✓ " : tacklers.length > 0 ? "+ " : ""}
                     {playType.id === "sack" ? "Sack by TEAM" : "Tackle by TEAM"}
                   </button>
-                  <button onClick={() => { setNoTackle(false); setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1 }]); setSkipWarning(null); }}
-                    className="flex-1 py-2 rounded-xl border border-surface-border text-slate-300 text-xs font-bold">Identify on film later</button>
+                  {tacklers.length === 0 && <button onClick={() => { setNoTackle(false); setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1 }]); setSkipWarning(null); }}
+                    className="flex-1 py-2 rounded-xl border border-surface-border text-slate-300 text-xs font-bold">Identify on film later</button>}
                   {/* A sack always had somebody get there — "no tackle" is only
                       an answer for a runner who went out of bounds, scored, or
                       fell down. */}
-                  {playType.id !== "sack" && (
+                  {playType.id !== "sack" && tacklers.length === 0 && (
                     <button
                       onClick={() => { setNoTackle(true); setSkipWarning(null); goNext(); }}
                       className="flex-1 py-2 rounded-xl border border-surface-border bg-surface-bg text-slate-400 text-xs font-bold uppercase tracking-wide"
@@ -4171,7 +4171,7 @@ export default function PlayEntryModal({
                       {/* A TEAM tag has no jersey and no surname — the generic
                           chip would render "#null undefined". */}
                       {t.isTeam
-                        ? "TEAM"
+                        ? (t.teamCreditConfirmed ? "TEAM" : "Film later")
                         : `#${t.jersey_number ?? "?"} ${t.name.split(" ")[1] ?? t.name}`}
                       <span className="text-[10px] opacity-60">({t.credit})</span>
                       <button onClick={() => setTacklers(prev => {

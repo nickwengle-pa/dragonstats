@@ -18,6 +18,17 @@ describe("live tackle capture", () => {
     expect(toggleFastTackler([{ ...pick("opp_team"), isOpponent: true, credit: 1 }], { ...pick("opp_44"), isOpponent: true }))
       .toEqual([{ ...pick("opp_44"), isOpponent: true, credit: 1 }]);
   });
+  it("lets TEAM share a tackle with a player, in either order", () => {
+    const team = { ...makeTeamTag("tackler"), teamCreditConfirmed: true };
+    const teamFirst = toggleFastTackler(toggleFastTackler([], team), pick("a"));
+    const playerFirst = toggleFastTackler(toggleFastTackler([], pick("a")), team);
+    for (const tags of [teamFirst, playerFirst]) {
+      expect(tags.map(t => t.credit)).toEqual([0.5, 0.5]);
+      expect(splitTackleCredit(tags).assistedTackle.sort()).toEqual(["a", team.player_id].sort());
+    }
+    // Taking TEAM back off leaves the player with the whole tackle.
+    expect(toggleFastTackler(teamFirst, team)).toEqual([{ ...pick("a"), credit: 1 }]);
+  });
   it("retains the existing three-player limit without blocking removal", () => {
     let tags: TaggedPlayer[] = [];
     for (const id of ["a", "b", "c", "d"]) tags = toggleFastTackler(tags, pick(id));

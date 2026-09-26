@@ -136,7 +136,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
     {open && createPortal(<div ref={popup} className={`player-picker-popup${accentColor ? " player-picker-team" : ""}`} style={{ ...position, ...teamStyle }}>
       <div className="player-picker-heading"><strong>{label} · {team}</strong><button type="button" onClick={() => { close(); input.current?.blur(); }}>Done</button></div>
       <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => choose(null)}><Film size={16} /> Identify on film later</button>
-      {onSelectTeam && <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => { onSelectTeam(); close(); input.current?.blur(); }}>Team{selected.some(player => player.teamCreditConfirmed) && <Check size={17} />}</button>}
+      {onSelectTeam && <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => { onSelectTeam(); if (!multiple) { close(); input.current?.blur(); } }}>Team{selected.some(player => player.teamCreditConfirmed) && <Check size={17} />}</button>}
       <div id={`${id}-list`} role="listbox" aria-label={`${label} players`} aria-multiselectable={multiple || undefined}>
         {newJersey != null && <button type="button" role="option" aria-selected={false} id={`${id}-0`}
           className={`player-add${active === 0 ? " player-active" : ""}`} onMouseDown={e => e.preventDefault()} onClick={() => addJersey(newJersey)}>
