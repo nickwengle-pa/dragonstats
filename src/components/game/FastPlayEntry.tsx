@@ -39,6 +39,8 @@ interface Props {
   onNoTackle: () => void;
   onUnknownTackle: () => void;
   onTeamTackle?: () => void;
+  /** Add an opponent by jersey alone — most opponents have no roster here. */
+  onAddOpponent?: (jersey: number) => TaggedPlayer;
   onYards: (yards: number) => void;
   onTouchdown: () => void;
   onDetailed: (section: "players" | "penalty" | "fumble") => void;
@@ -139,14 +141,16 @@ export default function FastPlayEntry(p: Props) {
               {p.playType.roles.length > 0 && <div className="offense-selection" role="group" aria-label={`${p.offenseName} offense players`}>
                 {p.playType.roles.map(role => <PlayerPicker key={role} label={`${labels[role] ?? role}${role === "target" ? " (optional)" : ""}`} team={p.offenseName}
                   players={p.offensePlayers} usage={p.playerUsage} role={role} accentColor={p.accentColor}
+                  onAddJersey={ours ? undefined : p.onAddOpponent}
                   selected={p.tagged.filter(t => t.role === role)} onSelect={player => p.onTag(role, player)} />)}
               </div>}
               {incomplete && <PassDefenderPicker team={p.defenseName} players={p.defensePlayers} accentColor={p.defenseAccentColor}
+                onAddJersey={ours ? p.onAddOpponent : undefined}
                 selected={p.tagged.filter(t => t.role === "defender")} onSelect={player => p.onTag("defender", player)}
                 onClear={() => p.onClearTag("defender")} />}
               {showTacklers && <div className="fast-tacklers defense-selection" style={{ "--defense-accent": p.defenseAccentColor } as CSSProperties}>
                 <PlayerPicker label={labels[defenseRole]} team={p.defenseName} players={p.defensePlayers} selected={p.tacklers} multiple accentColor={p.defenseAccentColor}
-                  onSelectTeam={p.onTeamTackle}
+                  onSelectTeam={p.onTeamTackle} onAddJersey={ours ? p.onAddOpponent : undefined}
                   onSelect={player => player ? p.onTackler(player) : p.onUnknownTackle()} />
                 <div className="fast-tackle-options">
                   <span>{p.tacklers.length > 1 ? "Shared tackle credit" : "Select up to 3 tacklers"}</span>

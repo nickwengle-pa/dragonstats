@@ -58,10 +58,15 @@ export default function Keypad({
    * it, and a re-render lands after the gesture is over. Setting the attribute
    * and focusing synchronously keeps both inside the tap. React will not
    * revert it, because its own view of the prop never changed.
+   *
+   * Blurred first: the field is usually focused already — the keys refuse
+   * focus to keep it there — and focus() on a focused input is a no-op, so
+   * iOS would never be asked for a keyboard at all.
    */
   const handOffToKeyboard = () => {
     const el = inputRef?.current;
     if (!el) return;
+    el.blur();
     el.inputMode = "text";
     el.focus();
   };

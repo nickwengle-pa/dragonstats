@@ -117,6 +117,45 @@ export function normalizeOppTagId(id: string, jersey: number | null): string {
   return `opp_UNK_${n ?? 0}`;
 }
 
+/** The id a jersey-only opponent is tagged under. See opponentsForPicker. */
+export function quickAddOpponentId(jersey: number): string {
+  return `opp_UNK_${jersey}`;
+}
+
+/** A row quick-add saved: nothing known but the number. */
+export function isNumberOnlyOpponent(p: OpponentPlayerRef): boolean {
+  return p.position == null && p.jersey_number != null
+    && p.name.trim() === `#${p.jersey_number}`;
+}
+
+/**
+ * Opponent players as the pickers should offer them.
+ *
+ * Quick-add tags `opp_UNK_{jersey}` at once, with no wait on the network, and
+ * saves an opponent_players row ("#7", no position) behind it. That row comes
+ * back with a uuid, and from the next play on the picker offered the uuid — so
+ * one player's stats landed on two lines: the play they were added on, and
+ * every play after it. Offering number-only rows under the quick-add id keeps
+ * them one player, and still does after a reload, when only the saved row is left.
+ *
+ * Rows with a real name or position keep their uuid; plays already recorded
+ * are tagged with it. This is only what pickers see — GameScreen keeps the
+ * uuid, and its name map resolves both ids, so older tags still label right.
+ */
+export function opponentsForPicker(players: OpponentPlayerRef[]): OpponentPlayerRef[] {
+  const seen = new Set<string>();
+  const out: OpponentPlayerRef[] = [];
+  for (const p of players) {
+    const id = isNumberOnlyOpponent(p) ? quickAddOpponentId(p.jersey_number!) : p.id;
+    // Two saved rows for one number (a retried add) would be two tiles with
+    // the same key — and the same player.
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id === p.id ? p : { ...p, id });
+  }
+  return out;
+}
+
 export const TEAM_PLAYER_ID = "our_team";
 /** Jersey the TEAM placeholder wears on a stat sheet. 100 is the convention
  *  the printed reports coaches already read use for a team-credited stop, so
@@ -456,7 +495,8 @@ export function yardLabel(yard: number) {
 function playerLabel(t: TaggedPlayer | undefined): string {
   if (!t) return "?";
   const num = t.jersey_number != null ? `#${t.jersey_number}` : "";
-  if (t.name && t.name !== "?") {
+  // A number-only player is *named* "#7"; don't print it twice.
+  if (t.name && t.name !== "?" && t.name.trim() !== num) {
     const parts = t.name.trim().split(/\s+/);
     const short = parts.length > 1
       ? `${parts[0][0]}.${parts[parts.length - 1]}`

@@ -35,6 +35,7 @@ import {
   makePendingId,
   makeTeamTag,
   normalizeOppTagId,
+  opponentsForPicker,
   pendingDisplayName,
   pendingJerseyFromId,
   yardLabel,
@@ -1460,7 +1461,7 @@ export default function PostGameReview() {
               ballOn: editRecord.ballOn,
             }}
             roster={roster}
-            opponentPlayers={oppPlayers}
+            opponentPlayers={opponentsForPicker(oppPlayers)}
             progName={program?.name ?? "Team"}
             oppName={meta?.opponent_name ?? "Opponent"}
             trackFormations

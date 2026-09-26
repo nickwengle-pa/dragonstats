@@ -52,6 +52,9 @@
 .player-picker-popup [aria-selected=true] { font-weight:700; }
 .player-jersey { min-width:38px; font-weight:800; }
 .player-empty { font-size:13px; color:#cbd5e1; padding:12px; }
+/* Amber = not a confirmed pick, as everywhere in entry: a number with no player behind it yet. */
+.player-picker-popup .player-add { color:#fcd34d; background:rgba(245,158,11,.08); outline:1px dashed rgba(245,158,11,.6); outline-offset:-3px; }
+.player-picker-keypad { flex-shrink:0; padding:0 8px 8px; border-top:1px solid #475569; }
 .offense-selection { --selection-accent:var(--fast-accent); display:flex; flex-direction:column; gap:12px; }
 .defense-selection { --selection-accent:var(--defense-accent); }
 .offense-selection, .defense-selection { padding:12px; border:1px solid var(--selection-accent); border-left-width:4px; border-radius:8px; background:color-mix(in srgb, var(--selection-accent) 12%, var(--bc-surface, #101722)); }
