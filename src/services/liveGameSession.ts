@@ -39,7 +39,7 @@ import {
 import type { GameConfig } from "./programService";
 import { resolveDriveResults } from "./driveResults";
 import { splitTackleCredit } from "./tackleCredit";
-import { grantsAutoFirstDown } from "@/components/game/types";
+import { grantsAutoFirstDown, kickVoidedByPenalty } from "@/components/game/types";
 import { resolveKickSpots } from "./kickSpots";
 import { scoringEventsForPlay } from "./scoringLedger";
 import { convertPlay } from "./playTransformer";
@@ -360,6 +360,11 @@ function toEnginePlay(
     });
   }
   const penalties = buildPenalties(play, config);
+  // A fair catch voided by roughing the kicker: the punt goes through
+  // convertPlay above, which has the same rule.
+  if (kickVoidedByPenalty(play.type, play.penalty, play.penaltyCategory, play.penaltyEnforcement)) {
+    return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description || undefined, context } as Play : null;
+  }
   const tackles = liveTackleCredits(play);
   const kickSpots = liveKickSpots(play);
 

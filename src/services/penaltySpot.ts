@@ -67,26 +67,30 @@ export function reviewNextSpot(o: {
 /**
  * Which team a flag lands on before anyone touches it.
  *
- * Four fouls carry no `defaultSide` in the rules table, because either team
- * can commit them: facemask, unsportsmanlike conduct, block in the back and
- * clipping. That was harmless while the operator picked a side from two
+ * Some fouls carry no `defaultSide` in the rules table, because either team
+ * can commit them: facemask, unsportsmanlike conduct, the blocking fouls, the
+ * tackling fouls. That was harmless while the operator picked a side from two
  * buttons, and is not harmless now the control prefills and offers a swap - a
  * null side would name a team on screen while storing nothing, and Record Play
  * would refuse with no visible reason.
  *
- * So those four get a contextual guess, and the UI says it is guessing.
+ * So those get a contextual guess, and the UI says it is guessing.
  *
- * The blocking fouls are the two worth getting right, since they are the
- * common return fouls: on a kick the blocking is done by the RECEIVING team,
- * which is "defense" here because possession sits with the kicking team; on a
- * scrimmage down it is the offense doing the blocking. Facemask and
- * unsportsmanlike genuinely have no lean, and default to the defense.
+ * Blocking fouls are the ones worth getting right, since they are the common
+ * return fouls: on a kick the blocking is done by the RECEIVING team, which is
+ * "defense" here because possession sits with the kicking team; on a
+ * scrimmage down it is the offense doing the blocking. Tackling fouls are the
+ * mirror image - the covering team tackles on a kick, the defense otherwise.
+ * Unsportsmanlike and illegal substitution have no lean and default to the
+ * defense.
  */
+const BLOCKING_FOULS = new Set(["Block in Back", "Clipping", "Illegal Block Below Waist", "Illegal Use of Hands"]);
+const TACKLING_FOULS = new Set(["Facemask", "Horse Collar", "Personal Foul", "Targeting"]);
+
 export function flagSideDefault(label: string, isKickPlay: boolean): PenaltySide {
   const fromRules = getPenaltyDefaultSide(label);
   if (fromRules) return fromRules;
-  if (label === "Block in Back" || label === "Clipping") {
-    return isKickPlay ? "defense" : "offense";
-  }
+  if (BLOCKING_FOULS.has(label)) return isKickPlay ? "defense" : "offense";
+  if (TACKLING_FOULS.has(label)) return isKickPlay ? "offense" : "defense";
   return "defense";
 }

@@ -13,7 +13,7 @@ import {
   grantsAutoFirstDown,
   type PenaltySide,
 } from "@/components/game/types";
-import { TEAM_PLAYER_ID } from "@/components/game/types";
+import { TEAM_PLAYER_ID, isVoidedKickRow } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
 import { resolveKickSpots } from "./kickSpots";
@@ -412,6 +412,12 @@ export function convertPlay(
 
   // A kick repeated after enforcement contributes the penalty, not a kick attempt.
   if (["kickoff", "onside_kick"].includes(play.play_type) && pd?.kickoff_out_of_bounds_choice === "rekick") {
+    return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } as Play : null;
+  }
+  // Roughing or running into the punter, accepted: the punt never happened.
+  // The flag still counts against the receiving team; the kick distance, the
+  // return and any tackle on it count for nobody.
+  if (isVoidedKickRow(play)) {
     return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } as Play : null;
   }
 

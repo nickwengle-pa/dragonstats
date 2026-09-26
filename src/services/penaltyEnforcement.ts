@@ -69,6 +69,11 @@ export interface EnforcementInput {
   possessionAtEnd: PenaltySide;
   /** Yards for a fresh series, from game config. */
   firstDownDistance: number;
+  /** A defensive foul that carries a first down whatever the yardage - under
+   *  NFHS, only the roughing fouls. */
+  autoFirstDown?: boolean;
+  /** An offensive foul that also costs the down - grounding, an illegal pass. */
+  lossOfDown?: boolean;
 }
 
 export interface Enforcement extends Situation {
@@ -151,27 +156,46 @@ export function enforcePenalty(i: EnforcementInput): Enforcement | null {
       ? "from the snap"
       : "from the end of the run";
 
+  /* A new series for the team that did NOT start the down. They attack the
+     pre-snap offense's goal, which sits at ballOn 0 in this frame, so the
+     yards they have left to score are ballOn itself - not 100 - ballOn,
+     which gave goal-to-go at midfield-and-beyond flips and a full 10 inside
+     the 10. */
+  const flipped = (): Enforcement => ({
+    ballOn,
+    down: 1,
+    distance: Math.min(i.firstDownDistance, Math.max(1, ballOn)),
+    possessionFlips: true,
+    from,
+    newSeries: true,
+  });
+
   /* A change of possession during the down starts a new series wherever the
      ball ends up, so the down and distance are not carried over. A kick is the
      everyday case; a turnover reaches here the same way. */
-  const flips = i.possessionAtEnd === "defense";
-  if (flips) {
+  if (i.possessionAtEnd === "defense") return flipped();
+
+  const gained = ballOn - i.before.ballOn;
+
+  /* Grounding and an illegal forward pass cost the down as well as the
+     yards. On fourth down that is a turnover on downs at the enforced spot. */
+  if (i.lossOfDown && i.side === "offense") {
+    if (i.before.down >= 4) return flipped();
     return {
       ballOn,
-      down: 1,
-      distance: Math.min(i.firstDownDistance, Math.max(1, 100 - ballOn)),
-      possessionFlips: true,
+      down: i.before.down + 1,
+      distance: Math.max(1, Math.min(99, i.before.distance - gained)),
+      possessionFlips: false,
       from,
-      newSeries: true,
+      newSeries: false,
     };
   }
 
   /* Same team keeps the ball, so the down replays unless the yardage itself
-     reached the line to gain. NFHS has no automatic first downs - the repo
-     changed this deliberately after checking with the coach - so defensive
-     holding and DPI get their distance and nothing more. */
-  const gained = ballOn - i.before.ballOn;
-  const madeIt = i.side === "defense" && gained >= i.before.distance;
+     reached the line to gain. NFHS awards an automatic first down only for the
+     roughing fouls - the repo removed it from defensive holding and DPI after
+     checking with the coach - so those get their distance and nothing more. */
+  const madeIt = i.side === "defense" && (i.autoFirstDown === true || gained >= i.before.distance);
   if (madeIt) {
     return {
       ballOn,
