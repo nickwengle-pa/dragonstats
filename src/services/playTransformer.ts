@@ -13,7 +13,7 @@ import {
   grantsAutoFirstDown,
   type PenaltySide,
 } from "@/components/game/types";
-import { TEAM_PLAYER_ID, isVoidedKickRow } from "@/components/game/types";
+import { TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
 import { resolveKickSpots } from "./kickSpots";
@@ -351,7 +351,8 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
     yards: enforcement === PenaltyEnforcement.Accepted ? (pd?.penalty_yards ?? 5) : 0,
     enforcement,
     isAutoFirstDown: grantsAutoFirstDown(penaltyType, penCategory),
-    preservesPlayStats: preservesAdvance(pd ?? {}, play.yard_line ?? 0),
+    // The operator said the play counts: the engine must not wipe it.
+    preservesPlayStats: pd?.penalty_play_counts === true || preservesAdvance(pd ?? {}, play.yard_line ?? 0),
   }];
 }
 
@@ -407,7 +408,10 @@ export function convertPlay(
     play = { ...play, yards_gained: pd.fumble_recovered_at - (play.yard_line ?? 0) };
   }
   const penalties = buildPenalties(play, ctx);
-  if (penalties?.some(p => p.preservesPlayStats) && ["rush", "pass_comp"].includes(play.play_type)) {
+  // Holding beyond the line keeps the run up to the foul. A play the operator
+  // said counts keeps all of it.
+  if (pd?.penalty_play_counts !== true && preservesAdvance(pd ?? {}, play.yard_line ?? 0)
+      && ["rush", "pass_comp"].includes(play.play_type)) {
     play = { ...play, yards_gained: Math.min(play.yards_gained, pd.foul_spot_ball_on - (play.yard_line ?? 0)) };
   }
   const isOurOffense = play.possession === "us";
@@ -416,10 +420,9 @@ export function convertPlay(
   if (["kickoff", "onside_kick"].includes(play.play_type) && pd?.kickoff_out_of_bounds_choice === "rekick") {
     return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } as Play : null;
   }
-  // Roughing or running into the punter, accepted: the punt never happened.
-  // The flag still counts against the receiving team; the kick distance, the
-  // return and any tackle on it count for nobody.
-  if (isVoidedKickRow(play)) {
+  // The penalty replaces the play: roughing or running into the punter, or
+  // the operator saying so. The flag still counts; nothing from the snap does.
+  if (isWipedByPenaltyRow(play)) {
     return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } as Play : null;
   }
 

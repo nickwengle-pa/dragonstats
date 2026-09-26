@@ -30,7 +30,7 @@ import type { PlayWithPlayers } from "./gameService";
 import { netKickYards, resolveKickSpots } from "./kickSpots";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { firstPlayerByRole } from "./playTransformer";
-import { TEAM_JERSEY, TEAM_PLAYER_ID, isVoidedKickRow } from "@/components/game/types";
+import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
 
 /* ── Play-type groupings ──────────────────────────────────────────────────── */
@@ -796,7 +796,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       .filter(p => p.possession === side && types.includes(p.play_type))
       .filter(p => !isOutOfBoundsKickoff(p))
       // A punt wiped out by roughing the kicker never travelled for the stats.
-      .filter(p => !isVoidedKickRow(p))
+      .filter(p => !isWipedByPenaltyRow(p))
       .reduce((acc, p) => {
         const spots = resolveKickSpots({
           ballOn: p.yard_line ?? 0,

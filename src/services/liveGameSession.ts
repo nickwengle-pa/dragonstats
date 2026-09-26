@@ -39,7 +39,7 @@ import {
 import type { GameConfig } from "./programService";
 import { resolveDriveResults } from "./driveResults";
 import { splitTackleCredit } from "./tackleCredit";
-import { grantsAutoFirstDown, kickVoidedByPenalty } from "@/components/game/types";
+import { grantsAutoFirstDown, penaltyWipesPlay } from "@/components/game/types";
 import { resolveKickSpots } from "./kickSpots";
 import { scoringEventsForPlay } from "./scoringLedger";
 import { convertPlay } from "./playTransformer";
@@ -282,6 +282,7 @@ function buildPenalties(play: PlayRecord, config: LiveSessionConfig): PenaltyEve
     yards: enforcement === PenaltyEnforcement.Accepted ? (play.flagYards || 5) : 0,
     enforcement,
     isAutoFirstDown: grantsAutoFirstDown(play.penalty, explicitSide),
+    preservesPlayStats: play.playData?.penalty_play_counts === true,
   }];
 }
 
@@ -378,9 +379,11 @@ function toEnginePlay(
     });
   }
   const penalties = buildPenalties(play, config);
-  // A fair catch voided by roughing the kicker: the punt goes through
-  // convertPlay above, which has the same rule.
-  if (kickVoidedByPenalty(play.type, play.penalty, play.penaltyCategory, play.penaltyEnforcement)) {
+  // The penalty replaces the play (roughing the kicker, or the operator's
+  // override). Types delegated to convertPlay above get the same rule there.
+  const playCounts = play.playData?.penalty_play_counts;
+  if (penaltyWipesPlay(play.type, play.penalty, play.penaltyCategory, play.penaltyEnforcement,
+    typeof playCounts === "boolean" ? playCounts : null)) {
     return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description || undefined, context } as Play : null;
   }
   const tackles = liveTackleCredits(play);

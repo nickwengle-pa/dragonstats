@@ -20,7 +20,7 @@ import {
   penaltyContextFor,
   penaltyCostsDown,
   grantsAutoFirstDown,
-  kickVoidedByPenalty,
+  penaltyWipesPlay,
   STICKY_ROLES,
   OFFENSIVE_FORMATIONS,
   DEFENSIVE_FORMATIONS,
@@ -47,6 +47,7 @@ import { playerUseCount, type PlayerUsage } from "./playerUsage";
 import { KICKOFF_OUT_OF_BOUNDS, kickoffOutOfBoundsSituation, type KickoffOutOfBoundsChoice } from "@/services/kickoffOutOfBounds";
 import { flagSideDefault, reviewNextSpot } from "@/services/penaltySpot";
 import { enforcePenalty, type PlayKind } from "@/services/penaltyEnforcement";
+import { penaltyPlayEffect } from "@/services/penaltyOutcome";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "@/services/programService";
 
 /* Plays where nobody ever possessed the ball, which under NFHS makes them
@@ -837,6 +838,14 @@ export default function PlayEntryModal({
      could never say afterwards where the foul actually was. */
   const [foulSpotBallOn, setFoulSpotBallOn] = useState<number | null>(edit?.foulSpotBallOn ?? null);
   const [overrideSpot, setOverrideSpot] = useState(false);
+  /* The operator's word on a flag, where the app's rules would get it wrong:
+     who has the ball next (with overrideSpot), and whether the play itself
+     counts. Null means "follow the rules". */
+  const [overridePossession, setOverridePossession] = useState<"us" | "them" | null>(null);
+  const [playCountsOverride, setPlayCountsOverride] = useState<boolean | null>(() => {
+    const stored = (editing ?? initialDraft)?.playData?.penalty_play_counts;
+    return typeof stored === "boolean" ? stored : null;
+  });
   const [spotSide, setSpotSide] = useState<"our" | "opp">("our");
   const [spotYardLine, setSpotYardLine] = useState(25);
   const [spotYardRaw, setSpotYardRaw] = useState("25");
@@ -856,6 +865,10 @@ export default function PlayEntryModal({
   /* The penalty list is long enough to need a second tier: the fouls usually
      called on this kind of snap, then everything else behind one tap. */
   const [showAllPenalties, setShowAllPenalties] = useState(false);
+  /* Once a foul is picked the list folds to one line, so the questions that
+     follow - who, accepted, how far, and what happens next - fit on the
+     screen instead of sitting under thirty buttons. */
+  const [choosingFoul, setChoosingFoul] = useState(false);
   const [blockedKickType, setBlockedKickType] = useState<BlockedKickType>(
     () => edit?.blockedKickType ?? defaultBlockedKickType(gameState),
   );
@@ -1820,6 +1833,10 @@ export default function PlayEntryModal({
         ...(penalty && foulSpotBallOn != null
           ? { foul_spot_ball_on: foulSpotBallOn }
           : {}),
+        // Only when the operator overrode the rules; absent means "follow them".
+        ...(penalty && playCountsOverride != null
+          ? { penalty_play_counts: playCountsOverride }
+          : {}),
         ...(playDirection ? { play_direction: playDirection } : {}),
         ...(wristbandCall.trim() ? { wristband_call: wristbandCall.trim() } : {}),
         ...(isInterception ? {
@@ -1995,7 +2012,8 @@ export default function PlayEntryModal({
    *  Enforced from the previous spot with the kicking team keeping the ball,
    *  so it is marked off exactly like a loose-ball foul by the defense - which
    *  is also what it is in this frame, since possession sat with the kicker. */
-  const kickVoided = kickVoidedByPenalty(playType.id, penalty, penaltyCategory, penaltyEnforcement);
+  const kickVoided = ["punt", "fair_catch"].includes(playType.id)
+    && penaltyWipesPlay(playType.id, penalty, penaltyCategory, penaltyEnforcement, playCountsOverride);
 
   /** The rulebook category of this play, which is what fixes the basic spot. */
   const enforcementKind: PlayKind =
@@ -2052,11 +2070,15 @@ export default function PlayEntryModal({
     const flips = !isPenaltyOnly && possessionAtEnd === "defense";
     const nextPossession = flips ? otherSide(gameState.possession) : gameState.possession;
     if (overrideSpot) {
+      // The operator's possession wins; the spot is entered in the pre-snap
+      // frame, so it flips only if the ball goes to the other team.
+      const chosen = overridePossession ?? nextPossession;
+      const chosenFlips = chosen !== gameState.possession;
       return {
-        ballOn: flips ? 100 - overrideBallOn : overrideBallOn,
+        ballOn: chosenFlips ? 100 - overrideBallOn : overrideBallOn,
         down: spotDown,
         distance: spotDistance,
-        possession: nextPossession,
+        possession: chosen,
         source: "manual_override" as const,
       };
     }
@@ -2076,6 +2098,55 @@ export default function PlayEntryModal({
     return null;
   })();
 
+
+  /** Who the rules give the ball to after this flag - the default the
+   *  override starts from. */
+  const computedNextPossession: "us" | "them" = isPenaltyOnly
+    ? (penaltyProjection?.possession ?? gameState.possession)
+    : enforcement
+      ? (enforcement.possessionFlips ? otherSide(gameState.possession) : gameState.possession)
+      : possessionAtEnd === "defense" ? otherSide(gameState.possession) : gameState.possession;
+  const teamFor = (side: "us" | "them") => (side === "us" ? progName : oppName);
+  /** What the flag does to the play itself, from the same rules the stats use. */
+  const playEffect = penaltyPlayEffect({
+    playTypeId: playType.id,
+    penalty,
+    side: penaltyCategory,
+    enforcement: penaltyEnforcement,
+    override: playCountsOverride,
+    foulSpotBallOn,
+    ballOn: gameState.ballOn,
+  });
+  /** The rules' answer with no override, for the Counts / Doesn't count
+   *  control: picking the rules' own answer clears the override. */
+  const ruleEffect = penaltyPlayEffect({
+    playTypeId: playType.id, penalty, side: penaltyCategory, enforcement: penaltyEnforcement,
+    override: null, foulSpotBallOn, ballOn: gameState.ballOn,
+  });
+  const playNoun = ["punt", "fair_catch"].includes(playType.id) ? "punt"
+    : ["kickoff", "onside_kick"].includes(playType.id) ? "kickoff"
+      : ["pass_comp", "pass_inc", "sack", "int", "throwaway", "drop", "spike"].includes(playType.id) ? "pass"
+        : ["rush", "scramble", "kneel", "bad_snap"].includes(playType.id) ? "run" : "play";
+  const setPlayCounts = (counts: boolean) => {
+    const rulesSay = ruleEffect !== "wiped";
+    setPlayCountsOverride(counts === rulesSay ? null : counts);
+  };
+  /** Open the override seeded from the rules' answer, so a correction is a
+   *  nudge rather than a re-entry. */
+  const openSpotOverride = () => {
+    if (isPenaltyOnly && penaltyProjection) {
+      seedSpotFromBallOn(penaltyProjection.ballOn);
+      setSpotDown(penaltyProjection.down);
+      setSpotDistance(penaltyProjection.distance);
+    } else {
+      seedSpotFromBallOn(enforcement?.ballOn ?? playEndBallOn);
+      setSpotDown(enforcement?.down ?? gameState.down);
+      setSpotDistance(enforcement?.distance ?? gameState.distance);
+    }
+    setOverridePossession(computedNextPossession);
+    setOverrideSpot(true);
+  };
+  const closeSpotOverride = () => { setOverrideSpot(false); setOverridePossession(null); };
 
   /* Which of the three possible next spots review may show, and what to call
      it. A spot the operator typed always wins; a dead-ball flag uses the
@@ -2116,6 +2187,7 @@ export default function PlayEntryModal({
   };
 
   const selectPenalty = (label: string) => {
+    setChoosingFoul(false);
     setCustomFlag(false);
     setPenalty(label);
     setPenaltyCategory(defaultFlagSide(label));
@@ -2154,6 +2226,9 @@ export default function PlayEntryModal({
   };
 
   const clearPenalty = () => {
+    setPlayCountsOverride(null);
+    setOverridePossession(null);
+    setOverrideSpot(false);
     setCustomFlag(false);
     setPenalty(null);
     setPenaltyCategory(null);
@@ -2178,6 +2253,28 @@ export default function PlayEntryModal({
    */
   const manualSpotEditor = (
                   <div className="space-y-3 pt-1">
+                    {/* Who has it is the first thing the officials decide and
+                        was the one thing this could not say: a punt the
+                        kicking team keeps, a turnover that was waved off. */}
+                    <div>
+                      <span className="text-xs text-slate-500 block mb-1">Ball goes to</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(["us", "them"] as const).map(side => (
+                          <button
+                            key={side}
+                            onClick={() => setOverridePossession(side)}
+                            aria-pressed={(overridePossession ?? computedNextPossession) === side}
+                            className={`py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 truncate px-2 ${
+                              (overridePossession ?? computedNextPossession) === side
+                                ? "border-amber-500 bg-amber-500/15 text-amber-400"
+                                : "border-surface-border bg-surface-bg text-slate-500"
+                            }`}
+                          >
+                            {teamFor(side)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div>
                       <span className="text-xs text-slate-500 block mb-1">Ball on</span>
                       <div className="flex items-center gap-2">
@@ -2332,8 +2429,116 @@ export default function PlayEntryModal({
     );
   };
 
+  /* What happens next, in one place and in plain words: whose ball, where,
+     why, and whether the play itself counts. It used to be a spot at the
+     bottom of the step - under the foul-spot ruler and two remove buttons -
+     that could not say who had the ball or whether the punt still counted,
+     which is exactly what an operator checks against the officials. */
+  const whatHappensNext = penalty && !isPenaltyOnly ? (
+                <div className={`rounded-xl border-2 p-3 space-y-2 ${
+                  overrideSpot || playCountsOverride != null ? "border-amber-500/60 bg-amber-500/5" : "border-emerald-500/40 bg-emerald-500/5"
+                }`} aria-live="polite">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">What happens next</span>
+                    {(overrideSpot || playCountsOverride != null) && (
+                      <button onClick={() => { closeSpotOverride(); setPlayCountsOverride(null); }}
+                        className="text-[10px] font-bold text-amber-400 underline">Back to the rules</button>
+                    )}
+                  </div>
+
+                  {/* Whose ball, and where */}
+                  {penaltyEnforcement === "declined" ? (
+                    <div className="text-sm font-black text-slate-200">Declined — the {playNoun} stands as it happened.</div>
+                  ) : penaltyEnforcement === "offset" ? (
+                    <div className="text-sm font-black text-slate-200">Offsetting — the down is replayed from {formatFieldSpot(gameState.ballOn, gameState.possession)}.</div>
+                  ) : overrideSpot ? (
+                    <div className="text-sm font-black text-amber-300 tabular-nums">
+                      {teamFor(overridePossession ?? computedNextPossession)} ball · {spotDown} & {spotDistance} at {formatFieldSpot(overrideBallOn, gameState.possession)}
+                      <div className="text-[10px] font-bold text-amber-400/80">Your call</div>
+                    </div>
+                  ) : enforcement ? (
+                    <div className="text-sm font-black text-emerald-300 tabular-nums">
+                      {teamFor(computedNextPossession)} ball · {enforcement.down} & {enforcement.distance} at {formatFieldSpot(enforcement.ballOn, gameState.possession)}
+                      <div className="text-[10px] font-bold text-slate-400">
+                        {flagYards} yds {enforcement.from}
+                        {grantsAutoFirstDown(penalty, penaltyCategory) && !enforcement.possessionFlips ? " · automatic 1st down" : ""}
+                        {penaltyCostsDown(penalty, penaltyCategory) ? " · loss of down" : ""}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-400">
+                      No end spot recorded to enforce from — set it below, or in the Adjust sheet after the play.
+                    </div>
+                  )}
+
+                  {/* Does the play count */}
+                  {penaltyEnforcement === "accepted" && (
+                    <div className="space-y-1.5">
+                      <div className={`text-[11px] font-bold ${playEffect === "wiped" ? "text-orange-300" : "text-emerald-300"}`}>
+                        {playEffect === "wiped"
+                          ? `✕ The ${playNoun} doesn't count — only the penalty goes in the stats.`
+                          : playEffect === "partial"
+                            ? `✓ The ${playNoun} counts up to the foul spot, then the penalty.`
+                            : `✓ The ${playNoun} counts, and the penalty is added on.`}
+                        {kickVoided && playCountsOverride == null && " Decline the flag to keep the punt and return instead."}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2" role="group" aria-label={`Does the ${playNoun} count`}>
+                        {([true, false] as const).map(counts => {
+                          const on = counts ? playEffect !== "wiped" : playEffect === "wiped";
+                          return (
+                            <button key={String(counts)} onClick={() => setPlayCounts(counts)} aria-pressed={on}
+                              className={`py-2 rounded-xl text-[11px] font-black border-2 transition-all duration-200 ${
+                                on
+                                  ? playCountsOverride != null ? "border-amber-500 bg-amber-500/15 text-amber-400" : "border-emerald-500/60 bg-emerald-500/10 text-emerald-300"
+                                  : "border-surface-border bg-surface-bg text-slate-500"
+                              }`}>
+                              {counts ? `${playNoun[0].toUpperCase()}${playNoun.slice(1)} counts` : `${playNoun[0].toUpperCase()}${playNoun.slice(1)} doesn't count`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Where the ball goes, if the officials did something else */}
+                  {penaltyEnforcement === "accepted" && (
+                    overrideSpot ? (
+                      <>
+                        {manualSpotEditor}
+                        <button onClick={closeSpotOverride}
+                          className="w-full py-2 rounded-xl text-xs font-bold border border-surface-border bg-surface-bg text-slate-400">
+                          Use the computed spot
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={openSpotOverride}
+                        className="w-full py-2 rounded-xl text-xs font-bold border border-surface-border bg-surface-bg text-slate-300">
+                        Officials put it elsewhere? Set ball, down & who has it
+                      </button>
+                    )
+                  )}
+                </div>
+  ) : null;
+
+  const foulListOpen = !penalty || choosingFoul || customFlag;
+  const chosenRule = penalty ? PENALTY_RULES[penalty] : undefined;
   const penaltyPicker = (
     <div className="space-y-3">
+      {!foulListOpen ? (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0 py-2 px-3 rounded-xl border-2 border-orange-500 bg-orange-500/15">
+            <span className="block text-sm font-black text-orange-400 truncate">{penalty}</span>
+            <span className="block text-[10px] font-bold text-orange-300/70">
+              {PENALTY_DEFAULT_YARDS[penalty!] ?? flagYards} yds standard
+              {chosenRule?.autoFirstDown ? " · automatic 1st down" : chosenRule?.lossOfDown ? " · loss of down" : ""}
+            </span>
+          </div>
+          <button onClick={() => setChoosingFoul(true)}
+            className="shrink-0 px-3 py-2.5 rounded-xl border border-surface-border bg-surface-bg text-xs font-bold text-slate-300">
+            Change
+          </button>
+        </div>
+      ) : (
       <div>
         <span className="text-xs text-slate-500 block mb-1.5">Penalty · standard yards</span>
         <div className="grid grid-cols-2 gap-1.5">
@@ -2376,6 +2581,7 @@ export default function PlayEntryModal({
           />
         )}
       </div>
+      )}
 
       {penalty && (
         <div className="space-y-3">
@@ -2433,17 +2639,11 @@ export default function PlayEntryModal({
                 </button>
               ))}
             </div>
-            {/* The one flag that rewrites the play above it, so say so where
-                the choice is made rather than leaving the operator to wonder
-                why the punt they just entered is not in the stats. */}
-            {kickVoided && (
-              <p className="mt-2 text-[11px] font-bold text-orange-300">
-                Punt doesn't count · ball stays with {flagTeamName("offense")}
-                {grantsAutoFirstDown(penalty, penaltyCategory) ? ", 1st down" : ""}.
-                Decline to keep the punt and return instead.
-              </p>
-            )}
           </div>
+
+          {/* The answer sits right under the question that decides it. Yards
+              and the foul spot below are details that feed it live. */}
+          {whatHappensNext}
 
           <div>
             <span className="text-xs text-slate-500 block mb-1">
@@ -2522,9 +2722,11 @@ export default function PlayEntryModal({
             </div>
           )}
 
-          <button onClick={clearPenalty} className="text-xs text-red-400 font-bold">
-            Clear penalty
-          </button>
+          {isPenaltyOnly && (
+            <button onClick={clearPenalty} className="text-xs text-red-400 font-bold">
+              Clear penalty
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -3917,82 +4119,6 @@ export default function PlayEntryModal({
                 </button>
               )}
 
-              {/* Where the ball ends up on a live-ball flag.
-
-                  This used to refuse to answer, because the only thing on hand
-                  was a projection that enforced from the PRE-SNAP spot with
-                  the play worth zero yards - right for a dead-ball foul, and
-                  nonsense the moment there was a play. On a kickoff from the
-                  40 a ten-yard flag came out at the 50 whatever the return did.
-
-                  services/penaltyEnforcement does it properly now, off the
-                  foul spot, the basic spot and the all-but-one principle, so
-                  the number below is real. It is still only a number the app
-                  worked out: the Adjust sheet opens after the play, and the
-                  officials get the last word. */}
-              {penalty && !isPenaltyOnly && (
-                <div className="card p-3 space-y-2 border border-surface-border">
-                  <div className="text-xs text-slate-400 font-bold">Where the ball ends up</div>
-                  {enforcement && !overrideSpot && (
-                    <>
-                      <div className="text-center">
-                        <div className="text-sm font-black tabular-nums text-emerald-400">
-                          {formatFieldSpot(enforcement.ballOn, gameState.possession)}
-                          {" · "}{enforcement.down} & {enforcement.distance}
-                        </div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          {enforcement.from}
-                          {enforcement.possessionFlips
-                            ? ` · ${flagTeamName("defense")} ball`
-                            : ""}
-                        </div>
-                      </div>
-                      <div className="text-[10px] text-slate-500 leading-snug">
-                        Recording confirms this spot. The Adjust sheet still
-                        opens afterwards if the officials put it elsewhere.
-                      </div>
-                    </>
-                  )}
-                  {!enforcement && !overrideSpot && (
-                    <div className="text-[11px] text-slate-500 leading-snug">
-                      Set after the play — there is no recorded end spot to
-                      enforce from, so the app asks rather than guesses.
-                    </div>
-                  )}
-                  <button
-                    onClick={() => {
-                      const next = !overrideSpot;
-                      if (next) {
-                        // Start from the enforced spot when there is one - it
-                        // is the answer, and correcting it is a nudge. Falling
-                        // back to the end of the play keeps the old behaviour
-                        // for the cases enforcement declines to guess at.
-                        seedSpotFromBallOn(enforcement?.ballOn ?? playEndBallOn);
-                        setSpotDown(enforcement?.down ?? gameState.down);
-                        setSpotDistance(enforcement?.distance ?? gameState.distance);
-                      }
-                      setOverrideSpot(next);
-                    }}
-                    className={`w-full py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 ${
-                      overrideSpot
-                        ? "border-amber-500 bg-amber-500/15 text-amber-400"
-                        : "border-surface-border bg-surface-bg text-slate-500"
-                    }`}
-                  >
-                    {overrideSpot ? "Setting it here" : "Set it here instead"}
-                  </button>
-                  {overrideSpot && (
-                    <>
-                      <div className="text-center text-sm font-black tabular-nums text-amber-400">
-                        {formatFieldSpot(overrideBallOn, gameState.possession)}
-                        {" · "}{spotDown} & {spotDistance}
-                      </div>
-                      {manualSpotEditor}
-                    </>
-                  )}
-                </div>
-              )}
-
               {/* ── Resulting spot (dead-ball flags only) ── */}
               {penalty && isPenaltyOnly && penaltyProjection && (
                 <div className="card p-3 space-y-3 border border-surface-border">
@@ -4024,17 +4150,7 @@ export default function PlayEntryModal({
                   </div>
 
                   <button
-                    onClick={() => {
-                      const next = !overrideSpot;
-                      if (next) {
-                        // Seed from the computed result so a small correction
-                        // is a nudge, not a re-entry.
-                        seedSpotFromBallOn(penaltyProjection.ballOn);
-                        setSpotDown(penaltyProjection.down);
-                        setSpotDistance(penaltyProjection.distance);
-                      }
-                      setOverrideSpot(next);
-                    }}
+                    onClick={() => (overrideSpot ? closeSpotOverride() : openSpotOverride())}
                     className={`w-full py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 ${
                       overrideSpot
                         ? "border-amber-500 bg-amber-500/15 text-amber-400"
@@ -4414,13 +4530,22 @@ export default function PlayEntryModal({
                         </span>
                       </div>
                     )}
+                    {penalty && penaltyEnforcement === "accepted" && !isPenaltyOnly && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">The {playNoun}</span>
+                        <span className={`font-bold ${playEffect === "wiped" ? "text-orange-300" : "text-emerald-400"}`}>
+                          {playEffect === "wiped" ? "doesn't count" : playEffect === "partial" ? "counts to the foul" : "counts"}
+                          {playCountsOverride != null ? " (yours)" : ""}
+                        </span>
+                      </div>
+                    )}
                     {reviewSpot ? (
                       <div className="flex justify-between">
                         <span className="text-slate-500">
                           Next Spot{reviewSpot.source === "operator" ? " (yours)" : ""}
                         </span>
                         <span className={`font-bold text-right ${reviewSpot.source === "operator" ? "text-amber-400" : "text-emerald-400"}`}>
-                          {formatFieldSpot(reviewSpot.ballOn, gameState.possession)}
+                          {teamFor(reviewSpot.source === "operator" ? (overridePossession ?? computedNextPossession) : computedNextPossession)} ball · {formatFieldSpot(reviewSpot.ballOn, gameState.possession)}
                           {" · "}
                           {reviewSpot.down}
                           {" & "}

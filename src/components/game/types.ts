@@ -559,9 +559,35 @@ export function kickVoidedByPenalty(
   return resolved === "defense" && PENALTY_RULES[label]?.voidsKick === true;
 }
 
-/** kickVoidedByPenalty for a stored row, reading the same play_data fields
- *  the transformer's penalty builder does. */
-export function isVoidedKickRow(row: {
+/**
+ * True when an accepted flag means the play is replaced by the penalty: no
+ * stat from the snap counts for anybody, only the flag.
+ *
+ * `override` is the operator's own call, stored as play_data.penalty_play_counts
+ * - false forces the play out, true keeps it in against the rules below. The
+ * officials decide this on the field, and the rules here only cover what the
+ * app can know; the override is how the press box says what actually happened.
+ *
+ * Without an override this is the roughing-the-kicker rule. The engine applies
+ * its own rule to runs and passes (a foul that replays the down wipes them),
+ * which a true override also switches off - see buildPenalties.
+ */
+export function penaltyWipesPlay(
+  playTypeId: string,
+  label: string | null | undefined,
+  side: PenaltySide | null | undefined,
+  enforcement: "accepted" | "declined" | "offset" | null | undefined,
+  override?: boolean | null,
+): boolean {
+  if (!label || (enforcement ?? "accepted") !== "accepted") return false;
+  if (override === false) return true;
+  if (override === true) return false;
+  return kickVoidedByPenalty(playTypeId, label, side, enforcement);
+}
+
+/** penaltyWipesPlay for a stored row, reading the same play_data fields the
+ *  transformer's penalty builder does. */
+export function isWipedByPenaltyRow(row: {
   play_type: string;
   is_penalty?: boolean | null;
   play_data?: unknown;
@@ -573,7 +599,8 @@ export function isVoidedKickRow(row: {
   const enforcement = pd.penalty_enforcement === "declined" || pd.penalty_enforcement === "offset"
     ? pd.penalty_enforcement
     : "accepted";
-  return kickVoidedByPenalty(row.play_type, label, side, enforcement);
+  const override = typeof pd.penalty_play_counts === "boolean" ? pd.penalty_play_counts : null;
+  return penaltyWipesPlay(row.play_type, label, side, enforcement, override);
 }
 
 export const OFFENSIVE_FORMATIONS = [
