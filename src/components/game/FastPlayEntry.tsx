@@ -57,6 +57,12 @@ interface Props {
   onKneel: () => void | Promise<void>;
 }
 
+/** TEAM the operator chose is a tackler; the film-later placeholder is not. */
+const tacklerLabel = (t: TaggedPlayer) =>
+  t.isTeam && t.teamCreditConfirmed ? "Team"
+    : t.isTeam || t.player_id === "opp_team" ? "Film later"
+      : `#${t.jersey_number ?? "?"}`;
+
 const labels: Record<string, string> = { rusher: "Runner", passer: "QB", receiver: "Receiver", target: "Target", tackler: "Tacklers", sacker: "Sackers" };
 const button = "min-h-11 px-3 py-2 rounded-lg border text-sm font-bold active:bg-surface-hover";
 const idle = "border-surface-border bg-surface-bg text-slate-200";
@@ -96,7 +102,7 @@ export default function FastPlayEntry(p: Props) {
     if (!incomplete && (spotTouched || p.isTD)) parts.push(p.isTD ? "touchdown" : `${p.yards > 0 ? "+" : ""}${p.yards} to ${p.formatSpot(endSpot)}`);
     if (incomplete && who("defender").length) parts.push(`pass breakup by ${who("defender").join(", ")}`);
     if (showTacklers) {
-      if (p.tacklers.length) parts.push(`${sack ? "sacked" : "tackled"} by ${p.tacklers.map(t => t.isTeam || t.player_id === "opp_team" ? "film later" : `#${t.jersey_number ?? "?"}`).join(", ")}`);
+      if (p.tacklers.length) parts.push(`${sack ? "sacked" : "tackled"} by ${p.tacklers.map(tacklerLabel).join(", ")}`);
       else if (p.noTackle) parts.push("no tackle");
     }
     return parts.join(" · ");
@@ -157,7 +163,7 @@ export default function FastPlayEntry(p: Props) {
                   {!sack && <button type="button" aria-pressed={p.noTackle} onClick={p.onNoTackle} className={`${button} ${p.noTackle ? selected : idle}`}>No tackle</button>}
                 </div>
                 {p.tacklers.length > 0 && <div className="fast-tags">{p.tacklers.map(t => <button key={t.player_id} type="button" onClick={() => p.onTackler(t)} aria-label={`Remove ${playerLabel(t)}`}>
-                  {t.isTeam || t.player_id === "opp_team" ? "Film later" : `#${t.jersey_number}`} · {t.credit === .5 ? "assist" : "solo"} ×
+                  {tacklerLabel(t)} · {t.credit === .5 ? "assist" : "solo"} ×
                 </button>)}</div>}
               </div>}
             </section>

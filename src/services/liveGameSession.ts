@@ -325,6 +325,24 @@ function buildPlayContext(
   };
 }
 
+/**
+ * play_data minus the tag lists that play_players already carries here.
+ *
+ * On this path play_players is built from play.tagged, which is EVERY tag -
+ * TEAM, opponent and unrostered included. A play reloaded from the database
+ * also still has those same tags in play_data.team_tagged / opp_tagged /
+ * pending_tagged, which is where they are stored, and the converter reads
+ * both. A single-valued role takes the first match and never showed it, but
+ * tackles are a list: a TEAM tackle on a reloaded play scored twice in live
+ * stats, as did an opponent's. Plays entered this session never had the lists
+ * in play_data, which is why it only appeared after a reload.
+ */
+function withoutLooseTags(playData: PlayRecord["playData"]) {
+  if (!playData) return playData;
+  const { team_tagged: _t, opp_tagged: _o, pending_tagged: _p, ...rest } = playData;
+  return rest;
+}
+
 function toEnginePlay(
   play: PlayRecord,
   stateBefore: GameState,
@@ -347,7 +365,7 @@ function toEnginePlay(
         penalty_enforcement: play.penaltyEnforcement,
         play_category: play.penaltyCategory,
         fumble_return_yards: play.fumbleReturnYards,
-        ...play.playData,
+        ...withoutLooseTags(play.playData),
         fumble_recovered_at: play.fumbleRecoveredAt ?? play.playData?.fumble_recovered_at,
       },
       play_players: play.tagged.map(t => ({ player_id: t.player_id, role: t.role, credit: t.credit })),

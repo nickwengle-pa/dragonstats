@@ -294,9 +294,11 @@ function allTagsForRole(
       .filter((pp) => pp.role === role)
       .map((pp) => ({ id: pp.player_id, credit: pp.credit ?? null })),
     // Our side's "somebody did this, I could not see who".
+    // Its credit is kept: TEAM can share a tackle (0.5), and a null here
+    // scored that share as a solo - one play, 1.5 tackles.
     ...loose("team_tagged")
       .filter((t) => t.role === role)
-      .map(() => ({ id: TEAM_PLAYER_ID, credit: null as number | null })),
+      .map((t) => ({ id: TEAM_PLAYER_ID, credit: t.credit ?? null })),
     ...loose("opp_tagged")
       .filter((t) => t.role === role && t.id)
       .map((t) => ({ id: String(t.id), credit: t.credit ?? null })),
