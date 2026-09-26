@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createQuarterChange, quarterChangeBefore } from "./quarterChange";
-import { advanceSituationAfterPlay, moveToQuarter, rebuildPlaySituations } from "./gameFlow";
+import { advanceSituationAfterPlay, markHandSetStarts, moveToQuarter, rebuildPlaySituations } from "./gameFlow";
 import { DEFAULT_GAME_CONFIG as config } from "./programService";
 import { replayLiveGame, type LiveSessionConfig } from "./liveGameSession";
 import { transformPlays } from "./playTransformer";
@@ -20,7 +20,9 @@ describe("recorded quarter changes", () => {
     expect(entry.description).toBe("Start 2nd quarter");
     expect(entry).toMatchObject({ quarter: 2, clock: config.quarter_length_secs, down: 3, distance: 4, ballOn: 46, yards: 0, tagged: [] });
     expect(advanceSituationAfterPlay(entry, before, config)).toMatchObject({ down: 3, distance: 4, ballOn: 46, possession: "us" });
-    const rebuilt = rebuildPlaySituations([entry], null, config);
+    // Recorded with nothing before it, so its 3rd & 4 is not where the chain
+    // starts - which is exactly a hand-set start, as load and live both flag it.
+    const rebuilt = rebuildPlaySituations(markHandSetStarts([entry], null, config), null, config);
     expect(rebuilt.currentQuarter).toBe(2);
     expect(rebuilt.currentSituation).toMatchObject({ down: 3, distance: 4, ballOn: 46 });
   });
@@ -52,5 +54,16 @@ describe("recorded quarter changes", () => {
     expect(replay.summary).toEqual(empty.summary);
     const row = { play_type: entry.type, quarter: 2, play_data: entry.playData, possession: "us" } as unknown as PlayWithPlayers;
     expect(transformPlays([row], { gameId: "game", homeTeamId: "us", awayTeamId: "them", homeTeamName: "Us", awayTeamName: "Them", programTeamId: "us" })).toEqual([]);
+  });
+
+  it("carries a first-quarter edit through the change into the second", () => {
+    const run = (gain: number) => ({ ...transitionEntry(before, 2), id: "r", type: "rush", quarter: 1, yards: gain, playData: {}, nextBallOn: undefined, nextDown: undefined, nextDistance: undefined, nextPossession: undefined });
+    const recorded = rebuildPlaySituations([run(12), transitionEntry(before, 2), { ...run(3), id: "q2", quarter: 2 }], null, config).plays;
+    // The run gains 3 instead of 12: the quarter change and the Q2 snap move with it.
+    const edited = [...recorded];
+    edited[0] = { ...recorded[0], yards: 3, firstDown: false, nextBallOn: undefined, nextDown: undefined, nextDistance: undefined, nextPossession: undefined };
+    const after = rebuildPlaySituations(edited, null, config).plays;
+    expect(after[1].ballOn).toBe(recorded[1].ballOn - 9);
+    expect(after[2].ballOn).toBe(recorded[2].ballOn - 9);
   });
 });

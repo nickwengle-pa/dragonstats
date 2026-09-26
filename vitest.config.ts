@@ -17,6 +17,7 @@ export default defineConfig({
     alias: { "@": path.resolve(__dirname, "./src") },
   },
   test: {
-    include: ["src/**/*.spec.ts"],
+    // .tsx for the specs that render a component; they opt into jsdom per file.
+    include: ["src/**/*.spec.ts", "src/**/*.spec.tsx"],
   },
 });
