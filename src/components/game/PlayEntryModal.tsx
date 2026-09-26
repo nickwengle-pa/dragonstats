@@ -1150,6 +1150,25 @@ export default function PlayEntryModal({
     const gained = fumbleReturnDirection * (ballOn - fumbleRecoveredAtBallOn);
     setFumbleReturnRaw(String(Math.round(gained)));
   };
+  /* A scoop-and-score, read off the return itself rather than a separate flag:
+     submit already decides `scored` from where the return ended, so a toggle
+     that stored its own boolean could disagree with it. The recovering team
+     attacks the far goal when the offense kept it, its own goal otherwise. */
+  const fumbleDistanceToGoal = (recoveredAt: number) =>
+    fumbleRecoveredByUs ? 100 - recoveredAt : recoveredAt;
+  const fumbleReturnScores = fumbleRecoveredByUs ? fumbleReturnBallOn >= 100 : fumbleReturnBallOn <= 0;
+  const toggleFumbleReturnTd = () => {
+    if (fumbleReturnScores) { setFumbleReturnRaw("0"); return; }
+    setFumbleReturnRaw(String(fumbleDistanceToGoal(fumbleRecoveredAtBallOn)));
+    // Nobody stopped a return that scored.
+    setTagged(prev => prev.filter(t => t.role !== "recovery_tackler"));
+  };
+  /** Moving the recovery spot keeps a scoring return scoring - the yards
+   *  follow the spot, rather than the touchdown quietly coming undone. */
+  const moveFumbleRecovery = (ballOn: number) => {
+    setFumbleRecoveredAt(ballOn);
+    if (fumbleReturnScores) setFumbleReturnRaw(String(fumbleDistanceToGoal(ballOn)));
+  };
 
   const setResultFromTotalYards = (totalYards: number) => {
     const rawTarget = gameState.ballOn + totalYards;
@@ -1770,6 +1789,10 @@ export default function PlayEntryModal({
       turnoverSpotLabel: `${fieldTeamTag(intCaughtTeam)} ${intCaughtYardLine}`,
       returnSpotLabel: interceptionReturnLabel ?? undefined,
       returnYards: interceptionReturnYards,
+    } : undefined, isFumblePlay ? {
+      recoveredBy: allTagged.find(t => t.role === "fumble_recovery"),
+      lost: !fumbleRecoveredByUs,
+      returnYards: fumbleReturnYards,
     } : undefined);
 
     return receive({
@@ -2276,6 +2299,23 @@ export default function PlayEntryModal({
     if (isKickPlay) return category === "offense" ? "kicking team" : "receiving team";
     return category;
   };
+
+  /** Scoop and score. Shared by the recovery step and the standalone fumble's
+   *  yards step, the two places a fumble return is entered. */
+  const fumbleTdButton = (
+    <button
+      type="button"
+      onClick={toggleFumbleReturnTd}
+      aria-pressed={fumbleReturnScores}
+      className={`w-full mt-2 py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 ${
+        fumbleReturnScores ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-400"
+      }`}
+    >
+      {fumbleReturnScores ? "✓ " : ""}Returned for a touchdown · {fumbleRecoveredByUs
+        ? (isTheirBall ? oppName : progName)
+        : (isTheirBall ? progName : oppName)} score
+    </button>
+  );
 
   const penaltyGroups = penaltiesFor(penaltyContextFor(playType.id, playType.category));
   /* A pick from the second tier keeps it open, or the highlighted choice
@@ -3138,7 +3178,9 @@ export default function PlayEntryModal({
               <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 text-sm space-y-1" aria-live="polite">
                 <p>Ball carrier fumbled at <strong>{formatFieldSpot(fumbleSpotBallOn, gameState.possession)}</strong> · {yards} yards before the fumble</p>
                 <p>Recovered at <strong>{formatFieldSpot(fumbleRecoveredAtBallOn, gameState.possession)}</strong></p>
-                <p>Return ended at <strong>{formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</strong> · {fumbleReturnYards} return yards</p>
+                <p>{fumbleReturnScores
+                  ? <><strong>Touchdown</strong> · {fumbleReturnYards} return yards</>
+                  : <>Return ended at <strong>{formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</strong> · {fumbleReturnYards} return yards</>}</p>
                 {!fumbleRecoveredByUs && ["rush", "pass_comp"].includes(playType.id)
                   ? <p className="text-xs text-slate-300">NFHS credited {playType.id === "pass_comp" ? "passing / receiving" : "rushing"} yards: <strong>{fumbleRecoveredAtBallOn - gameState.ballOn}</strong>. Includes the loose ball's travel to recovery. Return yards start at recovery.</p>
                   : <p className="text-xs text-slate-300">Return yards start where the loose ball was recovered.</p>}
@@ -3179,7 +3221,7 @@ export default function PlayEntryModal({
                 </div>
                 <YardReel
                   value={fumbleRecoveredAtBallOn}
-                  onChange={(b) => setFumbleRecoveredAt(b)}
+                  onChange={moveFumbleRecovery}
                   offenseDirection={offenseDirection}
                   accentColor="#f59e0b"
                   formatSpot={(b) => formatFieldSpot(b, gameState.possession)}
@@ -3190,6 +3232,9 @@ export default function PlayEntryModal({
                   return is a spot on the field like any other. */}
               <div className="mt-3">
                 <label className="label block mb-2">3. Return ended at</label>
+                {/* First, because it is the whole answer when it applies: one
+                    tap, and the field and ruler below follow it to the goal. */}
+                <div className="mb-2">{fumbleTdButton}</div>
                 <FieldVisualizer
                   compact
                   ballOn={fumbleReturnBallOn}
@@ -3234,7 +3279,7 @@ export default function PlayEntryModal({
                 <span className="text-xs text-slate-400">from the recovery spot to the end of the return</span>
               </div>
 
-              <div className="mt-3">
+              {!fumbleReturnScores && <div className="mt-3">
                 {recoveryUsesOpponentRoster ? (
                   <PlayerGrid
                     roster={roster}
@@ -3257,7 +3302,7 @@ export default function PlayEntryModal({
                     accentColor={oppAccent}
                   />
                 )}
-              </div>
+              </div>}
             </>
           )}
 
@@ -3781,14 +3826,16 @@ export default function PlayEntryModal({
                   chains, and offering the toggles invites a mis-tap that the
                   engine would then have to be argued out of. */}
               {!needsResult && !isDeadBall && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => {
-                    if (isFumblePlay) setFumbleReturnRaw(isTD ? "0" : String(fumbleRecoveredByUs ? 100 - fumbleRecoveredAtBallOn : fumbleRecoveredAtBallOn));
-                    setIsTD(t => !t);
-                  }}
+                <div className={`grid gap-2 ${isFumblePlay ? "grid-cols-1" : "grid-cols-2"}`}>
+                  {/* Not on a fumble. Here it silently meant "the RECOVERY was
+                      returned for a score", under a heading about where the
+                      carrier lost it - so it read as the carrier scoring. A
+                      fumble's touchdown is "Returned for a touchdown", next to
+                      the return it describes. */}
+                  {!isFumblePlay && <button onClick={() => setIsTD(t => !t)}
                     className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                       isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
-                    }`}>TD</button>
+                    }`}>TD</button>}
                   <button onClick={() => setIsFirstDown(f => !f)}
                     className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                       isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-slate-500"
@@ -3835,6 +3882,7 @@ export default function PlayEntryModal({
                     />
                     <span className="text-[10px] text-slate-600">by the recoverer</span>
                   </div>}
+                  {!(canHaveFumble && hasFumble) && fumbleTdButton}
                 </div>
               )}
 
