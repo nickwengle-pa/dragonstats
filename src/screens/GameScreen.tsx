@@ -83,6 +83,7 @@ import {
   isRosterTag,
   makePendingId,
   makeTeamTag,
+  teamTagConfirmed,
   normalizeOppTagId,
   opponentsForPicker,
   pendingDisplayName,
@@ -531,6 +532,7 @@ export default function GameScreen() {
           ...((Array.isArray(pd.team_tagged) ? pd.team_tagged : []) as any[]).map((t: any) => ({
             ...makeTeamTag(String(t.role ?? "")),
             credit: t.credit ?? undefined,
+            ...(teamTagConfirmed(t, pd) ? { teamCreditConfirmed: true } : {}),
           })),
         ],
         ballOn: p.yard_line,
@@ -1229,6 +1231,10 @@ export default function GameScreen() {
           .map((tag) => ({
             role: tag.role,
             credit: tag.credit ?? null,
+            // "Team" the operator chose, as opposed to "identify on film
+            // later". Per tag, so a TEAM runner survives a reload as Team;
+            // the play-level team_tackle_confirmed only ever covered tacklers.
+            ...(tag.teamCreditConfirmed ? { confirmed: true } : {}),
           })),
         next_possession: after.possession,
         next_down: after.down,
@@ -2297,7 +2303,7 @@ export default function GameScreen() {
           })),
         team_tagged: result.tagged
           .filter(t => t.isTeam)
-          .map(t => ({ role: t.role, credit: t.credit ?? null })),
+          .map(t => ({ role: t.role, credit: t.credit ?? null, ...(t.teamCreditConfirmed ? { confirmed: true } : {}) })),
         next_possession: result.nextSituation?.possession ?? null,
         next_down: result.nextSituation?.down ?? null,
         next_distance: result.nextSituation?.distance ?? null,
