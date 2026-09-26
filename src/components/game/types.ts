@@ -156,6 +156,19 @@ export function opponentsForPicker(players: OpponentPlayerRef[]): OpponentPlayer
   return out;
 }
 
+/**
+ * Was this stored TEAM tag the operator's choice of "Team", rather than
+ * "identify on film later"? Read per tag; plays saved before that was stored
+ * carried one play-level flag, which only ever covered tackles and sacks.
+ */
+export function teamTagConfirmed(
+  tag: { role?: unknown; confirmed?: unknown },
+  playData: Record<string, unknown> | null | undefined,
+): boolean {
+  if (tag.confirmed === true) return true;
+  return playData?.team_tackle_confirmed === true && (tag.role === "tackler" || tag.role === "sacker");
+}
+
 export const TEAM_PLAYER_ID = "our_team";
 /** Jersey the TEAM placeholder wears on a stat sheet. 100 is the convention
  *  the printed reports coaches already read use for a team-credited stop, so

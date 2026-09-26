@@ -7,7 +7,7 @@ import type { PlayerUsage } from "./playerUsage";
 import "./liveEntry.css";
 import {
   type GameState, type TaggedPlayer, type PlayTypeDef,
-  OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS,
+  OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS, makeTeamTag,
 } from "./types";
 
 interface Props {
@@ -148,6 +148,14 @@ export default function FastPlayEntry(p: Props) {
                 {p.playType.roles.map(role => <PlayerPicker key={role} label={`${labels[role] ?? role}${role === "target" ? " (optional)" : ""}`} team={p.offenseName}
                   players={p.offensePlayers} usage={p.playerUsage} role={role} accentColor={p.accentColor}
                   onAddJersey={ours ? undefined : p.onAddOpponent}
+                  /* Team as the QB or runner: ours, deliberately unnamed -
+                     a direct snap, a wildcat, a pile nobody could read. Not
+                     the same as "identify on film later", which is a gap to
+                     fill. Their side's unknown is already the film-later
+                     TEAM tag, so it is only offered on ours. */
+                  onSelectTeam={ours && (role === "rusher" || role === "passer")
+                    ? () => p.onTag(role, { ...makeTeamTag(role), teamCreditConfirmed: true })
+                    : undefined}
                   selected={p.tagged.filter(t => t.role === role)} onSelect={player => p.onTag(role, player)} />)}
               </div>}
               {incomplete && <PassDefenderPicker team={p.defenseName} players={p.defensePlayers} accentColor={p.defenseAccentColor}

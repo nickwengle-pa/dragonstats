@@ -34,6 +34,7 @@ import {
   isRosterTag,
   makePendingId,
   makeTeamTag,
+  teamTagConfirmed,
   normalizeOppTagId,
   opponentsForPicker,
   pendingDisplayName,
@@ -182,6 +183,7 @@ function rowToPlayRecord(
     ...((Array.isArray(pd.team_tagged) ? pd.team_tagged : []) as any[]).map((t: any) => ({
       ...makeTeamTag(String(t.role ?? "")),
       credit: t.credit ?? undefined,
+      ...(teamTagConfirmed(t, pd) ? { teamCreditConfirmed: true } : {}),
     })),
   ];
   return {
@@ -890,6 +892,7 @@ export default function PostGameReview() {
             .map((t) => ({
               role: t.role,
               credit: t.credit ?? null,
+              ...(t.teamCreditConfirmed ? { confirmed: true } : {}),
             })),
         },
       },

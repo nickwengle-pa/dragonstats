@@ -1520,6 +1520,22 @@ export default function PlayEntryModal({
     }
   };
 
+  /** TEAM as the QB or runner, chosen rather than left to film review.
+   *  Advances exactly like picking a player. */
+  const handleTeamSelect = () => {
+    const role = roles[currentRoleIdx];
+    if (!role) return;
+    setTagged(prev => [...prev.filter(t => t.role !== role), { ...makeTeamTag(role), teamCreditConfirmed: true }]);
+    setCarriedRoles(prev => {
+      if (!prev.has(role)) return prev;
+      const next = new Set(prev);
+      next.delete(role);
+      return next;
+    });
+    if (currentRoleIdx < roles.length - 1) setCurrentRoleIdx(i => i + 1);
+    else goNext();
+  };
+
   const handleOpponentSelect = (p: OpponentPlayerRef) => {
     const role = roles[currentRoleIdx];
     if (!role) return;
@@ -3072,6 +3088,21 @@ export default function PlayEntryModal({
                   accentColor={oppAccent}
                 />
               ) : (
+                <>
+                {(currentRole === "rusher" || currentRole === "passer") && (
+                  <button
+                    onClick={handleTeamSelect}
+                    aria-pressed={tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed)}
+                    className={`w-full mb-2 py-2 rounded-xl border text-xs font-bold uppercase tracking-wide ${
+                      tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed)
+                        ? "border-amber-400 bg-amber-500/25 text-amber-300"
+                        : "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                    }`}
+                  >
+                    {tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed) ? "✓ " : ""}
+                    {currentRole === "passer" ? "QB" : "Runner"}: TEAM
+                  </button>
+                )}
                 <PlayerGrid
                   roster={[...roster].sort((a, b) => playerUseCount(playerUsage, currentRole, b.player_id) - playerUseCount(playerUsage, currentRole, a.player_id))}
                   label={`Select ${currentRole} — ${progName}`}
@@ -3084,6 +3115,7 @@ export default function PlayEntryModal({
                   selectedPendingId={tagged.find(t => t.role === currentRole && t.isPending)?.player_id ?? null}
                   selectionIsCarried={carriedRoles.has(currentRole)}
                 />
+                </>
               )}
             </>
           )}
