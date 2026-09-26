@@ -23,6 +23,7 @@ import {
   makePendingId,
   makeTeamTag,
   pendingDisplayName,
+  quickAddOpponentId,
   yardLabel,
   buildDescription,
 } from "./types";
@@ -1557,10 +1558,13 @@ export default function PlayEntryModal({
    * optimistic tag and the saved row resolve to the same place — and the tag
    * lands immediately, with no wait on a network call that press-box wifi may
    * not complete.
+   *
+   * Split from the selecting half so the fast pickers, which tag through
+   * their own handlers and have no steps to advance, add the same player.
    */
-  const handleQuickAddOpponent = (jersey: number) => {
+  const addOpponentJersey = (jersey: number): OpponentPlayerRef => {
     const newPlayer: OpponentPlayerRef = {
-      id: `opp_UNK_${jersey}`,
+      id: quickAddOpponentId(jersey),
       name: `#${jersey}`,
       jersey_number: jersey,
       position: null,
@@ -1568,9 +1572,12 @@ export default function PlayEntryModal({
     setLocalOppPlayers(prev => [...prev, newPlayer]);
     // Notify parent to persist this player to the DB
     onAddOpponentPlayer?.(newPlayer);
-    // Auto-select the new player
-    handleOpponentSelect(newPlayer);
+    return newPlayer;
   };
+  const handleQuickAddOpponent = (jersey: number) => handleOpponentSelect(addOpponentJersey(jersey));
+  const opponentTag = (p: OpponentPlayerRef, role = ""): TaggedPlayer => ({
+    id: p.id, player_id: p.id, jersey_number: p.jersey_number, name: p.name, role, isOpponent: true,
+  });
 
   const handleAddTackler = (p: RosterPlayer) => {
     if (tacklers.some(t => t.player_id === p.player_id)) {
@@ -2431,19 +2438,17 @@ export default function PlayEntryModal({
 
   if (!isEditing && playType.id === "kneel") {
     const players: TaggedPlayer[] = isTheirBall
-      ? localOppPlayers.map(p => ({ id: p.id, player_id: p.id, jersey_number: p.jersey_number, name: p.name, role: "rusher", isOpponent: true }))
+      ? localOppPlayers.map(p => opponentTag(p, "rusher"))
       : roster.map(p => ({ id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number, name: `${p.player.first_name} ${p.player.last_name}`, role: "rusher" }));
-    return <KneelEntry playType={playType} situation={gameState} players={players} team={isTheirBall ? oppName : progName} usage={playerUsage} inline={inlineSimple} onSubmit={onSubmit} onClose={onClose} />;
+    return <KneelEntry playType={playType} situation={gameState} players={players} team={isTheirBall ? oppName : progName} usage={playerUsage} inline={inlineSimple} onSubmit={onSubmit} onClose={onClose}
+      onAddJersey={isTheirBall ? jersey => opponentTag(addOpponentJersey(jersey), "rusher") : undefined} />;
   }
   if (!isEditing && FAST_PLAY_IDS.has(playType.id) && !useDetailedEntry) {
     const ourPlayers: TaggedPlayer[] = roster.map(p => ({
       id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
       name: `${p.player.first_name} ${p.player.last_name}`, role: "",
     }));
-    const theirPlayers: TaggedPlayer[] = localOppPlayers.map(p => ({
-      id: p.id, player_id: p.id, jersey_number: p.jersey_number,
-      name: p.name, role: "", isOpponent: true,
-    }));
+    const theirPlayers: TaggedPlayer[] = localOppPlayers.map(p => opponentTag(p));
     return <FastPlayEntry
       onKneel={() => {
         const kneel = PLAY_TYPES.find(type => type.id === "kneel");
@@ -2491,6 +2496,7 @@ export default function PlayEntryModal({
           name: "TEAM", role: defensiveCreditRole, isOpponent: true,
         }), credit: 1 }]);
       }}
+      onAddOpponent={jersey => opponentTag(addOpponentJersey(jersey))}
       onTeamTackle={tacklersAreOurs ? () => {
         setNoTackle(false);
         setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1, teamCreditConfirmed: true }]);
@@ -3370,7 +3376,8 @@ export default function PlayEntryModal({
                 team={isTheirBall ? progName : oppName}
                 players={isTheirBall
                   ? roster.map(p => ({ id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number, name: `${p.player.first_name} ${p.player.last_name}`, role: "defender" }))
-                  : localOppPlayers.map(p => ({ id: p.id, player_id: p.id, jersey_number: p.jersey_number, name: p.name, role: "defender", isOpponent: true }))}
+                  : localOppPlayers.map(p => opponentTag(p, "defender"))}
+                onAddJersey={isTheirBall ? undefined : jersey => opponentTag(addOpponentJersey(jersey), "defender")}
                 selected={tagged.filter(t => t.role === "defender")}
                 onSelect={player => setTagged(prev => [...prev.filter(t => t.role !== "defender"), player ? { ...player, role: "defender" } : isTheirBall ? makeTeamTag("defender") : { id: OPP_TEAM_PLAYER.id, player_id: OPP_TEAM_PLAYER.id, jersey_number: null, name: "TEAM", role: "defender", isOpponent: true }])}
                 onClear={() => setTagged(prev => prev.filter(t => t.role !== "defender"))} />}

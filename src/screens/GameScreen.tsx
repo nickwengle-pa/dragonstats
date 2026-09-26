@@ -84,6 +84,7 @@ import {
   makePendingId,
   makeTeamTag,
   normalizeOppTagId,
+  opponentsForPicker,
   pendingDisplayName,
   pendingJerseyFromId,
   findPlayTypeDef,
@@ -918,6 +919,22 @@ export default function GameScreen() {
     }
     return map;
   }, [oppPlayers]);
+  const pickerOppPlayers = useMemo(() => opponentsForPicker(oppPlayers), [oppPlayers]);
+  /* A quick-added opponent is listed at once, under the id the play tagged,
+     so the next play offers the same player even when the save below never
+     lands — press-box wifi being the usual reason. The saved row takes its
+     place, and opponentsForPicker hands that row out under the same id. */
+  const addOpponentPlayer = async (player: OpponentPlayerRef) => {
+    setOppPlayers(prev => prev.some(p => p.id === player.id) ? prev : [...prev, player]);
+    if (!game?.opponent_id) return;
+    const saved = await opponentPlayerService.create({
+      opponent_id: game.opponent_id,
+      name: player.name,
+      jersey_number: player.jersey_number,
+      position: player.position,
+    });
+    if (saved) setOppPlayers(prev => prev.map(p => p.id === player.id ? saved : p));
+  };
   const quarterSnapshots = useRef<Partial<Record<number, { clock: number; situation: LiveSituationSnapshot }>>>({});
   const [directionFlipped, setDirectionFlipped] = useState(() => readFieldFlip(gameId));
   const [tiltedField, setTiltedField] = useState(() => {
@@ -2806,7 +2823,7 @@ export default function GameScreen() {
              which is the end of the game and wrong by everything since. */
           gameState={entryGameState}
           roster={roster}
-          opponentPlayers={oppPlayers}
+          opponentPlayers={pickerOppPlayers}
           progName={progName}
           oppName={oppName}
           gameConfig={gc}
@@ -2824,20 +2841,7 @@ export default function GameScreen() {
           trackTacklers={charting.tacklers}
           onSubmit={handlePlaySubmit}
           onClose={() => { setSelectedPlayType(null); setInsertAfterPlayId(null); }}
-          onAddOpponentPlayer={async (player) => {
-            // Persist quick-added opponent player to DB and update local state
-            if (game?.opponent_id) {
-              const saved = await opponentPlayerService.create({
-                opponent_id: game.opponent_id,
-                name: player.name,
-                jersey_number: player.jersey_number,
-                position: null,
-              });
-              if (saved) {
-                setOppPlayers(prev => [...prev, saved]);
-              }
-            }
-          }}
+          onAddOpponentPlayer={addOpponentPlayer}
         />
       )}
 
@@ -3178,7 +3182,7 @@ export default function GameScreen() {
               ballOn: editPlay.ballOn,
             }}
             roster={roster}
-            opponentPlayers={oppPlayers}
+            opponentPlayers={pickerOppPlayers}
             progName={progName}
             oppName={oppName}
             gameConfig={gc}
@@ -3208,17 +3212,7 @@ export default function GameScreen() {
             onSubmit={(data) => { void handleSaveEdit(editPlay.id, data); }}
             onDelete={() => { void handleDeletePlay(editPlay.id); }}
             onClose={() => setEditPlay(null)}
-            onAddOpponentPlayer={async (player) => {
-              if (game?.opponent_id) {
-                const saved = await opponentPlayerService.create({
-                  opponent_id: game.opponent_id,
-                  jersey_number: player.jersey_number,
-                  name: player.name,
-                  position: player.position,
-                });
-                if (saved) setOppPlayers(prev => [...prev, saved]);
-              }
-            }}
+            onAddOpponentPlayer={addOpponentPlayer}
           />
         );
       })()}
