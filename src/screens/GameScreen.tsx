@@ -2953,6 +2953,23 @@ export default function GameScreen() {
                     <div className="text-[10px] text-surface-muted font-body">
                       <OffensivePlayBadge play={play} />{" "}
                       {QUARTER_LABELS[play.quarter]} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance} · {formatTeamYardLabel(play.ballOn, play.possession, progAbbr, oppAbbr)}
+                      {/* Where the play left the ball, so a row reads start to
+                          finish without finding the next one. A score ends in
+                          the end zone, not at the try spot the replay hands
+                          back; kicks after a score, tries and timeouts have no
+                          end spot of their own. ⇄ marks the ball changing
+                          hands, as in the full play log. */}
+                      {play.isTouchdown ? (
+                        <span className="text-amber-400/90"> → TD</span>
+                      ) : !isTimeout && play.nextBallOn != null && play.nextPossession
+                          && !["pat", "two_pt", "safety", "quarter_change"].includes(play.type)
+                          && !(play.type === "fg" && play.result === "Good") ? (
+                        <span>
+                          {" → "}
+                          {play.nextPossession !== play.possession && <span className="text-orange-400/90">⇄ </span>}
+                          {formatTeamYardLabel(play.nextBallOn, play.nextPossession, progAbbr, oppAbbr)}
+                        </span>
+                      ) : null}
                     </div>
                     <PlayTacklers play={play} />
                   </div>
