@@ -640,6 +640,13 @@ export function buildDescription(
     returnSpotLabel?: string;
     returnYards?: number | null;
   },
+  /** A fumble on the play. Without it a defensive scoop-and-score read
+   *  "#7 sacked -7 · TD", which says the offense scored. */
+  fumbleInfo?: {
+    recoveredBy?: TaggedPlayer;
+    lost: boolean;
+    returnYards: number;
+  },
 ): string {
   const parts: string[] = [];
   const byRole = (r: string) => tagged.find(t => t.role === r);
@@ -715,6 +722,13 @@ export function buildDescription(
     default: parts.push(pt.label); break;
   }
 
+  if (fumbleInfo) {
+    const who = fumbleInfo.recoveredBy
+      ? `rec ${playerLabel(fumbleInfo.recoveredBy)}`
+      : fumbleInfo.lost ? "lost" : "kept";
+    const ret = fumbleInfo.returnYards ? `, ret ${fumbleInfo.returnYards} yds` : "";
+    parts.push(pt.id === "fumble" ? `${who}${ret}` : `Fumble ${who}${ret}`);
+  }
   if (scored) parts.push("TD");
   if (penalty) parts.push(`PEN: ${penalty}`);
   return parts.join(" · ");
