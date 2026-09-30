@@ -329,3 +329,30 @@ describe("edit round trip — a hand-set next spot survives an unchanged edit", 
     });
   }
 });
+
+/* Every NFHS answer to a kickoff out of bounds reopens as itself and puts the
+   ball where the rule says. Went out at the receiving 38 off a kick from the
+   K-40. */
+describe("edit round trip — a kickoff out of bounds keeps the receiving team's choice", () => {
+  const expected: Record<string, { ballOn: number; possession: "us" | "them"; flagYards: number }> = {
+    take_35: { ballOn: 35, possession: "them", flagYards: 0 },
+    succeeding_spot: { ballOn: 43, possession: "them", flagYards: 5 },
+    rekick: { ballOn: 35, possession: "us", flagYards: 5 },
+    decline: { ballOn: 38, possession: "them", flagYards: 0 },
+  };
+  for (const [choice, want] of Object.entries(expected)) {
+    it(choice, async () => {
+      const p = play({
+        possession: "us", type: "kickoff", ballOn: 40, yards: 0, penalty: "Kickoff Out of Bounds", penaltyCategory: "offense",
+        tagged: [us("k", "kicker")],
+        playData: { kick_outcome: "out_of_bounds", kicked_to_yard: 38, kickoff_out_of_bounds_choice: choice },
+      });
+      const { out, steps } = await roundTrip(p);
+      expect(out, steps.join(" > ")).not.toBeNull();
+      expect(out!.playData?.kickoff_out_of_bounds_choice).toBe(choice);
+      expect(out!.nextSituation).toMatchObject({ ballOn: want.ballOn, possession: want.possession, source: "penalty_enforced" });
+      expect(out!.flagYards).toBe(want.flagYards);
+      expect(out!.penaltyEnforcement).toBe(choice === "decline" ? "declined" : "accepted");
+    });
+  }
+});
