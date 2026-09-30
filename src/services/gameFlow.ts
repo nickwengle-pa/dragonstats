@@ -7,7 +7,7 @@ import {
   type PlayRecord,
 } from "@/components/game/types";
 import type { GameConfig } from "./programService";
-import { kickoffOutOfBoundsSituation } from "./kickoffOutOfBounds";
+import { isKickoffOutOfBoundsChoice, kickoffOutOfBoundsSituation } from "./kickoffOutOfBounds";
 
 export type TeamSide = "us" | "them";
 export type FieldDirection = "left" | "right";
@@ -513,8 +513,13 @@ export function advanceSituationAfterPlay(
   config: GameConfig,
 ): LiveSituation {
   const outOfBoundsChoice = play.playData?.kickoff_out_of_bounds_choice;
-  if (["kickoff", "onside_kick"].includes(play.type) && (outOfBoundsChoice === "rekick" || outOfBoundsChoice === "take_35")) {
-    return kickoffOutOfBoundsSituation(before, outOfBoundsChoice, config.first_down_distance);
+  if (["kickoff", "onside_kick"].includes(play.type) && isKickoffOutOfBoundsChoice(outOfBoundsChoice)) {
+    // Where it went out, for the choices measured from there.
+    const wentOutAt = Number(play.playData?.kicked_to_yard);
+    return kickoffOutOfBoundsSituation(
+      before, outOfBoundsChoice, config.first_down_distance,
+      play.playData?.kicked_to_yard != null && Number.isFinite(wentOutAt) ? wentOutAt : null,
+    );
   }
   // Not snaps. A score correction used to fall through to the scrimmage
   // branch and cost a down; its stored next-state was what hid that.

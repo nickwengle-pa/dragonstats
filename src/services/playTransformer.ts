@@ -326,7 +326,10 @@ function getOppPlayerId(play: PlayWithPlayers): string {
 function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEvent[] | undefined {
   if (!play.is_penalty) return undefined;
   const pd = play.play_data as Record<string, any>;
-  if (pd?.kickoff_out_of_bounds_choice === "take_35") return undefined;
+  // A ball placed by rule, or a flag the receiving team turned down, charges
+  // the kicking team nothing. The re-kick and the succeeding spot are both
+  // five-yard penalties and go through below.
+  if (pd?.kickoff_out_of_bounds_choice === "take_35" || pd?.kickoff_out_of_bounds_choice === "decline") return undefined;
   const penaltyType = pd?.penalty_type;
   if (!penaltyType) return undefined;
 

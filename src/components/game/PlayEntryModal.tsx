@@ -44,7 +44,10 @@ import { FAST_PLAY_IDS, toggleFastTackler } from "./fastEntry";
 import { advanceSituationAfterPlay, getHandSetNextSituation } from "@/services/gameFlow";
 import KneelEntry from "./KneelEntry";
 import { playerUseCount, type PlayerUsage } from "./playerUsage";
-import { KICKOFF_OUT_OF_BOUNDS, kickoffOutOfBoundsSituation, type KickoffOutOfBoundsChoice } from "@/services/kickoffOutOfBounds";
+import {
+  KICKOFF_OUT_OF_BOUNDS, KICKOFF_OUT_OF_BOUNDS_CHOICES, KICKOFF_OUT_OF_BOUNDS_LABELS,
+  isKickoffOutOfBoundsChoice, kickoffOutOfBoundsSituation, type KickoffOutOfBoundsChoice,
+} from "@/services/kickoffOutOfBounds";
 import { flagSideDefault, reviewNextSpot } from "@/services/penaltySpot";
 import { enforcePenalty, type PlayKind } from "@/services/penaltyEnforcement";
 import { penaltyPlayEffect } from "@/services/penaltyOutcome";
@@ -817,10 +820,11 @@ export default function PlayEntryModal({
      and how the play reads. Touchback is the exception — the receiving team
      starts at their own 20 regardless of where it came down. */
   const [kickOutcome, setKickOutcome] = useState<KickOutcome>(edit?.kickOutcome ?? "returned");
-  const [outOfBoundsChoice, setOutOfBoundsChoice] = useState<KickoffOutOfBoundsChoice>(
-    (editing ?? initialDraft)?.playData?.kickoff_out_of_bounds_choice === "rekick" ? "rekick" : "take_35");
+  const [outOfBoundsChoice, setOutOfBoundsChoice] = useState<KickoffOutOfBoundsChoice>(() => {
+    const stored = (editing ?? initialDraft)?.playData?.kickoff_out_of_bounds_choice;
+    return isKickoffOutOfBoundsChoice(stored) ? stored : "take_35";
+  });
   const isKickoffOutOfBounds = ["kickoff", "onside_kick"].includes(playType.id) && kickOutcome === "out_of_bounds";
-  const outOfBoundsNext = kickoffOutOfBoundsSituation(gameState, outOfBoundsChoice, gameConfig.first_down_distance);
   const isTouchback = kickOutcome === "touchback";
   const wasReturned = kickOutcome === "returned";
   const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">(edit?.result ?? "");
@@ -932,6 +936,9 @@ export default function PlayEntryModal({
     : "punter";
   const [selectedKickedToYard, setKickedToYard] = useState(edit?.kickedToYard ?? 5);
   const kickedToYard = isTouchback ? 0 : selectedKickedToYard;
+  // On a kick out of bounds the landing spot is where it went out, which two
+  // of the receiving team's choices are measured from.
+  const outOfBoundsNext = kickoffOutOfBoundsSituation(gameState, outOfBoundsChoice, gameConfig.first_down_distance, kickedToYard);
   const [kickedToRaw, setKickedToRaw] = useState("");
   const [returnToYardLine, setReturnToYardLine] = useState(edit?.returnToYardLine ?? 20);
 
@@ -1029,6 +1036,9 @@ export default function PlayEntryModal({
     return ballOn <= 50 ? `${offenseTag} ${ballOn}` : `${defenseTag} ${100 - ballOn}`;
   };
   const kickStartLabel = formatFieldSpot(gameState.ballOn, gameState.possession);
+  const outOfBoundsSummary = outOfBoundsChoice === "rekick"
+    ? `Re-kick from ${formatFieldSpot(outOfBoundsNext.ballOn, gameState.possession)}`
+    : `${outOfBoundsChoice === "decline" ? "Declined · " : ""}${receivingTeamLabel}: 1st & ${outOfBoundsNext.distance} at ${formatFieldSpot(outOfBoundsNext.ballOn, outOfBoundsNext.possession)}`;
   /* kickedToYard counts up from the RECEIVING team's goal line, so a value
      over 50 means the ball came down on the KICKING team's side — a punt that
      never reached midfield. Rendering it as a receiving-team yard line printed
@@ -1845,13 +1855,19 @@ export default function PlayEntryModal({
       result: finalResult,
       penalty: isKickoffOutOfBounds ? KICKOFF_OUT_OF_BOUNDS : penalty ? penalty.trim() : null,
       penaltyCategory: isKickoffOutOfBounds ? "offense" : penaltyCategory,
-      penaltyEnforcement: isKickoffOutOfBounds ? "accepted" : penalty ? penaltyEnforcement : "accepted",
-      flagYards: isKickoffOutOfBounds ? (outOfBoundsChoice === "rekick" ? gameState.ballOn - outOfBoundsNext.ballOn : 0) : penalty && penaltyEnforcement === "accepted" ? flagYards : 0,
+      penaltyEnforcement: isKickoffOutOfBounds ? (outOfBoundsChoice === "decline" ? "declined" : "accepted") : penalty ? penaltyEnforcement : "accepted",
+      // The two five-yard choices carry their yardage; the 25-yard spot is a
+      // placement and a declined flag is nothing.
+      flagYards: isKickoffOutOfBounds
+        ? outOfBoundsChoice === "rekick" ? gameState.ballOn - outOfBoundsNext.ballOn
+          : outOfBoundsChoice === "succeeding_spot" ? outOfBoundsNext.ballOn - kickedToYard
+            : 0
+        : penalty && penaltyEnforcement === "accepted" ? flagYards : 0,
       blockedKickType: playType.id === "blocked_kick" ? blockedKickType : null,
       offensiveFormation: offFormation,
       defensiveFormation: defFormation,
       hashMark,
-      description: isKickoffOutOfBounds ? `${desc} · PEN: ${KICKOFF_OUT_OF_BOUNDS} · ${outOfBoundsChoice === "rekick" ? `Re-kick from ${formatFieldSpot(outOfBoundsNext.ballOn, gameState.possession)}` : `${receivingTeamLabel} ball at own 35`}` : desc,
+      description: isKickoffOutOfBounds ? `${desc} · PEN: ${KICKOFF_OUT_OF_BOUNDS} · ${outOfBoundsSummary}` : desc,
       nextSituation: isKickoffOutOfBounds ? { ...outOfBoundsNext, source: "penalty_enforced" } : storedNextSituation,
       spotOverrideOffered: !isKickoffOutOfBounds && spotOverrideOffered,
       playData: {
@@ -3329,14 +3345,17 @@ export default function PlayEntryModal({
                 {isKickoffOutOfBounds && (
                   <div className="mt-2 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
                     <div className="text-xs font-bold text-amber-300">Penalty: Kickoff Out of Bounds</div>
+                    {/* The receiving team's call (NFHS 6-1-9). The two spots
+                        measured from where it went out use the landing spot
+                        above. */}
                     <div className="grid grid-cols-2 gap-2">
-                      {(["rekick", "take_35"] as const).map(choice => <button key={choice} type="button"
+                      {KICKOFF_OUT_OF_BOUNDS_CHOICES.map(choice => <button key={choice} type="button"
                         aria-pressed={outOfBoundsChoice === choice} onClick={() => setOutOfBoundsChoice(choice)}
                         className={`min-h-11 rounded-lg border px-2 text-xs font-bold ${outOfBoundsChoice === choice ? "border-amber-300 bg-amber-500/20 text-white" : "border-slate-600 text-slate-300"}`}>
-                        {choice === "rekick" ? "Re-kick · 5-yard penalty" : `${receivingTeamLabel} ball at 35`}
+                        {KICKOFF_OUT_OF_BOUNDS_LABELS[choice]}
                       </button>)}
                     </div>
-                    <p className="text-xs text-slate-300">{outOfBoundsChoice === "rekick" ? `Re-kick from ${formatFieldSpot(outOfBoundsNext.ballOn, gameState.possession)}.` : `${receivingTeamLabel}: 1st & ${outOfBoundsNext.distance} at own 35.`}</p>
+                    <p className="text-xs text-slate-300">{outOfBoundsSummary}. Went out at {landingLabel}.</p>
                   </div>
                 )}
                 {/* Same escape as the FG/PAT result step. A punt that never
@@ -4426,7 +4445,7 @@ export default function PlayEntryModal({
               </div>
               {isKickoffOutOfBounds && <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
                 <strong>Penalty: Kickoff Out of Bounds</strong>
-                <div className="mt-1">{outOfBoundsChoice === "rekick" ? `Re-kick from ${formatFieldSpot(outOfBoundsNext.ballOn, gameState.possession)}` : `${receivingTeamLabel}: 1st & ${outOfBoundsNext.distance} at own 35`}</div>
+                <div className="mt-1">{outOfBoundsSummary}</div>
               </div>}
 
               {/* Scoreboard time at the snap. Pre-filled from the running
