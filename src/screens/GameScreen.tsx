@@ -62,6 +62,7 @@ import PregameSetupSheet from "@/components/game/PregameSetupSheet";
 import QuickActions from "@/components/game/QuickActions";
 import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
+import { resolveEditedNextSituation } from "@/components/game/editNextSituation";
 import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import PlayLog from "@/components/game/PlayLog";
 import QuarterChangeRow from "@/components/game/QuarterChangeRow";
@@ -2268,9 +2269,11 @@ export default function GameScreen() {
     // interception always is - and the play type otherwise.
     const editTurnover = result.turnover ?? ["int", "fumble"].includes(result.playType.id);
     // A spot the operator set by hand outranks the computed enforcement, the
-    // same way it does on entry.
-    const editSource = result.nextSituation
-      ? result.nextSituation.source
+    // same way it does on entry - including one typed into the Adjust sheet on
+    // a play the editor has no spot control for.
+    const { nextSituation: editNext, handSpotDropped } = resolveEditedNextSituation(original, result, gc);
+    const editSource = editNext
+      ? editNext.source
       : (result.penalty || (result.playType.id === "blocked_kick" && !result.isTouchdown) ? "pending_review" : "auto");
 
     // Persist to DB
@@ -2331,10 +2334,10 @@ export default function GameScreen() {
         team_tagged: result.tagged
           .filter(t => t.isTeam)
           .map(t => ({ role: t.role, credit: t.credit ?? null, ...(t.teamCreditConfirmed ? { confirmed: true } : {}) })),
-        next_possession: result.nextSituation?.possession ?? null,
-        next_down: result.nextSituation?.down ?? null,
-        next_distance: result.nextSituation?.distance ?? null,
-        next_yard_line: result.nextSituation?.ballOn ?? null,
+        next_possession: editNext?.possession ?? null,
+        next_down: editNext?.down ?? null,
+        next_distance: editNext?.distance ?? null,
+        next_yard_line: editNext?.ballOn ?? null,
         next_situation_source: editSource,
       },
     }, result.tagged.filter(isRosterTag).map(t => ({
@@ -2366,10 +2369,10 @@ export default function GameScreen() {
       tagged: result.tagged,
       fumbleReturnYards: result.fumbleReturnYards ?? null,
       fumbleRecoveredAt: result.fumbleRecoveredAt ?? null,
-      nextPossession: result.nextSituation?.possession,
-      nextDown: result.nextSituation?.down,
-      nextDistance: result.nextSituation?.distance,
-      nextBallOn: result.nextSituation?.ballOn,
+      nextPossession: editNext?.possession,
+      nextDown: editNext?.down,
+      nextDistance: editNext?.distance,
+      nextBallOn: editNext?.ballOn,
       description: result.description,
       offensiveFormation: result.offensiveFormation,
       defensiveFormation: result.defensiveFormation,
@@ -2398,7 +2401,8 @@ export default function GameScreen() {
     setEditPlay(null);
     await recalcScoreAndState(newPlays);
 
-    if (updatedPlay.penalty || updatedPlay.type === "blocked_kick") {
+    // A hand-set spot the edit replaced gets confirmed again, as on entry.
+    if (updatedPlay.penalty || updatedPlay.type === "blocked_kick" || (handSpotDropped && !updatedPlay.isTouchdown)) {
       const rebuilt = rebuildPlaySituations(newPlays, pregame, gc);
       const rebuiltPlay = rebuilt.plays[idx];
       if (rebuiltPlay) {

@@ -53,6 +53,12 @@ Push to `main` auto-deploys to GitHub Pages. Don't push unless asked.
   *start* — the scoreboard's ball/down/distance buttons, the Film Chart
   situation editor — is `play_data.start_override` and is absolute.
   `markHandSetStarts` reads the unflagged ones off stored rows on load.
+- **An edit must not drop a hand-typed next spot.** The editor opens a flag on
+  the operator's spot when it differs from the rules (the Adjust sheet stores
+  a "manual" spot even when merely confirmed, so equal ones stay computed).
+  Where the editor has no spot control — turnovers, blocked kicks, declined
+  flags — `resolveEditedNextSituation` keeps the spot unless the edit moved the
+  play's outcome. Both edit-save paths go through it.
 - **The Film Chart writes spots too.** An edit there re-chains and writes the
   later plays back (`rechainStoredPlays`), same as the game screen; reports
   read the stored spots.

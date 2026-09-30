@@ -41,7 +41,7 @@ import YardReel from "./YardReel";
 import FastPlayEntry from "./FastPlayEntry";
 import PassDefenderPicker from "./PassDefenderPicker";
 import { FAST_PLAY_IDS, toggleFastTackler } from "./fastEntry";
-import { advanceSituationAfterPlay } from "@/services/gameFlow";
+import { advanceSituationAfterPlay, getHandSetNextSituation } from "@/services/gameFlow";
 import KneelEntry from "./KneelEntry";
 import { playerUseCount, type PlayerUsage } from "./playerUsage";
 import { KICKOFF_OUT_OF_BOUNDS, kickoffOutOfBoundsSituation, type KickoffOutOfBoundsChoice } from "@/services/kickoffOutOfBounds";
@@ -160,6 +160,11 @@ export interface PlaySubmitData {
     possession: "us" | "them";
     source: "manual_override" | "penalty_enforced";
   } | null;
+  /** Whether this pass offered "set the spot myself". When it did, nextSituation
+   *  is the operator's final word on the spot; when it did not, an edit has no
+   *  opinion on a spot typed into the Adjust sheet, and the saving screen keeps
+   *  it (see handSpotSurvivingEdit). */
+  spotOverrideOffered?: boolean;
 }
 
 type Step = "players" | "yards" | "penalty" | "formations" | "defense" | "review"
@@ -1848,6 +1853,7 @@ export default function PlayEntryModal({
       hashMark,
       description: isKickoffOutOfBounds ? `${desc} · PEN: ${KICKOFF_OUT_OF_BOUNDS} · ${outOfBoundsChoice === "rekick" ? `Re-kick from ${formatFieldSpot(outOfBoundsNext.ballOn, gameState.possession)}` : `${receivingTeamLabel} ball at own 35`}` : desc,
       nextSituation: isKickoffOutOfBounds ? { ...outOfBoundsNext, source: "penalty_enforced" } : storedNextSituation,
+      spotOverrideOffered: !isKickoffOutOfBounds && spotOverrideOffered,
       playData: {
         team_tackle_confirmed: allTagged.some(tag => tag.isTeam && tag.teamCreditConfirmed && ["tackler", "sacker"].includes(tag.role)),
         kickoff_out_of_bounds_choice: isKickoffOutOfBounds ? outOfBoundsChoice : null,
@@ -2087,6 +2093,21 @@ export default function PlayEntryModal({
      flips possession has to be complemented on the way out. Skip that and the
      ball lands the right distance from the WRONG goal, which is the sort of
      error that looks fine on the review screen and ruins the drive chart. */
+  /** The rules' answer, stored in the new possession's frame - what gets
+   *  written when nobody overrides it. */
+  const enforcedNextSituation = enforcement
+    ? {
+        ballOn: enforcement.possessionFlips
+          ? 100 - enforcement.ballOn
+          : enforcement.ballOn,
+        down: enforcement.down,
+        distance: enforcement.distance,
+        possession: enforcement.possessionFlips
+          ? otherSide(gameState.possession)
+          : gameState.possession,
+        source: "penalty_enforced" as const,
+      }
+    : null;
   const storedNextSituation = (() => {
     if (!penalty) return null;
     const flips = !isPenaltyOnly && possessionAtEnd === "defense";
@@ -2104,20 +2125,7 @@ export default function PlayEntryModal({
         source: "manual_override" as const,
       };
     }
-    if (enforcement) {
-      return {
-        ballOn: enforcement.possessionFlips
-          ? 100 - enforcement.ballOn
-          : enforcement.ballOn,
-        down: enforcement.down,
-        distance: enforcement.distance,
-        possession: enforcement.possessionFlips
-          ? otherSide(gameState.possession)
-          : gameState.possession,
-        source: "penalty_enforced" as const,
-      };
-    }
-    return null;
+    return enforcedNextSituation;
   })();
 
 
@@ -2169,6 +2177,51 @@ export default function PlayEntryModal({
     setOverrideSpot(true);
   };
   const closeSpotOverride = () => { setOverrideSpot(false); setOverridePossession(null); };
+
+  /** Whether this pass shows "set the spot myself": an accepted flag on a
+   *  live ball, or any dead-ball foul. Where it does not, the screen saving an
+   *  edit has to carry a hand-set spot through on its own. */
+  const spotOverrideOffered = penalty != null
+    && (isPenaltyOnly ? penaltyProjection != null : penaltyEnforcement === "accepted");
+
+  /* A spot already typed in by hand opens as the operator's spot, not the rules'.
+     Every flag pops the Adjust sheet after the snap, and a ball the officials
+     put somewhere the arithmetic would not is stored there as a manual
+     override. The editor never read it back: it opened on the computed
+     enforcement, so re-saving the play - to fix a tackler, say - wrote the
+     computed spot over the real one, and the Adjust sheet that follows an edit
+     then offered the wrong ball to confirm.
+
+     Only a spot that differs from the rules is treated as the operator's. The
+     Adjust sheet stores whatever it is confirmed with, so most flags carry a
+     "manual" spot identical to the computed one; opening those as overrides
+     would pin the ball where it is, and correcting the flag yardage in the
+     editor would no longer move it. */
+  const handSpotSeeded = useRef(false);
+  useEffect(() => {
+    if (handSpotSeeded.current || !editing) return;
+    handSpotSeeded.current = true;
+    if (!spotOverrideOffered) return;
+    const hand = getHandSetNextSituation(editing);
+    if (!hand) return;
+    const start = {
+      possession: gameState.possession,
+      down: gameState.down,
+      distance: gameState.distance,
+      ballOn: gameState.ballOn,
+    };
+    // With no enforcement to store, an unchanged save leaves the spot to the
+    // replay, which works it out from the play itself.
+    const rules = enforcedNextSituation ?? advanceSituationAfterPlay(editing, start, gameConfig);
+    if (hand.possession === rules.possession && hand.ballOn === rules.ballOn
+      && hand.down === rules.down && hand.distance === rules.distance) return;
+    // Stored in the next team's frame, entered in the snap's.
+    seedSpotFromBallOn(hand.possession === gameState.possession ? hand.ballOn : 100 - hand.ballOn);
+    setSpotDown(hand.down);
+    setSpotDistance(hand.distance);
+    setOverridePossession(hand.possession);
+    setOverrideSpot(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Which of the three possible next spots review may show, and what to call
      it. A spot the operator typed always wins; a dead-ball flag uses the

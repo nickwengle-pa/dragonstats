@@ -29,6 +29,7 @@ import {
   type PlayChartingDraft,
 } from "@/services/chartingService";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
+import { resolveEditedNextSituation } from "@/components/game/editNextSituation";
 import { formatClockValue } from "@/components/game/ClockInput";
 import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import {
@@ -855,6 +856,12 @@ export default function PostGameReview() {
     const original = plays.find((p) => p.id === playId);
     const pd = (original?.play_data ?? {}) as Record<string, any>;
     const editTurnover = result.turnover ?? ["int", "fumble"].includes(result.playType.id);
+    // A spot typed into the Adjust sheet survives an edit that did not move
+    // the play's outcome, the same as on the live screen.
+    const gc = resolveGameConfig(getGameConfig(program ?? null), meta?.rules_config);
+    const editNext = original
+      ? resolveEditedNextSituation(rowToPlayRecord(original), result, gc).nextSituation
+      : result.nextSituation ?? null;
 
     const ok = await updatePlayFull(
       playId,
@@ -905,12 +912,12 @@ export default function PostGameReview() {
           /* Who has the ball NEXT, which a flag on a return or a turnover
              hands to the other team. This stored the snap's possession
              instead, pairing the new team's spot with the old team's frame. */
-          next_possession: result.nextSituation?.possession ?? null,
-          next_down: result.nextSituation?.down ?? null,
-          next_distance: result.nextSituation?.distance ?? null,
-          next_yard_line: result.nextSituation?.ballOn ?? null,
-          next_situation_source: result.nextSituation
-            ? result.nextSituation.source
+          next_possession: editNext?.possession ?? null,
+          next_down: editNext?.down ?? null,
+          next_distance: editNext?.distance ?? null,
+          next_yard_line: editNext?.ballOn ?? null,
+          next_situation_source: editNext
+            ? editNext.source
             : result.penalty || (result.playType.id === "blocked_kick" && !result.isTouchdown) ? "pending_review" : "auto",
           // Rewritten from the edit result rather than inherited from `pd`,
           // so removing a pending tag in the editor actually removes it.
@@ -950,7 +957,7 @@ export default function PostGameReview() {
     const row = refreshed.find((p) => p.id === playId) ?? null;
     setEditingPlay(row);
     if (row) setSitDraft(situationFromPlay(row));
-  }, [plays, load, rechain]);
+  }, [plays, load, rechain, meta, program]);
 
   /* Same two facts as the live screen, written the same way. */
   const handleSaveTimeoutEdit = useCallback(async (playId: string, edit: TimeoutEdit) => {
