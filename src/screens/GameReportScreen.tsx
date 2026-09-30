@@ -671,7 +671,7 @@ export default function GameReportScreen() {
                 <thead>
                   <tr>
                     <th className="text-left py-[3px] px-[3px] text-[6.5pt] font-black uppercase">Player</th>
-                    {["Kickoff", "Punt", "Intercept"].map(g => (
+                    {["Kickoff", "Punt", "Intercept", "Fumble"].map(g => (
                       <th key={g} colSpan={4} className="py-[3px] px-[3px] text-[6.5pt] font-black uppercase text-center border-l border-neutral-400">
                         {g}
                       </th>
@@ -679,7 +679,7 @@ export default function GameReportScreen() {
                   </tr>
                   <tr className="border-b border-black">
                     <th />
-                    {["No", "Yds", "Lg", "TD", "No", "Yds", "Lg", "TD", "No", "Yds", "Lg", "TD"].map((h, i) => (
+                    {["Kickoff", "Punt", "Intercept", "Fumble"].flatMap(() => ["No", "Yds", "Lg", "TD"]).map((h, i) => (
                       <th
                         key={i}
                         className={`py-[2px] px-[3px] text-[6.5pt] font-bold uppercase text-right ${
@@ -695,7 +695,7 @@ export default function GameReportScreen() {
                   {report.returns.map((r, i) => (
                     <tr key={i} className="border-b border-neutral-200">
                       <td className="py-[2.5px] px-[3px] font-semibold">{r.name}</td>
-                      {[r.ko, r.punt, r.int].flatMap((g, gi) => [
+                      {[r.ko, r.punt, r.int, r.fr].flatMap((g, gi) => [
                         <td key={`${gi}n`} className="py-[2.5px] px-[3px] text-right border-l border-neutral-400">{g.no || ""}</td>,
                         <td key={`${gi}y`} className="py-[2.5px] px-[3px] text-right font-black">{g.no ? g.yds : ""}</td>,
                         <td key={`${gi}l`} className="py-[2.5px] px-[3px] text-right">{g.no ? g.long : ""}</td>,
@@ -705,7 +705,7 @@ export default function GameReportScreen() {
                   ))}
                   <tr className="border-t-2 border-black font-black">
                     <td className="py-[3px] px-[3px]">Total</td>
-                    {[report.returnsTotal.ko, report.returnsTotal.punt, report.returnsTotal.int].flatMap((g, gi) => [
+                    {[report.returnsTotal.ko, report.returnsTotal.punt, report.returnsTotal.int, report.returnsTotal.fr].flatMap((g, gi) => [
                       <td key={`${gi}n`} className="py-[3px] px-[3px] text-right border-l border-neutral-400">{g.no}</td>,
                       <td key={`${gi}y`} className="py-[3px] px-[3px] text-right">{g.yds}</td>,
                       <td key={`${gi}l`} className="py-[3px] px-[3px] text-right">{g.long}</td>,
@@ -746,8 +746,8 @@ export default function GameReportScreen() {
                   { key: "Solo" }, { key: "Ast" }, { key: "Total", bold: true },
                   { key: "Sack" }, { key: "Yds" },
                   { key: "TFL" }, { key: "Yds" },
-                  { key: "FF" }, { key: "FR" }, { key: "Yds" },
-                  { key: "Int" }, { key: "Yds" },
+                  { key: "FF" }, { key: "FR" }, { key: "Yds" }, { key: "TD" },
+                  { key: "Int" }, { key: "Yds" }, { key: "TD" },
                   { key: "BrUp" }, { key: "Blk" }, { key: "QBH" },
                 ]}
                 rows={report.defense.map(r => [
@@ -755,8 +755,8 @@ export default function GameReportScreen() {
                   n(r.solo), n(r.ast), n(r.total),
                   n(r.sacks), n(r.sackYds),
                   n(r.tfl), n(r.tflYds),
-                  n(r.ff), n(r.fr), n(r.frYds),
-                  n(r.int), n(r.intYds),
+                  n(r.ff), n(r.fr), n(r.frYds), n(r.frTd),
+                  n(r.int), n(r.intYds), n(r.intTd),
                   n(r.brUp), n(r.blocks), n(r.qbh),
                 ])}
                 total={[
@@ -764,13 +764,13 @@ export default function GameReportScreen() {
                   n(report.defenseTotal.solo), n(report.defenseTotal.ast), n(report.defenseTotal.total),
                   n(report.defenseTotal.sacks), n(report.defenseTotal.sackYds),
                   n(report.defenseTotal.tfl), n(report.defenseTotal.tflYds),
-                  n(report.defenseTotal.ff), n(report.defenseTotal.fr), n(report.defenseTotal.frYds),
-                  n(report.defenseTotal.int), n(report.defenseTotal.intYds),
+                  n(report.defenseTotal.ff), n(report.defenseTotal.fr), n(report.defenseTotal.frYds), n(report.defenseTotal.frTd),
+                  n(report.defenseTotal.int), n(report.defenseTotal.intYds), n(report.defenseTotal.intTd),
                   n(report.defenseTotal.brUp), n(report.defenseTotal.blocks), n(report.defenseTotal.qbh),
                 ]}
               />
               <div className="text-[7pt] text-neutral-500 mt-2 leading-snug">
-                Sacks, TFL, fumble recoveries and interceptions each show count then yards.
+                Sacks and TFL show count then yards; fumble recoveries and interceptions show count, return yards, then touchdowns.
                 A shared tackle counts half to each player, so Total can carry a half.
                 {" "}#100 TEAM holds stops credited to the defense when no jersey was identified.
               </div>

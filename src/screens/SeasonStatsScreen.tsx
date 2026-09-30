@@ -4,7 +4,8 @@ import { ArrowLeft, Shield, Zap, Target } from "lucide-react";
 import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
-import { computeGameStats } from "@/services/statsService";
+import { computeGameStatsBundle } from "@/services/statsService";
+import { defensiveReturnsFromPlays, type DefensiveReturnTally } from "@/services/defensiveReturns";
 import type { GameSummary } from "football-stats-engine";
 import BroadcastHeader from "@/components/BroadcastHeader";
 import { SheetIcon } from "@/components/icons/BroadcastIcons";
@@ -53,6 +54,13 @@ interface AggReturns {
   games: number;
 }
 
+/** Interceptions and fumbles brought back - the defense's side of returns. */
+interface AggDefReturns {
+  playerId: string; name: string;
+  int: { no: number; yds: number; long: number; td: number };
+  fr: { no: number; yds: number; long: number; td: number };
+}
+
 type Tab = "offense" | "defense" | "specialteams";
 
 /* ─── Helpers ─── */
@@ -80,6 +88,9 @@ export default function SeasonStatsScreen() {
 
   // Raw per-game summaries
   const [summaries, setSummaries] = useState<GameSummary[]>([]);
+  // Per game, in the same order: returns read off the plays, for the long
+  // the engine does not keep.
+  const [defReturnsByGame, setDefReturnsByGame] = useState<Map<string, DefensiveReturnTally>[]>([]);
   const [rosterIds, setRosterIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -109,15 +120,20 @@ export default function SeasonStatsScreen() {
       if (cancelled || !games) { setLoading(false); return; }
 
       const results: GameSummary[] = [];
+      const returnTallies: Map<string, DefensiveReturnTally>[] = [];
       for (const g of games) {
-        const s = await computeGameStats(g.id, {
+        const bundle = await computeGameStatsBundle(g.id, {
           id: program.id, name: program.name, abbreviation: program.abbreviation, game_config: program.game_config,
         });
         if (cancelled) return;
-        if (s) results.push(s);
+        if (bundle) {
+          results.push(bundle.summary);
+          returnTallies.push(defensiveReturnsFromPlays(bundle.plays));
+        }
       }
 
       setSummaries(results);
+      setDefReturnsByGame(returnTallies);
       setLoading(false);
     })();
 
@@ -125,7 +141,7 @@ export default function SeasonStatsScreen() {
   }, [program, season]);
 
   /* ── Aggregate stats across all games ── */
-  const { passing, rushing, receiving, defense, kicking, punting, returns } = useMemo(() => {
+  const { passing, rushing, receiving, defense, kicking, punting, returns, defReturns } = useMemo(() => {
     const pMap = new Map<string, AggPassing>();
     const rMap = new Map<string, AggRushing>();
     const rcMap = new Map<string, AggReceiving>();
@@ -161,7 +177,10 @@ export default function SeasonStatsScreen() {
       }
       // Defense
       for (const [pid, ds] of Object.entries(s.defense)) {
-        if (!rosterIds.has(pid) || ds.totalTackles === 0) continue;
+        // Not just tacklers: a corner whose only stat is a pick belongs here too.
+        if (!rosterIds.has(pid)) continue;
+        if (ds.totalTackles === 0 && ds.sacks === 0 && ds.interceptions === 0
+          && ds.forcedFumbles === 0 && ds.fumbleRecoveries === 0) continue;
         const e = dMap.get(pid) ?? { playerId: pid, name: ds.playerName, totalTackles: 0, soloTackles: 0, assistedTackles: 0, tacklesForLoss: 0, sacks: 0, interceptions: 0, forcedFumbles: 0, fumbleRecoveries: 0, games: 0 };
         e.totalTackles += ds.totalTackles; e.soloTackles += ds.soloTackles;
         e.assistedTackles += ds.assistedTackles; e.tacklesForLoss += ds.tacklesForLoss;
@@ -203,7 +222,28 @@ export default function SeasonStatsScreen() {
       }
     }
 
+    // Defensive returns: count, yards and long off the plays, touchdowns from
+    // the engine - the same split the game report uses.
+    const drMap = new Map<string, AggDefReturns>();
+    summaries.forEach((s, gi) => {
+      for (const [pid, t] of defReturnsByGame[gi] ?? []) {
+        if (!rosterIds.has(pid)) continue;
+        const ds = s.defense[pid];
+        const e = drMap.get(pid) ?? {
+          playerId: pid, name: ds?.playerName ?? "",
+          int: { no: 0, yds: 0, long: 0, td: 0 }, fr: { no: 0, yds: 0, long: 0, td: 0 },
+        };
+        if (!e.name && ds?.playerName) e.name = ds.playerName;
+        e.int.no += t.int.no; e.int.yds += t.int.yds; e.int.long = Math.max(e.int.long, t.int.long);
+        e.int.td += ds?.interceptionTouchdowns ?? 0;
+        e.fr.no += t.fr.no; e.fr.yds += t.fr.yds; e.fr.long = Math.max(e.fr.long, t.fr.long);
+        e.fr.td += ds?.fumbleRecoveryTouchdowns ?? 0;
+        drMap.set(pid, e);
+      }
+    });
+
     return {
+      defReturns: Array.from(drMap.values()),
       passing: Array.from(pMap.values()).sort((a, b) => b.yards - a.yards),
       rushing: Array.from(rMap.values()).sort((a, b) => b.yards - a.yards),
       receiving: Array.from(rcMap.values()).sort((a, b) => b.yards - a.yards),
@@ -212,7 +252,7 @@ export default function SeasonStatsScreen() {
       punting: Array.from(puMap.values()).sort((a, b) => b.punts - a.punts),
       returns: Array.from(retMap.values()).sort((a, b) => (b.kickReturnYards + b.puntReturnYards) - (a.kickReturnYards + a.puntReturnYards)),
     };
-  }, [summaries, rosterIds]);
+  }, [summaries, rosterIds, defReturnsByGame]);
 
   /* ── Team season totals ── */
   const teamTotals = useMemo(() => {
@@ -422,7 +462,7 @@ export default function SeasonStatsScreen() {
             {tab === "defense" && (
               <div className="space-y-4">
                 {/* Tackle leaders */}
-                {defense.length > 0 && (
+                {defense.some(p => p.totalTackles > 0) && (
                   <div className="card p-4">
                     <SectionTitle>Tackle Leaders</SectionTitle>
                     <div className="overflow-x-auto">
@@ -438,7 +478,7 @@ export default function SeasonStatsScreen() {
                           </tr>
                         </thead>
                         <tbody>
-                          {defense.map(p => (
+                          {defense.filter(p => p.totalTackles > 0).map(p => (
                             <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                               onClick={() => navigate(`/player/${p.playerId}`)}>
                               <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
@@ -455,8 +495,8 @@ export default function SeasonStatsScreen() {
                   </div>
                 )}
 
-                {/* Playmakers (sacks, INTs, FF) */}
-                {defense.filter(d => d.sacks > 0 || d.interceptions > 0 || d.forcedFumbles > 0).length > 0 && (
+                {/* Playmakers (sacks, INTs, FF, FR) */}
+                {defense.filter(d => d.sacks > 0 || d.interceptions > 0 || d.forcedFumbles > 0 || d.fumbleRecoveries > 0).length > 0 && (
                   <div className="card p-4">
                     <SectionTitle>Playmakers</SectionTitle>
                     <div className="overflow-x-auto">
@@ -472,8 +512,8 @@ export default function SeasonStatsScreen() {
                         </thead>
                         <tbody>
                           {defense
-                            .filter(d => d.sacks > 0 || d.interceptions > 0 || d.forcedFumbles > 0)
-                            .sort((a, b) => (b.sacks + b.interceptions + b.forcedFumbles) - (a.sacks + a.interceptions + a.forcedFumbles))
+                            .filter(d => d.sacks > 0 || d.interceptions > 0 || d.forcedFumbles > 0 || d.fumbleRecoveries > 0)
+                            .sort((a, b) => (b.sacks + b.interceptions + b.forcedFumbles + b.fumbleRecoveries) - (a.sacks + a.interceptions + a.forcedFumbles + a.fumbleRecoveries))
                             .map(p => (
                               <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
                                 onClick={() => navigate(`/player/${p.playerId}`)}>
@@ -486,6 +526,56 @@ export default function SeasonStatsScreen() {
                             ))}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Defensive returns - the other returns live under Special Teams */}
+                {defReturns.length > 0 && (
+                  <div className="card p-4">
+                    <SectionTitle>Defensive Returns</SectionTitle>
+                    <div className="space-y-3">
+                    {([
+                      ["int", "Interceptions"],
+                      ["fr", "Fumble Recoveries"],
+                    ] as const).map(([key, label]) => {
+                      const rows = defReturns.filter(r => r[key].no > 0).sort((a, b) => b[key].yds - a[key].yds);
+                      if (rows.length === 0) return null;
+                      return (
+                        <div key={key} className="overflow-x-auto">
+                          {/* Fixed widths, so the two tables' columns line up. */}
+                          <table className="w-full text-xs table-fixed">
+                            <colgroup>
+                              <col />
+                              <col className="w-8" /><col className="w-10" /><col className="w-12" /><col className="w-10" /><col className="w-8" />
+                            </colgroup>
+                            <thead>
+                              <tr className="text-neutral-500 border-b border-surface-border">
+                                <th className="text-left py-1.5 font-bold">{label}</th>
+                                <th className="text-right py-1.5 font-bold">No</th>
+                                <th className="text-right py-1.5 font-bold">Yds</th>
+                                <th className="text-right py-1.5 font-bold">Avg</th>
+                                <th className="text-right py-1.5 font-bold">Lng</th>
+                                <th className="text-right py-1.5 font-bold">TD</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map(p => (
+                                <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
+                                  onClick={() => navigate(`/player/${p.playerId}`)}>
+                                  <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
+                                  <td className="py-1.5 text-right font-mono">{p[key].no}</td>
+                                  <td className="py-1.5 text-right font-mono font-bold">{p[key].yds}</td>
+                                  <td className="py-1.5 text-right font-mono">{(p[key].yds / p[key].no).toFixed(1)}</td>
+                                  <td className="py-1.5 text-right font-mono">{p[key].long}</td>
+                                  <td className="py-1.5 text-right font-mono text-emerald-400">{p[key].td}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })}
                     </div>
                   </div>
                 )}

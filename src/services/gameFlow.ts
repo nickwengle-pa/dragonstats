@@ -461,6 +461,52 @@ export function withHandSetStart<T extends SituatedPlay>(
   return marked[marked.length - 1] as T;
 }
 
+/** A next spot the operator stated by hand - the Adjust Next Situation sheet,
+ *  or the editor's "set the spot myself" - when the play carries one. The film
+ *  chart's records keep next_* only in play_data, so it is read from there too. */
+export function getHandSetNextSituation(
+  play: Pick<AdvanceablePlay, "nextPossession" | "nextDown" | "nextDistance" | "nextBallOn" | "playData">,
+): LiveSituation | null {
+  const pd = play.playData ?? {};
+  if (pd.next_situation_source !== "manual_override") return null;
+  return getRecordedNextSituation({
+    nextPossession: play.nextPossession ?? (isTeamSide(pd.next_possession) ? pd.next_possession : undefined),
+    nextDown: play.nextDown ?? (typeof pd.next_down === "number" ? pd.next_down : undefined),
+    nextDistance: play.nextDistance ?? (typeof pd.next_distance === "number" ? pd.next_distance : undefined),
+    nextBallOn: play.nextBallOn ?? (typeof pd.next_yard_line === "number" ? pd.next_yard_line : undefined),
+  });
+}
+
+/**
+ * The hand-set spot to carry through an edit whose editor had no control to
+ * show it in: a turnover, a blocked kick, a declined or offsetting flag, a
+ * kickoff out of bounds. The Adjust sheet is where those get a spot typed in,
+ * and re-saving the play from the editor used to write the computed spot back
+ * over it.
+ *
+ * Kept only while the edit left the rules' answer alone. Naming the tackler
+ * changes nothing about where the ball went, so the operator's spot stands;
+ * moving the return does, and a spot typed against the old return would now be
+ * wrong - the edit is the newer word on where the play ended.
+ */
+export function handSpotSurvivingEdit(
+  original: AdvanceablePlay & LiveSituation,
+  edited: AdvanceablePlay,
+  config: GameConfig,
+): LiveSituation | null {
+  const hand = getHandSetNextSituation(original);
+  if (!hand) return null;
+  const start: LiveSituation = {
+    possession: original.possession,
+    down: original.down,
+    distance: original.distance,
+    ballOn: original.ballOn,
+  };
+  const before = advanceSituationAfterPlay(original, start, config);
+  const after = advanceSituationAfterPlay(edited, start, config);
+  return sameSituation(before, after) ? hand : null;
+}
+
 export function advanceSituationAfterPlay(
   play: AdvanceablePlay,
   before: LiveSituation,

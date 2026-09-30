@@ -46,8 +46,8 @@ export default function SeasonReportScreen() {
         add("Passing",["Player","Att","Comp","Yds","TD","Int","Sack","Lg"],report.passing.map(pass),pass(report.passingTotal));
         const rec = (r: typeof report.receivingTotal) => [r.name,r.rec,r.yds,r.td,r.long];
         add("Receiving",["Player","Rec","Yds","TD","Lg"],report.receiving.map(rec),rec(report.receivingTotal));
-        const def = (r: typeof report.defenseTotal) => [r.name,r.solo,r.ast,r.total,r.tfl,r.sacks,r.int,r.ff,r.fr,r.brUp];
-        add("Defense",["Player","Solo","Ast","Total","TFL","Sack","Int","FF","FR","PBU"],report.defense.map(def),def(report.defenseTotal));
+        const def = (r: typeof report.defenseTotal) => [r.name,r.solo,r.ast,r.total,r.tfl,r.sacks,r.int,r.intTd,r.ff,r.fr,r.frTd,r.brUp];
+        add("Defense",["Player","Solo","Ast","Total","TFL","Sack","Int","Int TD","FF","FR","FR TD","PBU"],report.defense.map(def),def(report.defenseTotal));
         const punt = (r: typeof report.puntingTotal) => [r.name,r.att,r.yds,r.avg.toFixed(1),r.long,r.inside20,r.tb];
         add("Punting",["Player","No","Yds","Avg","Lg","In 20","TB"],report.punting.map(punt),punt(report.puntingTotal));
         const ko = (r: typeof report.kickoffsTotal) => [r.name,r.no,r.yds,r.avg.toFixed(1),r.tb];
@@ -57,7 +57,7 @@ export default function SeasonReportScreen() {
         ours.set("our_team", "TEAM");
         const kickers = Object.entries(combined.summary.kicking).filter(([id, s]) => ours.has(id) && (s.fieldGoalAttempts || s.extraPointAttempts));
         add("Field goals & extra points",["Player","FG Made","FG Att","FG Lg","PAT Made","PAT Att"], kickers.map(([id,s]) => [ours.get(id)!,s.fieldGoalMade,s.fieldGoalAttempts,s.fieldGoalLong,s.extraPointMade,s.extraPointAttempts]), ["Total", ...["fieldGoalMade","fieldGoalAttempts","fieldGoalLong","extraPointMade","extraPointAttempts"].map(key => key === "fieldGoalLong" ? Math.max(0,...kickers.map(([,s]) => s.fieldGoalLong)) : kickers.reduce((n,[,s]) => n + Number((s as any)[key] ?? 0),0))]);
-        for (const [key, title] of [["ko","Kickoff returns"],["punt","Punt returns"],["int","Interception returns"]] as const) {
+        for (const [key, title] of [["ko","Kickoff returns"],["punt","Punt returns"],["int","Interception returns"],["fr","Fumble returns"]] as const) {
           const ret = (r: typeof report.returnsTotal) => [r.name,r[key].no,r[key].yds,r[key].long,r[key].td];
           add(title,["Player","No","Yds","Lg","TD"],report.returns.filter(r => r[key].no).map(ret),ret(report.returnsTotal));
         }
