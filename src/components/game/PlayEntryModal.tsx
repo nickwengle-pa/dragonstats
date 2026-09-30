@@ -1787,6 +1787,12 @@ export default function PlayEntryModal({
     } else if (isFumblePlay) {
       // A recovery return must not overwrite the original carrier's yardage.
       playYards = yards;
+    } else if (playType.id === "safety") {
+      /* A safety ends in the offense's own end zone by definition, which the
+         spot picker cannot reach - it stops at the 1 - so every safety was
+         recorded a yard short. The loss runs to the goal line, the same way a
+         touchdown's gain does. */
+      playYards = -gameState.ballOn;
     } else if (isTD) {
       // TD: yards = distance from line of scrimmage to endzone
       // Turnovers (int/fumble) score in the opposite direction, so yards go negative (towards LOS endzone)

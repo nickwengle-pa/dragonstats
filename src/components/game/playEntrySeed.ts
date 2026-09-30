@@ -112,10 +112,23 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
   const pd = (play.playData ?? {}) as Record<string, unknown>;
   const possession = play.possession;
 
+  /* A fumble is either the play type or the modifier, and the modifier is only
+     offered on the types that can carry it. */
+  const taggedRoles = new Set(play.tagged.map(t => t.role));
+  const hasFumble = FUMBLE_MODIFIER_TYPES.has(play.type)
+    && (taggedRoles.has("forced_fumble") || taggedRoles.has("fumble_recovery") || play.turnover);
+  /* On a fumble the touchdown, if any, is the RECOVERY's - submit decides it
+     from where the return ended, and the play's own yardage is still the
+     carrier's, to the spot he lost it. Seeding a fumble-return score like a
+     carry that scored put the carrier back on the line of scrimmage, and an
+     unchanged save wrote his gain as zero. */
+  const fumblePlay = play.type === "fumble" || hasFumble;
+  const carrierScored = play.isTouchdown && !fumblePlay;
+
   /* Where the play ended, offense-relative. A touchdown has no spot to hold —
      the ball is in the end zone — so the picker seeds to the line of scrimmage
      and the TD flag carries the yardage, exactly as it does on entry. */
-  const endBallOn = play.isTouchdown
+  const endBallOn = carrierScored
     ? play.ballOn
     : Math.max(1, Math.min(99, play.ballOn + play.yards));
   const resultSpot = toResultSpot(possession, endBallOn);
@@ -162,12 +175,6 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
   const intCaughtSide = (str(intSpot?.field_side) as FieldTeam | null) ?? fallbackInt.side;
   const intCaughtYard = num(intSpot?.yard_line) ?? fallbackInt.yardLine;
 
-  /* A fumble is either the play type or the modifier, and the modifier is only
-     offered on the types that can carry it. */
-  const taggedRoles = new Set(play.tagged.map(t => t.role));
-  const hasFumble = FUMBLE_MODIFIER_TYPES.has(play.type)
-    && (taggedRoles.has("forced_fumble") || taggedRoles.has("fumble_recovery") || play.turnover);
-
   const enforcement = str(pd.penalty_enforcement);
 
   return {
@@ -175,7 +182,7 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
     tacklers: play.tagged.filter(t => TACKLE_ROLES.has(t.role)),
     resultSide: resultSpot.side,
     resultYardLine: resultSpot.yardLine,
-    isTD: play.isTouchdown,
+    isTD: carrierScored,
     isFirstDown: play.firstDown,
     result: (["Good", "No Good", "Returned"].includes(play.result)
       ? play.result

@@ -30,7 +30,7 @@ import {
 import {
   advanceSituationAfterPlay,
   createInitialSituation,
-  getRecordedNextSituation,
+  getAuthoritativeNextSituation,
   moveToQuarter,
   normalizeQuarter,
   type LiveSituation,
@@ -759,7 +759,9 @@ export function replayLiveGame(
       distance: beforeState.distance,
       ballOn: beforeState.ballOn,
     };
-    const afterSituation = getRecordedNextSituation(play) ?? advanceSituationAfterPlay(play, beforeSituation, config.gameConfig);
+    // Same rule as rebuildPlaySituations: only a stated or enforced spot is
+    // taken as read; a cached one is worked out again.
+    const afterSituation = getAuthoritativeNextSituation(play) ?? advanceSituationAfterPlay(play, beforeSituation, config.gameConfig);
     const enginePlay = toEnginePlay(play, beforeState, score, config, driveNumber);
     let events: GameEvent[] = [];
 

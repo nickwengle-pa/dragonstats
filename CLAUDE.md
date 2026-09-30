@@ -42,9 +42,20 @@ Push to `main` auto-deploys to GitHub Pages. Don't push unless asked.
 - **Game state is derived, not stored.** `rebuildPlaySituations` +
   `replayLiveGame` recompute down/distance/spot/score from the play list on
   every change. Editing play 12 re-chains 13 onward. Prefer full replay over
-  patching state.
-- **Manual overrides must outrank the engine.** A hand-entered spot is flagged
-  `next_situation_source: "manual_override"` and wins over the replay result.
+  patching state. Every play carries `next_*` after a recalc, but those are
+  caches: only a `manual_override` or `penalty_enforced` source is read back
+  (`getAuthoritativeNextSituation`). Honouring every stored next is what used
+  to stop an edit one play downstream.
+- **Manual overrides must outrank the engine — relative to their play.** A
+  stated next spot travels with its play (`carryOverride`): if an upstream edit
+  moves the play's start, its end moves the same distance, and "offense kept
+  it / defense got it" survives a change of who had the ball. A hand-set
+  *start* — the scoreboard's ball/down/distance buttons, the Film Chart
+  situation editor — is `play_data.start_override` and is absolute.
+  `markHandSetStarts` reads the unflagged ones off stored rows on load.
+- **The Film Chart writes spots too.** An edit there re-chains and writes the
+  later plays back (`rechainStoredPlays`), same as the game screen; reports
+  read the stored spots.
 - **Writes are write-ahead, not enqueue-on-failure.** `insertPlay` caches the
   play AND its sync intent in ONE IndexedDB transaction *before* touching the
   network, and deletes the intent only once the server has the row. The old
