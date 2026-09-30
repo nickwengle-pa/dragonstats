@@ -24,5 +24,23 @@ it("keeps every roster row and prints the total only on the final continuation",
   const pages = paginateSeasonSections([{ title: "Defense", headers: ["Player","Tackles"], rows, total: ["Total", 2415] }]);
   expect(pages.flat().flatMap(s => s.rows)).toEqual(rows);
   expect(pages.flat().filter(s => s.total)).toHaveLength(1);
-  expect(pages.flat().every(s => s.rows.length <= 24)).toBe(true);
+  // No continuation left as a stub, and no page past what a sheet holds.
+  expect(pages.flat().every(s => s.rows.length >= 4)).toBe(true);
+  for (const page of pages) expect(page.reduce((n, s) => n + 5 + s.rows.length + (s.total ? 1 : 0), 0)).toBeLessThanOrEqual(38);
+});
+
+it("keeps a table that fits on one page in one piece", () => {
+  // A 27-man defense printed 24 names, a second heading and three more, on a
+  // page with room for all of them.
+  const table = (title: string, n: number) => ({
+    title, headers: ["Player", "Total"], rows: Array.from({ length: n }, (_, i) => [`${title} ${i}`, i]), total: ["Total", n],
+  });
+  const pages = paginateSeasonSections([table("Receiving", 6), table("Defense", 27), table("Punting", 2)]);
+  const defense = pages.flat().filter(s => s.title.startsWith("Defense"));
+  expect(defense).toHaveLength(1);
+  expect(defense[0].rows).toHaveLength(27);
+  expect(defense[0].total).toEqual(["Total", 27]);
+  // It moved to the top of a page rather than being split to fill the first.
+  expect(pages.findIndex(p => p.includes(defense[0]))).toBe(1);
+  expect(pages[1][0]).toBe(defense[0]);
 });
