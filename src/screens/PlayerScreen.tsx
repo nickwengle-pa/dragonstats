@@ -144,7 +144,9 @@ function ReceivingSection({ lines }: { lines: PlayerGameLine[] }) {
 }
 
 function DefenseSection({ lines }: { lines: PlayerGameLine[] }) {
-  const hasData = lines.some((l) => l.defense && l.defense.totalTackles > 0);
+  // Not just tackles - a corner whose only stat is a pick-six still has a line.
+  const hasData = lines.some((l) => l.defense && (l.defense.totalTackles > 0 || l.defense.interceptions > 0
+    || l.defense.fumbleRecoveries > 0 || l.defense.sacks > 0 || l.defense.forcedFumbles > 0));
   if (!hasData) return null;
 
   const tkl = sumField<DefensiveStats>(lines, "defense", "totalTackles");
@@ -155,6 +157,8 @@ function DefenseSection({ lines }: { lines: PlayerGameLine[] }) {
   const pbu = sumField<DefensiveStats>(lines, "defense", "passesDefended");
   const ff = sumField<DefensiveStats>(lines, "defense", "forcedFumbles");
   const fr = sumField<DefensiveStats>(lines, "defense", "fumbleRecoveries");
+  const defTd = sumField<DefensiveStats>(lines, "defense", "interceptionTouchdowns")
+    + sumField<DefensiveStats>(lines, "defense", "fumbleRecoveryTouchdowns");
 
   return (
     <div className="card p-5">
@@ -168,6 +172,7 @@ function DefenseSection({ lines }: { lines: PlayerGameLine[] }) {
         <StatBox label="PBU" value={fmt(pbu)} />
         <StatBox label="FF" value={fmt(ff)} />
         <StatBox label="FR" value={fmt(fr)} />
+        {defTd > 0 && <StatBox label="DEF TD" value={fmt(defTd)} />}
       </div>
       <GameLog
         lines={lines}

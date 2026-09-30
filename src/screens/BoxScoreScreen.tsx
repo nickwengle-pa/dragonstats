@@ -309,7 +309,8 @@ export default function BoxScoreScreen() {
   const receiving = summary ? ourLines<ReceivingStats>(summary.receiving, rosterIds, s => s.yards, s => s.receptions > 0) : [];
   const defense = summary ? ourLines<DefensiveStats>(summary.defense, rosterIds,
     s => s.totalTackles * 10 + s.sacks + s.interceptions,
-    s => s.totalTackles > 0 || s.sacks > 0 || s.interceptions > 0 || s.passesDefended > 0 || s.forcedFumbles > 0) : [];
+    s => s.totalTackles > 0 || s.sacks > 0 || s.interceptions > 0 || s.passesDefended > 0 || s.forcedFumbles > 0
+      || s.fumbleRecoveries > 0) : [];
   const kicking = summary ? ourLines<KickingStats>(summary.kicking, rosterIds,
     s => s.totalPoints,
     s => s.fieldGoalAttempts > 0 || s.extraPointAttempts > 0) : [];
@@ -545,7 +546,8 @@ export default function BoxScoreScreen() {
             {unitGroup("defense", [
               section(
                 "Tackles & Takeaways",
-                ["Player", "TKL", "TFL", "SCK", "INT", "PBU", "FF", "FR"],
+                // TD: interceptions and fumbles returned for a score.
+                ["Player", "TKL", "TFL", "SCK", "INT", "PBU", "FF", "FR", "TD"],
                 defense.map(([id, s]) => [
                   playerLabel(id, s.playerName, roster),
                   fmt(s.totalTackles),
@@ -555,6 +557,7 @@ export default function BoxScoreScreen() {
                   s.passesDefended,
                   s.forcedFumbles,
                   s.fumbleRecoveries,
+                  (s.interceptionTouchdowns ?? 0) + (s.fumbleRecoveryTouchdowns ?? 0),
                 ]),
               ),
             ])}

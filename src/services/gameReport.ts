@@ -27,6 +27,7 @@ import type {
 } from "football-stats-engine";
 import type { GameStatsBundle } from "./statsService";
 import type { PlayWithPlayers } from "./gameService";
+import { defensiveReturnsFromPlays, isFumbleLost } from "./defensiveReturns";
 import { netKickYards, resolveKickSpots } from "./kickSpots";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { firstPlayerByRole } from "./playTransformer";
@@ -106,6 +107,8 @@ export interface ReturnRow {
   ko: { no: number; yds: number; long: number; td: number };
   punt: { no: number; yds: number; long: number; td: number };
   int: { no: number; yds: number; long: number; td: number };
+  /** Fumbles recovered from the other team and brought back. */
+  fr: { no: number; yds: number; long: number; td: number };
 }
 export interface KickoffRow { name: string; no: number; yds: number; avg: number; tb: number }
 export interface DefensiveRow {
@@ -114,7 +117,11 @@ export interface DefensiveRow {
   sacks: number; sackYds: number;
   tfl: number; tflYds: number;
   ff: number; fr: number; frYds: number;
+  /** Fumbles returned for a touchdown. */
+  frTd: number;
   int: number; intYds: number;
+  /** Interceptions returned for a touchdown. */
+  intTd: number;
   brUp: number; blocks: number; qbh: number;
 }
 
@@ -629,37 +636,21 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   }), { name: "Total", att: 0, yds: 0, avg: 0, long: 0, inside20: 0, tb: 0 });
   puntingTotal.avg = avg(puntingTotal.yds, puntingTotal.att);
 
-  /* ── Returns, including the interception column the engine files under
-        defense and the long it does not keep at all ────────────────────── */
-  const intReturnByPlayer = new Map<string, { yds: number; long: number; no: number }>();
-  for (const play of plays) {
-    if (play.play_type !== "int") continue;
-    const pick = tagWithRole(play, ["interceptor"]);
-    if (!pick || !ours.has(pick.id)) continue;
-    /* Same fallback playTransformer uses. Without it a pick recorded before
-       the return spot was stored reads 0 here while the defensive table -
-       which comes from the engine, which does fall back - shows the real
-       number, so one sheet contradicted itself. */
-    const stored = play.play_data?.interception_return_yards;
-    const yds = typeof stored === "number"
-      ? stored
-      : Math.max(0, num(play.yards_gained));
-    const cur = intReturnByPlayer.get(pick.id) ?? { yds: 0, long: 0, no: 0 };
-    intReturnByPlayer.set(pick.id, {
-      yds: cur.yds + yds,
-      long: Math.max(cur.long, yds),
-      no: cur.no + 1,
-    });
-  }
+  /* ── Returns, including the interception and fumble columns the engine
+        files under defense, and the long it keeps for neither ───────────── */
+  const defensiveReturns = new Map(
+    [...defensiveReturnsFromPlays(plays)].filter(([id]) => ours.has(id)),
+  );
 
   const returnIds = new Set<string>([
     ...Object.keys(summary.returns).filter(id => ours.has(id)),
-    ...intReturnByPlayer.keys(),
+    ...defensiveReturns.keys(),
   ]);
   const returns: ReturnRow[] = [...returnIds]
     .map(id => {
       const r: ReturnStats | undefined = summary.returns[id];
-      const pick = intReturnByPlayer.get(id) ?? { yds: 0, long: 0, no: 0 };
+      const pick = defensiveReturns.get(id)?.int ?? { yds: 0, long: 0, no: 0 };
+      const scoop = defensiveReturns.get(id)?.fr ?? { yds: 0, long: 0, no: 0 };
       return {
         name: names.get(id) ?? r?.playerName ?? "",
         ko: {
@@ -675,21 +666,24 @@ export function buildGameReport(input: BuildReportInput): GameReport {
           td: r?.puntReturnTouchdowns ?? 0,
         },
         int: { no: pick.no, yds: pick.yds, long: pick.long, td: summary.defense[id]?.interceptionTouchdowns ?? 0 },
+        fr: { no: scoop.no, yds: scoop.yds, long: scoop.long, td: summary.defense[id]?.fumbleRecoveryTouchdowns ?? 0 },
       };
     })
-    .filter(r => r.ko.no > 0 || r.punt.no > 0 || r.int.no > 0)
+    .filter(r => r.ko.no > 0 || r.punt.no > 0 || r.int.no > 0 || r.fr.no > 0)
     .sort((a, b) =>
-      (b.ko.yds + b.punt.yds + b.int.yds) - (a.ko.yds + a.punt.yds + a.int.yds));
+      (b.ko.yds + b.punt.yds + b.int.yds + b.fr.yds) - (a.ko.yds + a.punt.yds + a.int.yds + a.fr.yds));
   const returnsTotal: ReturnRow = returns.reduce((t, r) => ({
     name: "Total",
     ko: { no: t.ko.no + r.ko.no, yds: t.ko.yds + r.ko.yds, long: Math.max(t.ko.long, r.ko.long), td: t.ko.td + r.ko.td },
     punt: { no: t.punt.no + r.punt.no, yds: t.punt.yds + r.punt.yds, long: Math.max(t.punt.long, r.punt.long), td: t.punt.td + r.punt.td },
     int: { no: t.int.no + r.int.no, yds: t.int.yds + r.int.yds, long: Math.max(t.int.long, r.int.long), td: t.int.td + r.int.td },
+    fr: { no: t.fr.no + r.fr.no, yds: t.fr.yds + r.fr.yds, long: Math.max(t.fr.long, r.fr.long), td: t.fr.td + r.fr.td },
   }), {
     name: "Total",
     ko: { no: 0, yds: 0, long: 0, td: 0 },
     punt: { no: 0, yds: 0, long: 0, td: 0 },
     int: { no: 0, yds: 0, long: 0, td: 0 },
+    fr: { no: 0, yds: 0, long: 0, td: 0 },
   });
 
   /* ── Kickoffs ─────────────────────────────────────────────────────────── */
@@ -761,7 +755,9 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     sacks: s.sacks, sackYds: s.sackYards,
     tfl: s.tacklesForLoss, tflYds: tflYardsById.get(id) ?? 0,
     ff: s.forcedFumbles, fr: s.fumbleRecoveries, frYds: s.fumbleRecoveryYards,
+    frTd: s.fumbleRecoveryTouchdowns ?? 0,
     int: s.interceptions, intYds: s.interceptionYards,
+    intTd: s.interceptionTouchdowns ?? 0,
     brUp: s.passesDefended, blocks: blocksById.get(id) ?? 0, qbh: s.qbHits,
   }));
   const defenseTotal: DefensiveRow = defense.reduce((t, r) => ({
@@ -769,12 +765,12 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     solo: t.solo + r.solo, ast: t.ast + r.ast, total: t.total + r.total,
     sacks: t.sacks + r.sacks, sackYds: t.sackYds + r.sackYds,
     tfl: t.tfl + r.tfl, tflYds: t.tflYds + r.tflYds,
-    ff: t.ff + r.ff, fr: t.fr + r.fr, frYds: t.frYds + r.frYds,
-    int: t.int + r.int, intYds: t.intYds + r.intYds,
+    ff: t.ff + r.ff, fr: t.fr + r.fr, frYds: t.frYds + r.frYds, frTd: t.frTd + r.frTd,
+    int: t.int + r.int, intYds: t.intYds + r.intYds, intTd: t.intTd + r.intTd,
     brUp: t.brUp + r.brUp, blocks: t.blocks + r.blocks, qbh: t.qbh + r.qbh,
   }), {
     jersey: null, name: "Total", solo: 0, ast: 0, total: 0, sacks: 0, sackYds: 0,
-    tfl: 0, tflYds: 0, ff: 0, fr: 0, frYds: 0, int: 0, intYds: 0,
+    tfl: 0, tflYds: 0, ff: 0, fr: 0, frYds: 0, frTd: 0, int: 0, intYds: 0, intTd: 0,
     brUp: 0, blocks: 0, qbh: 0,
   });
 
@@ -825,6 +821,16 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const puntReturnTdThem = countPlays("us", p => p.is_touchdown && ["punt", "fair_catch"].includes(p.play_type));
   const intTdUs = countPlays("them", p => p.is_touchdown && p.play_type === "int");
   const intTdThem = countPlays("us", p => p.is_touchdown && p.play_type === "int");
+  /* This line printed a hard 0 for fumble-return touchdowns, so a
+     scoop-and-score reached the final score and no stat line at all. */
+  const fumbleReturnTdUs = countPlays("them", p => p.is_touchdown && isFumbleLost(p));
+  const fumbleReturnTdThem = countPlays("us", p => p.is_touchdown && isFumbleLost(p));
+  const theirFumbleReturnYards = plays
+    .filter(p => p.possession === "us" && isFumbleLost(p))
+    .reduce((s, p) => {
+      const stored = Number(p.play_data?.fumble_return_yards);
+      return s + (Number.isFinite(stored) ? stored : 0);
+    }, 0);
   const theirIntReturnYards = plays
     .filter(p => p.play_type === "int" && p.possession === "us")
     .reduce((s, p) => {
@@ -944,8 +950,8 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       `${returnsTotal.int.no}-${returnsTotal.int.yds}-${intTdUs}`,
       `${usTeam.interceptionsThrown}-${theirIntReturnYards}-${intTdThem}`),
     row("Fumble returns: Number-Yards-TD",
-      `${defenseTotal.fr}-${defenseTotal.frYds}-0`,
-      `${usTeam.fumblesLost}-0-0`),
+      `${defenseTotal.fr}-${defenseTotal.frYds}-${fumbleReturnTdUs}`,
+      `${usTeam.fumblesLost}-${theirFumbleReturnYards}-${fumbleReturnTdThem}`),
     row("Third-Down Conversions",
       dash(usTeam.thirdDownConversions, usTeam.thirdDownAttempts),
       dash(themTeam.thirdDownConversions, themTeam.thirdDownAttempts)),
