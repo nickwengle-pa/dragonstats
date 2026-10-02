@@ -255,6 +255,11 @@ function genericPlayerId(play: PlayRecord, role: string, config: LiveSessionConf
   return `${getTeamId(play.possession, config)}:${role}`;
 }
 
+function isExplicitNoPlay(play: PlayRecord): boolean {
+  return Boolean(play.penalty) && play.playData?.penalty_play_counts === false
+    && (play.penaltyEnforcement ?? play.playData?.penalty_enforcement) !== "declined";
+}
+
 function buildPenalties(play: PlayRecord, config: LiveSessionConfig): PenaltyEvent[] | undefined {
   if (!play.penalty) return undefined;
 
@@ -279,10 +284,12 @@ function buildPenalties(play: PlayRecord, config: LiveSessionConfig): PenaltyEve
   return [{
     penaltyType: getPenaltyEngineCode(play.penalty) ?? play.penalty.toLowerCase().replace(/\s+/g, "_"),
     team,
-    yards: enforcement === PenaltyEnforcement.Accepted ? (play.flagYards || 5) : 0,
+    yards: enforcement === PenaltyEnforcement.Accepted ? (play.flagYards ?? 5) : 0,
     enforcement,
     isAutoFirstDown: grantsAutoFirstDown(play.penalty, explicitSide),
     preservesPlayStats: play.playData?.penalty_play_counts === true,
+    ...(typeof play.playData?.penalty_play_counts === "boolean"
+      ? { nullifiesPlayStats: !play.playData.penalty_play_counts } : {}),
   }];
 }
 
@@ -353,7 +360,8 @@ function toEnginePlay(
 ): Play | null {
   const context = buildPlayContext(stateBefore, scoreBefore, config, driveNumber);
   // Share audited conversions with saved-game reports, using the live situation.
-  if (["rush", "pass_comp", "pass_inc", "sack", "safety", "fum_rec", "blocked_kick", "onside_kick", "kickoff", "punt", "penalty", "penalty_only"].includes(play.type)) {
+  if (isExplicitNoPlay(play)
+    || ["rush", "pass_comp", "pass_inc", "sack", "safety", "fum_rec", "blocked_kick", "onside_kick", "kickoff", "punt", "penalty", "penalty_only"].includes(play.type)) {
     const row = {
       id: play.id, game_id: config.gameId, play_type: play.type,
       possession: play.possession, yard_line: stateBefore.ballOn, down: stateBefore.down,
@@ -695,6 +703,7 @@ function toEnginePlay(
 }
 
 function applyScoreDelta(play: PlayRecord, before: LiveSessionScore): LiveSessionScore {
+  if (isExplicitNoPlay(play)) return before;
   /* The scoring rules — who scores a return touchdown, what a safety is worth,
      which side a returned conversion goes to — now live in scoringLedger.ts,
      because the box score's line score needs exactly the same answers. Three
@@ -729,6 +738,7 @@ function getBeforeStateForPlay(
     distance: play.distance,
     ballOn: play.ballOn,
     ourScore: scoreBefore.us,
+    ...(typeof play.playData?.goal_to_go === "boolean" ? { goalToGo: play.playData.goal_to_go } : {}),
     theirScore: scoreBefore.them,
   };
 }
@@ -758,6 +768,7 @@ export function replayLiveGame(
       down: beforeState.down,
       distance: beforeState.distance,
       ballOn: beforeState.ballOn,
+      ...(typeof beforeState.goalToGo === "boolean" ? { goalToGo: beforeState.goalToGo } : {}),
     };
     // Same rule as rebuildPlaySituations: only a stated or enforced spot is
     // taken as read; a cached one is worked out again.
@@ -778,6 +789,7 @@ export function replayLiveGame(
       down: afterSituation.down,
       distance: afterSituation.distance,
       ballOn: afterSituation.ballOn,
+      ...(typeof afterSituation.goalToGo === "boolean" ? { goalToGo: afterSituation.goalToGo } : {}),
       ourScore: scoreAfter.us,
       theirScore: scoreAfter.them,
     };

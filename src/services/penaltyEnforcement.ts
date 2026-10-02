@@ -29,7 +29,8 @@
  * cases: a penalty on the pre-snap offense always moves the ball toward
  * ballOn 0, and one on the pre-snap defense always toward ballOn 100, whoever
  * ends up with the ball. That is the same sign convention gameFlow already
- * uses, so this module changes only WHICH SPOT is marked off from.
+ * uses. Explicit enforcement and down choices record the official's ruling;
+ * omitted choices retain the automatic calculation.
  *
  * What this deliberately does not decide: whether the penalty was accepted.
  * Declining is the operator's call and is handled before this is reached.
@@ -45,6 +46,9 @@ export type PlayKind =
   | "loose_ball"
   /** No play happened at all. */
   | "dead_ball";
+
+export type EnforcementFrom = "auto" | "previous_spot" | "spot_of_foul" | "end_of_play";
+export type PenaltyDownOutcome = "repeat" | "next" | "first";
 
 export interface Situation {
   ballOn: number;
@@ -69,8 +73,13 @@ export interface EnforcementInput {
   possessionAtEnd: PenaltySide;
   /** Yards for a fresh series, from game config. */
   firstDownDistance: number;
-  /** A defensive foul that carries a first down whatever the yardage - under
-   *  NFHS, only the roughing fouls. */
+  /** An explicit ruling overrides the automatic basic-spot calculation. */
+  enforcementFrom?: EnforcementFrom;
+  /** An explicit ruling overrides the automatic down calculation. */
+  downOutcome?: PenaltyDownOutcome;
+  /** Whether the legal play remains recorded before the mark-off. */
+  playCounts?: boolean;
+  /** A defensive foul that carries a first down whatever the yardage. */
   autoFirstDown?: boolean;
   /** An offensive foul that also costs the down - grounding, an illegal pass. */
   lossOfDown?: boolean;
@@ -81,8 +90,12 @@ export interface Enforcement extends Situation {
   possessionFlips: boolean;
   /** Short phrase for the UI, e.g. "from the foul spot". */
   from: string;
-  /** Whether the penalty yardage itself produced a new series. */
+  /** Whether the ruling starts a fresh series for either team. */
   newSeries: boolean;
+  /** Where the mark-off began, in the pre-snap possession's frame. */
+  enforcementSpot: number;
+  /** Yardage actually marked off, including half-distance adjustments. */
+  actualYards: number;
 }
 
 const clamp = (n: number) => Math.max(1, Math.min(99, n));
@@ -135,26 +148,44 @@ function markOff(spot: number, side: PenaltySide, yards: number): number {
  * exist, and a made-up number is worse than asking.
  */
 export function enforcePenalty(i: EnforcementInput): Enforcement | null {
-  if (i.kind !== "dead_ball" && i.playEndBallOn == null) return null;
+  const origin = i.enforcementFrom ?? "auto";
+  let spot: number | null;
+  let from: string;
 
-  const basic = basicSpot(i);
+  if (origin === "previous_spot") {
+    spot = i.before.ballOn;
+    from = "from the snap";
+  } else if (origin === "spot_of_foul") {
+    spot = i.foulSpotBallOn;
+    from = "from the foul spot";
+  } else if (origin === "end_of_play") {
+    spot = i.playEndBallOn;
+    from = "from the end of the play";
+  } else {
+    if (i.kind !== "dead_ball" && i.playEndBallOn == null) return null;
 
-  /* All-but-one. The exception needs a foul spot AND the foul to be on the
-     team carrying the ball; a foul by the other team is always marked off from
-     the basic spot however far upfield it happened. */
-  const useFoulSpot =
-    i.foulSpotBallOn != null
-    && i.side === i.possessionAtEnd
-    && isBehind(i.foulSpotBallOn, basic, i.possessionAtEnd);
+    const basic = basicSpot(i);
+    // The all-but-one exception applies behind the carrier's basic spot.
+    const useFoulSpot = i.foulSpotBallOn != null
+      && i.side === i.possessionAtEnd
+      && isBehind(i.foulSpotBallOn, basic, i.possessionAtEnd);
+    spot = useFoulSpot ? i.foulSpotBallOn : basic;
+    from = useFoulSpot
+      ? "from the foul spot"
+      : i.kind !== "running"
+        ? "from the snap"
+        : "from the end of the run";
+  }
 
-  const spot = useFoulSpot ? i.foulSpotBallOn! : basic;
+  if (spot == null || !Number.isFinite(spot) || spot < 0 || spot > 100
+    || !Number.isFinite(i.flagYards) || i.flagYards < 0) return null;
+
   const ballOn = markOff(spot, i.side, i.flagYards);
-
-  const from = useFoulSpot
-    ? "from the foul spot"
-    : i.kind !== "running"
-      ? "from the snap"
-      : "from the end of the run";
+  const details = { ballOn, from, enforcementSpot: spot, actualYards: Math.abs(ballOn - spot) };
+  const freshDistance = (flips: boolean) => {
+    const nextBallOn = flips ? 100 - ballOn : ballOn;
+    return Math.max(1, Math.min(i.firstDownDistance, 100 - nextBallOn));
+  };
 
   /* A new series for the team that did NOT start the down. They attack the
      pre-snap offense's goal, which sits at ballOn 0 in this frame, so the
@@ -162,11 +193,10 @@ export function enforcePenalty(i: EnforcementInput): Enforcement | null {
      which gave goal-to-go at midfield-and-beyond flips and a full 10 inside
      the 10. */
   const flipped = (): Enforcement => ({
-    ballOn,
+    ...details,
     down: 1,
-    distance: Math.min(i.firstDownDistance, Math.max(1, ballOn)),
+    distance: freshDistance(true),
     possessionFlips: true,
-    from,
     newSeries: true,
   });
 
@@ -175,44 +205,40 @@ export function enforcePenalty(i: EnforcementInput): Enforcement | null {
      everyday case; a turnover reaches here the same way. */
   if (i.possessionAtEnd === "defense") return flipped();
 
+  /* Same team keeps the ball. Rule metadata supplies exceptional down effects,
+     while a scorer's explicit ruling takes precedence over those defaults. */
   const gained = ballOn - i.before.ballOn;
-
-  /* Grounding and an illegal forward pass cost the down as well as the
-     yards. On fourth down that is a turnover on downs at the enforced spot. */
-  if (i.lossOfDown && i.side === "offense") {
-    if (i.before.down >= 4) return flipped();
+  const losesDown = i.lossOfDown === true && i.side === "offense";
+  const madeIt = (i.side === "defense" || i.playCounts === true) && gained >= i.before.distance;
+  const autoFirstDown = i.autoFirstDown === true && i.side === "defense";
+  if (i.downOutcome === "first" || (i.downOutcome == null && !losesDown && (madeIt || autoFirstDown))) {
     return {
-      ballOn,
-      down: i.before.down + 1,
-      distance: Math.max(1, Math.min(99, i.before.distance - gained)),
-      possessionFlips: false,
-      from,
-      newSeries: false,
-    };
-  }
-
-  /* Same team keeps the ball, so the down replays unless the yardage itself
-     reached the line to gain. NFHS awards an automatic first down only for the
-     roughing fouls - the repo removed it from defensive holding and DPI after
-     checking with the coach - so those get their distance and nothing more. */
-  const madeIt = i.side === "defense" && (i.autoFirstDown === true || gained >= i.before.distance);
-  if (madeIt) {
-    return {
-      ballOn,
+      ...details,
       down: 1,
-      distance: Math.min(i.firstDownDistance, Math.max(1, 100 - ballOn)),
+      distance: freshDistance(false),
       possessionFlips: false,
-      from,
       newSeries: true,
     };
   }
 
+  const advancesDown = i.downOutcome === "next"
+    || (i.downOutcome == null && (losesDown || i.playCounts === true));
+  if (advancesDown && i.before.down >= 4) {
+    return {
+      ...details,
+      down: 1,
+      distance: freshDistance(true),
+      possessionFlips: true,
+      newSeries: true,
+    };
+  }
+
+  const lineToGain = Math.min(100, i.before.ballOn + i.before.distance);
   return {
-    ballOn,
-    down: i.before.down,
-    distance: Math.max(1, Math.min(99, i.before.distance - gained)),
+    ...details,
+    down: advancesDown ? i.before.down + 1 : i.before.down,
+    distance: Math.max(1, Math.min(99, lineToGain - ballOn)),
     possessionFlips: false,
-    from,
     newSeries: false,
   };
 }

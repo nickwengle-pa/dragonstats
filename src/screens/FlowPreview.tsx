@@ -48,7 +48,7 @@ export default function FlowPreview() {
   const record = (data: PlaySubmitData) => {
     setPracticeKickoff(false);
     setPlays(prev => [...prev, { data, before: situation, remembered, practiceKickoff }]);
-    const next = advanceSituationAfterPlay({
+    const next = data.nextSituation ?? advanceSituationAfterPlay({
       type: data.playType.id, yards: data.yards, result: data.result, penalty: data.penalty,
       penaltyCategory: data.penaltyCategory, penaltyEnforcement: data.penaltyEnforcement,
       flagYards: data.flagYards, isTouchdown: data.isTouchdown, firstDown: data.isFirstDown,
@@ -56,7 +56,7 @@ export default function FlowPreview() {
       turnover: data.turnover, isTouchback: data.isTouchback, blockedKickType: data.blockedKickType,
       fumbleRecoveredAt: data.fumbleRecoveredAt, fumbleReturnYards: data.fumbleReturnYards,
     }, situation, DEFAULT_GAME_CONFIG);
-    setSituation(prev => ({ ...prev, ...next,
+    setSituation(prev => ({ ...prev, ...next, goalToGo: next.goalToGo,
         ourScore: prev.ourScore + (data.isTouchdown && next.possession === "us" ? 6 : 0),
         theirScore: prev.theirScore + (data.isTouchdown && next.possession === "them" ? 6 : 0),
     }));
@@ -93,7 +93,8 @@ export default function FlowPreview() {
       <Scoreboard state={situation} progName="Dragons" oppName="Visitors" progAbbr="DRG" oppAbbr="VIS" primaryColor="#164e63" oppColor="#854d0e" ballLabel={spot(situation.ballOn)} locked={!!playType}
         onPreviousQuarter={()=>setSituation(prev=>({...prev,quarter:Math.max(1,prev.quarter-1)}))} onNextQuarter={()=>setSituation(prev=>({...prev,quarter:prev.quarter+1}))} canPreviousQuarter={situation.quarter>1} canNextQuarter={situation.quarter<4}
         onEditClock={()=>setClockDraft(situation.clock)} onEndGame={()=>{}} onSetDown={down=>setSituation(prev=>({...prev,down}))} onAdjustDistance={delta=>setSituation(prev=>({...prev,distance:Math.max(1,prev.distance+delta)}))}
-        onAdjustBall={delta=>setSituation(prev=>({...prev,ballOn:Math.max(1,Math.min(99,prev.ballOn+delta))}))} onEditBall={()=>{}} ourTimeoutsRemaining={3} theirTimeoutsRemaining={3} onTakeTimeout={()=>{}} onFlipPossession={flipPossession} />
+        onSetGoalToGo={goalToGo=>setSituation(prev=>({...prev,goalToGo,distance:10}))}
+        onAdjustBall={delta=>setSituation(prev=>({...prev,goalToGo:undefined,ballOn:Math.max(1,Math.min(99,prev.ballOn+delta))}))} onEditBall={()=>{}} ourTimeoutsRemaining={3} theirTimeoutsRemaining={3} onTakeTimeout={()=>{}} onFlipPossession={flipPossession} />
       <div className="live-field-block">
         <FieldVisualizer compact tilted={tilted} ballOn={shownSpot} ballPosition={right?shownSpot:100-shownSpot}
           firstDownPosition={right?situation.ballOn+situation.distance:100-situation.ballOn-situation.distance} possession={situation.possession}
@@ -108,7 +109,7 @@ export default function FlowPreview() {
         {playType ? <PlayEntryModal inlineSimple key={playType.id} playType={playType} gameState={situation} roster={roster} opponentPlayers={opponents}
           playerUsage={countPlayerUsage(plays.map(play => play.data))}
           fieldSpotRequest={spotRequest} onFieldPreview={setDraftSpot} progName="Dragons" oppName="Visitors" progColor="#164e63" oppColor="#854d0e" lastPlayerByRole={remembered} trackFormations={formations} trackTacklers
-          offenseDirection={right?"right":"left"} ourEndZoneSide={flipped?"right":"left"} onSubmit={record} onClose={()=>setPlayType(null)} /> : <div className="card p-3"><QuickActions possession={situation.possession} progName="Dragons" oppName="Visitors" down={situation.down} distance={situation.distance} ballOn={situation.ballOn} kickoffDue={kickoffDue} suggestedPhase={kickoffDue||situation.down===4?"special":"run"} spotLabel={spot(situation.ballOn)} onSelect={selectPlay} /></div>}
+          offenseDirection={right?"right":"left"} ourEndZoneSide={flipped?"right":"left"} onSubmit={record} onClose={()=>setPlayType(null)} /> : <div className="card p-3"><QuickActions possession={situation.possession} progName="Dragons" oppName="Visitors" down={situation.down} distance={situation.distance} goalToGo={situation.goalToGo} ballOn={situation.ballOn} kickoffDue={kickoffDue} suggestedPhase={kickoffDue||situation.down===4?"special":"run"} spotLabel={spot(situation.ballOn)} onSelect={selectPlay} /></div>}
       </div>
       <section className={`live-log-column space-y-2 lg:block ${pane === "plays" ? "" : "hidden"}`} data-pane={pane}>
         <div className="flex justify-between items-center"><h2 className="font-bold">Practice plays ({plays.length})</h2><button disabled={!plays.length} className="btn-ghost min-h-11 disabled:opacity-30" onClick={()=>{const last=plays[plays.length-1];if(!last)return;setSituation(last.before);setPracticeKickoff(last.practiceKickoff);setRemembered(last.remembered);setPlays(prev=>prev.slice(0,-1));}}>Undo</button></div>

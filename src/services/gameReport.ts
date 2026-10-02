@@ -338,7 +338,8 @@ export interface BuildReportInput {
 export function buildGameReport(input: BuildReportInput): GameReport {
   const { bundle, program, opponent } = input;
   const fgSnapAdd = input.fgSnapAdd ?? 17;
-  const { summary, plays, roster } = bundle;
+  const { summary, plays: recordedPlays, roster } = bundle;
+  const plays = recordedPlays.filter(play => !nullifiedStats(play));
 
   const jerseys = new Map<string, number | null>();
   const names = new Map<string, string>();

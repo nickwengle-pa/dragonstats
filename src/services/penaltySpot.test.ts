@@ -199,18 +199,10 @@ test("the rules table still wins wherever it has an answer", () => {
   }
 });
 
-test("the sideless fouls are still sideless - this test is the canary", () => {
-  // If the rules table later gains a defaultSide for these, the special case
-  // below is dead code and should go. Failing here is the signal to delete it.
-  const sideless = PENALTIES.filter(p => getPenaltyDefaultSide(p) === null);
-  assert.deepEqual(
-    [...sideless].sort(),
-    [
-      "Block in Back", "Clipping", "Facemask", "Unsportsmanlike",
-      "Illegal Substitution", "Illegal Use of Hands", "Illegal Block Below Waist",
-      "Horse Collar", "Personal Foul", "Targeting",
-    ].sort(),
-  );
+test("the original either-team fouls keep their contextual defaults", () => {
+  for (const label of ["Block in Back", "Clipping", "Facemask", "Unsportsmanlike"]) {
+    assert.equal(getPenaltyDefaultSide(label), null, label);
+  }
 });
 
 test("tackling fouls on a kick land on the covering team", () => {

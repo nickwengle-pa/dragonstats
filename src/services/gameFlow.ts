@@ -8,6 +8,7 @@ import {
 } from "@/components/game/types";
 import type { GameConfig } from "./programService";
 import { isKickoffOutOfBoundsChoice, kickoffOutOfBoundsSituation } from "./kickoffOutOfBounds";
+import { canChooseGoalToGo, carryGoalToGo, storedGoalToGo } from "./goalToGo";
 
 export type TeamSide = "us" | "them";
 export type FieldDirection = "left" | "right";
@@ -21,6 +22,7 @@ export interface PregameConfig {
 }
 
 export interface LiveSituation {
+  goalToGo?: boolean;
   possession: TeamSide;
   down: number;
   distance: number;
@@ -345,7 +347,7 @@ export function toDisplayFieldPosition(
 }
 
 export function getRecordedNextSituation(
-  play: Pick<AdvanceablePlay, "nextPossession" | "nextDown" | "nextDistance" | "nextBallOn">,
+  play: Pick<AdvanceablePlay, "nextPossession" | "nextDown" | "nextDistance" | "nextBallOn" | "playData">,
 ): LiveSituation | null {
   if (
     !isTeamSide(play.nextPossession)
@@ -361,6 +363,7 @@ export function getRecordedNextSituation(
     down: play.nextDown,
     distance: play.nextDistance,
     ballOn: clampBallOn(play.nextBallOn),
+    ...(typeof play.playData?.next_goal_to_go === "boolean" ? { goalToGo: play.playData.next_goal_to_go } : {}),
   };
 }
 
@@ -512,6 +515,25 @@ export function advanceSituationAfterPlay(
   before: LiveSituation,
   config: GameConfig,
 ): LiveSituation {
+  const recordedGoal = storedGoalToGo(play.playData);
+  const start = recordedGoal === undefined ? before : { ...before, goalToGo: recordedGoal };
+  const next = advanceSituation(play, start, config);
+  const recordedNextGoal = storedGoalToGo(play.playData, "next_goal_to_go");
+  if (recordedNextGoal !== undefined && canChooseGoalToGo(next)) {
+    next.goalToGo = recordedNextGoal;
+  }
+  const newSeries = play.isTouchdown || play.firstDown || next.possession !== start.possession
+    || ["kickoff", "onside_kick", "punt", "fair_catch", "fg", "pat", "two_pt", "safety"].includes(play.type)
+    || play.playData?.penalty_down_outcome === "first"
+    || (play.penaltyEnforcement !== "declined" && grantsAutoFirstDown(play.penalty ?? "", play.penaltyCategory ?? null));
+  return carryGoalToGo(next, start, newSeries);
+}
+
+function advanceSituation(
+  play: AdvanceablePlay,
+  before: LiveSituation,
+  config: GameConfig,
+): LiveSituation {
   const outOfBoundsChoice = play.playData?.kickoff_out_of_bounds_choice;
   if (["kickoff", "onside_kick"].includes(play.type) && isKickoffOutOfBoundsChoice(outOfBoundsChoice)) {
     // Where it went out, for the choices measured from there.
@@ -549,6 +571,9 @@ export function advanceSituationAfterPlay(
     }
 
     // Declined penalty: fall through to normal play advancement below.
+    if (enforcement === "declined" && ["penalty", "penalty_only", "false_start", "encroachment"].includes(play.type)) {
+      return { ...before };
+    }
     if (enforcement === "accepted") {
       const isOffensePenalty = isPenaltyOnOffense(play.penalty, play.penaltyCategory);
 
@@ -893,6 +918,8 @@ export function rebuildPlaySituations(
       currentSituation = { possession: play.possession, down: play.down, distance: play.distance, ballOn: play.ballOn };
     }
 
+    const recordedGoal = storedGoalToGo(play.playData);
+    if (recordedGoal !== undefined) currentSituation = { ...currentSituation, goalToGo: recordedGoal };
     const nextPlay: PlayRecord = {
       ...play,
       quarter: playQuarter,
@@ -900,6 +927,8 @@ export function rebuildPlaySituations(
       down: currentSituation.down,
       distance: currentSituation.distance,
       possession: currentSituation.possession,
+      playData: typeof currentSituation.goalToGo === "boolean" || "goal_to_go" in (play.playData ?? {})
+        ? { ...play.playData, goal_to_go: currentSituation.goalToGo ?? null } : play.playData,
     };
 
     const override = getAuthoritativeNextSituation(nextPlay);
@@ -914,6 +943,8 @@ export function rebuildPlaySituations(
       nextDown: nextSituation.down,
       nextDistance: nextSituation.distance,
       nextBallOn: nextSituation.ballOn,
+      playData: typeof nextSituation.goalToGo === "boolean" || "next_goal_to_go" in (nextPlay.playData ?? {})
+        ? { ...nextPlay.playData, next_goal_to_go: nextSituation.goalToGo ?? null } : nextPlay.playData,
     };
   });
 

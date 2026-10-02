@@ -11,7 +11,7 @@
 //   - Offset/declined penalty handling
 // ============================================================================
 import { PlayType, PenaltyEnforcement, Quarter, Down, } from "../types";
-import { lookupPenalty, PenaltyCategory, EnforcementSpot, isAutoFirstDown as catalogAutoFirstDown, getPenaltyYards, } from "./penalty-catalog";
+import { lookupPenalty, PenaltyCategory, EnforcementSpot, isAutoFirstDown as catalogAutoFirstDown, getPenaltyYards, getPenaltyEnforcementSpot, } from "./penalty-catalog";
 import { isRedZone, isThirdDown } from "../utils";
 // ---------------------------------------------------------------------------
 // NULLIFICATION
@@ -36,7 +36,10 @@ export function isPlayNullifiedByPenalty(play) {
     return p.penalties.some((pen) => {
         if (pen.enforcement !== PenaltyEnforcement.Accepted)
             return false;
-        if (pen.preservesPlayStats) return false;
+        if (pen.nullifiesPlayStats !== undefined)
+            return pen.nullifiesPlayStats;
+        if (pen.preservesPlayStats)
+            return false;
         const def = lookupPenalty(pen.penaltyType);
         return def ? def.replayDown : true;
     });
@@ -202,7 +205,7 @@ export class PenaltyCalculator {
         const isAutoFD = catalogAutoFirstDown(def, ruleLevel);
         // --- Determine enforcement spot ---
         let enforcementYardLine;
-        switch (def.enforcementSpot) {
+        switch (getPenaltyEnforcementSpot(def, ruleLevel)) {
             case EnforcementSpot.PreviousSpot:
                 enforcementYardLine = ctx.yardLine;
                 break;

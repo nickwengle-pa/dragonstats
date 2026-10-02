@@ -247,4 +247,28 @@ test("a carry that scored still seeds to the line with the TD flag", () => {
   assert.equal(seed.resultYardLine, 25);
 });
 
+test("a half-distance penalty keeps standard yardage and the scorer's choices", () => {
+  const seed = buildEditSeed(play({ penalty: "Blocking Below the Waist", flagYards: 2,
+    playData: { penalty_standard_yards: 15, penalty_enforcement_from: "spot_of_foul", penalty_down_outcome: "repeat", penalty_play_counts: false, foul_spot_ball_on: 5 } }));
+  assert.equal(seed.flagYards, 15);
+  assert.equal(seed.penaltyEnforcementFrom, "spot_of_foul");
+  assert.equal(seed.penaltyDownOutcome, "repeat");
+  assert.equal(seed.penaltyPlayCounts, false);
+  assert.equal(seed.foulSpotBallOn, 5);
+});
+
+test("a saved officials' spot restores its possession and situation", () => {
+  const seed = buildEditSeed(play({ penalty: "Clipping", nextPossession: "them", nextBallOn: 16, nextDown: 1, nextDistance: 10,
+    playData: { next_situation_source: "manual_override" } }));
+  assert.deepEqual(seed.manualNextSituation, { possession: "them", ballOn: 16, down: 1, distance: 10 });
+});
+
+test("cleared metadata does not become a foul at the goal line or a manual override", () => {
+  const seed = buildEditSeed(play({ playData: { foul_spot_ball_on: null, penalty_enforcement_from: null, penalty_down_outcome: null,
+    next_situation_source: "manual_override", next_yard_line: null, next_down: null, next_distance: null } }));
+  assert.equal(seed.foulSpotBallOn, null);
+  assert.equal(seed.manualNextSituation, null);
+  assert.equal(seed.penaltyDownOutcome, null);
+});
+
 console.log(`\n${passed}/${total} passed`);

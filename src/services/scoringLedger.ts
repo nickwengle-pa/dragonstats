@@ -1,3 +1,5 @@
+import { nullifiedStats } from "./statAuditRules";
+
 /**
  * Every point scored in the game, and who scored it.
  *
@@ -34,6 +36,8 @@ export interface ScorablePlay {
   /** "Good", "Returned", … for kicks and conversions. */
   result?: string;
   playData?: Record<string, unknown> | null;
+  /** Snap spot, needed when interpreting legacy forward-holding penalties. */
+  ballOn?: number;
   /** Clock at the snap, already formatted. Only used for display. */
   clock?: string;
   description?: string;
@@ -96,6 +100,13 @@ export function isReturnTouchdown(play: ScorablePlay): boolean {
 
 /** Points from one play, in the order they happened. Usually zero or one. */
 export function scoringEventsForPlay(play: ScorablePlay): ScoringEvent[] {
+  const pd = play.playData ?? {};
+  const before = pd.context_before as Record<string, unknown> | undefined;
+  if (nullifiedStats({
+    is_penalty: Boolean(pd.penalty_type),
+    play_data: pd,
+    yard_line: play.ballOn ?? (typeof before?.yard_line === "number" ? before.yard_line : null),
+  })) return [];
   const events: ScoringEvent[] = [];
   const q = play.quarter;
   const shown = { clock: play.clock, description: play.description };

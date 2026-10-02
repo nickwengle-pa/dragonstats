@@ -1,4 +1,4 @@
-import { preservesAdvance } from "./statAuditRules";
+import { nullifiedStats, preservesAdvance } from "./statAuditRules";
 /**
  * Transforms dragonstats PlayWithPlayers records into football-stats-engine Play objects.
  *
@@ -95,7 +95,7 @@ export function transformPlays(
       else homeScore += scoreDelta;
     }
     // Safety scores for the OTHER team
-    if (play.play_type === "safety") {
+    if (play.play_type === "safety" && !nullifiedStats(play)) {
       if (play.possession === "us") {
         if (ctx.programTeamId === ctx.homeTeamId) awayScore += 2;
         else homeScore += 2;
@@ -357,6 +357,7 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
     isAutoFirstDown: grantsAutoFirstDown(penaltyType, penCategory),
     // The operator said the play counts: the engine must not wipe it.
     preservesPlayStats: pd?.penalty_play_counts === true || preservesAdvance(pd ?? {}, play.yard_line ?? 0),
+    ...(typeof pd?.penalty_play_counts === "boolean" ? { nullifiesPlayStats: !pd.penalty_play_counts } : {}),
   }];
 }
 
@@ -386,6 +387,7 @@ function buildFumble(play: PlayWithPlayers, ballCarrier: string, ctx: TransformC
 // ---------------------------------------------------------------------------
 
 function scoreForPlay(play: PlayWithPlayers): number {
+  if (nullifiedStats(play)) return 0;
   const pd = play.play_data as Record<string, any>;
   let pts = 0;
   if (play.is_touchdown) pts += 6;
@@ -414,9 +416,12 @@ export function convertPlay(
     play = { ...play, yards_gained: recoveredAt - (play.yard_line ?? 0) };
   }
   const penalties = buildPenalties(play, ctx);
+  if (penalties?.length && pd?.penalty_play_counts === false && pd.penalty_enforcement !== "declined") {
+    return { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } satisfies PenaltyPlay & { context: PlayContext };
+  }
   // Holding beyond the line keeps the run up to the foul. A play the operator
   // said counts keeps all of it.
-  if (pd?.penalty_play_counts !== true && preservesAdvance(pd ?? {}, play.yard_line ?? 0)
+  if (penalties?.length && pd?.penalty_play_counts !== true && preservesAdvance(pd ?? {}, play.yard_line ?? 0)
       && ["rush", "pass_comp"].includes(play.play_type)) {
     play = { ...play, yards_gained: Math.min(play.yards_gained, pd.foul_spot_ball_on - (play.yard_line ?? 0)) };
   }

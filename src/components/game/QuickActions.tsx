@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { readableAccent } from "@/utils/teamColor";
+import { distanceLabel } from "@/services/goalToGo";
 import { PLAY_TYPES, type PlayCategory, type PlayTypeDef } from "./types";
 
 /* The tabs ARE the four groups now. There used to be a second axis on top of
@@ -20,6 +21,7 @@ interface Props {
   down?: number;
   /** Yards to go, shown alongside the down in the possession band. */
   distance?: number;
+  goalToGo?: boolean;
   /** Preformatted spot, e.g. "PM 25". Passed in rather than derived so the
    *  band and the scoreboard can never disagree about where the ball is. */
   spotLabel?: string;
@@ -100,6 +102,7 @@ export default function QuickActions({
   onToggleAdjust,
   adjustOpen,
   ballOn,
+  goalToGo,
   progColor = "#dc2626",
   oppColor = "#6b7280",
 }: Props) {
@@ -177,7 +180,7 @@ export default function QuickActions({
             <span className="ml-auto text-lg leading-none font-display font-bold tabular-nums shrink-0">
               {ordinalDown(down)}
               <span className="mx-0.5" style={{ color: "var(--bc-amber)" }}>&amp;</span>
-              {distance}
+              {distanceLabel({ distance, ballOn: ballOn ?? 0, goalToGo })}
             </span>
           )}
           {spotLabel && (

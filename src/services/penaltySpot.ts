@@ -44,6 +44,21 @@ export interface ReviewSpot extends Situation {
   from: string;
 }
 
+/** A score that stands needs the official's ruling for the ensuing try or kick. */
+export function requiresScoringPenaltyRuling(play: {
+  penalty: string | null;
+  penaltyEnforcement?: "accepted" | "declined" | "offset";
+  playCounts: boolean;
+  type: string;
+  isTouchdown: boolean;
+  result: string;
+}): boolean {
+  if (!play.penalty || (play.penaltyEnforcement ?? "accepted") !== "accepted" || !play.playCounts) return false;
+  return play.isTouchdown || play.type === "safety"
+    || (["fg", "pat", "two_pt"].includes(play.type) && play.result === "Good")
+    || (["pat", "two_pt"].includes(play.type) && play.result === "Returned");
+}
+
 export function reviewNextSpot(o: {
   /** The flag itself. No flag, nothing to say. */
   penalty: string | null;
@@ -84,7 +99,10 @@ export function reviewNextSpot(o: {
  * Unsportsmanlike and illegal substitution have no lean and default to the
  * defense.
  */
-const BLOCKING_FOULS = new Set(["Block in Back", "Clipping", "Illegal Block Below Waist", "Illegal Use of Hands"]);
+const BLOCKING_FOULS = new Set([
+  "Block in Back", "Clipping", "Illegal Block Below Waist", "Illegal Use of Hands",
+  "Blindside Block", "Blocking Below the Waist", "Chop Block",
+]);
 const TACKLING_FOULS = new Set(["Facemask", "Horse Collar", "Personal Foul", "Targeting"]);
 
 export function flagSideDefault(label: string, isKickPlay: boolean): PenaltySide {

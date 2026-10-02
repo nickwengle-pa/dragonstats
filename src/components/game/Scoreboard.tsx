@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { readableAccent } from "@/utils/teamColor";
+import { canChooseGoalToGo, distanceLabel as formatDistance, isGoalToGo } from "@/services/goalToGo";
 import { fmtClock, quarterLabel, type GameState } from "./types";
 import "@/screens/liveBroadcast.css";
 
@@ -22,6 +23,7 @@ interface Props {
   onEndGame: () => void;
   onSetDown: (down: number) => void;
   onAdjustDistance: (delta: number) => void;
+  onSetGoalToGo?: (goalToGo: boolean) => void;
   onAdjustBall: (delta: number) => void;
   onEditBall: () => void;
   ourTimeoutsRemaining: number;
@@ -105,6 +107,7 @@ export default function Scoreboard({
   onEndGame,
   onSetDown,
   onAdjustDistance,
+  onSetGoalToGo,
   onAdjustBall,
   onEditBall,
   ourTimeoutsRemaining,
@@ -119,7 +122,8 @@ export default function Scoreboard({
   const effOppColor = readableAccent(oppColor);
   const effPrimaryColor = readableAccent(primaryColor);
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
-  const distanceLabel = state.ballOn + state.distance >= 100 ? "Goal" : String(state.distance);
+  const distanceLabel = formatDistance(state);
+  const chooseAtTen = canChooseGoalToGo(state) && onSetGoalToGo;
 
   return (
     <div className="lv-bug">
@@ -169,7 +173,7 @@ export default function Scoreboard({
 
       {locked ? (
         <div className="lv-locked scoreboard-situation">
-          <strong>{downLabel(state.down)} &amp; {state.distance}</strong>
+          <strong>{downLabel(state.down)} &amp; {distanceLabel}</strong>
           <span>Starting spot: {ballLabel}</span>
         </div>
       ) : (
@@ -187,13 +191,16 @@ export default function Scoreboard({
 
           <div className="lv-cell">
             <span className="lab">To go</span>
-            <div className="lv-step">
+            {chooseAtTen ? <div className="lv-seg" role="group" aria-label="First down at the 10">
+              <button type="button" title="First and 10" aria-label="First and 10" aria-pressed={!isGoalToGo(state)} className={!isGoalToGo(state) ? "on" : ""} onClick={() => onSetGoalToGo?.(false)}>10</button>
+              <button type="button" title="First and goal" aria-label="First and goal" aria-pressed={isGoalToGo(state)} className={isGoalToGo(state) ? "on" : ""} onClick={() => onSetGoalToGo?.(true)}>G</button>
+            </div> : <div className="lv-step">
               <button type="button" onClick={() => onAdjustDistance(-1)} title="Decrease distance">−</button>
               {/* Amber, not chrome: on a phone this stepper is how the spot is
                   actually set, so it stays at full strength. */}
               <span className="v amber">{distanceLabel}</span>
               <button type="button" onClick={() => onAdjustDistance(1)} title="Increase distance">+</button>
-            </div>
+            </div>}
           </div>
 
           <div className="lv-cell spot">

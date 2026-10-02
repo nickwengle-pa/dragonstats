@@ -1,6 +1,7 @@
 /**
  * Shared types for game components.
  */
+import { lookupPenalty } from "football-stats-engine/dist/calculators/penalty-catalog.js";
 
 export interface RosterPlayer {
   id: string;
@@ -233,6 +234,7 @@ export interface PlayRecord {
 }
 
 export interface GameState {
+  goalToGo?: boolean;
   quarter: number;
   clock: number;
   possession: "us" | "them";
@@ -343,24 +345,38 @@ export const STICKY_ROLES = new Set([
   "passer", "rusher", "kicker", "punter", "returner",
 ]);
 
-/* Every label is stored verbatim on the plays it was called on, so an
-   existing one is never renamed — only added to. Order is the order the picker
-   lists them in within a group. */
-export const PENALTIES = [
-  // Pre-snap
-  "False Start", "Offsides", "Encroachment", "Delay of Game",
-  "Illegal Formation", "Illegal Motion", "Illegal Shift", "Illegal Substitution",
-  // Blocking and holding
-  "Holding-OFF", "Holding-DEF", "Illegal Use of Hands", "Block in Back",
-  "Clipping", "Illegal Block Below Waist", "Chop Block",
-  // Passing
-  "PI-OFF", "PI-DEF", "Roughing the Passer", "Intentional Grounding",
-  "Illegal Forward Pass", "Ineligible Downfield",
-  // Kicking
-  "Roughing the Kicker", "Running Into Kicker", "Kick Catch Interference",
-  // Personal fouls and conduct
-  "Facemask", "Horse Collar", "Personal Foul", "Targeting", "Unsportsmanlike",
-];
+// Stored labels remain compatible with existing games; names and rules come
+// from the engine's standalone catalog, also usable by plain-node flow tests.
+const PENALTY_CODES: Record<string, string> = {
+  Offsides: "offsides", "False Start": "false_start",
+  "Holding-OFF": "holding_offense", "Holding-DEF": "holding_defense",
+  "PI-OFF": "offensive_pass_interference", "PI-DEF": "defensive_pass_interference",
+  Facemask: "face_mask", Unsportsmanlike: "unsportsmanlike_conduct",
+  "Delay of Game": "delay_of_game", "Illegal Formation": "illegal_formation",
+  "Block in Back": "illegal_block_in_back", Clipping: "clipping",
+  Encroachment: "encroachment", "Illegal Shift": "illegal_shift", "Illegal Motion": "illegal_motion",
+  "Blindside Block": "blindside_block", "Blocking Below the Waist": "blocking_below_waist",
+  "Chop Block": "chop_block", "Facemask (Incidental)": "face_mask_incidental",
+  "Free Kick Infraction": "free_kick_infraction", "Horse Collar Tackle": "horse_collar",
+  Hurdling: "hurdling", "Roughing the Passer": "roughing_the_passer",
+  "Roughing the Kicker": "roughing_the_kicker", "Roughing the Holder": "roughing_the_holder",
+  "Roughing the Snapper": "roughing_the_snapper", "Running Into the Kicker": "running_into_the_kicker",
+  "Intentional Grounding": "intentional_grounding", "Illegal Forward Pass": "illegal_forward_pass",
+  "Illegal Forward Handoff": "illegal_forward_handoff", "Illegal Use of Hands": "illegal_use_of_hands",
+  "Illegal Substitution": "illegal_substitution", "Illegal Participation": "illegal_participation",
+  "Illegal Batting": "illegal_batting", "Illegal Kick": "illegal_kick",
+  "Illegal Touching of a Pass": "illegal_touching", "Ineligible Receiver Downfield": "ineligible_receiver_downfield",
+  "Unnecessary Roughness": "unnecessary_roughness", "Late Hit": "late_hit",
+  Targeting: "targeting", Taunting: "taunting", "Kick Catch Interference": "kick_catch_interference",
+  Tripping: "tripping",
+  // Stored aliases from the expanded picker retain their labels on existing plays.
+  "Illegal Block Below Waist": "blocking_below_waist",
+  "Ineligible Downfield": "ineligible_receiver_downfield",
+  "Running Into Kicker": "running_into_the_kicker",
+  "Horse Collar": "horse_collar", "Personal Foul": "unnecessary_roughness",
+};
+
+export const PENALTIES = Object.keys(PENALTY_CODES);
 
 /**
  * Fouls enforced from where they happened rather than from the snap.
@@ -403,6 +419,7 @@ export const BLOCKED_KICK_TYPES: Array<{ value: BlockedKickType; label: string }
  */
 export interface PenaltyRule {
   engineCode: string;
+  name: string;
   defaultSide?: PenaltySide;
   /** Standard NFHS distance. Pre-fills the modal; always overridable. */
   yards: number;
@@ -411,7 +428,7 @@ export interface PenaltyRule {
   autoFirstDown?: boolean;
   /** Offensive foul that also costs the down (NFHS 7-5: intentional grounding,
    *  an illegal forward pass). */
-  lossOfDown?: boolean;
+  lossOfDown: boolean;
   /** On a punt, an accepted foul by the receiving team that wipes the kick out:
    *  the kicking team keeps the ball, marked off from the previous spot, and
    *  the punt and its return never happened. See kickVoidedByPenalty. */
@@ -419,46 +436,66 @@ export interface PenaltyRule {
   /** Plays this foul is commonly called on, which the picker lists first.
    *  Absent means it is only ever found under "All penalties". */
   on?: PenaltyContext[];
+  replayDown: boolean;
+  isPreSnap: boolean;
+  enforcementFrom: "auto" | "previous_spot" | "spot_of_foul" | "end_of_play";
 }
 
 /** What kind of snap a flag is being added to, for ordering the picker. */
 export type PenaltyContext = "pre_snap" | "run" | "pass" | "kick";
 
-export const PENALTY_RULES: Record<string, PenaltyRule> = {
-  Offsides: { engineCode: "offsides", defaultSide: "defense", yards: 5, on: ["pre_snap", "kick"] },
-  "False Start": { engineCode: "false_start", defaultSide: "offense", yards: 5, on: ["pre_snap"] },
-  "Holding-OFF": { engineCode: "holding_offense", defaultSide: "offense", yards: 10, on: ["run", "pass", "kick"] },
-  "Holding-DEF": { engineCode: "holding_defense", defaultSide: "defense", yards: 10, on: ["run", "pass"] },
-  "PI-OFF": { engineCode: "offensive_pass_interference", defaultSide: "offense", yards: 15, on: ["pass"] },
-  "PI-DEF": { engineCode: "defensive_pass_interference", defaultSide: "defense", yards: 15, on: ["pass"] },
-  Facemask: { engineCode: "face_mask", yards: 15, on: ["run", "pass", "kick"] },
-  Unsportsmanlike: { engineCode: "unsportsmanlike_conduct", yards: 15, on: ["pre_snap", "run", "pass", "kick"] },
-  "Delay of Game": { engineCode: "delay_of_game", defaultSide: "offense", yards: 5, on: ["pre_snap"] },
-  "Illegal Formation": { engineCode: "illegal_formation", defaultSide: "offense", yards: 5, on: ["pre_snap", "run", "pass"] },
-  "Block in Back": { engineCode: "illegal_block_in_back", yards: 10, on: ["run", "kick"] },
-  Clipping: { engineCode: "clipping", yards: 15, on: ["run", "kick"] },
-  Encroachment: { engineCode: "encroachment", defaultSide: "defense", yards: 5, on: ["pre_snap"] },
-  "Illegal Shift": { engineCode: "illegal_shift", defaultSide: "offense", yards: 5, on: ["pre_snap"] },
-  "Illegal Motion": { engineCode: "illegal_motion", defaultSide: "offense", yards: 5, on: ["pre_snap", "run", "pass"] },
-  "Illegal Substitution": { engineCode: "illegal_substitution", yards: 5, on: ["pre_snap"] },
-  "Illegal Use of Hands": { engineCode: "illegal_use_of_hands", yards: 10, on: ["run", "pass"] },
-  /* No engine code for this one; the engine counts an unknown code as a live
-     foul that wipes the play, which is right for a block below the waist. */
-  "Illegal Block Below Waist": { engineCode: "illegal_block_below_waist", yards: 15, on: ["run", "kick"] },
-  "Chop Block": { engineCode: "chop_block", defaultSide: "offense", yards: 15 },
-  "Roughing the Passer": { engineCode: "roughing_the_passer", defaultSide: "defense", yards: 15, autoFirstDown: true, on: ["pass"] },
-  "Intentional Grounding": { engineCode: "intentional_grounding", defaultSide: "offense", yards: 5, lossOfDown: true, on: ["pass"] },
-  "Illegal Forward Pass": { engineCode: "illegal_forward_pass", defaultSide: "offense", yards: 5, lossOfDown: true, on: ["pass"] },
-  "Ineligible Downfield": { engineCode: "ineligible_receiver_downfield", defaultSide: "offense", yards: 5, on: ["pass"] },
-  /* "defense" because possession sits with the kicking team: the receiving
-     team is the one without the ball when the punt is snapped. */
-  "Roughing the Kicker": { engineCode: "roughing_the_kicker", defaultSide: "defense", yards: 15, autoFirstDown: true, voidsKick: true, on: ["kick"] },
-  "Running Into Kicker": { engineCode: "running_into_the_kicker", defaultSide: "defense", yards: 5, voidsKick: true, on: ["kick"] },
-  "Kick Catch Interference": { engineCode: "kick_catch_interference", defaultSide: "offense", yards: 15, on: ["kick"] },
-  "Horse Collar": { engineCode: "horse_collar", yards: 15, on: ["run", "pass", "kick"] },
-  "Personal Foul": { engineCode: "unnecessary_roughness", yards: 15, on: ["run", "pass", "kick"] },
-  Targeting: { engineCode: "targeting", yards: 15 },
+const PENALTY_CONTEXTS: Record<string, PenaltyContext[]> = {
+  offsides: ["pre_snap", "kick"], false_start: ["pre_snap"],
+  holding_offense: ["run", "pass", "kick"], holding_defense: ["run", "pass"],
+  offensive_pass_interference: ["pass"], defensive_pass_interference: ["pass"],
+  face_mask: ["run", "pass", "kick"], face_mask_incidental: ["run", "pass", "kick"],
+  unsportsmanlike_conduct: ["pre_snap", "run", "pass", "kick"],
+  delay_of_game: ["pre_snap"], illegal_formation: ["pre_snap", "run", "pass"],
+  illegal_block_in_back: ["run", "kick"], clipping: ["run", "kick"],
+  encroachment: ["pre_snap"], illegal_shift: ["pre_snap"],
+  illegal_motion: ["pre_snap", "run", "pass"], illegal_substitution: ["pre_snap"],
+  illegal_use_of_hands: ["run", "pass"], blocking_below_waist: ["run", "kick"],
+  blindside_block: ["run", "pass", "kick"], hurdling: ["run"],
+  roughing_the_passer: ["pass"], intentional_grounding: ["pass"],
+  illegal_forward_pass: ["pass"], illegal_forward_handoff: ["run", "pass"],
+  ineligible_receiver_downfield: ["pass"], illegal_touching: ["pass"],
+  roughing_the_kicker: ["kick"], roughing_the_holder: ["kick"], roughing_the_snapper: ["kick"],
+  running_into_the_kicker: ["kick"], kick_catch_interference: ["kick"],
+  free_kick_infraction: ["kick"], illegal_batting: ["kick"], illegal_kick: ["kick"],
+  horse_collar: ["run", "pass", "kick"], unnecessary_roughness: ["run", "pass", "kick"],
+  late_hit: ["run", "pass", "kick"], taunting: ["pre_snap", "run", "pass", "kick"],
+  illegal_participation: ["pre_snap", "run", "pass", "kick"], tripping: ["run", "kick"],
 };
+
+export const PENALTY_RULES: Record<string, PenaltyRule> = Object.fromEntries(
+  Object.entries(PENALTY_CODES).map(([label, engineCode]) => {
+    const def = lookupPenalty(engineCode);
+    if (!def) throw new Error(`Penalty missing from engine catalog: ${engineCode}`);
+    const spotFoul = ["intentional_grounding", "illegal_forward_pass", "illegal_forward_handoff", "illegal_touching"].includes(engineCode);
+    const previousSpot = def.isPreSnap || ["offensive_pass_interference", "defensive_pass_interference", "ineligible_receiver_downfield"].includes(engineCode);
+    return [label, {
+      engineCode, name: label === "Facemask" ? "Facemask (Excessive)" : def.name,
+      yards: def.yards.high_school,
+      // App sides are relative to possession at the snap, including kicks and returns.
+      defaultSide: engineCode === "kick_catch_interference" ? "offense"
+        : engineCode === "horse_collar" || def.isOffensivePenalty === null ? undefined
+        : def.isOffensivePenalty ? "offense" : "defense",
+      autoFirstDown: def.autoFirstDown.high_school, lossOfDown: def.lossOfDown,
+      replayDown: def.replayDown, isPreSnap: def.isPreSnap,
+      voidsKick: ["roughing_the_kicker", "roughing_the_holder", "roughing_the_snapper", "running_into_the_kicker"].includes(engineCode),
+      on: PENALTY_CONTEXTS[engineCode],
+      enforcementFrom: spotFoul ? "spot_of_foul" : previousSpot ? "previous_spot" : engineCode === "late_hit" ? "end_of_play" : "auto",
+    } satisfies PenaltyRule];
+  }),
+);
+
+export const PENALTY_OPTIONS = PENALTIES
+  .filter((label, index) => PENALTIES.findIndex(other => PENALTY_CODES[other] === PENALTY_CODES[label]) === index)
+  .map(label => ({ label, name: PENALTY_RULES[label].name, yards: PENALTY_RULES[label].yards }));
+
+export function penaltyDisplayName(label: string | null | undefined): string {
+  return label ? PENALTY_RULES[label]?.name ?? label : "";
+}
 
 /** The picker's "likely on this play" group for a play type. */
 export function penaltyContextFor(playTypeId: string, category?: string): PenaltyContext {
@@ -511,22 +548,8 @@ export function isPenaltyOnOffense(
 }
 
 /**
- * Automatic first downs, which NFHS gives only for the roughing fouls.
- *
- * This once granted one for defensive holding and defensive pass interference,
- * which is the NCAA and NFL rule, not the NFHS one. NFHS enforces the distance
- * and replays the down; the offence gets a new series only if the yardage
- * itself reaches the line to gain. Confirmed with the coach who uses this app
- * before changing it, because it decides fourth downs: a 4th-and-20 defensive
- * pass interference used to hand over a first down and now correctly leaves
- * 4th-and-5 after the 15-yard walk-off.
- *
- * Roughing the passer and roughing the kicker or holder are the exceptions
- * (NFHS 9-4-4, 9-4-5): 15 yards AND a first down, so a 4th-and-20 punt with
- * roughing gives the kicking team a new series.
- *
- * The flag lives on the rule table rather than in a Set, so a ruleset that
- * awards more is a data change and not a code change.
+ * NFHS first-down defaults come from the engine's high-school definitions.
+ * Holding and pass interference do not grant an automatic first down.
  */
 export function grantsAutoFirstDown(
   label: string | null | undefined,

@@ -270,6 +270,8 @@ export interface PenaltyEvent {
     enforcement: PenaltyEnforcement;
     isPreSnap?: boolean;
     isAutoFirstDown?: boolean;
+    /** Explicit decision about the underlying play's statistics when accepted. */
+    nullifiesPlayStats?: boolean;
     preservesPlayStats?: boolean;
     description?: string;
 }

@@ -39,7 +39,7 @@ describe("NFHS penalty rules", () => {
     const table = { ...PENALTY_RULES, "PI-DEF": { ...PENALTY_RULES["PI-DEF"], autoFirstDown: true } };
     expect(table["PI-DEF"].autoFirstDown).toBe(true);
     // The shipped table has it off.
-    expect(PENALTY_RULES["PI-DEF"].autoFirstDown).toBeUndefined();
+    expect(PENALTY_RULES["PI-DEF"].autoFirstDown).toBe(false);
   });
 
   describe("standard distances pre-fill the entry modal", () => {

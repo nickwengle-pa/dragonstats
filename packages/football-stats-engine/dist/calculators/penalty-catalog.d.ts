@@ -37,6 +37,8 @@ export interface PenaltyDefinition {
     };
     /** Where the penalty is enforced from */
     enforcementSpot: EnforcementSpot;
+    /** Rule-level exceptions to the default enforcement spot. */
+    enforcementSpotByLevel?: Partial<Record<RuleLevel, EnforcementSpot>>;
     /** Is this an automatic first down for the offense? (defensive penalties) */
     autoFirstDown: {
         nfl: boolean;
@@ -71,6 +73,8 @@ export declare const PENALTY_CATALOG: Record<string, PenaltyDefinition>;
 export declare function lookupPenalty(code: string): PenaltyDefinition | undefined;
 /** Get the yardage for a penalty at a specific rule level */
 export declare function getPenaltyYards(def: PenaltyDefinition, level: RuleLevel): number;
+/** Get the enforcement spot, including rule-level exceptions. */
+export declare function getPenaltyEnforcementSpot(def: PenaltyDefinition, level: RuleLevel): EnforcementSpot;
 /** Check if a penalty is an automatic first down at a specific level */
 export declare function isAutoFirstDown(def: PenaltyDefinition, level: RuleLevel): boolean;
 /** Get all penalty codes */

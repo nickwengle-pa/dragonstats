@@ -95,7 +95,7 @@ describe("NFHS automatic first downs", () => {
     expect(grantsAutoFirstDown("Roughing the Kicker", "defense")).toBe(true);
     expect(grantsAutoFirstDown("Roughing the Passer", "defense")).toBe(true);
     const others = PENALTIES.filter(p => grantsAutoFirstDown(p, "defense"));
-    expect(others.sort()).toEqual(["Roughing the Kicker", "Roughing the Passer"]);
+    expect(others.sort()).toEqual(["Roughing the Holder", "Roughing the Kicker", "Roughing the Passer", "Roughing the Snapper"]);
   });
 
   it("running into the kicker is five yards and no first down", () => {

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { X, Flag } from "lucide-react";
+import { carryGoalToGo, distanceLabel } from "@/services/goalToGo";
+import GoalToGoChoice from "./GoalToGoChoice";
 import YardReel from "./YardReel";
 import PlayerPicker, { playerLabel } from "./PlayerPicker";
 import PassDefenderPicker from "./PassDefenderPicker";
@@ -51,6 +53,9 @@ interface Props {
   onDefFormation: (value: string | null) => void;
   onHash: (value: string | null) => void;
   attachedDetails?: string;
+  goalChoiceRequired?: boolean;
+  nextGoalToGo?: boolean;
+  onSetNextGoalToGo?: (goalToGo: boolean) => void;
   onSubmit: () => void | Promise<void>;
   onClose: () => void;
   onBadSnap: () => void;
@@ -82,12 +87,16 @@ export default function FastPlayEntry(p: Props) {
   const endSpot = p.isTD ? 100 : p.situation.ballOn + p.yards;
   const [spotRaw, setSpotRaw] = useState(String(endSpot <= 50 ? endSpot : 100 - endSpot));
   const validSpot = incomplete || p.isTD || (spotRaw.trim() !== "" && Number(spotRaw) >= 1 && Number(spotRaw) <= 50);
-  const ready = !missingRole && !missingTackle && spotTouched && validSpot;
-  const requiredMessage = !validSpot ? "Enter a yard line from 1 to 50, or choose Touchdown." : missingRole ? `Choose ${labels[missingRole]} or identify on film later.` : !spotTouched ? "Set the ending spot, or tap No gain." : "Choose a tackler, Identify on film later, or No tackle.";
+  const missingGoalChoice = p.goalChoiceRequired && p.nextGoalToGo === undefined;
+  const ready = !missingRole && !missingTackle && !missingGoalChoice && spotTouched && validSpot;
+  const requiredMessage = missingGoalChoice ? "Select 1st & 10 or 1st & G." : !validSpot ? "Enter a yard line from 1 to 50, or choose Touchdown." : missingRole ? `Choose ${labels[missingRole]} or identify on film later.` : !spotTouched ? "Set the ending spot, or tap No gain." : "Choose a tackler, Identify on film later, or No tackle.";
   const firstDown = !incomplete && p.yards >= p.situation.distance;
+  const nextDistance = firstDown ? Math.min(10, 100 - endSpot) : p.situation.distance - (incomplete ? 0 : p.yards);
+  const next = carryGoalToGo({ possession: p.situation.possession, ballOn: endSpot, distance: nextDistance,
+    ...(p.goalChoiceRequired && p.nextGoalToGo !== undefined ? { goalToGo: p.nextGoalToGo } : {}) }, p.situation, firstDown);
   const nextLabel = p.isTD ? "Touchdown · conversion next" : p.situation.down === 4 && !firstDown
     ? `Turnover on downs · ${p.formatSpot(endSpot)}`
-    : `${firstDown ? 1 : p.situation.down + 1} & ${firstDown ? Math.min(10, 100 - endSpot) : p.situation.distance - (incomplete ? 0 : p.yards)} · ${p.formatSpot(endSpot)}`;
+    : `${firstDown ? 1 : p.situation.down + 1} & ${distanceLabel(next)} · ${p.formatSpot(endSpot)}`;
   /* The play in a sentence, the way it will read in the log — a last look
      before Save that costs nothing. "#24 Davis rush, +7 to PL 34 · tackled by
      #11 Brawley". Roles are named only when someone is picked, so an
@@ -129,10 +138,10 @@ export default function FastPlayEntry(p: Props) {
   useEffect(() => () => { p.onFieldPreview?.(null); }, [p.onFieldPreview]);
 
   return (
-    <div className={p.inline ? "live-inline-entry" : "sheet bg-black/60 backdrop-blur-sm"}>
+    <div className={`${p.inline ? "live-inline-entry" : "sheet bg-black/60 backdrop-blur-sm"}${p.goalChoiceRequired ? " goal-choice-entry" : ""}`}>
       <div role={p.inline ? "region" : "dialog"} aria-modal={p.inline ? undefined : true} aria-labelledby="fast-title" style={{ "--fast-accent": p.accentColor } as CSSProperties} className={p.inline ? "card !p-0 fast-entry" : "sheet-panel sm:!max-w-3xl !max-h-[96dvh] fast-entry"}>
         <header className="fast-header">
-          <div><h2 id="fast-title">{p.playType.label} <span>· {p.offenseName}</span></h2><p>{p.situation.down} & {p.situation.distance} · From {p.formatSpot(p.situation.ballOn)}</p></div>
+          <div><h2 id="fast-title">{p.playType.label} <span>· {p.offenseName}</span></h2><p>{p.situation.down} & {distanceLabel(p.situation)} · From {p.formatSpot(p.situation.ballOn)}</p></div>
           <button aria-label={p.inline ? "Change play" : "Cancel play"} onClick={p.onClose} className={`${button} ${idle}`}>{p.inline ? "Change play" : <X size={20} />}</button>
         </header>
         <div className="fast-body">
@@ -208,6 +217,7 @@ export default function FastPlayEntry(p: Props) {
           </div><div className="flex gap-2 mt-2">{["left","middle","right"].map(h=><button key={h} aria-pressed={p.hashMark===h} onClick={()=>p.onHash(p.hashMark===h?null:h)} className={`${button} ${p.hashMark===h?selected:idle} flex-1`}>{h} hash</button>)}</div></details>}
         </div>
         <footer className="fast-footer safe-bottom">
+          {p.goalChoiceRequired && p.onSetNextGoalToGo && <GoalToGoChoice value={p.nextGoalToGo} onChange={p.onSetNextGoalToGo} />}
           <div className="fast-review" aria-live="polite"><strong>{sentence}</strong><span className={!ready ? "fast-required" : undefined}>{ready ? `Next: ${nextLabel}` : requiredMessage}</span></div>
           {p.attachedDetails && <p className="text-sm text-amber-300">{p.attachedDetails} · review before saving</p>}
           {saveError && <p role="alert" className="text-sm text-red-400">{saveError}</p>}

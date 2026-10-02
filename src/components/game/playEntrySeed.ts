@@ -29,6 +29,7 @@ import type {
 // supplement need the same two numbers, and none of them should own a
 // private copy of how to read them back.
 import { kickInfoFromDescription } from "../../services/kickSpots.ts";
+import type { EnforcementFrom as PenaltyEnforcementFrom, PenaltyDownOutcome } from "../../services/penaltyEnforcement.ts";
 
 export type FieldTeam = "program" | "opponent";
 export type KickOutcome = "returned" | "fair_catch" | "downed" | "out_of_bounds" | "touchback";
@@ -68,6 +69,10 @@ export interface EditSeed {
   penaltyCategory: PenaltySide | null;
   penaltyEnforcement: PenaltyEnforcement;
   flagYards: number;
+  penaltyEnforcementFrom: PenaltyEnforcementFrom;
+  penaltyDownOutcome: PenaltyDownOutcome | null;
+  penaltyPlayCounts: boolean | null;
+  manualNextSituation: { ballOn: number; down: number; distance: number; possession: "us" | "them" } | null;
   offFormation: string | null;
   defFormation: string | null;
   hashMark: string | null;
@@ -80,6 +85,7 @@ export interface EditSeed {
 }
 
 const num = (v: unknown): number | null => {
+  if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
@@ -216,7 +222,20 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
     penaltyEnforcement: (enforcement === "declined" || enforcement === "offset"
       ? enforcement
       : play.penaltyEnforcement ?? "accepted") as PenaltyEnforcement,
-    flagYards: play.flagYards || 5,
+    flagYards: num(pd.penalty_standard_yards) ?? (play.flagYards || 5),
+    penaltyEnforcementFrom: ["previous_spot", "spot_of_foul", "end_of_play"].includes(String(pd.penalty_enforcement_from))
+      ? pd.penalty_enforcement_from as PenaltyEnforcementFrom : "auto",
+    penaltyDownOutcome: ["repeat", "next", "first"].includes(String(pd.penalty_down_outcome))
+      ? pd.penalty_down_outcome as PenaltyDownOutcome : null,
+    penaltyPlayCounts: typeof pd.penalty_play_counts === "boolean" ? pd.penalty_play_counts : null,
+    manualNextSituation: pd.next_situation_source === "manual_override"
+      && (play.nextBallOn ?? num(pd.next_yard_line)) != null
+      && (play.nextDown ?? num(pd.next_down)) != null
+      && (play.nextDistance ?? num(pd.next_distance)) != null
+      ? { ballOn: (play.nextBallOn ?? num(pd.next_yard_line))!, down: (play.nextDown ?? num(pd.next_down))!,
+          distance: (play.nextDistance ?? num(pd.next_distance))!,
+          possession: play.nextPossession ?? (pd.next_possession === "them" ? "them" : pd.next_possession === "us" ? "us" : play.possession) }
+      : null,
     offFormation: play.offensiveFormation ?? null,
     defFormation: play.defensiveFormation ?? null,
     hashMark: play.hashMark ?? null,

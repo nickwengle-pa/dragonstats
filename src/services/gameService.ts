@@ -130,6 +130,7 @@ export interface PlayPlayerRow extends PlayPlayerInsert {
 }
 
 export interface CurrentGameStateUpdate {
+  goalToGo?: boolean;
   quarter: number;
   clock: string | null;
   possession: "us" | "them";
@@ -817,7 +818,7 @@ export async function updateCurrentGameState(
   };
 
   if (rulesConfig !== undefined) {
-    updateObj.rules_config = withManagedLiveState(rulesConfig);
+    updateObj.rules_config = withManagedLiveState({ ...rulesConfig, current_goal_to_go: state.goalToGo ?? null });
   }
 
   return await saveGamePatch(gameId, updateObj, "current game state");
@@ -891,6 +892,7 @@ export async function updateGameScore(
    ───────────────────────────────────────────── */
 
 export interface ResumedGameState {
+  goalToGo?: boolean;
   quarter: number;
   clock: number;
   possession: "us" | "them";
@@ -930,6 +932,7 @@ export function deriveGameState(
 
   // Accumulate score
   for (const play of plays) {
+    if (nullifiedStats(play)) continue;
     const pd = play.play_data ?? {};
     if (play.is_touchdown) {
       const isReturnTd =
@@ -974,6 +977,7 @@ export function deriveGameState(
     nextDown: typeof playData.next_down === "number" ? playData.next_down : undefined,
     nextDistance: typeof playData.next_distance === "number" ? playData.next_distance : undefined,
     nextBallOn: typeof playData.next_yard_line === "number" ? playData.next_yard_line : undefined,
+    playData,
   }) ?? advanceSituationAfterPlay({
     type: last.play_type,
     yards: last.yards_gained,
@@ -996,12 +1000,14 @@ export function deriveGameState(
     down: last.down,
     distance: last.distance,
     ballOn: last.yard_line,
+    ...(typeof playData.goal_to_go === "boolean" ? { goalToGo: playData.goal_to_go } : {}),
   }, config);
 
   state.ballOn = after.ballOn;
   state.down = after.down;
   state.distance = after.distance;
   state.possession = after.possession;
+  state.goalToGo = after.goalToGo;
   return state;
 }
 

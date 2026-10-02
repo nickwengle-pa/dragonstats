@@ -24,6 +24,7 @@ import {
 } from "@/services/gameService";
 import { opponentPlayerService } from "@/services/opponentService";
 import { getGameConfig } from "@/services/programService";
+import { scoringEventsForPlay } from "@/services/scoringLedger";
 import {
   advanceSituationAfterPlay,
   buildPregameGameUpdate,
@@ -100,6 +101,7 @@ import {
 } from "@/components/game/types";
 
 interface LiveSituationSnapshot {
+  goalToGo?: boolean;
   possession: "us" | "them";
   down: number;
   distance: number;
@@ -310,46 +312,28 @@ function serializeEngineSnapshot(snapshot: Record<string, any> | null | undefine
 }
 
 function applyScoreDelta(
-  play: Pick<PlayRecord, "isTouchdown" | "possession" | "type" | "result">,
+  play: PlayRecord,
   before: ScoreSnapshot,
 ): ScoreSnapshot {
   const next = { ...before };
-
-  if (play.isTouchdown) {
-    const isReturnTd =
-      play.type === "int" ||
-      play.type === "fumble" ||
-      play.type === "kickoff" ||
-      play.type === "punt" ||
-      play.type === "blocked_kick";
-    const scoringSide = isReturnTd
-      ? (play.possession === "us" ? "them" : "us")
-      : play.possession;
-    if (scoringSide === "us") next.us += 6;
-    else next.them += 6;
+  for (const event of scoringEventsForPlay({
+    quarter: play.quarter,
+    type: play.type,
+    possession: play.possession,
+    result: play.result,
+    isTouchdown: play.isTouchdown,
+    turnover: play.turnover,
+    ballOn: play.ballOn,
+    playData: {
+      ...play.playData,
+      penalty_type: play.penalty,
+      play_category: play.penaltyCategory,
+      penalty_enforcement: play.penaltyEnforcement ?? (play.penalty ? "accepted" : null),
+    },
+  })) {
+    if (event.side === "us") next.us = Math.max(0, next.us + event.points);
+    else next.them = Math.max(0, next.them + event.points);
   }
-  if (play.type === "pat" && play.result === "Good") {
-    if (play.possession === "us") next.us += 1;
-    else next.them += 1;
-  }
-  if (play.type === "fg" && play.result === "Good") {
-    if (play.possession === "us") next.us += 3;
-    else next.them += 3;
-  }
-  if (play.type === "two_pt" && play.result === "Good") {
-    if (play.possession === "us") next.us += 2;
-    else next.them += 2;
-  }
-  if (play.type === "safety") {
-    if (play.possession === "us") next.them += 2;
-    else next.us += 2;
-  }
-  if ((play.type === "pat" || play.type === "two_pt") && play.result === "Returned") {
-    // Defensive 2pt return — credit the opposite side.
-    if (play.possession === "us") next.them += 2;
-    else next.us += 2;
-  }
-
   return next;
 }
 
@@ -619,6 +603,8 @@ export default function GameScreen() {
     setDown(resumedDown);
     setDistance(resumedDistance);
     setBallOn(resumedBallOn);
+    setGoalToGo(useStoredLiveState && typeof gameData?.rules_config?.current_goal_to_go === "boolean"
+      ? gameData.rules_config.current_goal_to_go : derivedState.goalToGo);
 
     persistedLiveStateKey.current = useStoredLiveState
       ? [resumedQuarter, resumedClock, resumedPossession, resumedDown, resumedDistance, resumedBallOn].join("|")
@@ -711,6 +697,7 @@ export default function GameScreen() {
   const [theirScore, setTheirScore] = useState(0);
   const [down, setDown] = useState(initialSituation.down);
   const [distance, setDistance] = useState(initialSituation.distance);
+  const [goalToGo, setGoalToGo] = useState<boolean | undefined>(undefined);
   const [ballOn, setBallOn] = useState(initialSituation.ballOn);
 
   /* ── Plays ── */
@@ -785,7 +772,7 @@ export default function GameScreen() {
   const [adjClockSecs, setAdjClockSecs] = useState(0);
 
   /* ── Derived state ── */
-  const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn };
+  const gameState: GameState = { quarter, clock, possession, ourScore, theirScore, down, distance, ballOn, goalToGo };
 
   /* The game state a play inserted here would start from: the situation the
      NEXT play began with, which is the anchor play's own after-situation. The
@@ -798,12 +785,14 @@ export default function GameScreen() {
     const anchor = plays[idx];
     const next = plays[idx + 1];
     const situation = next
-      ? { possession: next.possession, down: next.down, distance: next.distance, ballOn: next.ballOn }
+      ? { possession: next.possession, down: next.down, distance: next.distance, ballOn: next.ballOn,
+          goalToGo: typeof next.playData?.goal_to_go === "boolean" ? next.playData.goal_to_go : undefined }
       : {
           possession: anchor.nextPossession ?? anchor.possession,
           down: anchor.nextDown ?? anchor.down,
           distance: anchor.nextDistance ?? anchor.distance,
           ballOn: anchor.nextBallOn ?? anchor.ballOn,
+          goalToGo: typeof anchor.playData?.next_goal_to_go === "boolean" ? anchor.playData.next_goal_to_go : undefined,
         };
     return {
       index: idx,
@@ -830,9 +819,10 @@ export default function GameScreen() {
             down: insertContext.down,
             distance: insertContext.distance,
             ballOn: insertContext.ballOn,
+            goalToGo: insertContext.goalToGo,
           }
-        : { quarter, clock, possession, down, distance, ballOn },
-    [ballOn, clock, distance, down, insertContext, possession, quarter],
+        : { quarter, clock, possession, down, distance, ballOn, goalToGo },
+    [ballOn, clock, distance, down, goalToGo, insertContext, possession, quarter],
   );
   /* The same situation as a GameState, for the surfaces that take one whole:
      the scoreboard, the field, and the entry modal. While an insert is
@@ -1068,6 +1058,7 @@ export default function GameScreen() {
       down: situation.down,
       distance: situation.distance,
       yard_line: situation.ballOn,
+      goal_to_go: situation.goalToGo ?? null,
       yard_label: formatTeamYardLabel(situation.ballOn, situation.possession, programTag, opponentTag),
       first_down_yard_line: firstDownAt,
       display_ball_on: toDisplayFieldPosition(situation.ballOn, situation.possession, snapshotQuarter, pregame),
@@ -1167,6 +1158,7 @@ export default function GameScreen() {
       down: play.nextDown ?? autoAfter.down,
       distance: play.nextDistance ?? autoAfter.distance,
       ballOn: play.nextBallOn ?? autoAfter.ballOn,
+      goalToGo: typeof play.playData?.next_goal_to_go === "boolean" ? play.playData.next_goal_to_go : autoAfter.goalToGo,
     };
     // A manual override is the recorder stating what the officials actually
     // did, so it outranks both the engine replay and the computed enforcement.
@@ -1180,6 +1172,7 @@ export default function GameScreen() {
           down: play.nextDown ?? baseAfter.down,
           distance: play.nextDistance ?? baseAfter.distance,
           ballOn: play.nextBallOn ?? baseAfter.ballOn,
+          goalToGo: typeof play.playData?.next_goal_to_go === "boolean" ? play.playData.next_goal_to_go : baseAfter.goalToGo,
         }
       : baseAfter;
     const scoreAfter = resolved?.scoreAfter ?? applyScoreDelta(play, scoreBefore);
@@ -1252,6 +1245,8 @@ export default function GameScreen() {
         next_possession: after.possession,
         next_down: after.down,
         next_distance: after.distance,
+        goal_to_go: play.playData?.goal_to_go ?? before.goalToGo ?? null,
+        next_goal_to_go: after.goalToGo ?? null,
         next_yard_line: after.ballOn,
         next_situation_source: nextSituationSource,
         recorded_clock: fmtClock(play.clock),
@@ -1277,7 +1272,7 @@ export default function GameScreen() {
   useEffect(() => {
     if (!gameId || !game || loading) return;
 
-    const liveStateKey = [quarter, clock, possession, down, distance, ballOn].join("|");
+    const liveStateKey = [quarter, clock, possession, down, distance, ballOn, goalToGo].join("|");
     const alreadyManaged = hasManagedLiveState(game?.rules_config as Record<string, unknown> | null);
     if (persistedLiveStateKey.current === liveStateKey && alreadyManaged) return;
 
@@ -1289,6 +1284,7 @@ export default function GameScreen() {
         down,
         distance,
         yard_line: ballOn,
+        goalToGo,
       }, game?.rules_config as Record<string, unknown> | null).then((saved) => {
         if (!saved) return;
         persistedLiveStateKey.current = liveStateKey;
@@ -1300,13 +1296,13 @@ export default function GameScreen() {
           current_down: down,
           current_distance: distance,
           current_yard_line: ballOn,
-          rules_config: withManagedLiveState(prev.rules_config as Record<string, unknown> | null),
+          rules_config: withManagedLiveState({ ...prev.rules_config, current_goal_to_go: goalToGo ?? null }),
         }) : prev);
       });
     }, LIVE_STATE_PERSIST_DELAY_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [ballOn, clock, distance, down, game, gameId, loading, possession, quarter]);
+  }, [ballOn, clock, distance, down, goalToGo, game, gameId, loading, possession, quarter]);
 
   /* ── Quick stats ── */
   const progAbbr = useMemo(
@@ -1364,22 +1360,26 @@ export default function GameScreen() {
     };
   }, [plays, quarter]);
 
-  const applySituation = useCallback((next: { possession: "us" | "them"; down: number; distance: number; ballOn: number }) => {
+  const applySituation = useCallback((next: { possession: "us" | "them"; down: number; distance: number; ballOn: number; goalToGo?: boolean }) => {
     setPossession(next.possession);
     setDown(next.down);
     setDistance(next.distance);
     setBallOn(next.ballOn);
+    setGoalToGo(next.goalToGo);
   }, []);
 
   const adjustDistance = useCallback((delta: number) => {
+    setGoalToGo(undefined);
     setDistance((current) => Math.max(1, Math.min(99, current + delta)));
   }, []);
 
   const adjustBall = useCallback((delta: number) => {
+    setGoalToGo(undefined);
     setBallOn((current) => Math.max(1, Math.min(99, current + delta)));
   }, []);
 
   const flipPossession = useCallback(() => {
+    setGoalToGo(undefined);
     setPossession((current) => (current === "us" ? "them" : "us"));
     // ballOn is measured from the possessing team's goal line, so flipping
     // possession must mirror the spot to keep the same physical location.
@@ -1396,6 +1396,7 @@ export default function GameScreen() {
   }, [ballOn, possession]);
 
   const applyBallEdit = useCallback(() => {
+    setGoalToGo(undefined);
     const nextBallOn = toBallOnFromFieldSide(ballEditSide, ballEditYard, possession);
     setBallOn(nextBallOn);
     setShowBallEditor(false);
@@ -1515,6 +1516,7 @@ export default function GameScreen() {
         down: replayState.down,
         distance: replayState.distance,
         ballOn: replayState.ballOn,
+        goalToGo: replayState.goalToGo,
       });
     } else if (rebuilt.plays.length > 0) {
       const last = rebuilt.plays[rebuilt.plays.length - 1];
@@ -1630,6 +1632,7 @@ export default function GameScreen() {
             down: replay.currentState.down,
             distance: replay.currentState.distance,
             ballOn: replay.currentState.ballOn,
+            goalToGo: replay.currentState.goalToGo,
           });
         } else if (rebuilt.plays.length > 0) {
           const last = rebuilt.plays[rebuilt.plays.length - 1];
@@ -1881,7 +1884,7 @@ export default function GameScreen() {
     // everything else auto-advances. TDs skip the review — the next situation
     // is the mechanical PAT spot, and the PAT gate needs to fire.
     const nextSituation = resolution?.afterSituation ?? storedPreview.after;
-    if ((data.penalty || data.playType.id === "blocked_kick" || isTurnover) && !data.isTouchdown) {
+    if (!data.nextSituation && (data.penalty || data.playType.id === "blocked_kick" || isTurnover) && !data.isTouchdown) {
       queueSituationAdjustment(savedPlay.id, localPlay, before);
     } else {
       applySituation(nextSituation);
@@ -2724,6 +2727,7 @@ export default function GameScreen() {
           onEndGame={() => setShowEndGame(true)}
           onSetDown={setDown}
           onAdjustDistance={adjustDistance}
+          onSetGoalToGo={goal => { setGoalToGo(goal); setDistance(10); }}
           onAdjustBall={adjustBall}
           onEditBall={openBallEditor}
           ourTimeoutsRemaining={timeoutState.ourRemaining}
@@ -2893,6 +2897,7 @@ export default function GameScreen() {
             spotLabel={entryBallLabel}
             down={entrySituation.down}
             distance={entrySituation.distance}
+            goalToGo={entrySituation.goalToGo}
             ballOn={entrySituation.ballOn}
             progColor={primaryColor}
             oppColor={oppColor}
@@ -3231,6 +3236,7 @@ export default function GameScreen() {
               theirScore,
               down: editPlay.down,
               distance: editPlay.distance,
+              goalToGo: typeof editPlay.playData?.goal_to_go === "boolean" ? editPlay.playData.goal_to_go : undefined,
               ballOn: editPlay.ballOn,
             }}
             roster={roster}
