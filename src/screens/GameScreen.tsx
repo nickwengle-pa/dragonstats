@@ -17,6 +17,7 @@ import {
   updatePlaySituation,
   loadGamePlays,
   updateGameScore,
+  saveGameFinal,
   hasManagedLiveState,
   updateCurrentGameState,
   withManagedLiveState,
@@ -49,7 +50,7 @@ import {
   canStartOvertime,
   type PregameConfig,
 } from "@/services/gameFlow";
-import { readFumbleSpots } from "@/services/fumbleSpots";
+import { playRecordFromRow } from "@/services/playRecordFromRow";
 import {
   createInitialGameState,
   replayLiveGame,
@@ -62,6 +63,8 @@ import Scoreboard from "@/components/game/Scoreboard";
 import FieldVisualizer from "@/components/game/FieldVisualizer";
 import PregameSetupSheet from "@/components/game/PregameSetupSheet";
 import QuickActions from "@/components/game/QuickActions";
+import { useFinalGuard } from "@/components/game/useFinalGuard";
+import { FinalBanner, FinalChangeDialog } from "@/components/game/FinalChanges";
 import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import { resolveEditedNextSituation } from "@/components/game/editNextSituation";
@@ -448,97 +451,10 @@ export default function GameScreen() {
       setOppPlayers(oppRead.value ?? []);
     }
 
-    // Convert DB plays to local PlayRecord format
-    const localPlays: PlayRecord[] = existingPlays.map(p => {
-      const pd = (p.play_data ?? {}) as Record<string, any>;
-      const clockSecs = parseClockText(p.clock, 0);
-      return {
-        id: p.id,
-        sequence: p.sequence,
-        quarter: p.quarter,
-        clock: clockSecs,
-        type: p.play_type,
-        yards: p.yards_gained,
-        result: pd.result ?? "",
-        penalty: pd.penalty_type ?? null,
-        flagYards: pd.penalty_yards ?? 0,
-        isTouchdown: p.is_touchdown,
-        firstDown: pd.is_first_down ?? false,
-        turnover: p.is_turnover,
-        isTouchback: !!pd.is_touchback,
-        penaltyCategory: pd.play_category === "offense" || pd.play_category === "defense" ? pd.play_category : null,
-        penaltyEnforcement: pd.penalty_enforcement === "declined" || pd.penalty_enforcement === "offset" ? pd.penalty_enforcement : "accepted",
-        blockedKickType: (
-          pd.blocked_kick_type === "field_goal"
-          || pd.blocked_kick_type === "extra_point"
-          || pd.blocked_kick_type === "punt"
-          || pd.blocked_kick_type === "kickoff"
-        ) ? pd.blocked_kick_type as BlockedKickType : null,
-        // Read back so a reload or an edit keeps the recovery return. Without
-        // this the value survives one save and is dropped on the next.
-        /* Every save writes these as null on a play with no fumble, and
-           Number(null) is 0 - which read back as "recovered, returned 0" on
-           every such play, and the replay then decided its first down from
-           the yardage instead of the recorded flag. Older builds stored a
-           literal 0 on every play too - see readFumbleSpots. */
-        ...readFumbleSpots(pd),
-        tagged: [
-          ...p.play_players.map((pp: any) => ({
-            id: pp.player_id,
-            player_id: pp.player_id,
-            jersey_number: rosterJerseys.get(pp.player_id) ?? null,
-            name: pp.player
-              ? `${pp.player.first_name} ${pp.player.last_name}`
-              : rosterNames.get(pp.player_id) ?? "?",
-            role: pp.role,
-            credit: pp.credit ?? undefined,
-          })),
-          // Opponent tags are persisted in play_data (no FK row possible).
-          ...((Array.isArray(pd.opp_tagged) ? pd.opp_tagged : []) as any[]).map((t: any) => ({
-            id: normalizeOppTagId(String(t.id ?? "opp_team"), t.jersey_number ?? null),
-            player_id: normalizeOppTagId(String(t.id ?? "opp_team"), t.jersey_number ?? null),
-            jersey_number: t.jersey_number ?? null,
-            name: String(t.name ?? "TEAM"),
-            role: String(t.role ?? ""),
-            credit: t.credit ?? undefined,
-            isOpponent: true,
-          })),
-          // Unrostered jerseys on our side — same storage reason as above.
-          ...((Array.isArray(pd.pending_tagged) ? pd.pending_tagged : []) as any[]).map((t: any) => {
-            const jersey = t.jersey_number ?? pendingJerseyFromId(String(t.id ?? ""));
-            return {
-              id: String(t.id ?? makePendingId(jersey ?? 0)),
-              player_id: String(t.id ?? makePendingId(jersey ?? 0)),
-              jersey_number: jersey ?? null,
-              name: pendingDisplayName(jersey ?? null),
-              role: String(t.role ?? ""),
-              credit: t.credit ?? undefined,
-              isPending: true,
-            };
-          }),
-          // TEAM placeholders — our side, jersey never identified. Same
-          // storage reason again: no players row, so no play_players FK.
-          ...((Array.isArray(pd.team_tagged) ? pd.team_tagged : []) as any[]).map((t: any) => ({
-            ...makeTeamTag(String(t.role ?? "")),
-            credit: t.credit ?? undefined,
-            ...(teamTagConfirmed(t, pd) ? { teamCreditConfirmed: true } : {}),
-          })),
-        ],
-        ballOn: p.yard_line,
-        down: p.down,
-        distance: p.distance,
-        description: p.description,
-        possession: p.possession,
-        nextPossession: pd.next_possession === "us" || pd.next_possession === "them" ? pd.next_possession : undefined,
-        nextDown: typeof pd.next_down === "number" ? pd.next_down : undefined,
-        nextDistance: typeof pd.next_distance === "number" ? pd.next_distance : undefined,
-        nextBallOn: typeof pd.next_yard_line === "number" ? pd.next_yard_line : undefined,
-        offensiveFormation: (p as any).offensive_formation ?? null,
-        defensiveFormation: (p as any).defensive_formation ?? null,
-        hashMark: (p as any).hash_mark ?? null,
-        playData: { ...pd },
-      };
-    });
+    // Convert DB plays to local PlayRecord format - one conversion, shared
+    // with the film chart, so both screens replay the same records.
+    const localPlays: PlayRecord[] = existingPlays.map(p =>
+      playRecordFromRow(p, { names: rosterNames, jerseys: rosterJerseys }));
 
     /* Read hand-set starts off the stored rows before the replay re-derives
        every spot: a scoreboard correction is recorded nowhere else. */
@@ -708,6 +624,26 @@ export default function GameScreen() {
   useEffect(() => {
     knownPlayIds.current = new Set(plays.map((p) => p.id));
   }, [plays]);
+
+  /* ── A finished game's official final ──
+     Every path that changes plays calls finalGuard.guard() before writing;
+     see useFinalGuard for why a path that skips it writes no score. */
+  const finalNames = useMemo(() => ({
+    us: toTeamTag(program?.name ?? "Team", program?.abbreviation),
+    them: toTeamTag(game?.opponent?.name ?? "Opponent", game?.opponent?.abbreviation),
+  }), [program?.name, program?.abbreviation, game?.opponent?.name, game?.opponent?.abbreviation]);
+  const mergeGame = useCallback((patch: Record<string, unknown>) => {
+    setGame((g: any) => (g ? { ...g, ...patch } : g));
+  }, []);
+  const finalGuard = useFinalGuard({
+    gameId,
+    game,
+    plays,
+    config: liveSessionConfig,
+    names: finalNames,
+    ready: !loading,
+    onGameChange: mergeGame,
+  });
 
   const isSubmitting = useRef(false);
 
@@ -1533,6 +1469,13 @@ export default function GameScreen() {
     }
 
     if (gameId) {
+      /* A finished game stays finished. This used to write the replayed score
+         and status "live" after every edit, which un-finalized the game and
+         let any bug in the replay overwrite a final nobody meant to change. */
+      if (finalGuard.isFinal) {
+        await finalGuard.saveApproved(rebuilt.plays);
+        return;
+      }
       const replayScore = replay?.score ?? { us: 0, them: 0 };
       await updateGameScore(
         gameId,
@@ -1541,7 +1484,7 @@ export default function GameScreen() {
         rebuilt.plays.length > 0 ? "live" : "scheduled",
       );
     }
-  }, [applySituation, gameId, gc, liveSessionConfig, persistPlaySituations, pregame]);
+  }, [applySituation, finalGuard, gameId, gc, liveSessionConfig, persistPlaySituations, pregame]);
 
   const applySituationAdjustment = useCallback(async () => {
     if (!pendingSituationPlayId) return;
@@ -1569,11 +1512,12 @@ export default function GameScreen() {
         : play
     ));
 
+    if (!(await finalGuard.guard(updatedPlays))) return;
     setShowSituationAdj(false);
     setPendingSituationPlayId(null);
     await recalcScoreAndState(updatedPlays);
     setClock(adjustedClock);
-  }, [adjBallOn, adjClockMins, adjClockSecs, adjDistance, adjDown, adjPossession, gc.quarter_length_secs, pendingSituationPlayId, plays, recalcScoreAndState]);
+  }, [adjBallOn, adjClockMins, adjClockSecs, adjDistance, adjDown, adjPossession, finalGuard, gc.quarter_length_secs, pendingSituationPlayId, plays, recalcScoreAndState]);
 
   const handleSavePregame = useCallback(async (nextPregame: PregameConfig, nextCharting: ChartingPrefs) => {
     if (!gameId || !game) return;
@@ -1584,6 +1528,21 @@ export default function GameScreen() {
       nextPregame,
       nextCharting,
     );
+
+    /* Who received the opening kick decides every possession after it, so on
+       a finished game a pregame change is checked like any other edit. */
+    if (finalGuard.isFinal && liveSessionConfig && plays.length > 0) {
+      const nextConfig: LiveSessionConfig = {
+        ...liveSessionConfig,
+        gameConfig: resolveGameConfig(baseGc, updates.rules_config),
+        rulesConfig: updates.rules_config,
+        pregame: nextPregame,
+      };
+      if (!(await finalGuard.guard(plays, nextConfig))) {
+        setSavingPregame(false);
+        return;
+      }
+    }
 
     const { data, error } = await supabase
       .from("games")
@@ -1622,6 +1581,7 @@ export default function GameScreen() {
         const replay = replayConfig ? replayLiveGame(rebuilt.plays, replayConfig) : null;
         setPlays(rebuilt.plays);
         persistPlaySituations(rebuilt.plays, replay?.playResults);
+        if (finalGuard.isFinal && replayConfig) await finalGuard.saveApproved(rebuilt.plays, replayConfig);
         if (replay) {
           setQuarter(replay.currentState.quarter);
           setClock(replay.currentState.clock);
@@ -1645,7 +1605,7 @@ export default function GameScreen() {
     }
 
     setSavingPregame(false);
-  }, [applySituation, baseGc, game, gameId, persistPlaySituations, plays, program]);
+  }, [applySituation, baseGc, finalGuard, game, gameId, liveSessionConfig, persistPlaySituations, plays, program]);
 
   /* ── Handle play type selection from quick actions ── */
   const handlePlayTypeSelect = (pt: PlayTypeDef) => {
@@ -1707,6 +1667,8 @@ export default function GameScreen() {
   const handlePlaySubmit = async (data: PlaySubmitData) => {
     if (!gameId || !season || isSubmitting.current) return;
     isSubmitting.current = true;
+    // Declining the official-final check keeps the entry open, typed as it was.
+    let keepEntryOpen = false;
 
     try {
     // Recording any play supersedes a pending conversion prompt. Left open,
@@ -1829,6 +1791,13 @@ export default function GameScreen() {
       credit: t.credit ?? null,
     }));
 
+    /* A finished game: check the play against the official final before
+       anything is written. Cancel leaves the entry open and the game as it was. */
+    const prospective = insertAt
+      ? [...plays.slice(0, insertAt.index + 1), previewPlay, ...plays.slice(insertAt.index + 1)]
+      : [...plays, previewPlay];
+    if (!(await finalGuard.guard(prospective))) { keepEntryOpen = true; return; }
+
     const savedPlay = await insertPlay(playInsert, playerInserts, { optimistic: true });
     if (!savedPlay) { console.error("insertPlay returned null — check Supabase logs"); isSubmitting.current = false; setSelectedPlayType(null); return; }
 
@@ -1873,7 +1842,12 @@ export default function GameScreen() {
     const nextOur = nextScore.us;
     const nextTheir = nextScore.them;
 
-    if (nextOur !== ourScore || nextTheir !== theirScore) {
+    if (finalGuard.isFinal) {
+      // A play added to a finished game: the new official copy carries it,
+      // and the game stays final rather than going back to "live".
+      if (nextOur !== ourScore || nextTheir !== theirScore) { setOurScore(nextOur); setTheirScore(nextTheir); }
+      void finalGuard.saveApproved([...plays, localPlay]);
+    } else if (nextOur !== ourScore || nextTheir !== theirScore) {
       setOurScore(nextOur); setTheirScore(nextTheir);
       void updateGameScore(gameId, nextOur, nextTheir);
     }
@@ -1913,7 +1887,7 @@ export default function GameScreen() {
     } catch (err) {
       console.error("Error in handlePlaySubmit:", err);
     } finally {
-      setSelectedPlayType(null);
+      if (!keepEntryOpen) setSelectedPlayType(null);
       isSubmitting.current = false;
     }
   };
@@ -2063,9 +2037,20 @@ export default function GameScreen() {
     const appliedDelta = team === "us" ? nextOur - ourScore : nextTheir - theirScore;
     if (appliedDelta === 0) return;
 
+    /* A finished game: the correction is checked against the official final
+       first, and saved with it rather than as a bare score write. */
+    const correctionPreview = {
+      id: "pending-correction", sequence: plays.length + 1, quarter, clock, type: "score_correction",
+      yards: 0, result: "", penalty: null, flagYards: 0, isTouchdown: false, firstDown: false, turnover: false,
+      tagged: [], ballOn, down, distance, possession,
+      description: `Score correction: ${team} ${appliedDelta > 0 ? "+" : ""}${appliedDelta}`,
+      playData: { score_delta_team: team, score_delta: appliedDelta, next_situation_source: "score_correction" },
+    } as PlayRecord;
+    if (!(await finalGuard.guard([...plays, correctionPreview]))) return;
+
     setOurScore(nextOur);
     setTheirScore(nextTheir);
-    await updateGameScore(gameId, nextOur, nextTheir);
+    if (!finalGuard.isFinal) await updateGameScore(gameId, nextOur, nextTheir);
 
     // Record a synthetic play so it's visible in the log and reversible via Undo.
     if (season) {
@@ -2144,13 +2129,14 @@ export default function GameScreen() {
             },
           };
           setPlays(prev => [...prev, localPlay]);
+          if (finalGuard.isFinal) await finalGuard.saveApproved([...plays, localPlay]);
         }
       } catch (err) {
         console.warn("score_correction insert failed", err);
       }
     }
     setScoreCorrectTeam(null);
-  }, [gameId, season, ourScore, theirScore, quarter, clock, possession, down, distance, ballOn, plays, pregame, gc]);
+  }, [gameId, season, ourScore, theirScore, quarter, clock, possession, down, distance, ballOn, plays, pregame, gc, finalGuard]);
 
   const closePendingClockCapture = useCallback((showPatGateAfter = false) => {
     const patPossession = pendingClockCapture?.patGatePossession;
@@ -2238,6 +2224,7 @@ export default function GameScreen() {
   const handleUndo = async () => {
     if (plays.length === 0 || !gameId) return;
     const last = plays[plays.length - 1];
+    if (!(await finalGuard.guard(plays.slice(0, -1)))) return;
     const deleted = await deletePlay(last.id, gameId);
     if (!deleted) return;
 
@@ -2275,6 +2262,58 @@ export default function GameScreen() {
     const editSource = editNext
       ? editNext.source
       : (result.penalty || (result.playType.id === "blocked_kick" && !result.isTouchdown) ? "pending_review" : "auto");
+
+    // Update local play record
+    const updatedPlay: PlayRecord = {
+      ...original,
+      type: result.playType.id,
+      clock: result.clock,
+      yards: result.yards,
+      isTouchdown: result.isTouchdown,
+      firstDown: result.isFirstDown,
+      turnover: editTurnover,
+      result: result.result,
+      penalty: result.penalty,
+      penaltyCategory: result.penaltyCategory,
+      penaltyEnforcement: result.penalty ? result.penaltyEnforcement : undefined,
+      flagYards: result.flagYards,
+      isTouchback: result.isTouchback,
+      blockedKickType: result.blockedKickType,
+      tagged: result.tagged,
+      fumbleReturnYards: result.fumbleReturnYards ?? null,
+      fumbleRecoveredAt: result.fumbleRecoveredAt ?? null,
+      nextPossession: editNext?.possession,
+      nextDown: editNext?.down,
+      nextDistance: editNext?.distance,
+      nextBallOn: editNext?.ballOn,
+      description: result.description,
+      offensiveFormation: result.offensiveFormation,
+      defensiveFormation: result.defensiveFormation,
+      hashMark: result.hashMark,
+      playData: {
+        ...(original.playData ?? {}),
+        ...(result.playData ?? {}),
+        recorded_start_clock: fmtClock(result.clock),
+        recorded_start_clock_seconds: result.clock,
+        result: result.result || null,
+        is_first_down: result.isFirstDown,
+        is_touchback: result.isTouchback,
+        penalty_type: result.penalty,
+        play_category: result.penaltyCategory ?? null,
+        penalty_enforcement: result.penalty ? result.penaltyEnforcement : null,
+        penalty_yards: result.flagYards,
+        blocked_kick_type: result.blockedKickType ?? null,
+        fumble_return_yards: result.fumbleReturnYards ?? null,
+        fumble_recovered_at: result.fumbleRecoveredAt ?? null,
+        next_situation_source: editSource,
+      },
+    };
+
+    const newPlays = [...plays];
+    newPlays[idx] = updatedPlay;
+    /* A finished game: say what this does to the official final before
+       anything is written. Cancel leaves the editor open. */
+    if (!(await finalGuard.guard(newPlays))) return;
 
     // Persist to DB
     const ok = await updatePlayFull(playId, {
@@ -2350,54 +2389,6 @@ export default function GameScreen() {
       return;
     }
 
-    // Update local play record
-    const updatedPlay: PlayRecord = {
-      ...original,
-      type: result.playType.id,
-      clock: result.clock,
-      yards: result.yards,
-      isTouchdown: result.isTouchdown,
-      firstDown: result.isFirstDown,
-      turnover: editTurnover,
-      result: result.result,
-      penalty: result.penalty,
-      penaltyCategory: result.penaltyCategory,
-      penaltyEnforcement: result.penalty ? result.penaltyEnforcement : undefined,
-      flagYards: result.flagYards,
-      isTouchback: result.isTouchback,
-      blockedKickType: result.blockedKickType,
-      tagged: result.tagged,
-      fumbleReturnYards: result.fumbleReturnYards ?? null,
-      fumbleRecoveredAt: result.fumbleRecoveredAt ?? null,
-      nextPossession: editNext?.possession,
-      nextDown: editNext?.down,
-      nextDistance: editNext?.distance,
-      nextBallOn: editNext?.ballOn,
-      description: result.description,
-      offensiveFormation: result.offensiveFormation,
-      defensiveFormation: result.defensiveFormation,
-      hashMark: result.hashMark,
-      playData: {
-        ...(original.playData ?? {}),
-        ...(result.playData ?? {}),
-        recorded_start_clock: fmtClock(result.clock),
-        recorded_start_clock_seconds: result.clock,
-        result: result.result || null,
-        is_first_down: result.isFirstDown,
-        is_touchback: result.isTouchback,
-        penalty_type: result.penalty,
-        play_category: result.penaltyCategory ?? null,
-        penalty_enforcement: result.penalty ? result.penaltyEnforcement : null,
-        penalty_yards: result.flagYards,
-        blocked_kick_type: result.blockedKickType ?? null,
-        fumble_return_yards: result.fumbleReturnYards ?? null,
-        fumble_recovered_at: result.fumbleRecoveredAt ?? null,
-        next_situation_source: editSource,
-      },
-    };
-
-    const newPlays = [...plays];
-    newPlays[idx] = updatedPlay;
     setEditPlay(null);
     await recalcScoreAndState(newPlays);
 
@@ -2460,10 +2451,11 @@ export default function GameScreen() {
 
   /* ── Delete play from edit modal ── */
   const handleDeletePlay = async (playId: string) => {
+    const newPlays = plays.filter(p => p.id !== playId);
+    if (!(await finalGuard.guard(newPlays))) return;
     const deleted = await deletePlay(playId, gameId);
     if (!deleted) return;
 
-    const newPlays = plays.filter(p => p.id !== playId);
     setEditPlay(null);
     await recalcScoreAndState(newPlays);
   };
@@ -2572,8 +2564,28 @@ export default function GameScreen() {
        is what tells the operator which of the two happened, because "Final"
        that exists only on this tablet looks identical to "Final" the server
        has, and the difference matters the moment a coach opens his phone. */
-    await updateGameScore(gameId, ourScore, theirScore, "completed");
-    const completedGame = { ...game, our_score: ourScore, opponent_score: theirScore, status: "completed" };
+    /* The official copy goes in the same write as the final itself - see
+       finalRecord.ts. Its score is the replay's, which is what ourScore
+       already shows; the copy and the final must never disagree. */
+    const finalCopy = finalGuard.finalizeFields(plays);
+    const finalScore = finalCopy?.record.score ?? { us: ourScore, them: theirScore };
+    if (finalCopy) {
+      await saveGameFinal(gameId, {
+        ...finalCopy.fields,
+        our_score: finalScore.us,
+        opponent_score: finalScore.them,
+        status: "completed",
+      });
+    } else {
+      await updateGameScore(gameId, ourScore, theirScore, "completed");
+    }
+    const completedGame = {
+      ...game,
+      ...(finalCopy?.fields ?? {}),
+      our_score: finalScore.us,
+      opponent_score: finalScore.them,
+      status: "completed",
+    };
     await setMeta(cacheKeys.game(gameId), completedGame);
     setGame(completedGame);
     setEndOfPeriodPrompt(null);
@@ -2696,6 +2708,17 @@ export default function GameScreen() {
           <PowerIcon size={14} />End
         </button>
       </div>
+
+      {/* A finished game whose plays no longer match its official final. */}
+      {finalGuard.openCheck && (
+        <FinalBanner
+          title={finalGuard.openCheck.title}
+          detail={finalGuard.openCheck.detail}
+          diff={finalGuard.openCheck.diff}
+          names={finalNames}
+          onAccept={() => finalGuard.acceptCurrent(finalGuard.openCheck?.diff ?? null)}
+        />
+      )}
 
       {/* Pinned: scoreboard and field never scroll away. The stats strip is
           pinned too on tablets, but on a phone it moves into the scroller —
@@ -3422,6 +3445,17 @@ export default function GameScreen() {
             <button onClick={() => setShowBallEditor(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
           </div>
         </div>
+      )}
+
+      {/* A change to a finished game, before it saves */}
+      {finalGuard.prompt && (
+        <FinalChangeDialog
+          diff={finalGuard.prompt.diff}
+          names={finalNames}
+          statsLocked={finalGuard.statsLocked}
+          onConfirm={finalGuard.confirm}
+          onCancel={finalGuard.cancel}
+        />
       )}
 
       {/* End Game Confirm */}

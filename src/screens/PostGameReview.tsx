@@ -2,7 +2,7 @@ import { buildHudlCsv } from "@/services/hudlExport";
 import GameHomeLink from "@/components/game/GameHomeLink";
 import { PlayTacklers } from "@/components/game/PlayRowDetails";
 import { needsNextSpotReview, normalizeBlockedTouchdown } from "@/services/blockedKickOutcome";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, X, Check, Film, Pencil } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
@@ -13,9 +13,20 @@ import {
   updatePlaySituation,
   deletePlay,
   setGameStatsFinal,
+  saveGameFinal,
   type PlayWithPlayers,
 } from "@/services/gameService";
-import { isMarkedStatsFinal } from "@/services/gameCompletion";
+import { isMarkedStatsFinal, STATS_FINAL_TAG } from "@/services/gameCompletion";
+import type { LiveSessionConfig } from "@/services/liveGameSession";
+import {
+  buildFinalRecordFromRows,
+  checkFinal,
+  diffFinalRecords,
+  finalFields,
+  readSnapshot,
+  teamTag,
+} from "@/services/finalRecord";
+import { FinalBanner } from "@/components/game/FinalChanges";
 import { getPregameConfig, resolveGameConfig, type PregameConfig } from "@/services/gameFlow";
 import { readFumbleSpots } from "@/services/fumbleSpots";
 import { getGameConfig } from "@/services/programService";
@@ -669,6 +680,14 @@ interface GameMeta {
   /** What the replay needs to re-chain the spots after an edit here. */
   pregame: PregameConfig | null;
   rules_config: Record<string, unknown> | null;
+  /* The official final - see services/finalRecord.ts. */
+  is_home: boolean;
+  status: string | null;
+  our_score: number;
+  opponent_score: number;
+  opponent_abbreviation: string | null;
+  final_snapshot: unknown;
+  final_history: unknown;
 }
 
 type SituationDraft = {
@@ -693,6 +712,9 @@ export default function PostGameReview() {
   const { program } = useProgramContext();
 
   const [plays, setPlays] = useState<PlayWithPlayers[]>([]);
+  /* As stored, before the display tidy-up below - the official final is
+     computed from exactly what the game screen reads. */
+  const [rawPlays, setRawPlays] = useState<PlayWithPlayers[]>([]);
   const [charting, setCharting] = useState<Record<string, PlayCharting>>({});
   const [meta, setMeta] = useState<GameMeta | null>(null);
   /* Mirrored into state rather than read straight off meta, so the switch
@@ -711,6 +733,99 @@ export default function PostGameReview() {
     ),
     [roster],
   );
+
+  /* ── The official final (services/finalRecord.ts) ──
+     Film review is where post-game cleanup happens, so before the stats are
+     marked final it only warns when the plays stop adding up to the final
+     score. Marking the stats final takes the locked copy; after that, any
+     change made here shows up as unconfirmed until accepted. Same config the
+     game screen replays with, so both screens agree about the same plays. */
+  const finalConfig = useMemo<LiveSessionConfig | null>(() => {
+    if (!gameId || !program || !meta?.opponent_id) return null;
+    return {
+      gameId,
+      programTeamId: program.id,
+      programName: program.name,
+      programAbbreviation: teamTag(program.name, program.abbreviation),
+      opponentTeamId: meta.opponent_id,
+      opponentName: meta.opponent_name,
+      opponentAbbreviation: teamTag(meta.opponent_name, meta.opponent_abbreviation),
+      isHome: meta.is_home,
+      gameConfig: resolveGameConfig(getGameConfig(program), meta.rules_config),
+      rulesConfig: meta.rules_config,
+      pregame: meta.pregame,
+    };
+  }, [gameId, program, meta]);
+  const finalNames = useMemo(
+    () => ({ us: finalConfig?.programAbbreviation ?? "US", them: finalConfig?.opponentAbbreviation ?? "OPP" }),
+    [finalConfig],
+  );
+  const isFinalGame = meta?.status === "completed";
+  const official = useMemo(() => readSnapshot(meta?.final_snapshot), [meta?.final_snapshot]);
+  const currentFinal = useMemo(
+    () => (finalConfig && rawPlays.length > 0 ? buildFinalRecordFromRows(rawPlays, finalConfig, { jerseys: rosterJerseys }) : null),
+    [finalConfig, rawPlays, rosterJerseys],
+  );
+  const finalCheck = useMemo(() => {
+    if (!isFinalGame || !currentFinal || !meta) return null;
+    return checkFinal({
+      statsLocked: markedFinal,
+      official,
+      current: currentFinal,
+      saved: { us: meta.our_score, them: meta.opponent_score },
+      names: finalNames,
+    });
+  }, [isFinalGame, currentFinal, meta, markedFinal, official, finalNames]);
+
+  // A finished game with no copy yet whose plays still add up: take one.
+  const recordedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (finalCheck !== "record" || !gameId || !meta || !currentFinal || recordedFor.current === gameId) return;
+    recordedFor.current = gameId;
+    const fields = finalFields(meta, currentFinal, markedFinal ? "stats_final" : "recorded", null, true);
+    void saveGameFinal(gameId, fields).then(() => setMeta((m) => (m ? { ...m, ...fields } : m)));
+  }, [finalCheck, gameId, meta, currentFinal, markedFinal]);
+
+  const acceptFinal = useCallback(async () => {
+    if (!gameId || !meta || !currentFinal || !finalCheck || finalCheck === "record") return;
+    const fields = finalFields(meta, currentFinal, "accepted", finalCheck.diff, true);
+    const patch = { ...fields, our_score: currentFinal.score.us, opponent_score: currentFinal.score.them, status: "completed" as const };
+    await saveGameFinal(gameId, patch);
+    setMeta((m) => (m ? { ...m, ...patch } : m));
+  }, [gameId, meta, currentFinal, finalCheck]);
+
+  /** Marking the stats final locks the official copy, after showing what the
+   *  plays add up to if that is not the saved final. */
+  const toggleStatsFinal = useCallback(async () => {
+    if (!gameId || !meta || savingFinal) return;
+    const next = !markedFinal;
+    const lockCopy = next && isFinalGame && !!currentFinal;
+    if (lockCopy && currentFinal) {
+      const cur = currentFinal.score;
+      if (cur.us !== meta.our_score || cur.them !== meta.opponent_score) {
+        const ok = window.confirm(
+          `The plays add up to ${finalNames.us} ${cur.us} - ${finalNames.them} ${cur.them}, `
+          + `but the saved final is ${meta.our_score} - ${meta.opponent_score}.\n\n`
+          + `Mark the stats final with ${cur.us}-${cur.them} as the final score?`,
+        );
+        if (!ok) return;
+      }
+    }
+    setSavingFinal(true);
+    const ok = await setGameStatsFinal(gameId, next, meta.season_id);
+    if (ok && lockCopy && currentFinal) {
+      const diff = official ? diffFinalRecords(official, currentFinal, finalNames) : null;
+      const fields = finalFields(meta, currentFinal, "stats_final", diff, true);
+      const patch = { ...fields, our_score: currentFinal.score.us, opponent_score: currentFinal.score.them };
+      await saveGameFinal(gameId, patch);
+      const tags = Array.isArray(meta.tags) ? (meta.tags as string[]) : [];
+      setMeta((m) => (m ? { ...m, ...patch, tags: tags.includes(STATS_FINAL_TAG) ? tags : [...tags, STATS_FINAL_TAG] } : m));
+    }
+    setSavingFinal(false);
+    // Only move the switch if the write landed - otherwise it reads as saved
+    // on a device that never reached the server.
+    if (ok) setMarkedFinal(next);
+  }, [gameId, meta, savingFinal, markedFinal, isFinalGame, currentFinal, finalNames, official]);
   const [oppPlayers, setOppPlayers] = useState<OpponentPlayerRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -737,11 +852,14 @@ export default function PostGameReview() {
         loadGameCharting(gameId),
         supabase
           .from("games")
-          .select("season_id, opponent_id, is_home, game_date, rules_config, opening_kickoff_receiver, direction, tags, opponent:opponents(*)")
+          // Every column, so a build that reads the official final still loads
+          // against a database that does not have those columns yet.
+          .select("*, opponent:opponents(*)")
           .eq("id", gameId)
           .single(),
       ]);
 
+      setRawPlays(rawPlays);
       setPlays(rawPlays.map(normalizeBlockedTouchdown));
       setCharting(chart);
 
@@ -759,6 +877,13 @@ export default function PostGameReview() {
           : 12 * 60,
         pregame: getPregameConfig(g),
         rules_config: (g?.rules_config ?? null) as Record<string, unknown> | null,
+        is_home: Boolean(g?.is_home),
+        status: g?.status ?? null,
+        our_score: Number(g?.our_score ?? 0),
+        opponent_score: Number(g?.opponent_score ?? 0),
+        opponent_abbreviation: opp?.abbreviation ?? null,
+        final_snapshot: g?.final_snapshot ?? null,
+        final_history: g?.final_history ?? [],
       });
 
       // Roster + opponent players (needed by the play editor)
@@ -1151,19 +1276,19 @@ export default function PostGameReview() {
           The mark does not override reality. Plays whose next spot was never
           confirmed still show as outstanding on the dashboard whatever this
           says, so tapping it cannot make an unfinished game read as done. */}
+      {!loading && finalCheck && finalCheck !== "record" && (
+        <FinalBanner
+          title={finalCheck.title}
+          detail={finalCheck.detail}
+          diff={finalCheck.diff}
+          names={finalNames}
+          onAccept={acceptFinal}
+        />
+      )}
       {!loading && meta && (
         <div className="px-5 pb-3">
           <button
-            onClick={async () => {
-              if (!gameId || savingFinal) return;
-              const next = !markedFinal;
-              setSavingFinal(true);
-              const ok = await setGameStatsFinal(gameId, next, meta.season_id);
-              setSavingFinal(false);
-              // Only move the switch if the write landed - otherwise it reads
-              // as saved on a device that never reached the server.
-              if (ok) setMarkedFinal(next);
-            }}
+            onClick={() => { void toggleStatsFinal(); }}
             disabled={savingFinal}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 transition-colors cursor-pointer ${
               markedFinal

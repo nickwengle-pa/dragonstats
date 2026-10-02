@@ -24,6 +24,7 @@ import { supabase } from "@/lib/supabase";
 import { sameSyncEntity } from "./syncDiscard";
 import type { PlayWithPlayers } from "./gameService";
 import { savePlayAtomic } from "./gameService";
+import { updateGamesRow } from "./gamesRowWrite";
 import {
   getDrainableForGame,
   getGamesWithUnsynced,
@@ -266,7 +267,7 @@ async function pushItem(item: SyncQueueItem): Promise<PushOutcome> {
         await markSynced(item.id);
         return "ok";
       }
-      const { error } = await supabase.from("games").update(patch).eq("id", item.gameId);
+      const { error } = await updateGamesRow(item.gameId, patch);
       if (error) return await failItem(item, error);
       await markSynced(item.id);
       return "ok";

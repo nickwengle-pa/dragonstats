@@ -11,6 +11,7 @@ import { TEAM_PLAYER_ID } from "@/components/game/types";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "./programService";
 import { mergeQueuedPlays } from "./mergeQueuedPlays";
 import { cacheKeys, invalidateCache } from "./offlineCache";
+import { updateGamesRow } from "./gamesRowWrite";
 import { STATS_FINAL_TAG } from "./gameCompletion";
 
 /**
@@ -847,7 +848,7 @@ async function saveGamePatch(
   const goOnline = typeof navigator === "undefined" || navigator.onLine;
   if (goOnline) {
     try {
-      const { error } = await supabase.from("games").update(patch).eq("id", gameId);
+      const { error } = await updateGamesRow(gameId, patch);
       if (!error) {
         /* Only clear the entry if nothing merged into it while the request was
            in flight. A newer patch arriving mid-request means this one no
@@ -883,6 +884,25 @@ export async function updateGameScore(
     { our_score: ourScore, opponent_score: theirScore, status },
     "game score",
   );
+}
+
+/**
+ * Save a finished game's official copy, optionally with its score and status,
+ * as one write-ahead patch - the copy and the final it describes must never
+ * land separately. See finalRecord.ts.
+ * @returns true once the server has it; false means it is queued, not lost.
+ */
+export async function saveGameFinal(
+  gameId: string,
+  patch: {
+    final_snapshot: unknown;
+    final_history: unknown;
+    our_score?: number;
+    opponent_score?: number;
+    status?: "completed";
+  },
+): Promise<boolean> {
+  return await saveGamePatch(gameId, patch, "official final");
 }
 
 /* ─────────────────────────────────────────────
