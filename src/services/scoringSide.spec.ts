@@ -89,6 +89,17 @@ describe("a return touchdown is scored by the team that did not have the ball", 
     expect(s.them).toBe(6);
   });
 
+  /* Older INT rows were saved with is_turnover false. Reopening a finalized
+     game replays it, and keyed off the flag alone the pick-six went to the
+     team that threw it — a 35-14 game came back 28-21. */
+  it("credits the defence for a pick-six saved without the turnover flag", () => {
+    const s = score([
+      play({ type: "int", possession: "them", turnover: false, isTouchdown: true }),
+    ]);
+    expect(s.us).toBe(6);
+    expect(s.them).toBe(0);
+  });
+
   /* The other direction has to keep working: a fumble the offence recovers and
      carries in is still the offence's touchdown. */
   it("credits the offence when it recovers its own fumble and scores", () => {

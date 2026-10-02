@@ -77,10 +77,17 @@ const other = (side: "us" | "them"): "us" | "them" => (side === "us" ? "them" : 
  * it carried its own list, differing on blocked kicks, and a box score whose
  * quarter columns and scoring list disagree about who scored is exactly the
  * problem this module exists to end.
+ *
+ * An interception is a turnover by definition, whatever its flag says. Older
+ * INT rows were saved with is_turnover false, and keyed off the flag alone a
+ * finalized game's pick-six was re-scored for the team that threw it every
+ * time the game was opened — while gameFlow, the play list and the drive
+ * chart all still treated `type === "int"` as a change of possession.
  */
 export function isReturnTouchdown(play: ScorablePlay): boolean {
   return (
     play.turnover === true
+    || play.type === "int"
     || play.type === "kickoff"
     || play.type === "punt"
     || play.type === "blocked_kick"
