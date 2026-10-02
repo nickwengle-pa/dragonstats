@@ -17,6 +17,7 @@ import {
 } from "@/services/gameService";
 import { isMarkedStatsFinal } from "@/services/gameCompletion";
 import { getPregameConfig, resolveGameConfig, type PregameConfig } from "@/services/gameFlow";
+import { readFumbleSpots } from "@/services/fumbleSpots";
 import { getGameConfig } from "@/services/programService";
 import { rechainStoredPlays } from "@/services/rechainStored";
 import { opponentPlayerService } from "@/services/opponentService";
@@ -220,12 +221,7 @@ function rowToPlayRecord(
       : null,
     /* The editor seeds the recovery spot and return from these. Left off, a
        fumble opened here came up with no return and saved it as zero. */
-    fumbleReturnYards: pd.fumble_return_yards != null && Number.isFinite(Number(pd.fumble_return_yards))
-      ? Number(pd.fumble_return_yards)
-      : null,
-    fumbleRecoveredAt: pd.fumble_recovered_at != null && Number.isFinite(Number(pd.fumble_recovered_at))
-      ? Number(pd.fumble_recovered_at)
-      : null,
+    ...readFumbleSpots(pd),
     tagged,
     ballOn: p.yard_line,
     down: p.down,

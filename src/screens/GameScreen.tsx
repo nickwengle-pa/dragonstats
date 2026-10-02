@@ -48,6 +48,7 @@ import {
   canStartOvertime,
   type PregameConfig,
 } from "@/services/gameFlow";
+import { readFumbleSpots } from "@/services/fumbleSpots";
 import {
   createInitialGameState,
   replayLiveGame,
@@ -494,13 +495,9 @@ export default function GameScreen() {
         /* Every save writes these as null on a play with no fumble, and
            Number(null) is 0 - which read back as "recovered, returned 0" on
            every such play, and the replay then decided its first down from
-           the yardage instead of the recorded flag. */
-        fumbleReturnYards: pd.fumble_return_yards != null && Number.isFinite(Number(pd.fumble_return_yards))
-          ? Number(pd.fumble_return_yards)
-          : null,
-        fumbleRecoveredAt: pd.fumble_recovered_at != null && Number.isFinite(Number(pd.fumble_recovered_at))
-          ? Number(pd.fumble_recovered_at)
-          : null,
+           the yardage instead of the recorded flag. Older builds stored a
+           literal 0 on every play too - see readFumbleSpots. */
+        ...readFumbleSpots(pd),
         tagged: [
           ...p.play_players.map((pp: any) => ({
             id: pp.player_id,

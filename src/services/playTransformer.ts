@@ -18,6 +18,7 @@ import type { PlayWithPlayers } from "./gameService";
 import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
 import { resolveKickSpots } from "./kickSpots";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
+import { readFumbleSpots } from "./fumbleSpots";
 import {
   type Play,
   type PassPlay,
@@ -406,9 +407,11 @@ export function convertPlay(
 ): Play | null {
   const pd = play.play_data as Record<string, any>;
   // A loose ball remains part of the original advance up to recovery, before any recovery return.
+  // Read through readFumbleSpots: a stored 0 is a leftover, not the goal line.
+  const recoveredAt = readFumbleSpots(pd).fumbleRecoveredAt;
   if (play.is_turnover && ["rush", "pass_comp", "sack", "fum_rec"].includes(play.play_type)
-      && typeof pd?.fumble_recovered_at === "number") {
-    play = { ...play, yards_gained: pd.fumble_recovered_at - (play.yard_line ?? 0) };
+      && recoveredAt != null) {
+    play = { ...play, yards_gained: recoveredAt - (play.yard_line ?? 0) };
   }
   const penalties = buildPenalties(play, ctx);
   // Holding beyond the line keeps the run up to the foul. A play the operator

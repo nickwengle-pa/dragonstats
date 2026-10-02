@@ -14,6 +14,7 @@ import type { PlayRecord } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import { markHandSetStarts, rebuildPlaySituations, type PregameConfig } from "./gameFlow";
 import type { GameConfig } from "./programService";
+import { readFumbleSpots } from "./fumbleSpots";
 
 export interface SituationRewrite {
   id: string;
@@ -26,11 +27,6 @@ export interface SituationRewrite {
   };
   playData: Record<string, unknown>;
 }
-
-const numOrNull = (v: unknown): number | null => {
-  const n = Number(v);
-  return v != null && v !== "" && Number.isFinite(n) ? n : null;
-};
 
 /** Just enough of a play to replay where it left the ball. */
 function situationRecord(row: PlayWithPlayers): PlayRecord {
@@ -52,8 +48,7 @@ function situationRecord(row: PlayWithPlayers): PlayRecord {
     penaltyCategory: pd.play_category === "offense" || pd.play_category === "defense" ? pd.play_category : null,
     penaltyEnforcement: pd.penalty_enforcement === "declined" || pd.penalty_enforcement === "offset" ? pd.penalty_enforcement : "accepted",
     blockedKickType: pd.blocked_kick_type ?? null,
-    fumbleReturnYards: numOrNull(pd.fumble_return_yards),
-    fumbleRecoveredAt: numOrNull(pd.fumble_recovered_at),
+    ...readFumbleSpots(pd),
     tagged: [],
     ballOn: row.yard_line,
     down: row.down,
