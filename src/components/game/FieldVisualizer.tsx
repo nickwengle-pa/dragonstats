@@ -42,8 +42,18 @@ function toWidgetPercent(displayPercent: number) {
   return PLAYING_FIELD_START_PCT + (clamped * PLAYING_FIELD_WIDTH_PCT) / 100;
 }
 
-function endZoneLabel(name: string, abbr: string) {
-  return name.trim().length > 0 ? name.toUpperCase() : abbr;
+/* The end zone is 96px tall on a phone (128 on a tablet) and the label runs
+   along it in 9px tracked caps - about 18 characters before it runs off both
+   ends. "PURCHASE LINE HIGH SCHOOL" did. A name that long reads as its
+   initials (PLHS) instead; one that fits keeps the full name. */
+const END_ZONE_MAX_CHARS = 18;
+
+export function endZoneLabel(name: string, abbr: string) {
+  const full = name.trim().toUpperCase();
+  if (!full) return abbr;
+  if (full.length <= END_ZONE_MAX_CHARS) return full;
+  const words = full.split(/\s+/);
+  return words.length > 1 ? words.map((word) => word[0]).join("") : (abbr || full);
 }
 
 /** Endzone watermark.
