@@ -130,6 +130,10 @@ export function playFingerprint(play: PlayRecord): string {
     play.penalty ?? "", play.penaltyCategory ?? "", play.penaltyEnforcement ?? "", play.flagYards ?? 0,
     play.blockedKickType ?? "", play.fumbleRecoveredAt ?? "", play.fumbleReturnYards ?? "",
     pd.score_delta_team ?? "", pd.score_delta ?? "", handNext, handStart, tags,
+    // The penalty ruling: whether the play stands, what the down does, and
+    // where it is walked off from. Each can move a stat on its own.
+    pd.penalty_play_counts ?? "", pd.penalty_down_outcome ?? "", pd.penalty_enforcement_from ?? "",
+    pd.foul_spot_ball_on ?? "",
   ].join("~"));
 }
 
