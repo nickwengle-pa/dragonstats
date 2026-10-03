@@ -229,4 +229,47 @@ test("the ball never lands in an end zone", () => {
   }
 });
 
+/* ── Where the officials actually spotted it ─────────────────────────────────
+   "In case the yards aren't exact": the operator moves the result a yard, and
+   the down and distance have to follow by the rules, not stay as typed. */
+const pick = (e: ReturnType<typeof enforcePenalty>) => e && { ballOn: e.ballOn, down: e.down, distance: e.distance };
+const OFFSIDE: EnforcementInput = {
+  side: "defense", flagYards: 5,
+  before: { ballOn: 30, down: 2, distance: 8 },
+  foulSpotBallOn: null, playEndBallOn: null,
+  kind: "dead_ball", possessionAtEnd: "offense", firstDownDistance: 10,
+};
+
+test("a spot a yard short of the mark-off keeps the chains where they were", () => {
+  assert.deepEqual(pick(enforcePenalty(OFFSIDE)), { ballOn: 35, down: 2, distance: 3 });
+  const e = enforcePenalty({ ...OFFSIDE, spottedAt: 34 });
+  assert.deepEqual(pick(e), { ballOn: 34, down: 2, distance: 4 });
+  assert.equal(e?.actualYards, 4);
+  assert.equal(e?.newSeries, false);
+});
+
+test("a spot that reaches the chains on a defensive foul is a first down", () => {
+  const e = enforcePenalty({ ...OFFSIDE, spottedAt: 38 });
+  assert.deepEqual(pick(e), { ballOn: 38, down: 1, distance: 10 });
+  assert.equal(e?.newSeries, true);
+});
+
+test("a fresh series is measured from the new spot, goal to go inside the 10", () => {
+  const hold = { ...OFFSIDE, side: "defense" as const, flagYards: 15, autoFirstDown: true, before: { ballOn: 70, down: 3, distance: 6 } };
+  assert.deepEqual(pick(enforcePenalty(hold)), { ballOn: 85, down: 1, distance: 10 });
+  assert.deepEqual(pick(enforcePenalty({ ...hold, spottedAt: 92 })), { ballOn: 92, down: 1, distance: 8 });
+});
+
+test("a spotted ball on a change of possession is a new series for the other team", () => {
+  const e = enforcePenalty({ ...REPORTED, spottedAt: 60 });
+  assert.equal(e?.ballOn, 60);
+  assert.equal(e?.possessionFlips, true);
+  assert.deepEqual([e?.down, e?.distance], [1, 10]);
+});
+
+test("a spotted ball never lands in an end zone", () => {
+  assert.equal(enforcePenalty({ ...OFFSIDE, spottedAt: 0 })?.ballOn, 1);
+  assert.equal(enforcePenalty({ ...OFFSIDE, spottedAt: 100 })?.ballOn, 99);
+});
+
 console.log(`\n${passed}/${total} passed`);

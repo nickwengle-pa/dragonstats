@@ -83,6 +83,14 @@ export interface EnforcementInput {
   autoFirstDown?: boolean;
   /** An offensive foul that also costs the down - grounding, an illegal pass. */
   lossOfDown?: boolean;
+  /**
+   * Where the officials actually put the ball, when it is not where the
+   * arithmetic does - a half-yard spot, a mark-off from a spot a yard away.
+   * Replaces the marked-off spot, and the down and distance are worked out
+   * from it by the same rules: the chains stay put unless the spot reaches
+   * them, and a fresh series is measured from it. Same frame as `before`.
+   */
+  spottedAt?: number;
 }
 
 export interface Enforcement extends Situation {
@@ -180,7 +188,9 @@ export function enforcePenalty(i: EnforcementInput): Enforcement | null {
   if (spot == null || !Number.isFinite(spot) || spot < 0 || spot > 100
     || !Number.isFinite(i.flagYards) || i.flagYards < 0) return null;
 
-  const ballOn = markOff(spot, i.side, i.flagYards);
+  const ballOn = i.spottedAt != null && Number.isFinite(i.spottedAt)
+    ? clamp(Math.round(i.spottedAt))
+    : markOff(spot, i.side, i.flagYards);
   const details = { ballOn, from, enforcementSpot: spot, actualYards: Math.abs(ballOn - spot) };
   const freshDistance = (flips: boolean) => {
     const nextBallOn = flips ? 100 - ballOn : ballOn;
