@@ -57,7 +57,12 @@ export default function SeasonReportScreen() {
         ours.set("our_team", "TEAM");
         const kickers = Object.entries(combined.summary.kicking).filter(([id, s]) => ours.has(id) && (s.fieldGoalAttempts || s.extraPointAttempts));
         add("Field goals & extra points",["Player","FG Made","FG Att","FG Lg","PAT Made","PAT Att"], kickers.map(([id,s]) => [ours.get(id)!,s.fieldGoalMade,s.fieldGoalAttempts,s.fieldGoalLong,s.extraPointMade,s.extraPointAttempts]), ["Total", ...["fieldGoalMade","fieldGoalAttempts","fieldGoalLong","extraPointMade","extraPointAttempts"].map(key => key === "fieldGoalLong" ? Math.max(0,...kickers.map(([,s]) => s.fieldGoalLong)) : kickers.reduce((n,[,s]) => n + Number((s as any)[key] ?? 0),0))]);
-        for (const [key, title] of [["ko","Kickoff returns"],["punt","Punt returns"],["int","Interception returns"],["fr","Fumble returns"]] as const) {
+        for (const [key, title] of [["ko","Kickoff returns"],["punt","Punt returns"]] as const) {
+          // Fum includes a muff the kicking team recovered, which has no return attempt.
+          const ret = (r: typeof report.returnsTotal) => [r.name,r[key].no,r[key].yds,r[key].long,r[key].td,r[key].fum];
+          add(title,["Player","No","Yds","Lg","TD","Fum"],report.returns.filter(r => r[key].no || r[key].fum).map(ret),ret(report.returnsTotal));
+        }
+        for (const [key, title] of [["int","Interception returns"],["fr","Fumble returns"]] as const) {
           const ret = (r: typeof report.returnsTotal) => [r.name,r[key].no,r[key].yds,r[key].long,r[key].td];
           add(title,["Player","No","Yds","Lg","TD"],report.returns.filter(r => r[key].no).map(ret),ret(report.returnsTotal));
         }
