@@ -13,17 +13,18 @@ import { replayLiveGame } from "./liveGameSession";
 import { advanceSituationAfterPlay } from "./gameFlow";
 import { DEFAULT_GAME_CONFIG } from "./programService";
 import { applyLostMuffs } from "./lostMuffs";
+import { HUDL_COLUMNS, hudlRow } from "./hudlExport";
 import type { PlayRecord } from "@/components/game/types";
 
 const tags = (...roles: string[]) => roles.map(role => ({ player_id: role, role, credit: null }));
 /** A 40-yard punt from our 30, landing on their 30. */
-function punt(playData: Record<string, unknown>, yards: number): PlayWithPlayers {
+function punt(playData: Record<string, unknown>, yards: number, roles = ["punter", "returner"]): PlayWithPlayers {
   return {
     id: "p1", game_id: "g", sequence: 1, quarter: 1, clock: "10:00", down: 4, distance: 8,
     yard_line: 30, possession: "us", play_type: "punt",
     play_data: { kicked_to_yard: 30, ...playData }, yards_gained: yards,
     is_touchdown: false, is_turnover: false, is_penalty: false, description: "", play_start_time: 600,
-    play_players: tags("punter", "returner"),
+    play_players: tags(...roles),
   } as unknown as PlayWithPlayers;
 }
 
@@ -88,6 +89,33 @@ describe("punt outcomes", () => {
         expect(s.punting.punter.punts, outcome).toBe(1);
       }
     }
+  });
+
+  it("credits no tackle on a punt nobody fielded or fair caught", () => {
+    for (const outcome of ["downed", "out_of_bounds", "touchback", "fair_catch"]) {
+      for (const s of run(punt({ kick_outcome: outcome }, 40, ["punter", "returner", "tackler"]))) {
+        const d = s.defense.tackler;
+        expect((d?.soloTackles ?? 0) + (d?.assistedTackles ?? 0), outcome).toBe(0);
+      }
+    }
+  });
+
+  it("drops a stale returner and tackler from the Hudl row of a downed punt", () => {
+    const row = (outcome: string) => {
+      const cells = hudlRow({
+        id: "p1", sequence: 1, type: "punt", possession: "us", ballOn: 30, quarter: 1, down: 4, distance: 8,
+        yards: 40, isTouchdown: false, turnover: false, description: "", result: "",
+        playData: { kicked_to_yard: 30, kick_outcome: outcome },
+        tagged: [
+          { id: "kr", player_id: "kr", jersey_number: 2, name: "KR", role: "returner" },
+          { id: "t", player_id: "t", jersey_number: 9, name: "T", role: "tackler" },
+        ],
+      } as unknown as PlayRecord);
+      return Object.fromEntries(HUDL_COLUMNS.map((c, i) => [c, cells[i]]));
+    };
+    expect(row("downed")).toMatchObject({ RETURNER_Jersey: "", TACKLER1_Jersey: "" });
+    expect(row("fair_catch")).toMatchObject({ RETURNER_Jersey: 2, TACKLER1_Jersey: "" });
+    expect(row("returned")).toMatchObject({ RETURNER_Jersey: 2, TACKLER1_Jersey: 9 });
   });
 
   it("leaves the ball with the kickers where they recovered a muff", () => {

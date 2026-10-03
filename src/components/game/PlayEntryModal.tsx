@@ -1292,6 +1292,13 @@ export default function PlayEntryModal({
      0-yard return. Such a kick has no returner, whatever was carried. */
   const kickHasNoReceiver = isKickPlay && !hasReturnSpot && kickOutcome !== "fair_catch";
   const shownTagged = kickHasNoReceiver ? tagged.filter(t => t.role !== "returner") : tagged;
+  /* Same leak, one step later: tacklers picked on a return stay in state when
+     the outcome changes to one with no tackle step - Downed, Fair Catch,
+     Return TD, a muff the kickers kept - and an edit loads them from the
+     saved play. Nothing on screen could clear them. Mirrors the condition
+     that adds the defense step for a kick. */
+  const kickHasNoTackle = isKickPlay && (!hasReturnSpot || isTD || muffLostToKickers);
+  const shownTacklers = kickHasNoTackle ? [] : tacklers;
 
   const steps: Step[] = [];
   if (isKickPlay) {
@@ -1794,7 +1801,7 @@ export default function PlayEntryModal({
 
   const handleSubmit = (receive = onSubmit, draftOnly = false) => {
     if (!draftOnly && goalChoiceRequired && nextGoalToGo === undefined) return;
-    const allTagged = [...shownTagged, ...tacklers];
+    const allTagged = [...shownTagged, ...shownTacklers];
 
     /* A bad snap is charged to TEAM, not to the quarterback who was waiting
        for it. There is nobody to pick, so the tag is written here - our own
@@ -3153,6 +3160,11 @@ export default function PlayEntryModal({
                       ["punt", "fair_catch"].includes(playType.id) ? "punt" : "kickoff",
                     );
                     setPlayTypeOverride(blocked);
+                    // A blocked kick has no returner, but the sticky one from
+                    // the last kick is already tagged and would be saved and
+                    // credited as a 0-yard return.
+                    setTagged(prev => prev.filter(t => t.role !== "returner"));
+                    setCarriedRoles(prev => { const next = new Set(prev); next.delete("returner"); return next; });
                     // Roles change to kicker/blocker/recoverer, so restart. The
                     // kicker or punter already tagged keeps his tag.
                     setCurrentRoleIdx(0);
@@ -4482,7 +4494,7 @@ export default function PlayEntryModal({
                     <span className="font-bold">{defFormation}</span>
                   </div>
                 )}
-                {tacklers.length > 0 && (
+                {shownTacklers.length > 0 && (
                   <div className="flex justify-between">
                     <span className="text-slate-500">Tacklers</span>
                     <span className="font-bold">
@@ -4491,7 +4503,7 @@ export default function PlayEntryModal({
                           number either. Bare interpolation printed "#null"
                           for both - which is what an edited play showed for
                           every tackler on it. */}
-                      {tacklers.map(t => (
+                      {shownTacklers.map(t => (
                         t.isTeam || t.player_id === OPP_TEAM_PLAYER.id
                           ? "TEAM"
                           : t.jersey_number != null

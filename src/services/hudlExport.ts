@@ -1,6 +1,6 @@
 import { findPlayTypeDef, yardLabel, type PlayRecord } from "@/components/game/types";
 import type { PlayCharting } from "./chartingService";
-import { resolveKickSpots } from "./kickSpots";
+import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
 
 // Exact order and spelling from PlaylistData_2026-09-05.xlsx.
 export const HUDL_COLUMNS = [
@@ -18,7 +18,15 @@ export function hudlRow(p: PlayRecord, c?: PlayCharting): unknown[] {
   const def = findPlayTypeDef(p.type);
   const kick = ["punt", "kickoff", "onside_kick", "fair_catch"].includes(p.type)
     ? resolveKickSpots({ ballOn: p.ballOn, playData: pd, description: p.description, isTouchdown: p.isTouchdown }) : null;
-  const players = (roles: string[]) => p.tagged.filter(t => roles.includes(t.role));
+  // A kick nobody fielded (downed, out of bounds, touchback) has no returner
+  // and no tackle; plays saved before that was enforced can still carry the
+  // previous kick's returner and tacklers. A fair catch has a catcher but no tackle.
+  const receipt = kick ? kickReceiptOf(pd) : null;
+  const dropped = new Set([
+    ...(receipt?.noReceiver ? ["returner"] : []),
+    ...(receipt?.noReceiver || receipt?.fairCaught ? ["tackler", "sacker", "assist"] : []),
+  ]);
+  const players = (roles: string[]) => p.tagged.filter(t => roles.includes(t.role) && !dropped.has(t.role));
   const pair = (roles: string[], index = 0, fallback = "") => {
     const t = players(roles)[index];
     return [t?.jersey_number ?? "", t?.name ?? fallback];

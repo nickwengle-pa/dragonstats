@@ -701,7 +701,9 @@ export function convertPlay(
           : {}),
         isTouchback,
         isTouchdown: play.is_touchdown,
-        ...tackleCredits(play),
+        // Nobody fielded it, or he signalled: there was no tackle, so a
+        // tackler tag is a leftover from a return that was changed.
+        ...(receipt.noReceiver || receipt.fairCaught ? {} : tackleCredits(play)),
         penalties,
         description: play.description ?? undefined,
         context,
@@ -732,7 +734,9 @@ export function convertPlay(
           : {}),
         isTouchback,
         isTouchdown: play.is_touchdown,
-        ...tackleCredits(play),
+        // Nobody fielded it, or he signalled: there was no tackle, so a
+        // tackler tag is a leftover from a return that was changed.
+        ...(receipt.noReceiver || receipt.fairCaught ? {} : tackleCredits(play)),
         penalties,
         description: play.description ?? undefined,
         context,
