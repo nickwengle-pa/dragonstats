@@ -43,7 +43,7 @@ import {
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import { resolveEditedNextSituation } from "@/components/game/editNextSituation";
 import { formatClockValue } from "@/components/game/ClockInput";
-import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
+import TimeoutEditModal, { timeoutCallerLabel, type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import {
   findPlayTypeDef,
   type PlayCategory,
@@ -1084,9 +1084,7 @@ export default function PostGameReview() {
   const handleSaveTimeoutEdit = useCallback(async (playId: string, edit: TimeoutEdit) => {
     const original = plays.find((p) => p.id === playId);
     const pd = (original?.play_data ?? {}) as Record<string, any>;
-    const label = edit.team === "us"
-      ? (program?.name ?? "Team")
-      : (meta?.opponent_name ?? "Opponent");
+    const label = timeoutCallerLabel(edit.team, program?.name ?? "Team", meta?.opponent_name ?? "Opponent");
 
     const ok = await updatePlayFull(
       playId,

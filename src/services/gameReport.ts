@@ -28,7 +28,7 @@ import type {
 import type { GameStatsBundle } from "./statsService";
 import type { PlayWithPlayers } from "./gameService";
 import { defensiveReturnsFromPlays, isFumbleLost } from "./defensiveReturns";
-import { netKickYards, resolveKickSpots } from "./kickSpots";
+import { kickReceiptOf, netKickYards, resolveKickSpots } from "./kickSpots";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { firstPlayerByRole } from "./playTransformer";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
@@ -874,8 +874,13 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const rushTdThem = countPlays("them", p => p.is_touchdown && RUSH_TYPES.has(p.play_type));
   const passTdUs = countPlays("us", p => p.is_touchdown && p.play_type === "pass_comp");
   const passTdThem = countPlays("them", p => p.is_touchdown && p.play_type === "pass_comp");
-  const fumblesUs = countPlays("us", p => p.play_type === "fumble" || Boolean(p.play_data?.had_fumble));
-  const fumblesThem = countPlays("them", p => p.play_type === "fumble" || Boolean(p.play_data?.had_fumble));
+  /* A muff the kickers fell on is the RECEIVING team's fumble, and the play
+     is filed under the kicking team's possession - so it counts for the side
+     that did not have the ball at the snap. See lostMuffs.ts. */
+  const lostMuffs = (receiving: "us" | "them") => countPlays(receiving === "us" ? "them" : "us",
+    p => kickReceiptOf(p.play_data).muffLostToKickers && !isWipedByPenaltyRow(p));
+  const fumblesUs = countPlays("us", p => p.play_type === "fumble" || Boolean(p.play_data?.had_fumble)) + lostMuffs("us");
+  const fumblesThem = countPlays("them", p => p.play_type === "fumble" || Boolean(p.play_data?.had_fumble)) + lostMuffs("them");
 
   /* ── Team comparison ──────────────────────────────────────────────────── */
   /* Rushing gain and loss, per side, off the plays. Every play is charted

@@ -17,6 +17,7 @@ import { TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
 import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
+import { lostMuffFumble } from "./lostMuffs";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { readFumbleSpots } from "./fumbleSpots";
 import {
@@ -695,6 +696,9 @@ export function convertPlay(
         kickDistance: outOfBounds ? undefined : spots?.kickDistance,
         returnYards: receipt.fairCaught ? 0 : returner ? spots?.returnYards : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
+        ...(receipt.muffLostToKickers
+          ? { fumble: lostMuffFumble(firstPlayerByRole(play, "returner"), context.possessionTeam) }
+          : {}),
         isTouchback,
         isTouchdown: play.is_touchdown,
         ...tackleCredits(play),
@@ -723,6 +727,9 @@ export function convertPlay(
         kickDistance: spots?.kickDistance,
         returnYards: receipt.fairCaught ? 0 : returner ? spots?.returnYards : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
+        ...(receipt.muffLostToKickers
+          ? { fumble: lostMuffFumble(firstPlayerByRole(play, "returner"), context.possessionTeam) }
+          : {}),
         isTouchback,
         isTouchdown: play.is_touchdown,
         ...tackleCredits(play),

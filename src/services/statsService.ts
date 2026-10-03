@@ -13,6 +13,7 @@ import { getPregameConfig } from "./gameFlow";
 import { resolveDriveResults } from "./driveResults";
 import { runOutFinalClock } from "./finalClock";
 import { isInsideTwenty, resolveKickSpots } from "./kickSpots";
+import { applyLostMuffs } from "./lostMuffs";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import {
   FootballStatsEngine,
@@ -263,6 +264,12 @@ export async function computeGameStatsBundle(
   //    comment says it would need the landing spot, which it was never given -
   //    so the column read zero however well anyone punted.
   supplementPuntsInside20(summary, plays);
+
+  // 9b. A muff the kicking team recovered is a fumble lost for the receiver
+  //     and his team. The engine charges fumbles to the team in possession,
+  //     which on a kick is the wrong one. See lostMuffs.ts.
+  applyLostMuffs(summary, enginePlays,
+    new Map([...rosterPlayers, ...oppPlayers, ...placeholders].map(p => [p.id, p.name])));
 
   // 10. Correct drive results — the engine labels every non-touchdown drive a
   //     punt, field goals and turnovers included. See driveResults.ts.

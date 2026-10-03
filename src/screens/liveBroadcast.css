@@ -22,7 +22,8 @@
 .lv-tos { display: flex; gap: 3px; margin-top: 4px; }
 .lv-team.r .lv-tos { justify-content: flex-end; }
 .lv-tos button { width: 12px; height: 5px; padding: 0; border: 0; background: var(--bc-amber); cursor: pointer; }
-.lv-tos button:disabled { background: rgba(255, 255, 255, .2); cursor: default; }
+.lv-tos button:disabled, .lv-tos button[data-used] { background: rgba(255, 255, 255, .2); }
+.lv-tos button:disabled { cursor: default; }
 .lv-score { font-family: "Chakra Petch", sans-serif; font-size: 34px; line-height: 34px; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; background: none; border: 0; padding: 0; color: #fff; }
 .lv-center { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0 12px; border-left: 1px solid rgba(255, 255, 255, .12); border-right: 1px solid rgba(255, 255, 255, .12); }
 .lv-qtr { display: flex; align-items: center; gap: 4px; }

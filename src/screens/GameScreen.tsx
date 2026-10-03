@@ -68,7 +68,7 @@ import { FinalBanner, FinalChangeDialog } from "@/components/game/FinalChanges";
 import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import { resolveEditedNextSituation } from "@/components/game/editNextSituation";
-import TimeoutEditModal, { type TimeoutEdit } from "@/components/game/TimeoutEditModal";
+import TimeoutEditModal, { timeoutCallerLabel, type TimeoutCaller, type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import PlayLog from "@/components/game/PlayLog";
 import QuarterChangeRow from "@/components/game/QuarterChangeRow";
 import { createQuarterChange, quarterChangeBefore } from "@/services/quarterChange";
@@ -261,8 +261,8 @@ const CLOCK_STOPPING_PLAY_TYPES = new Set([
   "punt", "kickoff", "onside_kick", "fair_catch", "blocked_kick",
   // Incompletions stop the clock.
   "pass_inc", "throwaway", "drop", "spike",
-  // Scoring plays and conversions.
-  "fg", "pat", "two_pt", "safety",
+  // Scoring plays. (Not the try after a touchdown - see below.)
+  "fg", "safety",
   // Turnovers.
   "int", "fumble",
   // A flag stops the clock while it's marked off.
@@ -276,6 +276,10 @@ function shouldPromptForClockCapture(
 ): boolean {
   // The timeout flow captures its own clock, so prompting again would double up.
   if (play.type === "timeout") return false;
+  // A try is an untimed down: no time comes off, flag or not, so the clock
+  // the operator entered after the touchdown is still the clock. Asking
+  // again after the PAT was a second entry of the same number.
+  if (play.type === "pat" || play.type === "two_pt") return false;
   if (play.isTouchdown) return true;
   if (CLOCK_STOPPING_PLAY_TYPES.has(play.type)) return true;
   // A flag on any play stops the clock too.
@@ -688,7 +692,7 @@ export default function GameScreen() {
   const [postPlayClockSecs, setPostPlayClockSecs] = useState(0);
   const [pendingClockCapture, setPendingClockCapture] = useState<PendingClockCapture | null>(null);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
-  const [timeoutTeam, setTimeoutTeam] = useState<TimeoutTeam>("us");
+  const [timeoutTeam, setTimeoutTeam] = useState<TimeoutCaller>("us");
   const [timeoutMins, setTimeoutMins] = useState(12);
   const [timeoutSecs, setTimeoutSecs] = useState(0);
   const [showBallEditor, setShowBallEditor] = useState(false);
@@ -1340,8 +1344,9 @@ export default function GameScreen() {
 
   const openTimeoutModal = useCallback((team: TimeoutTeam) => {
     const remaining = team === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
-    if (remaining <= 0) return;
-    setTimeoutTeam(team);
+    // A spent tick still opens the sheet, on Official: an official's timeout
+    // has to be reachable when both teams are out, late in a half.
+    setTimeoutTeam(remaining > 0 ? team : "official");
     setTimeoutMins(Math.floor(clock / 60));
     setTimeoutSecs(clock % 60);
     setShowTimeoutModal(true);
@@ -1892,10 +1897,12 @@ export default function GameScreen() {
     }
   };
 
-  const recordTimeoutAt = useCallback(async (team: TimeoutTeam, clockSecs: number) => {
+  const recordTimeoutAt = useCallback(async (team: TimeoutCaller, clockSecs: number) => {
     if (!gameId || !season || isSubmitting.current) return;
 
-    const remaining = team === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
+    // An official's timeout is charged to nobody, so there is no count to run out.
+    const remaining = team === "official" ? Infinity
+      : team === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
     if (remaining <= 0) {
       setShowTimeoutModal(false);
       return;
@@ -1909,9 +1916,7 @@ export default function GameScreen() {
       const timeoutTeamLocal = team;
       const before: LiveSituationSnapshot = { possession, down, distance, ballOn };
       const scoreBefore: ScoreSnapshot = { us: ourScore, them: theirScore };
-      const timeoutLabel = timeoutTeamLocal === "us"
-        ? (program?.name ?? "Team")
-        : (game?.opponent?.name ?? "Opponent");
+      const timeoutLabel = timeoutCallerLabel(timeoutTeamLocal, program?.name ?? "Team", game?.opponent?.name ?? "Opponent");
       const previewPlay: PlayRecord = withHandSetStart({
         id: "pending-timeout",
         sequence: plays.length + 1,
@@ -1943,7 +1948,7 @@ export default function GameScreen() {
           recorded_end_clock_seconds: nextClock,
           timeout_team: timeoutTeamLocal,
           timeout_label: timeoutLabel,
-          timeout_remaining_after: Math.max(0, remaining - 1),
+          ...(timeoutTeamLocal === "official" ? {} : { timeout_remaining_after: Math.max(0, remaining - 1) }),
           next_situation_source: "timeout",
         },
       }, plays[plays.length - 1], pregame, gc);
@@ -2414,9 +2419,7 @@ export default function GameScreen() {
     const idx = plays.findIndex(p => p.id === playId);
     if (idx === -1) return;
     const original = plays[idx];
-    const label = edit.team === "us"
-      ? (program?.name ?? "Team")
-      : (game?.opponent?.name ?? "Opponent");
+    const label = timeoutCallerLabel(edit.team, program?.name ?? "Team", game?.opponent?.name ?? "Opponent");
 
     const nextPlayData = {
       ...(original.playData ?? {}),
@@ -3360,8 +3363,29 @@ export default function GameScreen() {
         <div className="sheet bg-black/80">
           <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
             <h2 className="text-sm font-black text-center">Record Timeout</h2>
+            {/* Official: injury, measurement, equipment. Stops the clock,
+                charged to neither team. A team with none left can't be picked. */}
+            <div className="grid grid-cols-3 gap-1.5">
+              {(["us", "them", "official"] as const).map(side => {
+                const out = side !== "official"
+                  && (side === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining) <= 0;
+                return (
+                  <button key={side} type="button" disabled={out} aria-pressed={timeoutTeam === side}
+                    onClick={() => setTimeoutTeam(side)}
+                    className={`py-2 rounded-xl text-xs font-black border-2 truncate disabled:opacity-30 ${
+                      timeoutTeam === side
+                        ? "border-amber-500 bg-amber-500/15 text-amber-400"
+                        : "border-surface-border bg-surface-bg text-neutral-500"
+                    }`}>
+                    {timeoutCallerLabel(side, progName, oppName)}
+                  </button>
+                );
+              })}
+            </div>
             <div className="text-xs text-neutral-500 text-center">
-              {timeoutTeam === "us" ? progName : oppName} timeout in {quarterLabel(quarter)}
+              {timeoutTeam === "official"
+                ? `Official timeout in ${quarterLabel(quarter)} · not charged`
+                : `${timeoutTeam === "us" ? progName : oppName} timeout in ${quarterLabel(quarter)}`}
             </div>
             <ClockInput
               seconds={timeoutMins * 60 + timeoutSecs}
