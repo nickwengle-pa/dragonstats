@@ -104,8 +104,10 @@ export interface PuntingRow {
 }
 export interface ReturnRow {
   name: string;
-  ko: { no: number; yds: number; long: number; td: number };
-  punt: { no: number; yds: number; long: number; td: number };
+  /** fum: fumbles on the return, a muff the kicking team fell on included
+   *  (lostMuffs.ts). A muff alone is a fumble with no return attempt. */
+  ko: { no: number; yds: number; long: number; td: number; fum: number };
+  punt: { no: number; yds: number; long: number; td: number; fum: number };
   int: { no: number; yds: number; long: number; td: number };
   /** Fumbles recovered from the other team and brought back. */
   fr: { no: number; yds: number; long: number; td: number };
@@ -659,30 +661,32 @@ export function buildGameReport(input: BuildReportInput): GameReport {
           yds: r?.kickReturnYards ?? 0,
           long: r?.kickReturnLong ?? 0,
           td: r?.kickReturnTouchdowns ?? 0,
+          fum: r?.kickReturnFumbles ?? 0,
         },
         punt: {
           no: r?.puntReturns ?? 0,
           yds: r?.puntReturnYards ?? 0,
           long: r?.puntReturnLong ?? 0,
           td: r?.puntReturnTouchdowns ?? 0,
+          fum: r?.puntReturnFumbles ?? 0,
         },
         int: { no: pick.no, yds: pick.yds, long: pick.long, td: summary.defense[id]?.interceptionTouchdowns ?? 0 },
         fr: { no: scoop.no, yds: scoop.yds, long: scoop.long, td: summary.defense[id]?.fumbleRecoveryTouchdowns ?? 0 },
       };
     })
-    .filter(r => r.ko.no > 0 || r.punt.no > 0 || r.int.no > 0 || r.fr.no > 0)
+    .filter(r => r.ko.no > 0 || r.punt.no > 0 || r.int.no > 0 || r.fr.no > 0 || r.ko.fum > 0 || r.punt.fum > 0)
     .sort((a, b) =>
       (b.ko.yds + b.punt.yds + b.int.yds + b.fr.yds) - (a.ko.yds + a.punt.yds + a.int.yds + a.fr.yds));
   const returnsTotal: ReturnRow = returns.reduce((t, r) => ({
     name: "Total",
-    ko: { no: t.ko.no + r.ko.no, yds: t.ko.yds + r.ko.yds, long: Math.max(t.ko.long, r.ko.long), td: t.ko.td + r.ko.td },
-    punt: { no: t.punt.no + r.punt.no, yds: t.punt.yds + r.punt.yds, long: Math.max(t.punt.long, r.punt.long), td: t.punt.td + r.punt.td },
+    ko: { no: t.ko.no + r.ko.no, yds: t.ko.yds + r.ko.yds, long: Math.max(t.ko.long, r.ko.long), td: t.ko.td + r.ko.td, fum: t.ko.fum + r.ko.fum },
+    punt: { no: t.punt.no + r.punt.no, yds: t.punt.yds + r.punt.yds, long: Math.max(t.punt.long, r.punt.long), td: t.punt.td + r.punt.td, fum: t.punt.fum + r.punt.fum },
     int: { no: t.int.no + r.int.no, yds: t.int.yds + r.int.yds, long: Math.max(t.int.long, r.int.long), td: t.int.td + r.int.td },
     fr: { no: t.fr.no + r.fr.no, yds: t.fr.yds + r.fr.yds, long: Math.max(t.fr.long, r.fr.long), td: t.fr.td + r.fr.td },
   }), {
     name: "Total",
-    ko: { no: 0, yds: 0, long: 0, td: 0 },
-    punt: { no: 0, yds: 0, long: 0, td: 0 },
+    ko: { no: 0, yds: 0, long: 0, td: 0, fum: 0 },
+    punt: { no: 0, yds: 0, long: 0, td: 0, fum: 0 },
     int: { no: 0, yds: 0, long: 0, td: 0 },
     fr: { no: 0, yds: 0, long: 0, td: 0 },
   });
@@ -955,8 +959,11 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     row("Interceptions: Number-Yards-TD",
       `${returnsTotal.int.no}-${returnsTotal.int.yds}-${intTdUs}`,
       `${usTeam.interceptionsThrown}-${theirIntReturnYards}-${intTdThem}`),
+    // A muff we fell on counts as a recovery here, the mirror of the other
+    // side's column, which is our fumbles lost and so already includes it.
+    // Nobody is tagged for it, so it is in no player's FR and has no yards.
     row("Fumble returns: Number-Yards-TD",
-      `${defenseTotal.fr}-${defenseTotal.frYds}-${fumbleReturnTdUs}`,
+      `${defenseTotal.fr + lostMuffs("them")}-${defenseTotal.frYds}-${fumbleReturnTdUs}`,
       `${usTeam.fumblesLost}-${theirFumbleReturnYards}-${fumbleReturnTdThem}`),
     row("Third-Down Conversions",
       dash(usTeam.thirdDownConversions, usTeam.thirdDownAttempts),

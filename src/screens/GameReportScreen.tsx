@@ -676,6 +676,12 @@ export default function GameReportScreen() {
                         {g}
                       </th>
                     ))}
+                    {/* Fumbles BY the returner on kicks, a lost muff included.
+                        The Fumble group is fumbles recovered FROM the other side. */}
+                    <th rowSpan={2} title="Fumbles on kick and punt returns, muffs included"
+                      className="py-[3px] px-[3px] text-[6.5pt] font-black uppercase text-right align-bottom border-l border-neutral-400 border-b border-black">
+                      Fum
+                    </th>
                   </tr>
                   <tr className="border-b border-black">
                     <th />
@@ -701,6 +707,7 @@ export default function GameReportScreen() {
                         <td key={`${gi}l`} className="py-[2.5px] px-[3px] text-right">{g.no ? g.long : ""}</td>,
                         <td key={`${gi}t`} className="py-[2.5px] px-[3px] text-right">{g.no ? g.td : ""}</td>,
                       ])}
+                      <td className="py-[2.5px] px-[3px] text-right border-l border-neutral-400">{r.ko.fum + r.punt.fum || ""}</td>
                     </tr>
                   ))}
                   <tr className="border-t-2 border-black font-black">
@@ -711,6 +718,7 @@ export default function GameReportScreen() {
                       <td key={`${gi}l`} className="py-[3px] px-[3px] text-right">{g.long}</td>,
                       <td key={`${gi}t`} className="py-[3px] px-[3px] text-right">{g.td}</td>,
                     ])}
+                    <td className="py-[3px] px-[3px] text-right border-l border-neutral-400">{report.returnsTotal.ko.fum + report.returnsTotal.punt.fum}</td>
                   </tr>
                 </tbody>
               </table>
