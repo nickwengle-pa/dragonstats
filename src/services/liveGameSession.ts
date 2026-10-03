@@ -40,7 +40,7 @@ import type { GameConfig } from "./programService";
 import { resolveDriveResults } from "./driveResults";
 import { splitTackleCredit } from "./tackleCredit";
 import { grantsAutoFirstDown, penaltyWipesPlay } from "@/components/game/types";
-import { resolveKickSpots } from "./kickSpots";
+import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
 import { scoringEventsForPlay } from "./scoringLedger";
 import { convertPlay } from "./playTransformer";
 import type { PlayWithPlayers } from "./gameService";
@@ -396,6 +396,7 @@ function toEnginePlay(
   }
   const tackles = liveTackleCredits(play);
   const kickSpots = liveKickSpots(play);
+  const receipt = kickReceiptOf(play.playData);
 
   switch (play.type) {
     case "rush": {
@@ -585,12 +586,17 @@ function toEnginePlay(
       return {
         type: PlayType.Kickoff,
         kicker: firstTaggedPlayer(play, "kicker")?.player_id,
-        returner: firstTaggedPlayer(play, "returner")?.player_id,
-        result: play.isTouchback ? SpecialTeamsResult.Touchback : (play.isTouchdown ? SpecialTeamsResult.ReturnTouchdown : SpecialTeamsResult.Normal),
+        returner: receipt.muffLostToKickers ? undefined : firstTaggedPlayer(play, "returner")?.player_id,
+        result: play.isTouchback ? SpecialTeamsResult.Touchback
+          : play.isTouchdown ? SpecialTeamsResult.ReturnTouchdown
+            : receipt.fairCaught ? SpecialTeamsResult.FairCatch
+              : receipt.muffLostToKickers ? SpecialTeamsResult.Muff
+                : SpecialTeamsResult.Normal,
         kickDistance: kickSpots?.kickDistance,
-        returnYards: firstTaggedPlayer(play, "returner")
+        returnYards: receipt.fairCaught ? 0 : firstTaggedPlayer(play, "returner") && !receipt.muffLostToKickers
           ? (kickSpots?.returnYards ?? play.yards)
           : undefined,
+        ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
         tackledBy: tackles.tackledBy,
@@ -603,12 +609,17 @@ function toEnginePlay(
       return {
         type: PlayType.Punt,
         punter: firstTaggedPlayer(play, "punter")?.player_id,
-        returner: firstTaggedPlayer(play, "returner")?.player_id,
-        result: play.isTouchback ? SpecialTeamsResult.Touchback : (play.isTouchdown ? SpecialTeamsResult.ReturnTouchdown : SpecialTeamsResult.Normal),
+        returner: receipt.muffLostToKickers ? undefined : firstTaggedPlayer(play, "returner")?.player_id,
+        result: play.isTouchback ? SpecialTeamsResult.Touchback
+          : play.isTouchdown ? SpecialTeamsResult.ReturnTouchdown
+            : receipt.fairCaught ? SpecialTeamsResult.FairCatch
+              : receipt.muffLostToKickers ? SpecialTeamsResult.Muff
+                : SpecialTeamsResult.Normal,
         kickDistance: kickSpots?.kickDistance,
-        returnYards: firstTaggedPlayer(play, "returner")
+        returnYards: receipt.fairCaught ? 0 : firstTaggedPlayer(play, "returner") && !receipt.muffLostToKickers
           ? (kickSpots?.returnYards ?? play.yards)
           : undefined,
+        ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
         tackledBy: tackles.tackledBy,

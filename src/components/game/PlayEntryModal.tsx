@@ -181,11 +181,12 @@ type Step = "players" | "yards" | "penalty" | "formations" | "defense" | "review
   | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards"
   | "fumble_return";
 type FieldTeam = "program" | "opponent";
-type KickOutcome = "returned" | "fair_catch" | "downed" | "out_of_bounds" | "touchback";
+type KickOutcome = "returned" | "fair_catch" | "muffed" | "downed" | "out_of_bounds" | "touchback";
 
 const KICK_OUTCOMES: Array<{ value: KickOutcome; label: string }> = [
   { value: "returned", label: "Returned" },
   { value: "fair_catch", label: "Fair Catch" },
+  { value: "muffed", label: "Muffed" },
   { value: "downed", label: "Downed" },
   { value: "touchback", label: "Touchback" },
   { value: "out_of_bounds", label: "Out of Bounds" },
@@ -835,6 +836,16 @@ export default function PlayEntryModal({
   const isKickoffOutOfBounds = ["kickoff", "onside_kick"].includes(playType.id) && kickOutcome === "out_of_bounds";
   const isTouchback = kickOutcome === "touchback";
   const wasReturned = kickOutcome === "returned";
+  /* Muffed: the receiver touched it and never had it. Whoever fell on it, the
+     ball goes to the spot of the recovery, so a muff shares the return step's
+     spot picker. The receiving team can still run it back (and score); the
+     kicking team keeps it where they fell on it, which is the one kick result
+     that does not hand the ball over. */
+  const [muffRecoveredByKicking, setMuffRecoveredByKicking] = useState(edit?.muffRecoveredByKicking ?? false);
+  const isMuffed = kickOutcome === "muffed";
+  const muffLostToKickers = isMuffed && muffRecoveredByKicking;
+  /** The ball moved off the landing spot, so the play has a spot to pick. */
+  const hasReturnSpot = wasReturned || isMuffed;
   const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">(edit?.result ?? "");
 
   // Penalty
@@ -1075,7 +1086,7 @@ export default function PlayEntryModal({
   /* Where the return ended, offense-relative, so the field graphic and the
      ruler can drive it the same way the run/pass spot picker does. The
      team + yard-line pair stays the source of truth; this is a view of it. */
-  const returnSpotBallOn = isKickPlay && wasReturned && isTD
+  const returnSpotBallOn = isKickPlay && hasReturnSpot && isTD && !muffLostToKickers
     ? 0
     : toOffensePerspectiveBallOn(returnToTeam, returnToYardLine);
   const setReturnSpotFromBallOn = (ballOn: number) => {
@@ -1272,6 +1283,9 @@ export default function PlayEntryModal({
     setIntReturnYardLine(intCaughtYardLine);
   }, [isInterception, intCaughtTeam, intCaughtYardLine]);
 
+  /** An onside kick has its own recovered-by question, so it has no muff. */
+  const kickOutcomes = KICK_OUTCOMES.filter(o => o.value !== "muffed" || playType.id !== "onside_kick");
+
   const steps: Step[] = [];
   if (isKickPlay) {
     // Kickoff/Punt specific flow.
@@ -1288,14 +1302,15 @@ export default function PlayEntryModal({
     // Downed / out of bounds / touchback: nobody fielded it, so there's no
     // returner to tag. A fair catch DOES have a receiver worth crediting, but
     // by definition no return yards.
-    if (kickOutcome === "returned" || kickOutcome === "fair_catch") {
+    if (kickOutcome === "returned" || kickOutcome === "fair_catch" || isMuffed) {
       steps.push("kick_returner");
     }
-    if (wasReturned) {
+    if (hasReturnSpot) {
       steps.push("kick_return_yards");
       // Nobody brought down a returner who scored, so a return TD skips the
-      // tackler question instead of asking for a name that doesn't exist.
-      if (trackTacklers && !isTD) steps.push("defense");
+      // tackler question instead of asking for a name that doesn't exist. A
+      // muff the kickers fell on had no returner to tackle at all.
+      if (trackTacklers && !isTD && !muffLostToKickers) steps.push("defense");
     }
     // Same as the scrimmage flow: the flag is its own question.
     if (showPenalties || penalty) steps.push("penalty");
@@ -1408,7 +1423,7 @@ export default function PlayEntryModal({
        a return attempt on a play where nobody touched the ball - and the
        review screen now displays that list, so it was visible as well as
        wrong. Touchback was already excluded; the other two were not. */
-    ? [kickerRole, ...((wasReturned || kickOutcome === "fair_catch") ? ["returner"] : [])]
+    ? [kickerRole, ...((hasReturnSpot || kickOutcome === "fair_catch") ? ["returner"] : [])]
     : roles
   ).filter(role =>
     !tagged.some(t => t.role === role)
@@ -1807,7 +1822,7 @@ export default function PlayEntryModal({
     let computedReturnYards = 0;
     // Only an actual return moves the ball off the landing spot. Fair catch,
     // downed, out of bounds and touchback are all zero-return by definition.
-    if (isKickPlay && wasReturned) {
+    if (isKickPlay && hasReturnSpot) {
       computedReturnYards = (100 - returnSpotBallOn) - Math.max(0, kickedToYard);
     }
 
@@ -1847,6 +1862,7 @@ export default function PlayEntryModal({
       returnYards: computedReturnYards,
       isTouchback,
       landingLabel,
+      ...(isMuffed ? { muffRecoveredBy: muffRecoveredByKicking ? "kickers" as const : "receivers" as const } : {}),
     } : undefined, isInterception ? {
       turnoverSpotLabel: `${fieldTeamTag(intCaughtTeam)} ${intCaughtYardLine}`,
       returnSpotLabel: interceptionReturnLabel ?? undefined,
@@ -1925,7 +1941,11 @@ export default function PlayEntryModal({
           // and not at all once a return or a touchback is in the mix, so they
           // are written down instead of inferred.
           kicked_to_yard: kickedToYard,
-          return_to_ball_on: returnSpotBallOn,
+          // No return, no return spot: a stale one left over from switching
+          // Returned to Fair Catch would read back as return yards. A touchback
+          // reads no return regardless, so it keeps what it always stored.
+          return_to_ball_on: hasReturnSpot || isTouchback ? returnSpotBallOn : kickLandingBallOn,
+          ...(isMuffed ? { muff_recovered_by_kicking: muffRecoveredByKicking } : {}),
           ...(playType.id === "onside_kick"
             ? { onside_recovered_by_kicker: onsideRecoveredByKicker }
             : {}),
@@ -2044,7 +2064,7 @@ export default function PlayEntryModal({
    *  the interception return on a pick, the spotted ball otherwise. A spot
    *  foul happened somewhere along that, so it is the seed worth offering. */
   const playEndBallOn = isTD
-    ? ballCarrier === "returner" && !(playType.id === "onside_kick" && onsideRecoveredByKicker) ? 0 : 100
+    ? ballCarrier === "returner" && !(playType.id === "onside_kick" && onsideRecoveredByKicker) && !muffLostToKickers ? 0 : 100
     : isKickPlay
       ? returnSpotBallOn
       : isInterception && interceptionReturnBallOn != null
@@ -2069,7 +2089,7 @@ export default function PlayEntryModal({
   /** Who had the ball when the play ended, named against the PRE-SNAP
    *  possession because that is the frame every number here uses. */
   const possessionAtEnd: PenaltySide =
-    kickVoided || (playType.id === "onside_kick" && onsideRecoveredByKicker)
+    kickVoided || (playType.id === "onside_kick" && onsideRecoveredByKicker) || muffLostToKickers
       ? "offense"
       : ballCarrier === "returner"
         ? "defense"
@@ -2106,6 +2126,11 @@ export default function PlayEntryModal({
         })
       : null;
 
+  /** What gameFlow reads to keep the ball with the kickers after a muff. */
+  const muffPlayData = isKickPlay && isMuffed
+    ? { kick_outcome: "muffed", muff_recovered_by_kicking: muffRecoveredByKicking }
+    : {};
+
   const scoringPenaltyRuling = requiresScoringPenaltyRuling({
     penalty, penaltyEnforcement, playCounts: penaltyPlayCounts && !isPenaltyOnly,
     type: playType.id, isTouchdown: isTD || fumbleReturnScores, result,
@@ -2113,11 +2138,12 @@ export default function PlayEntryModal({
   const penaltyProjection = penalty && (penaltyEnforcement !== "accepted" || scoringPenaltyRuling)
     ? advanceSituationAfterPlay({
         type: playType.id,
-        yards: isKickPlay ? kickDistance - (wasReturned ? (100 - returnSpotBallOn) - Math.max(0, kickedToYard) : 0)
+        yards: isKickPlay ? kickDistance - (hasReturnSpot ? (100 - returnSpotBallOn) - Math.max(0, kickedToYard) : 0)
           : isInterception ? interceptionNetYards : isTD ? 100 - gameState.ballOn : yards,
         result, penalty: scoringPenaltyRuling ? null : penalty, penaltyCategory, penaltyEnforcement, flagYards: 0,
         isTouchdown: isTD || fumbleReturnScores, firstDown: isFirstDown, turnover: isInterception || isFumblePlay && !fumbleRecoveredByUs,
         isTouchback, fumbleRecoveredAt: fumbleRecoveredAtBallOn, fumbleReturnYards,
+        playData: muffPlayData,
       }, gameState, gameConfig)
     : null;
 
@@ -2161,7 +2187,7 @@ export default function PlayEntryModal({
 
   const projectedNextSituation = storedNextSituation ?? advanceSituationAfterPlay({
     type: playType.id,
-    yards: isKickPlay ? kickDistance - (wasReturned ? (100 - returnSpotBallOn) - Math.max(0, kickedToYard) : 0)
+    yards: isKickPlay ? kickDistance - (hasReturnSpot ? (100 - returnSpotBallOn) - Math.max(0, kickedToYard) : 0)
       : isInterception ? interceptionNetYards : isTD ? 100 - gameState.ballOn
       : ["pass_inc", "throwaway", "drop", "spike", "penalty_only"].includes(playType.id) || needsResult ? 0 : yards,
     result, penalty, penaltyCategory, penaltyEnforcement, flagYards,
@@ -2169,7 +2195,7 @@ export default function PlayEntryModal({
     turnover: isInterception || isFumblePlay && !fumbleRecoveredByUs, isTouchback,
     ...(isFumblePlay ? { fumbleRecoveredAt: fumbleRecoveredAtBallOn, fumbleReturnYards } : {}),
     playData: { penalty_enforcement_from: penaltyEnforcementFrom, penalty_down_outcome: penaltyDownOutcome,
-      penalty_play_counts: penaltyPlayCounts ? playCountsOverride : false },
+      penalty_play_counts: penaltyPlayCounts ? playCountsOverride : false, ...muffPlayData },
   }, gameState, gameConfig);
   const goalChoiceRequired = canChooseGoalToGo(projectedNextSituation);
 
@@ -3070,12 +3096,12 @@ export default function PlayEntryModal({
               <div>
                 <label className="label block mb-1.5">What happened to it?</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {KICK_OUTCOMES.map((outcome) => (
+                  {kickOutcomes.map((outcome, i) => (
                     <button
                       key={outcome.value}
                       onClick={() => setKickOutcome(outcome.value)}
                       className={`py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
-                        outcome.value === "out_of_bounds" ? "col-span-2" : ""
+                        kickOutcomes.length % 2 === 1 && i === kickOutcomes.length - 1 ? "col-span-2" : ""
                       } ${
                         kickOutcome === outcome.value
                           ? outcome.value === "touchback"
@@ -3134,6 +3160,7 @@ export default function PlayEntryModal({
               <div className="text-xs text-slate-500 text-center">
                 {kickOutcome === "returned" && "You'll pick the returner and where they got to."}
                 {kickOutcome === "fair_catch" && `Ball spotted at ${landingLabel}. No return yards — you'll still tag who signaled.`}
+                {isMuffed && "You'll pick who muffed it, which team recovered, and where."}
                 {kickOutcome === "downed" && `Downed by the kicking team. Ball spotted at ${landingLabel}.`}
                 {kickOutcome === "out_of_bounds" && !isKickoffOutOfBounds && `Out of bounds at ${landingLabel}. No return.`}
                 {kickOutcome === "touchback" && "Receiving team will start at their own 20 yard line."}
@@ -3359,8 +3386,30 @@ export default function PlayEntryModal({
           {/* ── KICK STEP: Return To Yard Line ── */}
           {currentStep === "kick_return_yards" && (
             <>
+              {/* A muff is decided by who fell on it: the receivers keep a
+                  live ball they can still run back, the kickers keep the ball
+                  where they recovered it. */}
+              {isMuffed && (
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Muff recovered by</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setMuffRecoveredByKicking(false)}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        !muffRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {receivingTeamLabel} (receivers)
+                    </button>
+                    <button onClick={() => { setMuffRecoveredByKicking(true); setIsTD(false); }}
+                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                        muffRecoveredByKicking ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
+                      }`}>
+                      {fieldTeamLabel(kickingFieldSide)} (kickers)
+                    </button>
+                  </div>
+                </div>
+              )}
               <div>
-                <label className="label block mb-2">Returned To (Yard Line)</label>
+                <label className="label block mb-2">{muffLostToKickers ? "Recovered At (Yard Line)" : "Returned To (Yard Line)"}</label>
 
                 {/* Tap the field where he was brought down, or drag the ruler.
                     Every other spot in this modal is picked this way; the
@@ -3481,18 +3530,34 @@ export default function PlayEntryModal({
                     const isReceiverSide = returnToTeam === receivingFieldSide;
                     const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
                     const retYds = receiverYard - kickedToYard;
+                    if (muffLostToKickers) return (
+                      <>Muffed at {landingLabel} → kicking team ball at <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span>, 1st down</>
+                    );
                     return (
-                      <>Caught at {landingLabel} → returned to <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
+                      <>{isMuffed ? "Muffed" : "Caught"} at {landingLabel} → returned to <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
                     );
                   })()}
                 </div>
               </div>
 
-              {/* TD toggle for return TD */}
-              <button onClick={() => setIsTD(t => !t)}
-                className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                  isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
-                }`}>Return TD</button>
+              {/* How the return ended, one tap each. Fair Catch drops the
+                  return step (the step list shrinks under it and this index
+                  becomes the next step); Muffed keeps it and asks who fell on
+                  it. A kicking team that recovers a muff cannot score on it. */}
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => { setIsTD(false); setKickOutcome("fair_catch"); }}
+                  className="py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer border-surface-border bg-surface-bg text-slate-500">
+                  Fair Catch
+                </button>
+                <button onClick={() => { setIsTD(false); setKickOutcome(isMuffed ? "returned" : "muffed"); }}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                    isMuffed ? "border-purple-500 bg-purple-500/20 text-purple-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>Muffed</button>
+                <button onClick={() => setIsTD(t => !t)} disabled={muffLostToKickers}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                    isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>Return TD</button>
+              </div>
 
               {/* A kick play could not carry a flag at all: the penalty picker
                   lives on the yards step, and the kick flow skips that step
@@ -4274,9 +4339,15 @@ export default function PlayEntryModal({
                         </span>
                       </div>
                     )}
-                    {wasReturned && (
+                    {isMuffed && (
                       <div className="flex justify-between">
-                        <span className="text-slate-500">Returned To</span>
+                        <span className="text-slate-500">Recovered By</span>
+                        <span className="font-bold">{muffRecoveredByKicking ? `${fieldTeamLabel(kickingFieldSide)} (kickers)` : `${receivingTeamLabel} (receivers)`}</span>
+                      </div>
+                    )}
+                    {hasReturnSpot && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">{muffLostToKickers ? "Recovered At" : "Returned To"}</span>
                         <span className="font-bold text-emerald-400">
                           {(() => {
                             if (isTD) return `Touchdown (${100 - Math.max(0, kickedToYard)} yds)`;
