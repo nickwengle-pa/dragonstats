@@ -78,6 +78,7 @@ import LiveStatsPanel from "@/components/game/LiveStatsPanel";
 import SyncBadge from "@/components/game/SyncBadge";
 import { useWakeLock, readKeepAwake, writeKeepAwake } from "@/hooks/useWakeLock";
 import ClockInput from "@/components/game/ClockInput";
+import NumberField from "@/components/game/NumberField";
 import { drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
 import { getUnsyncedForGame, setMeta } from "@/services/offlineDb";
 import { cachedRead, cacheKeys, readSeasonRoster } from "@/services/offlineCache";
@@ -3512,7 +3513,12 @@ export default function GameScreen() {
                 ]).map((team) => (
                   <button
                     key={team.value}
-                    onClick={() => setAdjPossession(team.value)}
+                    onClick={() => {
+                      // The ball stays where it is: ballOn is measured from the
+                      // goal of whoever has it, so a change of team re-measures it.
+                      if (team.value !== adjPossession) setAdjBallOn(100 - adjBallOn);
+                      setAdjPossession(team.value);
+                    }}
                     className={`py-2 rounded-xl text-xs font-bold border-2 uppercase transition-colors ${
                       adjPossession === team.value
                         ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
@@ -3527,28 +3533,48 @@ export default function GameScreen() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] font-bold text-neutral-500 block mb-1">Down</label>
-                <input type="number" value={adjDown} onChange={e => setAdjDown(Number(e.target.value))}
-                  className="input text-center text-sm font-black" min={1} max={4} />
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4].map(d => (
+                    <button key={d} onClick={() => setAdjDown(d)} aria-pressed={adjDown === d}
+                      className={`flex-1 h-9 rounded-lg text-xs font-black border transition-colors ${adjDown === d ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-neutral-500"}`}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="text-[10px] font-bold text-neutral-500 block mb-1">Distance</label>
-                <input type="number" value={adjDistance} onChange={e => setAdjDistance(Number(e.target.value))}
-                  className="input text-center text-sm font-black" min={1} max={99} />
+                <NumberField value={adjDistance} onChange={setAdjDistance} min={1} max={99} aria-label="Distance"
+                  className="input text-center text-sm font-black" />
               </div>
             </div>
             <div>
               <label className="text-[10px] font-bold text-neutral-500 block mb-1">Ball On</label>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setAdjBallOn(Math.min(adjBallOn, 100 - adjBallOn))}
-                  className={`px-2.5 h-9 rounded-lg text-xs font-bold uppercase border transition-colors ${adjBallOn <= 50 ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-neutral-500"}`}>Own</button>
-                <button onClick={() => setAdjBallOn(Math.max(adjBallOn, 100 - adjBallOn))}
-                  className={`px-2.5 h-9 rounded-lg text-xs font-bold uppercase border transition-colors ${adjBallOn > 50 ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-neutral-500"}`}>Opp</button>
-                <input type="number" min={1} max={50}
-                  value={adjBallOn === 50 ? 50 : adjBallOn > 50 ? 100 - adjBallOn : adjBallOn}
-                  onChange={e => { const y = Math.max(1, Math.min(50, Number(e.target.value) || 1)); setAdjBallOn(adjBallOn > 50 ? 100 - y : y); }}
-                  className="input text-center text-sm font-black flex-1" />
-                <span className="text-xs font-bold text-neutral-500 w-16 text-right">{adjBallOn === 50 ? "50" : adjBallOn > 50 ? `OPP ${100 - adjBallOn}` : `OWN ${adjBallOn}`}</span>
-              </div>
+              {/* Sides by team, like the line-of-scrimmage editor. "Own" and
+                  "Opp" were relative to the possession picked above, so the
+                  same words named the other end of the field after a change
+                  of team. */}
+              {(() => {
+                const side = getFieldSideForSpot(adjBallOn, adjPossession);
+                const yard = adjBallOn <= 50 ? adjBallOn : 100 - adjBallOn;
+                return (
+                  <div className="flex items-center gap-2">
+                    {([
+                      { value: "program" as const, label: progAbbr },
+                      { value: "opponent" as const, label: oppAbbr },
+                    ]).map(option => (
+                      <button key={option.value} aria-pressed={side === option.value}
+                        onClick={() => setAdjBallOn(toBallOnFromFieldSide(option.value, yard, adjPossession))}
+                        className={`px-2.5 h-9 rounded-lg text-xs font-bold uppercase border transition-colors ${side === option.value ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-neutral-500"}`}>
+                        {option.label}
+                      </button>
+                    ))}
+                    <NumberField value={yard} min={1} max={50} aria-label="Ball on yard line"
+                      onChange={y => setAdjBallOn(toBallOnFromFieldSide(side, y, adjPossession))}
+                      className="input text-center text-sm font-black flex-1 min-w-0" />
+                  </div>
+                );
+              })()}
             </div>
             {/* Turnovers and penalties land here instead of the post-play clock
                 prompt, so the clock is captured in this sheet rather than

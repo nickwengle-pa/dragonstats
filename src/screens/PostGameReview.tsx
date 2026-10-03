@@ -43,6 +43,7 @@ import {
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import { resolveEditedNextSituation } from "@/components/game/editNextSituation";
 import { formatClockValue } from "@/components/game/ClockInput";
+import NumberField from "@/components/game/NumberField";
 import TimeoutEditModal, { timeoutCallerLabel, type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import {
   findPlayTypeDef,
@@ -426,14 +427,12 @@ function ChartingSheet({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="label block mb-1.5">Distance (to go)</label>
-                    <input
-                      type="number"
+                    <NumberField
                       min={0}
                       max={99}
                       value={sitDraft.distance}
-                      onChange={(e) => onSitChange({ distance: Math.max(0, Math.min(99, Number(e.target.value) || 0)) })}
+                      onChange={(distance) => onSitChange({ distance })}
                       className="input"
-                      inputMode="numeric"
                     />
                   </div>
                   <div>
@@ -475,16 +474,12 @@ function ChartingSheet({
                         </button>
                       ))}
                     </div>
-                    <input
-                      type="number"
+                    <NumberField
                       min={1}
                       max={50}
                       value={ballYard}
-                      onChange={(e) =>
-                        onSitChange({ yard_line: toYardLine(ballSide, Math.max(1, Math.min(50, Number(e.target.value) || 1))) })
-                      }
+                      onChange={(yard) => onSitChange({ yard_line: toYardLine(ballSide, yard) })}
                       className="input flex-1"
-                      inputMode="numeric"
                     />
                     <span className="text-xs font-bold text-surface-muted w-16 text-right">{yardLabel(sitDraft.yard_line)}</span>
                   </div>

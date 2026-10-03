@@ -42,6 +42,7 @@ import ClockInput from "./ClockInput";
 import { readableAccent } from "@/utils/teamColor";
 import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
+import NumberField from "./NumberField";
 import FastPlayEntry from "./FastPlayEntry";
 import PassDefenderPicker from "./PassDefenderPicker";
 import { FAST_PLAY_IDS, toggleFastTackler } from "./fastEntry";
@@ -53,7 +54,7 @@ import {
   isKickoffOutOfBoundsChoice, kickoffOutOfBoundsSituation, type KickoffOutOfBoundsChoice,
 } from "@/services/kickoffOutOfBounds";
 import { flagSideDefault, reviewNextSpot, requiresScoringPenaltyRuling } from "@/services/penaltySpot";
-import { enforcePenalty, type PlayKind, type EnforcementFrom as PenaltyEnforcementFrom, type PenaltyDownOutcome } from "@/services/penaltyEnforcement";
+import { enforcePenalty, type EnforcementInput, type PlayKind, type EnforcementFrom as PenaltyEnforcementFrom, type PenaltyDownOutcome } from "@/services/penaltyEnforcement";
 import { penaltyPlayCountsForEdit } from "@/services/statAuditRules";
 import { canChooseGoalToGo, carryGoalToGo, distanceLabel, storedGoalToGo } from "@/services/goalToGo";
 import { penaltyPlayEffect } from "@/services/penaltyOutcome";
@@ -2117,9 +2118,9 @@ export default function PlayEntryModal({
   const penaltyRule = penalty ? PENALTY_RULES[penalty] : undefined;
   const enforcedPossession = !isPenaltyOnly && (penaltyPlayCounts || isKickPlay && (penaltyDownOutcome === "next" || penaltyDownOutcome === "first"))
     ? possessionAtEnd : "offense";
-  const enforcement =
+  const enforcementInput: EnforcementInput | null =
     penalty && penaltyCategory && penaltyEnforcement === "accepted"
-      ? enforcePenalty({
+      ? {
           side: penaltyCategory,
           flagYards,
           before: {
@@ -2137,8 +2138,9 @@ export default function PlayEntryModal({
           playCounts: penaltyPlayCounts && !isPenaltyOnly,
           autoFirstDown: grantsAutoFirstDown(penalty, penaltyCategory),
           lossOfDown: penaltyCostsDown(penalty, penaltyCategory),
-        })
+        }
       : null;
+  const enforcement = enforcementInput ? enforcePenalty(enforcementInput) : null;
 
   /** What gameFlow reads to keep the ball with the kickers after a muff. */
   const muffPlayData = isKickPlay && isMuffed
@@ -2304,6 +2306,42 @@ export default function PlayEntryModal({
     ballOn: penaltyNextPossession === gameState.possession ? penaltyPreview.ballOn : 100 - penaltyPreview.ballOn,
     goalToGo: goalChoiceRequired ? nextGoalToGo : storedNextSituation?.goalToGo ?? penaltyProjection?.goalToGo }) : "";
 
+  /** Open the hand-set spot editor on whatever the result shows now. */
+  const openSpotEditor = () => {
+    seedSpotFromBallOn(penaltyPreview?.ballOn ?? playEndBallOn);
+    setSpotDown(penaltyPreview?.down ?? gameState.down);
+    setSpotDistance(penaltyPreview?.distance ?? gameState.distance);
+    setSpotNextPossession(penaltyNextPossession);
+    setOverrideSpot(true);
+  };
+
+  /* The officials put the ball a yard from where the arithmetic did. Moving
+     the result on the field (a tap, the ruler) re-runs the enforcement with
+     the ball where they spotted it, so the down and distance follow by the
+     same rules: the chains stay where they were unless the spot reaches them,
+     and a fresh series is measured from the new spot. It is stored as a
+     hand-set spot, so the replay and an edit keep it, and the down and
+     distance stay open to correct below. A result with no enforcement to
+     re-run (a kept score) just moves the ball. */
+  const adjustPenaltySpot = (ballOn: number) => {
+    const spot = Math.max(1, Math.min(99, Math.round(ballOn)));
+    const ruled = enforcementInput && !scoringPenaltyRuling
+      ? enforcePenalty({ ...enforcementInput, spottedAt: spot })
+      : null;
+    if (ruled) {
+      setSpotDown(ruled.down);
+      setSpotDistance(ruled.distance);
+      setSpotNextPossession(ruled.possessionFlips ? otherSide(gameState.possession) : gameState.possession);
+      setSpotGoalToGo(undefined);
+    } else if (!overrideSpot) {
+      setSpotDown(penaltyPreview?.down ?? gameState.down);
+      setSpotDistance(penaltyPreview?.distance ?? gameState.distance);
+      setSpotNextPossession(penaltyNextPossession);
+    }
+    seedSpotFromBallOn(spot);
+    setOverrideSpot(true);
+  };
+
   /** Open the flag's own step, adding it to the flow if it is not there yet. */
   const openPenaltyStep = () => {
     const alreadyThere = steps.indexOf("penalty");
@@ -2452,13 +2490,12 @@ export default function PlayEntryModal({
                       </div>
                       <div>
                         <span className="text-xs text-slate-500 block mb-1">To go</span>
-                        <input
-                          type="number"
-                          inputMode="numeric"
+                        <NumberField
                           min={1}
                           max={99}
                           value={spotDistance}
-                          onChange={e => setSpotDistance(Math.max(1, Math.min(99, Number(e.target.value) || 1)))}
+                          onChange={setSpotDistance}
+                          aria-label="To go"
                           className="input w-full text-center text-sm font-bold"
                         />
                       </div>
@@ -4038,13 +4075,16 @@ export default function PlayEntryModal({
             {penalty?.trim() && <section className="space-y-3 border-t border-surface-border pt-4" aria-label="Penalty result">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <span className="block text-xs font-semibold text-slate-400">{scoringPenaltyRuling ? "Next spot" : "Enforced to"}</span>
+                  <span className="block text-xs font-semibold text-slate-400">{overrideSpot && penaltyEnforcement === "accepted" ? "Spotted at" : scoringPenaltyRuling ? "Next spot" : "Enforced to"}</span>
                   <span className="block text-lg font-bold text-emerald-400">{penaltyPreview ? formatFieldSpot(penaltyPreview.ballOn, gameState.possession) : "Ending spot missing"}</span>
                 </div>
                 {penaltyEnforcement === "accepted" && <span className="shrink-0 text-xs text-slate-400">{actualPenaltyYards} {scoringPenaltyRuling ? "penalty yards" : "yards marked off"}</span>}
-                {penaltyEnforcement === "accepted" && <button type="button" aria-pressed={overrideSpot} aria-label="Adjust resulting spot" title="Adjust resulting spot"
-                  onClick={() => { if (!overrideSpot) { seedSpotFromBallOn(penaltyPreview?.ballOn ?? playEndBallOn); setSpotDown(penaltyPreview?.down ?? gameState.down); setSpotDistance(penaltyPreview?.distance ?? gameState.distance); setSpotNextPossession(penaltyNextPossession); } setOverrideSpot(value => !value); }}
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border ${overrideSpot ? "border-amber-500 text-amber-300" : "border-surface-border text-slate-400"}`}><MapPin size={18} /></button>}
+                {/* Was an unlabelled pin icon, which nobody found. */}
+                {penaltyEnforcement === "accepted" && <button type="button" aria-pressed={overrideSpot}
+                  onClick={() => { if (overrideSpot) setOverrideSpot(false); else openSpotEditor(); }}
+                  className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold ${overrideSpot ? "border-amber-500 text-amber-300" : "border-surface-border text-slate-300"}`}>
+                  {overrideSpot ? <><RotateCcw size={15} /> Use rules</> : <><MapPin size={15} /> Adjust</>}
+                </button>}
               </div>
               {scoringPenaltyRuling && !overrideSpot && <p role="status" className="text-sm text-amber-300">Scoring play kept. Confirm the next spot.</p>}
               {penaltyPreview && <>
@@ -4056,8 +4096,15 @@ export default function PlayEntryModal({
                   firstDownPosition={toFieldDisplay(penaltyPreview.ballOn + (penaltyNextPossession === gameState.possession ? penaltyPreview.distance : -penaltyPreview.distance))}
                   possession={penaltyNextPossession} ourEndZoneSide={ourEndZoneSide} primaryColor={progColor}
                   oppColor={oppColor} progName={progName} oppName={oppName} progAbbr={progAbbr ?? "OUR"} oppAbbr={oppAbbr ?? "OPP"}
-                  progLogoUrl={progLogoUrl} oppLogoUrl={oppLogoUrl} />
+                  progLogoUrl={progLogoUrl} oppLogoUrl={oppLogoUrl}
+                  onPickSpot={penaltyEnforcement === "accepted" ? displayPosition => adjustPenaltySpot(toFieldDisplay(displayPosition)) : undefined} />
                 {penaltyEnforcement === "accepted" && enforcement && !overrideSpot && !scoringPenaltyRuling && <div className="text-xs text-slate-400">{enforcement.from}{enforcement.actualYards < flagYards ? " · Half the distance" : ""}</div>}
+                {/* The yardage on the book is not always where the ball ends up.
+                    Same spot controls as a run or a return: tap the field or
+                    drag the ruler to where the officials put it. */}
+                {penaltyEnforcement === "accepted" && <YardReel value={penaltyPreview.ballOn} onChange={adjustPenaltySpot}
+                  offenseDirection={offenseDirection} advancing={penaltyNextPossession === gameState.possession ? "offense" : "returner"}
+                  accentColor="#34d399" formatSpot={value => formatFieldSpot(value, gameState.possession)} />}
               </>}
               {overrideSpot && penaltyEnforcement === "accepted" && <>
                 <div className="grid grid-cols-2 gap-2" role="group" aria-label="Next possession">
