@@ -139,10 +139,15 @@ export function netKickYards(
 export function kickReceiptOf(playData: Record<string, unknown> | null | undefined): {
   fairCaught: boolean;
   muffLostToKickers: boolean;
+  /** Downed, out of bounds or a touchback: nobody fielded it, so a returner
+   *  tag on the play is a stale carry-over from the previous kick, not a
+   *  0-yard return. */
+  noReceiver: boolean;
 } {
   const pd = playData ?? {};
   return {
     fairCaught: pd.kick_outcome === "fair_catch",
     muffLostToKickers: pd.kick_outcome === "muffed" && pd.muff_recovered_by_kicking === true,
+    noReceiver: pd.kick_outcome === "downed" || pd.kick_outcome === "out_of_bounds" || pd.kick_outcome === "touchback",
   };
 }

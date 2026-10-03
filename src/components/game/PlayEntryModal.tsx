@@ -1285,6 +1285,13 @@ export default function PlayEntryModal({
 
   /** An onside kick has its own recovered-by question, so it has no muff. */
   const kickOutcomes = KICK_OUTCOMES.filter(o => o.value !== "muffed" || playType.id !== "onside_kick");
+  /* Downed, out of bounds, touchback: nobody fielded it. The returner is a
+     sticky role, so the last kick's returner rides in as a carry-over - and
+     these outcomes skip the returner step, so nothing on screen ever showed
+     it or let it be cleared. It was saved, and the engine read it as a
+     0-yard return. Such a kick has no returner, whatever was carried. */
+  const kickHasNoReceiver = isKickPlay && !hasReturnSpot && kickOutcome !== "fair_catch";
+  const shownTagged = kickHasNoReceiver ? tagged.filter(t => t.role !== "returner") : tagged;
 
   const steps: Step[] = [];
   if (isKickPlay) {
@@ -1787,7 +1794,7 @@ export default function PlayEntryModal({
 
   const handleSubmit = (receive = onSubmit, draftOnly = false) => {
     if (!draftOnly && goalChoiceRequired && nextGoalToGo === undefined) return;
-    const allTagged = [...tagged, ...tacklers];
+    const allTagged = [...shownTagged, ...tacklers];
 
     /* A bad snap is charged to TEAM, not to the quarterback who was waiting
        for it. There is nobody to pick, so the tag is written here - our own
@@ -4246,7 +4253,7 @@ export default function PlayEntryModal({
                   <span className="text-slate-500">Type</span>
                   <span className="font-bold">{playType.label}</span>
                 </div>
-                {tagged.map(t => (
+                {shownTagged.map(t => (
                   <div key={t.role} className="flex justify-between">
                     <span className="text-slate-500 capitalize">{t.role}</span>
                     <span className="font-bold">

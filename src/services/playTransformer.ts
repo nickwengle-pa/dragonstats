@@ -680,7 +680,7 @@ export function convertPlay(
       const kicker = firstPlayerByRole(play, "kicker");
       const outOfBounds = isOutOfBoundsKickoff(play);
       const receipt = kickReceiptOf(pd);
-      const returner = outOfBounds || receipt.muffLostToKickers ? undefined : firstPlayerByRole(play, "returner");
+      const returner = outOfBounds || receipt.muffLostToKickers || receipt.noReceiver ? undefined : firstPlayerByRole(play, "returner");
       const isTouchback = !!(pd?.is_touchback);
       const spots = kickSpotsFor(play);
       let stResult: SpecialTeamsResult = SpecialTeamsResult.Normal;
@@ -711,7 +711,7 @@ export function convertPlay(
     case "punt": {
       const punter = firstPlayerByRole(play, "punter");
       const receipt = kickReceiptOf(pd);
-      const returner = receipt.muffLostToKickers ? undefined : firstPlayerByRole(play, "returner");
+      const returner = receipt.muffLostToKickers || receipt.noReceiver ? undefined : firstPlayerByRole(play, "returner");
       const isTouchback = !!(pd?.is_touchback);
       const spots = kickSpotsFor(play);
       let stResult: SpecialTeamsResult = SpecialTeamsResult.Normal;

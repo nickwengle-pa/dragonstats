@@ -587,14 +587,14 @@ function toEnginePlay(
       return {
         type: PlayType.Kickoff,
         kicker: firstTaggedPlayer(play, "kicker")?.player_id,
-        returner: receipt.muffLostToKickers ? undefined : firstTaggedPlayer(play, "returner")?.player_id,
+        returner: receipt.muffLostToKickers || receipt.noReceiver ? undefined : firstTaggedPlayer(play, "returner")?.player_id,
         result: play.isTouchback ? SpecialTeamsResult.Touchback
           : play.isTouchdown ? SpecialTeamsResult.ReturnTouchdown
             : receipt.fairCaught ? SpecialTeamsResult.FairCatch
               : receipt.muffLostToKickers ? SpecialTeamsResult.Muff
                 : SpecialTeamsResult.Normal,
         kickDistance: kickSpots?.kickDistance,
-        returnYards: receipt.fairCaught ? 0 : firstTaggedPlayer(play, "returner") && !receipt.muffLostToKickers
+        returnYards: receipt.fairCaught ? 0 : firstTaggedPlayer(play, "returner") && !receipt.muffLostToKickers && !receipt.noReceiver
           ? (kickSpots?.returnYards ?? play.yards)
           : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
@@ -613,14 +613,14 @@ function toEnginePlay(
       return {
         type: PlayType.Punt,
         punter: firstTaggedPlayer(play, "punter")?.player_id,
-        returner: receipt.muffLostToKickers ? undefined : firstTaggedPlayer(play, "returner")?.player_id,
+        returner: receipt.muffLostToKickers || receipt.noReceiver ? undefined : firstTaggedPlayer(play, "returner")?.player_id,
         result: play.isTouchback ? SpecialTeamsResult.Touchback
           : play.isTouchdown ? SpecialTeamsResult.ReturnTouchdown
             : receipt.fairCaught ? SpecialTeamsResult.FairCatch
               : receipt.muffLostToKickers ? SpecialTeamsResult.Muff
                 : SpecialTeamsResult.Normal,
         kickDistance: kickSpots?.kickDistance,
-        returnYards: receipt.fairCaught ? 0 : firstTaggedPlayer(play, "returner") && !receipt.muffLostToKickers
+        returnYards: receipt.fairCaught ? 0 : firstTaggedPlayer(play, "returner") && !receipt.muffLostToKickers && !receipt.noReceiver
           ? (kickSpots?.returnYards ?? play.yards)
           : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
