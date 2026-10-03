@@ -12,8 +12,8 @@ const sections: ReportSection[] = [
   { title: "Punting", headers: ["Player","No","Yds","Avg","Lg","In 20","TB"], rows: [["Punter #7",9,306,"34.0",45,3,1]], total: ["Total",9,306,"34.0",45,3,1] },
   { title: "Kickoffs", headers: ["Player","No","Yds","Avg","TB"], rows: [["Kicker #10",12,576,"48.0",2]], total: ["Total",12,576,"48.0",2] },
   { title: "Field goals & extra points", headers: ["Player","FG Made","FG Att","FG Lg","PAT Made","PAT Att"], rows: [["Kicker #10",0,1,0,9,9]], total: ["Total",0,1,0,9,9] },
-  { title: "Kickoff returns", headers: ["Player","No","Yds","Lg","TD"], rows: [["Returner #2",5,178,92,1],["Returner #21",2,36,22,0]], total: ["Total",7,214,92,1] },
-  { title: "Punt returns", headers: ["Player","No","Yds","Lg","TD"], rows: [["Returner #2",3,28,18,0]], total: ["Total",3,28,18,0] },
+  { title: "Kickoff returns", headers: ["Player","No","Yds","Lg","TD","Fum"], rows: [["Returner #2",5,178,92,1,0],["Returner #21",2,36,22,0,1]], total: ["Total",7,214,92,1,1] },
+  { title: "Punt returns", headers: ["Player","No","Yds","Lg","TD","Fum"], rows: [["Returner #2",3,28,18,0,1]], total: ["Total",3,28,18,0,1] },
   { title: "Interception returns", headers: ["Player","No","Yds","Lg","TD"], rows: [["Defensive back #3",2,24,18,0],["Defensive back #5",1,8,8,0]], total: ["Total",3,32,18,0] },
   { title: "Scoring", headers: ["Player","Points"], rows: [["Running back #21",18],["Receiver #11",12],["Kicker #10",9],["Quarterback #7",6],["Running back #2",12],["Receiver #8",6]], total: ["Total",63] },
 ];

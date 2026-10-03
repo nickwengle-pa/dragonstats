@@ -680,7 +680,7 @@ export default function GameReportScreen() {
                         The Fumble group is fumbles recovered FROM the other side. */}
                     <th rowSpan={2} title="Fumbles on kick and punt returns, muffs included"
                       className="py-[3px] px-[3px] text-[6.5pt] font-black uppercase text-right align-bottom border-l border-neutral-400 border-b border-black">
-                      Fum
+                      Ret<br />Fum
                     </th>
                   </tr>
                   <tr className="border-b border-black">

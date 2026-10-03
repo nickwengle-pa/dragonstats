@@ -65,6 +65,12 @@ describe("a kick nobody fielded saves no returner", () => {
     });
   }
 
+  it("drops the carried returner when the kick is blocked", async () => {
+    const out = await recordTheirPunt("Blocked");
+    expect(out).not.toBeNull();
+    expect(out!.tagged.filter(t => t.role === "returner")).toEqual([]);
+  });
+
   it("still keeps the carried returner on a fair catch", async () => {
     const out = await recordTheirPunt("Fair Catch");
     expect(out!.tagged.find(t => t.role === "returner")?.player_id).toBe("kr");
