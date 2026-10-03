@@ -32,12 +32,12 @@ const button = (name: string | RegExp, scope: HTMLElement = document.body) => {
 const click = async (el: HTMLElement) => { await act(async () => { fireEvent.click(el); }); };
 
 /** Our 2nd & 8 at our 30; offsides on them is 5 yards, to our 35, 2nd & 3. */
-async function flagOffsides(): Promise<{ result: HTMLElement; submit: () => Promise<PlaySubmitData | null> }> {
+async function flagOffsides(start = { down: 2, distance: 8, ballOn: 30 }, foul = /^Offsides/): Promise<{ result: HTMLElement; submit: () => Promise<PlaySubmitData | null> }> {
   let out: PlaySubmitData | null = null;
   render(
     <PlayEntryModal
       playType={findPlayTypeDef("penalty_only")!}
-      gameState={{ quarter: 1, clock: 600, possession: "us", ourScore: 0, theirScore: 0, down: 2, distance: 8, ballOn: 30 }}
+      gameState={{ quarter: 1, clock: 600, possession: "us", ourScore: 0, theirScore: 0, ...start }}
       roster={[]}
       opponentPlayers={[]}
       progName="Us" oppName="Them" progAbbr="US" oppAbbr="TH"
@@ -45,9 +45,8 @@ async function flagOffsides(): Promise<{ result: HTMLElement; submit: () => Prom
       onClose={() => {}}
     />,
   );
-  await click(button(/^Offsides/));
+  await click(button(foul));
   const result = screen.getByRole("region", { name: "Penalty result" });
-  expect(result.textContent).toContain("2 & 3");
   return {
     result,
     submit: async () => {
@@ -62,6 +61,38 @@ async function flagOffsides(): Promise<{ result: HTMLElement; submit: () => Prom
 }
 
 describe("adjusting a penalty's result spot", () => {
+  it("starts on the rules' mark-off", async () => {
+    const { result } = await flagOffsides();
+    expect(result.textContent).toContain("2 & 3");
+  });
+
+  it("the other team's side button works at the 50", async () => {
+    const { result, submit } = await flagOffsides({ down: 2, distance: 8, ballOn: 45 });
+    expect(result.textContent).toMatch(/Enforced to\s*50/);
+    await click(button(/Adjust/, result));
+    await click(button("THE", result));
+    const box = screen.getByLabelText("Ball on yard line") as HTMLInputElement;
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "4" } });
+    fireEvent.change(box, { target: { value: "45" } });
+    fireEvent.blur(box);
+    const out = await submit();
+    expect(out?.nextSituation).toMatchObject({ ballOn: 55, possession: "us", down: 1, distance: 10 });
+  });
+
+  it("a Down choice that changes who gets the ball drops the old correction", async () => {
+    // 4th & 2 at our 40, false start: 4th & 7 at our 35. Nudge to our 36,
+    // then rule it "Next down": a turnover on downs, enforced from the same
+    // spot but to the other team, so the nudge no longer means anything.
+    const { result, submit } = await flagOffsides({ down: 4, distance: 2, ballOn: 40 }, /^False Start/);
+    expect(result.textContent).toContain("4 & 7");
+    await click(button("+1", result));
+    await click(screen.getByRole("button", { name: "Next down" }));
+    expect(result.textContent).toContain("Enforced to");
+    const out = await submit();
+    expect(out?.nextSituation).toMatchObject({ possession: "them", ballOn: 65, source: "penalty_enforced" });
+  });
+
   it("offers a labelled Adjust button, not just an icon", async () => {
     const { result } = await flagOffsides();
     expect(button(/Adjust/, result)).toBeTruthy();
@@ -142,8 +173,20 @@ describe("adjusting a penalty's result spot", () => {
 describe("a number box that can be emptied", () => {
   function Harness({ initial }: { initial: number }) {
     const [value, setValue] = useState(initial);
-    return <><NumberField aria-label="yard" value={value} onChange={setValue} min={1} max={50} /><output>{value}</output></>;
+    return <><NumberField aria-label="yard" value={value} onChange={setValue} min={1} max={50} /><output>{value}</output>
+      <button onClick={() => setValue(v => v + 1)}>nudge</button></>;
   }
+
+  it("an emptied box after a nudge keeps the nudged number", () => {
+    render(<Harness initial={35} />);
+    const box = screen.getByLabelText("yard") as HTMLInputElement;
+    fireEvent.focus(box);
+    fireEvent.click(screen.getByRole("button", { name: "nudge" }));
+    expect(box.value).toBe("36");
+    fireEvent.change(box, { target: { value: "3" } });
+    fireEvent.change(box, { target: { value: "" } });
+    expect(screen.getByRole("status").textContent).toBe("36");
+  });
 
   it("stays empty while you type, then takes the new number", () => {
     render(<Harness initial={35} />);

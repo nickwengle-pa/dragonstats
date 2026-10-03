@@ -2329,7 +2329,7 @@ export default function PlayEntryModal({
      own for the spot shown. Once the operator has set any of them by hand -
      or opened a play saved that way - moving the ball moves only the ball.
      A result with no enforcement to re-run (a kept score) just moves it. */
-  const adjustPenaltySpot = (ballOn: number) => {
+  const adjustPenaltySpot = (ballOn: number, side?: "our" | "opp") => {
     const spot = Math.max(1, Math.min(99, Math.round(ballOn)));
     const shown = overrideSpot ? rulesAtSpot(overrideBallOn) : enforcement;
     const handSet = overrideSpot && (!shown || spotDown !== shown.down
@@ -2346,6 +2346,10 @@ export default function PlayEntryModal({
       setSpotNextPossession(penaltyNextPossession);
     }
     seedSpotFromBallOn(spot);
+    // A side the operator picked stays picked: worked out from the spot, the
+    // 50 always reads as our half, so the other team's button did nothing
+    // there and the yard typed next landed on the wrong half.
+    if (side) setSpotSide(side);
     setOverrideSpot(true);
   };
 
@@ -2353,11 +2357,24 @@ export default function PlayEntryModal({
      used to reset to the rules' spot, so tapping "First down" to confirm what
      the screen already said threw the officials' spot away. Run after the
      render that applies the ruling, since the same tap can change whether
-     the play counts, and with it who had the ball at the end. */
+     the play counts, and with it who had the ball at the end.
+
+     Only while the mark-off is the same one. A ruling that moves where it is
+     enforced from, or who gets the ball - "Next down" on a re-kick hands the
+     receivers the result instead - makes the old correction meaningless, so
+     the spot goes back to the rules, as it always did. */
   const [spotRerun, setSpotRerun] = useState(0);
+  const spotRerunBase = useRef<{ from: number; flips: boolean } | null>(null);
+  const requestSpotRerun = () => {
+    spotRerunBase.current = enforcement ? { from: enforcement.enforcementSpot, flips: enforcement.possessionFlips } : null;
+    setSpotRerun(n => n + 1);
+  };
   useEffect(() => {
     if (!spotRerun || !overrideSpot) return;
-    const ruled = rulesAtSpot(overrideBallOn);
+    const base = spotRerunBase.current;
+    const sameMarkOff = base != null && enforcement != null
+      && enforcement.enforcementSpot === base.from && enforcement.possessionFlips === base.flips;
+    const ruled = sameMarkOff ? rulesAtSpot(overrideBallOn) : null;
     if (!ruled) { setOverrideSpot(false); return; }
     setSpotDown(ruled.down);
     setSpotDistance(ruled.distance);
@@ -2463,7 +2480,7 @@ export default function PlayEntryModal({
                         {(["our", "opp"] as const).map(s => (
                           <button
                             key={s}
-                            onClick={() => adjustPenaltySpot(spotToBallOn(s, spotYardLine))}
+                            onClick={() => adjustPenaltySpot(spotToBallOn(s, spotYardLine), s)}
                             className={`px-3 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 ${
                               spotSide === s
                                 ? "border-amber-500 bg-amber-500/15 text-amber-400"
@@ -2478,7 +2495,7 @@ export default function PlayEntryModal({
                           min={1}
                           max={50}
                           value={spotYardLine}
-                          onChange={yard => adjustPenaltySpot(spotToBallOn(spotSide, yard))}
+                          onChange={yard => adjustPenaltySpot(spotToBallOn(spotSide, yard), spotSide)}
                           aria-label="Ball on yard line"
                           className="input flex-1 text-center text-sm font-bold"
                         />
@@ -2646,11 +2663,11 @@ export default function PlayEntryModal({
             <div className="grid grid-cols-[1fr_1fr_1fr_44px] gap-2" role="group" aria-label="Down outcome">
               {(["repeat", "next", "first"] as const).map(outcome => <button key={outcome} type="button"
                 aria-pressed={chosenDownOutcome === outcome}
-                onClick={() => { setPenaltyDownOutcome(outcome); setSpotRerun(n => n + 1); if (outcome === "repeat") { setPenaltyPlayCounts(false); setPlayCountsOverride(false); } else if (outcome === "next" && !penaltyRule?.lossOfDown && !isPenaltyOnly) { setPenaltyPlayCounts(true); setPlayCountsOverride(true); } }}
+                onClick={() => { setPenaltyDownOutcome(outcome); requestSpotRerun(); if (outcome === "repeat") { setPenaltyPlayCounts(false); setPlayCountsOverride(false); } else if (outcome === "next" && !penaltyRule?.lossOfDown && !isPenaltyOnly) { setPenaltyPlayCounts(true); setPlayCountsOverride(true); } }}
                 className={`min-h-11 rounded-lg border px-1 py-2 text-xs font-semibold ${chosenDownOutcome === outcome ? "border-amber-500 bg-amber-500/10 text-amber-300" : "border-surface-border text-slate-300"}`}>
                 {outcome === "repeat" ? "Repeat down" : outcome === "next" ? "Next down" : "First down"}
               </button>)}
-              <button type="button" aria-label="Use automatic down" title="Use automatic down" onClick={() => { setPenaltyDownOutcome(null); setSpotRerun(n => n + 1); }}
+              <button type="button" aria-label="Use automatic down" title="Use automatic down" onClick={() => { setPenaltyDownOutcome(null); requestSpotRerun(); }}
                 className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-white"><RotateCcw size={16} /></button>
             </div>
           </div>
