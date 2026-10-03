@@ -32,7 +32,7 @@ import { kickInfoFromDescription } from "../../services/kickSpots.ts";
 import type { EnforcementFrom as PenaltyEnforcementFrom, PenaltyDownOutcome } from "../../services/penaltyEnforcement.ts";
 
 export type FieldTeam = "program" | "opponent";
-export type KickOutcome = "returned" | "fair_catch" | "downed" | "out_of_bounds" | "touchback";
+export type KickOutcome = "returned" | "fair_catch" | "muffed" | "downed" | "out_of_bounds" | "touchback";
 export type PenaltyEnforcement = "accepted" | "declined" | "offset";
 
 /** Roles that live in the modal's separate `tacklers` state, not in `tagged`. */
@@ -55,6 +55,8 @@ export interface EditSeed {
   fumbleReturnRaw: string;
   fumbleRecoveredAt: number | null;
   onsideRecoveredByKicker: boolean;
+  /** Muffed kick: true when the kicking team fell on it. */
+  muffRecoveredByKicking: boolean;
   blockedRecoveredByKicking: boolean;
   blockedKickType: BlockedKickType | null;
   kickOutcome: KickOutcome;
@@ -199,11 +201,12 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
     fumbleReturnRaw: play.fumbleReturnYards != null ? String(play.fumbleReturnYards) : "",
     fumbleRecoveredAt: play.fumbleRecoveredAt ?? null,
     onsideRecoveredByKicker: pd.onside_recovered_by_kicker === true,
+    muffRecoveredByKicking: pd.muff_recovered_by_kicking === true,
     blockedRecoveredByKicking: pd.blocked_recovered_by_kicking === true,
     blockedKickType: (play.blockedKickType ?? null) as BlockedKickType | null,
     kickOutcome: ((): KickOutcome => {
       const stored = str(pd.kick_outcome);
-      if (stored && ["returned", "fair_catch", "downed", "out_of_bounds", "touchback"].includes(stored)) {
+      if (stored && ["returned", "fair_catch", "muffed", "downed", "out_of_bounds", "touchback"].includes(stored)) {
         return stored as KickOutcome;
       }
       if (play.isTouchback) return "touchback";

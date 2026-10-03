@@ -684,6 +684,20 @@ function playerLabel(t: TaggedPlayer | undefined): string {
   return num || "?";
 }
 
+/** The return clause of a kick's description. Keeps the ", ret ... N yds"
+ *  shape kickInfoFromDescription parses back out of older plays. */
+function kickReturnLabel(
+  kickInfo: { isTouchback: boolean; returnYards: number; muffRecoveredBy?: "receivers" | "kickers" },
+  ret: TaggedPlayer | undefined,
+): string {
+  if (kickInfo.isTouchback) return "";
+  if (kickInfo.muffRecoveredBy === "kickers") {
+    return `, muffed${ret ? ` by ${playerLabel(ret)}` : ""}, recovered by kicking team`;
+  }
+  const muffed = kickInfo.muffRecoveredBy === "receivers" ? ", muffed" : "";
+  return ret ? `${muffed}, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : muffed;
+}
+
 export function buildDescription(
   pt: PlayTypeDef,
   tagged: TaggedPlayer[],
@@ -697,6 +711,8 @@ export function buildDescription(
     returnYards: number;
     isTouchback: boolean;
     landingLabel?: string;
+    /** Muffed: which team fell on it. A kicking-team recovery is no return. */
+    muffRecoveredBy?: "receivers" | "kickers";
   },
   turnoverInfo?: {
     turnoverSpotLabel?: string;
@@ -762,7 +778,7 @@ export function buildDescription(
         const kickLabel = kickInfo.isTouchback
           ? "Touchback"
           : `to ${kickInfo.landingLabel ?? `OPP ${kickInfo.kickedToYard}`}`;
-        const retLabel = !kickInfo.isTouchback && ret ? `, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : "";
+        const retLabel = kickReturnLabel(kickInfo, ret);
         parts.push(`Kickoff${k ? ` ${playerLabel(k)}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
       } else {
         parts.push(`Kickoff${k ? ` ${playerLabel(k)}` : ""}${ret ? ` ret ${playerLabel(ret)} ${yards}` : ""}`);
@@ -775,7 +791,7 @@ export function buildDescription(
         const kickLabel = kickInfo.isTouchback
           ? "Touchback"
           : `to ${kickInfo.landingLabel ?? `OPP ${kickInfo.kickedToYard}`}`;
-        const retLabel = !kickInfo.isTouchback && ret ? `, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : "";
+        const retLabel = kickReturnLabel(kickInfo, ret);
         parts.push(`Punt${p ? ` ${playerLabel(p)}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
       } else {
         parts.push(`Punt${p ? ` ${playerLabel(p)}` : ""}${ret ? ` ret ${playerLabel(ret)} ${yards}` : ""}`);

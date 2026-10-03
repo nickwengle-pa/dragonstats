@@ -16,7 +16,7 @@ import {
 import { TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
-import { resolveKickSpots } from "./kickSpots";
+import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { readFumbleSpots } from "./fumbleSpots";
 import {
@@ -678,11 +678,14 @@ export function convertPlay(
     case "kickoff": {
       const kicker = firstPlayerByRole(play, "kicker");
       const outOfBounds = isOutOfBoundsKickoff(play);
-      const returner = outOfBounds ? undefined : firstPlayerByRole(play, "returner");
+      const receipt = kickReceiptOf(pd);
+      const returner = outOfBounds || receipt.muffLostToKickers ? undefined : firstPlayerByRole(play, "returner");
       const isTouchback = !!(pd?.is_touchback);
       const spots = kickSpotsFor(play);
       let stResult: SpecialTeamsResult = SpecialTeamsResult.Normal;
       if (isTouchback) stResult = SpecialTeamsResult.Touchback;
+      if (receipt.fairCaught) stResult = SpecialTeamsResult.FairCatch;
+      if (receipt.muffLostToKickers) stResult = SpecialTeamsResult.Muff;
       if (play.is_touchdown) stResult = SpecialTeamsResult.ReturnTouchdown;
       return {
         type: PlayType.Kickoff,
@@ -690,7 +693,8 @@ export function convertPlay(
         returner,
         result: stResult,
         kickDistance: outOfBounds ? undefined : spots?.kickDistance,
-        returnYards: returner ? spots?.returnYards : undefined,
+        returnYards: receipt.fairCaught ? 0 : returner ? spots?.returnYards : undefined,
+        ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         isTouchback,
         isTouchdown: play.is_touchdown,
         ...tackleCredits(play),
@@ -702,11 +706,14 @@ export function convertPlay(
 
     case "punt": {
       const punter = firstPlayerByRole(play, "punter");
-      const returner = firstPlayerByRole(play, "returner");
+      const receipt = kickReceiptOf(pd);
+      const returner = receipt.muffLostToKickers ? undefined : firstPlayerByRole(play, "returner");
       const isTouchback = !!(pd?.is_touchback);
       const spots = kickSpotsFor(play);
       let stResult: SpecialTeamsResult = SpecialTeamsResult.Normal;
       if (isTouchback) stResult = SpecialTeamsResult.Touchback;
+      if (receipt.fairCaught) stResult = SpecialTeamsResult.FairCatch;
+      if (receipt.muffLostToKickers) stResult = SpecialTeamsResult.Muff;
       if (play.is_touchdown) stResult = SpecialTeamsResult.ReturnTouchdown;
       return {
         type: PlayType.Punt,
@@ -714,7 +721,8 @@ export function convertPlay(
         returner,
         result: stResult,
         kickDistance: spots?.kickDistance,
-        returnYards: returner ? spots?.returnYards : undefined,
+        returnYards: receipt.fairCaught ? 0 : returner ? spots?.returnYards : undefined,
+        ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         isTouchback,
         isTouchdown: play.is_touchdown,
         ...tackleCredits(play),

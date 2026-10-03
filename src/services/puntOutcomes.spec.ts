@@ -1,0 +1,86 @@
+/**
+ * Fair catches and muffs on a play recorded as a Punt or Kickoff.
+ *
+ * The outcome rides in play_data.kick_outcome, not the play type, so both stat
+ * paths have to read it. They used to read only the play type and counted
+ * every fair catch picked that way as a 0-yard return.
+ */
+import { FootballStatsEngine } from "football-stats-engine";
+import { describe, expect, it } from "vitest";
+import { transformPlays } from "./playTransformer";
+import type { PlayWithPlayers } from "./gameService";
+import { replayLiveGame } from "./liveGameSession";
+import { advanceSituationAfterPlay } from "./gameFlow";
+import { DEFAULT_GAME_CONFIG } from "./programService";
+import type { PlayRecord } from "@/components/game/types";
+
+const tags = (...roles: string[]) => roles.map(role => ({ player_id: role, role, credit: null }));
+/** A 40-yard punt from our 30, landing on their 30. */
+function punt(playData: Record<string, unknown>, yards: number): PlayWithPlayers {
+  return {
+    id: "p1", game_id: "g", sequence: 1, quarter: 1, clock: "10:00", down: 4, distance: 8,
+    yard_line: 30, possession: "us", play_type: "punt",
+    play_data: { kicked_to_yard: 30, ...playData }, yards_gained: yards,
+    is_touchdown: false, is_turnover: false, is_penalty: false, description: "", play_start_time: 600,
+    play_players: tags("punter", "returner"),
+  } as unknown as PlayWithPlayers;
+}
+
+function run(play: PlayWithPlayers) {
+  const engine = new FootballStatsEngine({ rules: "high_school", trackDrives: true });
+  engine.setTeams({ id: "us", name: "Us", abbreviation: "US" }, { id: "them", name: "Them", abbreviation: "TH" });
+  engine.processPlays(transformPlays([play], { gameId: "g", homeTeamId: "us", awayTeamId: "them", homeTeamName: "Us", awayTeamName: "Them", programTeamId: "us" }));
+  const live = replayLiveGame([{
+    id: play.id, type: play.play_type, possession: play.possession, ballOn: play.yard_line,
+    quarter: 1, clock: 600, down: play.down, distance: play.distance,
+    yards: play.yards_gained, isTouchdown: false, turnover: false, playData: play.play_data,
+    tagged: play.play_players.map(t => ({ ...t, id: t.player_id, name: t.player_id })),
+  } as unknown as PlayRecord], {
+    gameId: "g", programTeamId: "us", programName: "Us", programAbbreviation: "US",
+    opponentTeamId: "them", opponentName: "Them", opponentAbbreviation: "TH",
+    isHome: true, gameConfig: DEFAULT_GAME_CONFIG, pregame: null,
+  }).summary!;
+  return [engine.getGameSummary(), live];
+}
+
+describe("punt outcomes", () => {
+  it("counts a fair catch on a Punt as a fair catch, not a return", () => {
+    for (const s of run(punt({ kick_outcome: "fair_catch", return_to_ball_on: 70 }, 40))) {
+      expect(s.returns.returner?.puntReturns ?? 0).toBe(0);
+      expect(s.returns.returner.puntReturnFairCatches).toBe(1);
+      expect(s.punting.punter.puntsFairCaught).toBe(1);
+    }
+  });
+
+  it("gives a muff the kickers fell on no return attempt", () => {
+    for (const s of run(punt({ kick_outcome: "muffed", muff_recovered_by_kicking: true, return_to_ball_on: 72 }, 42))) {
+      expect(s.returns.returner?.puntReturns ?? 0).toBe(0);
+      expect(s.punting.punter.punts).toBe(1);
+    }
+  });
+
+  it("counts a muff the receivers fell on and ran back as a return", () => {
+    for (const s of run(punt({ kick_outcome: "muffed", muff_recovered_by_kicking: false, return_to_ball_on: 65 }, 35))) {
+      expect(s.returns.returner.puntReturns).toBe(1);
+      expect(s.returns.returner.puntReturnYards).toBe(5);
+    }
+  });
+
+  it("leaves the ball with the kickers where they recovered a muff", () => {
+    const before = { possession: "us" as const, down: 4, distance: 8, ballOn: 30 };
+    const next = advanceSituationAfterPlay({
+      type: "punt", yards: 42, isTouchdown: false, result: "", penalty: null, flagYards: 0, firstDown: false,
+      playData: { kick_outcome: "muffed", muff_recovered_by_kicking: true },
+    }, before, DEFAULT_GAME_CONFIG);
+    expect(next).toMatchObject({ possession: "us", down: 1, ballOn: 72 });
+  });
+
+  it("hands the ball over after a muff the receivers recovered", () => {
+    const before = { possession: "us" as const, down: 4, distance: 8, ballOn: 30 };
+    const next = advanceSituationAfterPlay({
+      type: "punt", yards: 35, isTouchdown: false, result: "", penalty: null, flagYards: 0, firstDown: false,
+      playData: { kick_outcome: "muffed", muff_recovered_by_kicking: false },
+    }, before, DEFAULT_GAME_CONFIG);
+    expect(next).toMatchObject({ possession: "them", down: 1, ballOn: 35 });
+  });
+});

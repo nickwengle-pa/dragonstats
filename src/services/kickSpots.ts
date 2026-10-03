@@ -125,3 +125,24 @@ export function netKickYards(
   if (isTouchback) return Math.max(0, (100 - touchbackYardLine) - ballOn);
   return spots.kickDistance - spots.returnYards;
 }
+
+/**
+ * What the kick's outcome means for the man who received it.
+ *
+ * A punt or kickoff picked as "Punt" / "Kickoff" with Fair Catch as its
+ * outcome is stored under its own play type, so the play type alone cannot
+ * tell the engine there was no return - it used to count every one of those
+ * as a 0-yard return. A muff the KICKING team fell on is not a return either:
+ * the receiver never had the ball, so he gets no attempt and no yards, and
+ * the kicking team keeps it (see gameFlow).
+ */
+export function kickReceiptOf(playData: Record<string, unknown> | null | undefined): {
+  fairCaught: boolean;
+  muffLostToKickers: boolean;
+} {
+  const pd = playData ?? {};
+  return {
+    fairCaught: pd.kick_outcome === "fair_catch",
+    muffLostToKickers: pd.kick_outcome === "muffed" && pd.muff_recovered_by_kicking === true,
+  };
+}
