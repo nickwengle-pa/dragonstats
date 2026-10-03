@@ -81,6 +81,15 @@ describe("punt outcomes", () => {
     }
   });
 
+  it("ignores a stale returner tag on a punt nobody fielded", () => {
+    for (const outcome of ["downed", "out_of_bounds", "touchback"]) {
+      for (const s of run(punt({ kick_outcome: outcome, return_to_ball_on: 70 }, 40))) {
+        expect(s.returns.returner?.puntReturns ?? 0, outcome).toBe(0);
+        expect(s.punting.punter.punts, outcome).toBe(1);
+      }
+    }
+  });
+
   it("leaves the ball with the kickers where they recovered a muff", () => {
     const before = { possession: "us" as const, down: 4, distance: 8, ballOn: 30 };
     const next = advanceSituationAfterPlay({
