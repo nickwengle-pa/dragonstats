@@ -706,6 +706,11 @@ export default function GameScreen() {
   const [showPregame, setShowPregame] = useState(false);
   const [savingPregame, setSavingPregame] = useState(false);
   const [adjBallOn, setAdjBallOn] = useState(25);
+  /* Its own state, like the line-of-scrimmage editor's: worked out from the
+     spot, the 50 always read as the possessing team's half, so tapping the
+     other team there did nothing and the yard typed next landed on the
+     wrong half. */
+  const [adjSide, setAdjSide] = useState<FieldSide>("program");
   const [adjDown, setAdjDown] = useState(1);
   const [adjDistance, setAdjDistance] = useState(10);
   const [adjPossession, setAdjPossession] = useState<"us" | "them">("us");
@@ -1431,6 +1436,7 @@ export default function GameScreen() {
     setPendingSituationPlayId(playId);
     setAdjPossession(suggested.possession);
     setAdjBallOn(suggested.ballOn);
+    setAdjSide(getFieldSideForSpot(suggested.ballOn, suggested.possession));
     setAdjDown(suggested.down);
     setAdjDistance(suggested.distance);
     // These are all clock-stopping events, so the running clock is the right
@@ -3555,7 +3561,7 @@ export default function GameScreen() {
                   same words named the other end of the field after a change
                   of team. */}
               {(() => {
-                const side = getFieldSideForSpot(adjBallOn, adjPossession);
+                const side = adjSide;
                 const yard = adjBallOn <= 50 ? adjBallOn : 100 - adjBallOn;
                 return (
                   <div className="flex items-center gap-2">
@@ -3564,7 +3570,7 @@ export default function GameScreen() {
                       { value: "opponent" as const, label: oppAbbr },
                     ]).map(option => (
                       <button key={option.value} aria-pressed={side === option.value}
-                        onClick={() => setAdjBallOn(toBallOnFromFieldSide(option.value, yard, adjPossession))}
+                        onClick={() => { setAdjSide(option.value); setAdjBallOn(toBallOnFromFieldSide(option.value, yard, adjPossession)); }}
                         className={`px-2.5 h-9 rounded-lg text-xs font-bold uppercase border transition-colors ${side === option.value ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-neutral-500"}`}>
                         {option.label}
                       </button>
@@ -3572,6 +3578,7 @@ export default function GameScreen() {
                     <NumberField value={yard} min={1} max={50} aria-label="Ball on yard line"
                       onChange={y => setAdjBallOn(toBallOnFromFieldSide(side, y, adjPossession))}
                       className="input text-center text-sm font-black flex-1 min-w-0" />
+                    <span className="text-xs font-bold text-neutral-500 w-14 text-right">{yard === 50 ? "50" : `${side === "program" ? progAbbr : oppAbbr} ${yard}`}</span>
                   </div>
                 );
               })()}

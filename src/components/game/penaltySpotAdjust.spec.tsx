@@ -84,6 +84,51 @@ describe("adjusting a penalty's result spot", () => {
     expect(out?.nextSituation).toMatchObject({ ballOn: 40, down: 1, distance: 10 });
   });
 
+  it("lights First down once the spot reaches the chains, and confirming it keeps the spot", async () => {
+    const { result, submit } = await flagOffsides();
+    await click(button("+5", result));
+    const first = screen.getByRole("button", { name: "First down" });
+    expect(first.getAttribute("aria-pressed")).toBe("true");
+    await click(first);
+    expect(result.textContent).toContain("Spotted at");
+    const out = await submit();
+    expect(out?.nextSituation).toMatchObject({ ballOn: 40, down: 1, distance: 10, source: "manual_override" });
+  });
+
+  it("typing in the Ball on box follows the rules like the ruler", async () => {
+    const { result, submit } = await flagOffsides();
+    await click(button(/Adjust/, result));
+    const box = screen.getByLabelText("Ball on yard line") as HTMLInputElement;
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "3" } });
+    fireEvent.change(box, { target: { value: "36" } });
+    fireEvent.blur(box);
+    expect(result.textContent).toContain("2 & 2");
+    const out = await submit();
+    expect(out?.nextSituation).toMatchObject({ ballOn: 36, down: 2, distance: 2 });
+  });
+
+  it("a team picked by hand stays picked when the ball is moved", async () => {
+    const { result, submit } = await flagOffsides();
+    await click(button(/Adjust/, result));
+    await click(within(screen.getByRole("group", { name: "Next possession" })).getByRole("button", { name: "Them" }));
+    await click(button("+1", result));
+    const out = await submit();
+    expect(out?.nextSituation?.possession).toBe("them");
+  });
+
+  it("a distance typed by hand stays typed when the ball is moved", async () => {
+    const { result, submit } = await flagOffsides();
+    await click(button("+1", result));
+    const toGo = screen.getByLabelText("To go") as HTMLInputElement;
+    fireEvent.focus(toGo);
+    fireEvent.change(toGo, { target: { value: "5" } });
+    fireEvent.blur(toGo);
+    await click(button("+1", result));
+    const out = await submit();
+    expect(out?.nextSituation).toMatchObject({ ballOn: 37, down: 2, distance: 5 });
+  });
+
   it("Use rules puts the ball back on the mark-off", async () => {
     const { result, submit } = await flagOffsides();
     await click(button("-1", result));
@@ -118,6 +163,16 @@ describe("a number box that can be emptied", () => {
     fireEvent.change(box, { target: { value: "" } });
     fireEvent.blur(box);
     expect(box.value).toBe("35");
+  });
+
+  it("an emptied box keeps the old number, not the first digit deleting passed through", () => {
+    render(<Harness initial={35} />);
+    const box = screen.getByLabelText("yard") as HTMLInputElement;
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "3" } });
+    fireEvent.change(box, { target: { value: "" } });
+    expect(box.value).toBe("");
+    expect(screen.getByRole("status").textContent).toBe("35");
   });
 
   it("clamps what it passes up, and shows the clamp on leaving", () => {

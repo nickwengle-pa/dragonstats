@@ -876,7 +876,6 @@ export default function PlayEntryModal({
   const [overrideSpot, setOverrideSpot] = useState(!!manualNext && !editing);
   const [spotSide, setSpotSide] = useState<"our" | "opp">(manualProgramSpot <= 50 ? "our" : "opp");
   const [spotYardLine, setSpotYardLine] = useState(manualYard);
-  const [spotYardRaw, setSpotYardRaw] = useState(String(manualYard));
   const [spotDown, setSpotDown] = useState(manualNext?.down ?? 1);
   const [spotDistance, setSpotDistance] = useState(manualNext?.distance ?? 10);
   const [spotNextPossession, setSpotNextPossession] = useState<"us" | "them">(manualNext?.possession ?? gameState.possession);
@@ -2061,7 +2060,6 @@ export default function PlayEntryModal({
     const clamped = Math.max(1, Math.min(50, yardLine));
     setSpotSide(side);
     setSpotYardLine(clamped);
-    setSpotYardRaw(String(clamped));
   };
 
   const overrideBallOn = spotToBallOn(spotSide, spotYardLine);
@@ -2315,23 +2313,32 @@ export default function PlayEntryModal({
     setOverrideSpot(true);
   };
 
+  /** The rules re-run with the ball where the officials spotted it. */
+  const rulesAtSpot = (spot: number) =>
+    enforcementInput && !scoringPenaltyRuling ? enforcePenalty({ ...enforcementInput, spottedAt: spot }) : null;
+  const nextTeamOf = (e: { possessionFlips: boolean }) => e.possessionFlips ? otherSide(gameState.possession) : gameState.possession;
+
   /* The officials put the ball a yard from where the arithmetic did. Moving
-     the result on the field (a tap, the ruler) re-runs the enforcement with
-     the ball where they spotted it, so the down and distance follow by the
-     same rules: the chains stay where they were unless the spot reaches them,
-     and a fresh series is measured from the new spot. It is stored as a
-     hand-set spot, so the replay and an edit keep it, and the down and
-     distance stay open to correct below. A result with no enforcement to
-     re-run (a kept score) just moves the ball. */
+     the result (a tap on the field, the ruler, the Ball on box) re-runs the
+     enforcement with the ball where they spotted it, so the down and
+     distance follow by the same rules: the chains stay where they were unless
+     the spot reaches them, and a fresh series is measured from the new spot.
+     It is stored as a hand-set spot, so the replay and an edit keep it.
+
+     Only while the down, distance and team on screen are still the rules'
+     own for the spot shown. Once the operator has set any of them by hand -
+     or opened a play saved that way - moving the ball moves only the ball.
+     A result with no enforcement to re-run (a kept score) just moves it. */
   const adjustPenaltySpot = (ballOn: number) => {
     const spot = Math.max(1, Math.min(99, Math.round(ballOn)));
-    const ruled = enforcementInput && !scoringPenaltyRuling
-      ? enforcePenalty({ ...enforcementInput, spottedAt: spot })
-      : null;
+    const shown = overrideSpot ? rulesAtSpot(overrideBallOn) : enforcement;
+    const handSet = overrideSpot && (!shown || spotDown !== shown.down
+      || spotDistance !== shown.distance || spotNextPossession !== nextTeamOf(shown));
+    const ruled = handSet ? null : rulesAtSpot(spot);
     if (ruled) {
       setSpotDown(ruled.down);
       setSpotDistance(ruled.distance);
-      setSpotNextPossession(ruled.possessionFlips ? otherSide(gameState.possession) : gameState.possession);
+      setSpotNextPossession(nextTeamOf(ruled));
       setSpotGoalToGo(undefined);
     } else if (!overrideSpot) {
       setSpotDown(penaltyPreview?.down ?? gameState.down);
@@ -2341,6 +2348,22 @@ export default function PlayEntryModal({
     seedSpotFromBallOn(spot);
     setOverrideSpot(true);
   };
+
+  /* A down ruling picked after the spot was moved re-runs at that spot. It
+     used to reset to the rules' spot, so tapping "First down" to confirm what
+     the screen already said threw the officials' spot away. Run after the
+     render that applies the ruling, since the same tap can change whether
+     the play counts, and with it who had the ball at the end. */
+  const [spotRerun, setSpotRerun] = useState(0);
+  useEffect(() => {
+    if (!spotRerun || !overrideSpot) return;
+    const ruled = rulesAtSpot(overrideBallOn);
+    if (!ruled) { setOverrideSpot(false); return; }
+    setSpotDown(ruled.down);
+    setSpotDistance(ruled.distance);
+    setSpotNextPossession(nextTeamOf(ruled));
+    setSpotGoalToGo(undefined);
+  }, [spotRerun]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Open the flag's own step, adding it to the flow if it is not there yet. */
   const openPenaltyStep = () => {
@@ -2440,7 +2463,7 @@ export default function PlayEntryModal({
                         {(["our", "opp"] as const).map(s => (
                           <button
                             key={s}
-                            onClick={() => setSpotSide(s)}
+                            onClick={() => adjustPenaltySpot(spotToBallOn(s, spotYardLine))}
                             className={`px-3 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 ${
                               spotSide === s
                                 ? "border-amber-500 bg-amber-500/15 text-amber-400"
@@ -2450,20 +2473,13 @@ export default function PlayEntryModal({
                             {perspectiveSideTag(s)}
                           </button>
                         ))}
-                        <input
-                          type="number"
-                          inputMode="numeric"
+                        {/* Same as moving it on the field. */}
+                        <NumberField
                           min={1}
                           max={50}
-                          value={spotYardRaw}
-                          onChange={e => {
-                            const raw = e.target.value;
-                            setSpotYardRaw(raw);
-                            if (raw === "") return;
-                            const n = Number(raw);
-                            if (!Number.isNaN(n)) setSpotYardLine(Math.max(1, Math.min(50, n)));
-                          }}
-                          onBlur={() => setSpotYardRaw(String(spotYardLine))}
+                          value={spotYardLine}
+                          onChange={yard => adjustPenaltySpot(spotToBallOn(spotSide, yard))}
+                          aria-label="Ball on yard line"
                           className="input flex-1 text-center text-sm font-bold"
                         />
                       </div>
@@ -2565,7 +2581,10 @@ export default function PlayEntryModal({
     </button>
   );
 
-  const chosenDownOutcome = penaltyDownOutcome ?? (enforcement?.newSeries ? "first" : enforcement && enforcement.down > gameState.down ? "next" : "repeat");
+  /* Lit from the result on screen: after the spot is moved to the chains it
+     reads First down, not the mark-off's ruling. */
+  const shownEnforcement = overrideSpot && penaltyEnforcement === "accepted" ? rulesAtSpot(overrideBallOn) ?? enforcement : enforcement;
+  const chosenDownOutcome = penaltyDownOutcome ?? (shownEnforcement?.newSeries ? "first" : shownEnforcement && shownEnforcement.down > gameState.down ? "next" : "repeat");
   const penaltyPicker = (
     <div className="space-y-4">
       <PenaltyPicker selected={penalty} penalties={PENALTY_OPTIONS} onSelect={selectPenalty}
@@ -2627,11 +2646,11 @@ export default function PlayEntryModal({
             <div className="grid grid-cols-[1fr_1fr_1fr_44px] gap-2" role="group" aria-label="Down outcome">
               {(["repeat", "next", "first"] as const).map(outcome => <button key={outcome} type="button"
                 aria-pressed={chosenDownOutcome === outcome}
-                onClick={() => { setPenaltyDownOutcome(outcome); setOverrideSpot(false); if (outcome === "repeat") { setPenaltyPlayCounts(false); setPlayCountsOverride(false); } else if (outcome === "next" && !penaltyRule?.lossOfDown && !isPenaltyOnly) { setPenaltyPlayCounts(true); setPlayCountsOverride(true); } }}
+                onClick={() => { setPenaltyDownOutcome(outcome); setSpotRerun(n => n + 1); if (outcome === "repeat") { setPenaltyPlayCounts(false); setPlayCountsOverride(false); } else if (outcome === "next" && !penaltyRule?.lossOfDown && !isPenaltyOnly) { setPenaltyPlayCounts(true); setPlayCountsOverride(true); } }}
                 className={`min-h-11 rounded-lg border px-1 py-2 text-xs font-semibold ${chosenDownOutcome === outcome ? "border-amber-500 bg-amber-500/10 text-amber-300" : "border-surface-border text-slate-300"}`}>
                 {outcome === "repeat" ? "Repeat down" : outcome === "next" ? "Next down" : "First down"}
               </button>)}
-              <button type="button" aria-label="Use automatic down" title="Use automatic down" onClick={() => { setPenaltyDownOutcome(null); setOverrideSpot(false); }}
+              <button type="button" aria-label="Use automatic down" title="Use automatic down" onClick={() => { setPenaltyDownOutcome(null); setSpotRerun(n => n + 1); }}
                 className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-white"><RotateCcw size={16} /></button>
             </div>
           </div>
@@ -4086,7 +4105,7 @@ export default function PlayEntryModal({
                   {overrideSpot ? <><RotateCcw size={15} /> Use rules</> : <><MapPin size={15} /> Adjust</>}
                 </button>}
               </div>
-              {scoringPenaltyRuling && !overrideSpot && <p role="status" className="text-sm text-amber-300">Scoring play kept. Confirm the next spot.</p>}
+              {scoringPenaltyRuling && <p role="status" className="text-sm text-amber-300">{overrideSpot ? "Scoring play kept. Next spot set by hand." : "Scoring play kept. Confirm the next spot."}</p>}
               {penaltyPreview && <>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-300">
                   <span>{penaltyNextPossession === "us" ? progName : oppName} ball</span>
@@ -4098,7 +4117,11 @@ export default function PlayEntryModal({
                   oppColor={oppColor} progName={progName} oppName={oppName} progAbbr={progAbbr ?? "OUR"} oppAbbr={oppAbbr ?? "OPP"}
                   progLogoUrl={progLogoUrl} oppLogoUrl={oppLogoUrl}
                   onPickSpot={penaltyEnforcement === "accepted" ? displayPosition => adjustPenaltySpot(toFieldDisplay(displayPosition)) : undefined} />
-                {penaltyEnforcement === "accepted" && enforcement && !overrideSpot && !scoringPenaltyRuling && <div className="text-xs text-slate-400">{enforcement.from}{enforcement.actualYards < flagYards ? " · Half the distance" : ""}</div>}
+                {/* Kept mounted with other words once the spot is moved: dropping
+                    it shifted the ruler up under the finger on the first nudge. */}
+                {penaltyEnforcement === "accepted" && enforcement && !scoringPenaltyRuling && <div className="text-xs text-slate-400">
+                  {overrideSpot ? "Spotted by hand" : <>{enforcement.from}{enforcement.actualYards < flagYards ? " · Half the distance" : ""}</>}
+                </div>}
                 {/* The yardage on the book is not always where the ball ends up.
                     Same spot controls as a run or a return: tap the field or
                     drag the ruler to where the officials put it. */}
