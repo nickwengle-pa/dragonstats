@@ -62,9 +62,9 @@ function TimeoutButtons({
             key={`${team}-${slot}`}
             type="button"
             onClick={() => onTakeTimeout(team)}
-            disabled={!available}
-            title={`${team === "us" ? "Program" : "Opponent"} timeout`}
-            aria-label={available ? "Take timeout" : "Timeout used"}
+            data-used={!available || undefined}
+            title={available ? `${team === "us" ? "Program" : "Opponent"} timeout` : "Timeout used · tap for an official timeout"}
+            aria-label={available ? "Take timeout" : "Timeout used, record an official timeout"}
           />
         );
       })}

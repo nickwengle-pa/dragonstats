@@ -51,6 +51,8 @@ interface AggReturns {
   playerId: string; name: string;
   kickReturns: number; kickReturnYards: number; kickReturnLong: number; kickReturnTDs: number;
   puntReturns: number; puntReturnYards: number; puntReturnLong: number; puntReturnTDs: number;
+  /** Fumbles, including a muff the kicking team recovered (lostMuffs.ts). */
+  kickReturnFum: number; puntReturnFum: number;
   games: number;
 }
 
@@ -210,8 +212,10 @@ export default function SeasonStatsScreen() {
       }
       // Returns
       for (const [pid, rs] of Object.entries(s.returns)) {
-        if (!rosterIds.has(pid) || (rs.kickReturns === 0 && rs.puntReturns === 0)) continue;
-        const e = retMap.get(pid) ?? { playerId: pid, name: rs.playerName, kickReturns: 0, kickReturnYards: 0, kickReturnLong: 0, kickReturnTDs: 0, puntReturns: 0, puntReturnYards: 0, puntReturnLong: 0, puntReturnTDs: 0, games: 0 };
+        if (!rosterIds.has(pid) || (rs.kickReturns === 0 && rs.puntReturns === 0
+          && !rs.kickReturnFumbles && !rs.puntReturnFumbles)) continue;
+        const e = retMap.get(pid) ?? { playerId: pid, name: rs.playerName, kickReturns: 0, kickReturnYards: 0, kickReturnLong: 0, kickReturnTDs: 0, puntReturns: 0, puntReturnYards: 0, puntReturnLong: 0, puntReturnTDs: 0, kickReturnFum: 0, puntReturnFum: 0, games: 0 };
+        e.kickReturnFum += rs.kickReturnFumbles ?? 0; e.puntReturnFum += rs.puntReturnFumbles ?? 0;
         e.kickReturns += rs.kickReturns; e.kickReturnYards += rs.kickReturnYards;
         e.kickReturnLong = Math.max(e.kickReturnLong, rs.kickReturnLong);
         e.kickReturnTDs += rs.kickReturnTouchdowns;
@@ -666,7 +670,7 @@ export default function SeasonStatsScreen() {
                 )}
 
                 {/* Kick Returns */}
-                {returns.filter(r => r.kickReturns > 0).length > 0 && (
+                {returns.filter(r => r.kickReturns > 0 || r.kickReturnFum > 0).length > 0 && (
                   <div className="card p-4">
                     <SectionTitle>Kick Returns</SectionTitle>
                     <div className="overflow-x-auto">
@@ -680,10 +684,11 @@ export default function SeasonStatsScreen() {
                             <th className="text-right py-1.5 font-bold">Avg</th>
                             <th className="text-right py-1.5 font-bold">Lng</th>
                             <th className="text-right py-1.5 font-bold">TD</th>
+                            <th className="text-right py-1.5 font-bold">Fum</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {returns.filter(r => r.kickReturns > 0)
+                          {returns.filter(r => r.kickReturns > 0 || r.kickReturnFum > 0)
                             .sort((a, b) => b.kickReturnYards - a.kickReturnYards)
                             .map(p => (
                               <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
@@ -695,6 +700,7 @@ export default function SeasonStatsScreen() {
                                 <td className="py-1.5 text-right font-mono">{p.kickReturns > 0 ? (p.kickReturnYards / p.kickReturns).toFixed(1) : "0.0"}</td>
                                 <td className="py-1.5 text-right font-mono">{p.kickReturnLong}</td>
                                 <td className="py-1.5 text-right font-mono text-emerald-400">{p.kickReturnTDs}</td>
+                                <td className="py-1.5 text-right font-mono">{p.kickReturnFum}</td>
                               </tr>
                             ))}
                         </tbody>
@@ -704,7 +710,7 @@ export default function SeasonStatsScreen() {
                 )}
 
                 {/* Punt Returns */}
-                {returns.filter(r => r.puntReturns > 0).length > 0 && (
+                {returns.filter(r => r.puntReturns > 0 || r.puntReturnFum > 0).length > 0 && (
                   <div className="card p-4">
                     <SectionTitle>Punt Returns</SectionTitle>
                     <div className="overflow-x-auto">
@@ -718,10 +724,11 @@ export default function SeasonStatsScreen() {
                             <th className="text-right py-1.5 font-bold">Avg</th>
                             <th className="text-right py-1.5 font-bold">Lng</th>
                             <th className="text-right py-1.5 font-bold">TD</th>
+                            <th className="text-right py-1.5 font-bold">Fum</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {returns.filter(r => r.puntReturns > 0)
+                          {returns.filter(r => r.puntReturns > 0 || r.puntReturnFum > 0)
                             .sort((a, b) => b.puntReturnYards - a.puntReturnYards)
                             .map(p => (
                               <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
@@ -733,6 +740,7 @@ export default function SeasonStatsScreen() {
                                 <td className="py-1.5 text-right font-mono">{p.puntReturns > 0 ? (p.puntReturnYards / p.puntReturns).toFixed(1) : "0.0"}</td>
                                 <td className="py-1.5 text-right font-mono">{p.puntReturnLong}</td>
                                 <td className="py-1.5 text-right font-mono text-emerald-400">{p.puntReturnTDs}</td>
+                                <td className="py-1.5 text-right font-mono">{p.puntReturnFum}</td>
                               </tr>
                             ))}
                         </tbody>

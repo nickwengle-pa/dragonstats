@@ -19,9 +19,18 @@ import type { PlayRecord } from "./types";
  * one wrong team silently misreported both teams' timeouts for the rest of
  * the half.
  */
+/** Who stopped the clock. An official's timeout - injury, measurement,
+ *  equipment - is charged to neither team, so it never touches the counts. */
+export type TimeoutCaller = "us" | "them" | "official";
+
 export interface TimeoutEdit {
   clock: number;
-  team: "us" | "them";
+  team: TimeoutCaller;
+}
+
+/** The name a timeout is written under in the log. */
+export function timeoutCallerLabel(team: TimeoutCaller, progName: string, oppName: string): string {
+  return team === "official" ? "Official" : team === "us" ? progName : oppName;
 }
 
 export default function TimeoutEditModal({
@@ -42,8 +51,8 @@ export default function TimeoutEditModal({
   onClose: () => void;
 }) {
   const storedTeam = play.playData?.timeout_team;
-  const [team, setTeam] = useState<"us" | "them">(
-    storedTeam === "them" ? "them" : "us",
+  const [team, setTeam] = useState<TimeoutCaller>(
+    storedTeam === "them" || storedTeam === "official" ? storedTeam : "us",
   );
   const [clock, setClock] = useState(play.clock);
 
@@ -73,8 +82,8 @@ export default function TimeoutEditModal({
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div>
             <label className="label block mb-1.5">Called By</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["us", "them"] as const).map((side) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(["us", "them", "official"] as const).map((side) => (
                 <button
                   key={side}
                   onClick={() => setTeam(side)}
@@ -84,7 +93,7 @@ export default function TimeoutEditModal({
                       : "border-surface-border bg-surface-bg text-slate-500"
                   }`}
                 >
-                  {side === "us" ? progName : oppName}
+                  {timeoutCallerLabel(side, progName, oppName)}
                 </button>
               ))}
             </div>
@@ -92,7 +101,7 @@ export default function TimeoutEditModal({
                 plays, so this is the control that fixes them. */}
             <div className="text-[10px] text-slate-600 mt-1.5">
               Timeouts remaining are counted from these, so changing the team
-              corrects both sides.
+              corrects both sides. An official's timeout is charged to neither.
             </div>
           </div>
 

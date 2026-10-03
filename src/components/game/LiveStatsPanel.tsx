@@ -415,7 +415,7 @@ function SpecialTeamsTab({
           <Empty>{noneYet(team, "returns")}</Empty>
         ) : (
           <Table
-            headers={["Player", "KR", "KR YDS", "PR", "PR YDS", "TD"]}
+            headers={["Player", "KR", "KR YDS", "PR", "PR YDS", "TD", "FUM"]}
             rows={returns.map(([id, s]: [string, any]) => [
               nameFor(id),
               s.kickReturns ?? 0,
@@ -423,6 +423,7 @@ function SpecialTeamsTab({
               s.puntReturns ?? 0,
               s.puntReturnYards ?? 0,
               (s.kickReturnTouchdowns ?? 0) + (s.puntReturnTouchdowns ?? 0),
+              (s.kickReturnFumbles ?? 0) + (s.puntReturnFumbles ?? 0),
             ])}
           />
         )}

@@ -41,6 +41,7 @@ import { resolveDriveResults } from "./driveResults";
 import { splitTackleCredit } from "./tackleCredit";
 import { grantsAutoFirstDown, penaltyWipesPlay } from "@/components/game/types";
 import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
+import { applyLostMuffs, lostMuffFumble } from "./lostMuffs";
 import { scoringEventsForPlay } from "./scoringLedger";
 import { convertPlay } from "./playTransformer";
 import type { PlayWithPlayers } from "./gameService";
@@ -597,6 +598,9 @@ function toEnginePlay(
           ? (kickSpots?.returnYards ?? play.yards)
           : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
+        ...(receipt.muffLostToKickers
+          ? { fumble: lostMuffFumble(firstTaggedPlayer(play, "returner")?.player_id, context.possessionTeam) }
+          : {}),
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
         tackledBy: tackles.tackledBy,
@@ -620,6 +624,9 @@ function toEnginePlay(
           ? (kickSpots?.returnYards ?? play.yards)
           : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
+        ...(receipt.muffLostToKickers
+          ? { fumble: lostMuffFumble(firstTaggedPlayer(play, "returner")?.player_id, context.possessionTeam) }
+          : {}),
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
         tackledBy: tackles.tackledBy,
@@ -824,6 +831,7 @@ export function replayLiveGame(
   let summary: GameSummary | null = null;
   try {
     summary = engine.getGameSummary();
+    applyLostMuffs(summary, engine.getRawPlays());
     // The engine labels every drive that did not reach the end zone a punt.
     // Correct it here too, or the live Drives tab disagrees with the summary
     // screen on the same game. See driveResults.ts.

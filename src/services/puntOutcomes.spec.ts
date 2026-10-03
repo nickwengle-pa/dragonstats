@@ -12,6 +12,7 @@ import type { PlayWithPlayers } from "./gameService";
 import { replayLiveGame } from "./liveGameSession";
 import { advanceSituationAfterPlay } from "./gameFlow";
 import { DEFAULT_GAME_CONFIG } from "./programService";
+import { applyLostMuffs } from "./lostMuffs";
 import type { PlayRecord } from "@/components/game/types";
 
 const tags = (...roles: string[]) => roles.map(role => ({ player_id: role, role, credit: null }));
@@ -40,7 +41,9 @@ function run(play: PlayWithPlayers) {
     opponentTeamId: "them", opponentName: "Them", opponentAbbreviation: "TH",
     isHome: true, gameConfig: DEFAULT_GAME_CONFIG, pregame: null,
   }).summary!;
-  return [engine.getGameSummary(), live];
+  const summary = engine.getGameSummary();
+  applyLostMuffs(summary, engine.getRawPlays());
+  return [summary, live];
 }
 
 describe("punt outcomes", () => {
@@ -52,10 +55,22 @@ describe("punt outcomes", () => {
     }
   });
 
-  it("gives a muff the kickers fell on no return attempt", () => {
+  it("charges a muff the kickers fell on as a fumble lost, not a return", () => {
     for (const s of run(punt({ kick_outcome: "muffed", muff_recovered_by_kicking: true, return_to_ball_on: 72 }, 42))) {
-      expect(s.returns.returner?.puntReturns ?? 0).toBe(0);
+      expect(s.returns.returner.puntReturns).toBe(0);
+      expect(s.returns.returner.puntReturnFumbles).toBe(1);
+      // We punted, so the muff is theirs: their fumble lost, their turnover.
+      expect(s.awayTeamStats.fumblesLost).toBe(1);
+      expect(s.awayTeamStats.turnovers).toBe(1);
+      expect(s.homeTeamStats.turnovers).toBe(0);
       expect(s.punting.punter.punts).toBe(1);
+    }
+  });
+
+  it("does not charge a muff the receivers recovered", () => {
+    for (const s of run(punt({ kick_outcome: "muffed", muff_recovered_by_kicking: false, return_to_ball_on: 65 }, 35))) {
+      expect(s.returns.returner.puntReturnFumbles).toBe(0);
+      expect(s.awayTeamStats.turnovers).toBe(0);
     }
   });
 
