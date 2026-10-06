@@ -101,6 +101,18 @@ html[data-theme="dark"] .bc {
 .bc-home > .bc-hdr > .bc-hdr-right { margin-left: auto; }
 .bc-hdr-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
 .bc-rec-row { display: flex; align-items: stretch; gap: 4px; }
+/* The outside links: white bugs beside the red record chip, angled the other
+   way so the row reads as one strip. */
+.bc-rank {
+  display: flex; align-items: center; gap: 5px;
+  background: #fff; color: var(--bc-bug, #0b0d10);
+  padding: 4px 12px 4px 10px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  text-decoration: none; cursor: pointer; transition: background-color 200ms;
+}
+.bc-rank:hover { background: #e6e8ec; }
+.bc-rank svg { opacity: .6; }
 .bc-rec {
   display: flex; align-items: center; gap: 8px;
   background: var(--bc-red); color: #fff;
@@ -139,29 +151,27 @@ html[data-theme="dark"] .bc {
 .bc-subbar .bc-eyebrow { color: var(--bc-mute); }
 
 /* ── District 6 bar ──
-   Our class's table as a ticker above the bug. One row from iPad width up;
-   on a phone the links share the top row with the tag and the table scrolls
-   sideways underneath, opening on our row. */
+   Our class's table as a ticker above the bug: one line that crawls, with our
+   row lit and the playoff cut marked. Open, it wraps so every team reads whole. */
 .bc-d6 {
-  display: flex; flex-wrap: wrap; align-items: stretch;
+  display: flex; align-items: stretch;
   background: var(--bc-surface); color: var(--bc-ink);
   border-bottom: 1px solid var(--bc-line);
   font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
 }
 .bc-d6 a { color: inherit; text-decoration: none; }
 .bc-d6-tag {
-  display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 32px;
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 32px; align-self: flex-start;
   background: var(--bc-bug); padding: 0 18px 0 12px; letter-spacing: .14em;
+  border: 0; font: inherit; text-transform: uppercase; cursor: pointer;
   clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
 }
 .bc-d6 .bc-d6-tag { color: #fff; }
 .bc-d6-tag svg { color: var(--bc-red); }
-.bc-d6-list {
-  order: 3; flex: 1 0 100%; min-width: 0; height: 32px; position: relative;
-  display: flex; align-items: center; gap: 2px; margin: 0; padding: 0 8px; list-style: none;
-  overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--bc-line);
-}
-.bc-d6-list::-webkit-scrollbar { display: none; }
+.bc-d6-tag .bc-d6-chev { color: rgba(255, 255, 255, .7); transform: rotate(90deg); transition: transform 200ms; }
+.bc-d6.open { flex-wrap: wrap; }
+.bc-d6.open .bc-d6-chev { transform: rotate(-90deg); }
+.bc-d6-list { display: flex; align-items: center; gap: 2px; margin: 0; padding: 0 8px; list-style: none; }
 .bc-d6-list li { display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; white-space: nowrap; flex-shrink: 0; }
 .bc-d6-list b, .bc-d6-list em { color: var(--bc-mute); font-variant-numeric: tabular-nums; }
 .bc-d6-list em { font-style: normal; font-weight: 600; }
@@ -175,13 +185,30 @@ html[data-theme="dark"] .bc {
   align-self: stretch; align-items: center; margin: 0 4px; padding: 0 8px;
   border-left: 2px dashed var(--bc-red); color: var(--bc-red-text); font-size: 9px; letter-spacing: .16em;
 }
-.bc-d6-links { margin-left: auto; display: flex; align-items: stretch; }
-.bc-d6-links a { display: flex; align-items: center; gap: 5px; padding: 0 12px; min-height: 32px; border-left: 1px solid var(--bc-line); transition: background-color 200ms; }
-.bc-d6-links a:hover { background: var(--bc-surface-2); }
-.bc-d6-links svg { color: var(--bc-mute); }
-@media (min-width: 768px) {
-  .bc-d6 { flex-wrap: nowrap; }
-  .bc-d6-list { order: 0; flex: 1 1 0; border-top: 0; }
+/* Closed: the crawl. Two copies of the list end to end slide left by one copy's
+   width, so the loop has no seam. Touching it holds it still. */
+.bc-d6-view {
+  flex: 1 1 0; min-width: 0; height: 32px; overflow: hidden; cursor: pointer;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 24px), transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 24px), transparent);
+}
+.bc-d6-track { display: flex; width: max-content; height: 100%; animation: bc-d6-crawl var(--d6-dur, 48s) linear infinite; }
+.bc-d6-view:hover .bc-d6-track, .bc-d6-view:active .bc-d6-track { animation-play-state: paused; }
+@keyframes bc-d6-crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+/* Open: the whole table, wrapped, with the official source at the end. */
+.bc-d6-full { flex: 1 0 100%; min-width: 0; border-top: 1px solid var(--bc-line); display: flex; flex-wrap: wrap; align-items: center; padding: 6px 0; }
+.bc-d6-full .bc-d6-list { flex-wrap: wrap; row-gap: 2px; }
+.bc-d6-full .bc-d6-list li { padding: 5px 10px; }
+.bc-d6-full .bc-d6-list li.us { padding: 5px 14px; }
+.bc-d6-full .bc-d6-list li.bc-d6-cut { align-self: auto; padding: 5px 8px; }
+.bc-d6-official { display: flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 16px; color: var(--bc-mute); font-size: 10px; }
+.bc-d6 .bc-d6-official { color: var(--bc-mute); }
+.bc-d6-official:hover { color: var(--bc-ink); }
+@media (prefers-reduced-motion: reduce) {
+  .bc-d6-track { animation: none; }
+  .bc-d6-view { overflow-x: auto; scrollbar-width: none; -webkit-mask-image: none; mask-image: none; }
+  .bc-d6-view::-webkit-scrollbar { display: none; }
+  .bc-d6-echo { display: none; }
 }
 
 /* The PL Strength link: a season-style row that leaves for another app. */
