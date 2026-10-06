@@ -198,6 +198,12 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
         <div className="bc-hdr-right">
           <div className="bc-rec-row">
             <div className="bc-rec"><span className="bc-rec-l">Record</span><span className="bc-rec-v">{record}</span></div>
+            <a className="bc-rank" href={D6_SIMULATOR_URL} target="_blank" rel="noopener noreferrer" title="D6 rankings and playoff scenarios">
+              <span>Scenarios</span><ExternalIcon size={11} />
+            </a>
+            <a className="bc-rank" href={PL_MAXPREPS_URL} target="_blank" rel="noopener noreferrer" title="PL Dragons football on MaxPreps">
+              <span>MaxPreps</span><ExternalIcon size={11} />
+            </a>
           </div>
           <div className="bc-hdr-tools">
             {last5.length > 0 && (
@@ -383,46 +389,77 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
 }
 
 /* ── District 6 bar ──
-   Our class's official table as a ticker across the top, with the playoff cut
-   marked and our row lit, plus the two pages a coach checks on a Saturday:
-   the playoff-scenario simulator and our MaxPreps page. */
-function D6Bar({ d6 }: { d6: D6Standings | null }) {
-  const listRef = useRef<HTMLOListElement>(null);
-  /* Bring our row into view on a phone, where the table scrolls sideways. */
-  useEffect(() => {
-    const list = listRef.current;
-    const ours = list?.querySelector<HTMLElement>("li.us");
-    if (list && ours) list.scrollLeft = Math.max(0, ours.offsetLeft - (list.clientWidth - ours.offsetWidth) / 2);
-  }, [d6]);
+   Our class's official table as a sports ticker across the top: it crawls on
+   one line, with our row lit and the playoff cut marked. Tapping it opens the
+   whole table, wrapped so every team reads in full, and the choice is kept.
+   With reduced motion the line stays still and scrolls by hand, opening on our row. */
+const D6_OPEN_KEY = "ds-d6-open";
+const readOpen = () => { try { return localStorage.getItem(D6_OPEN_KEY) === "1"; } catch { return false; } };
 
-  const label = d6 ? `D6 · Class ${d6.cls}` : "D6 Rankings";
+function D6Bar({ d6 }: { d6: D6Standings | null }) {
+  const [open, setOpen] = useState(readOpen);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const toggle = () => setOpen(o => {
+    try { localStorage.setItem(D6_OPEN_KEY, o ? "0" : "1"); } catch { /* private mode */ }
+    return !o;
+  });
+
+  /* Still ticker (reduced motion): bring our row into view. */
+  useEffect(() => {
+    const view = viewRef.current;
+    if (open || !view || !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const ours = view.querySelector<HTMLElement>("li.us");
+    if (ours) view.scrollLeft = Math.max(0, ours.offsetLeft - (view.clientWidth - ours.offsetWidth) / 2);
+  }, [d6, open]);
+
+  const official = d6?.updatedAt ? `Official District 6 ranking, updated ${d6.updatedAt}` : "Official District 6 ranking";
+  if (!d6) {
+    return (
+      <nav className="bc-d6" aria-label="District 6 rankings">
+        <a className="bc-d6-tag" href={D6_OFFICIAL_URL} target="_blank" rel="noopener noreferrer" title={official}>
+          <TrophyIcon size={12} /><span>D6 Rankings</span>
+        </a>
+      </nav>
+    );
+  }
+
+  const items = (copy: number) => d6.rows.map((r, i) => {
+    const out = d6.cut != null && r.rank > d6.cut;
+    const firstOut = out && i > 0 && d6.rows[i - 1].rank <= d6.cut!;
+    return (
+      <Fragment key={`${copy}-${r.name}`}>
+        {firstOut && <li className="bc-d6-cut" aria-label={`Top ${d6.cut} make the district playoffs`}>Top {d6.cut}</li>}
+        <li className={`${r.us ? "us" : ""}${out ? " out" : ""}`}
+          title={`${r.name}: ${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ""}, ${r.avg.toFixed(2)} average points`}>
+          <b>{r.rank}</b><span>{r.name}</span><em>{r.avg.toFixed(2)}</em>
+        </li>
+      </Fragment>
+    );
+  });
+
+  const label = `District 6 Class ${d6.cls} by average points`;
   return (
-    <nav className="bc-d6" aria-label="District 6 rankings">
-      <a className="bc-d6-tag" href={D6_OFFICIAL_URL} target="_blank" rel="noopener noreferrer"
-        title={d6?.updatedAt ? `Official District 6 ranking, updated ${d6.updatedAt}` : "Official District 6 ranking"}>
-        <TrophyIcon size={12} /><span>{label}</span>
-      </a>
-      {d6 && (
-        <ol className="bc-d6-list" ref={listRef} aria-label={`District 6 Class ${d6.cls} by average points`}>
-          {d6.rows.map((r, i) => {
-            const out = d6.cut != null && r.rank > d6.cut;
-            const firstOut = out && i > 0 && d6.rows[i - 1].rank <= d6.cut!;
-            return (
-              <Fragment key={r.name}>
-                {firstOut && <li className="bc-d6-cut" aria-label={`Top ${d6.cut} make the district playoffs`}>Top {d6.cut}</li>}
-                <li className={`${r.us ? "us" : ""}${out ? " out" : ""}`}
-                  title={`${r.name}: ${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ""}, ${r.avg.toFixed(2)} average points`}>
-                  <b>{r.rank}</b><span>{r.name}</span><em>{r.avg.toFixed(2)}</em>
-                </li>
-              </Fragment>
-            );
-          })}
-        </ol>
+    <nav className={`bc-d6${open ? " open" : ""}`} aria-label="District 6 rankings">
+      <button type="button" className="bc-d6-tag" onClick={toggle} aria-expanded={open}
+        title={open ? "Shrink to the ticker" : "Show the whole table"}>
+        <TrophyIcon size={12} /><span>D6 · Class {d6.cls}</span><ChevronIcon size={12} className="bc-d6-chev" />
+      </button>
+      {open ? (
+        <div className="bc-d6-full">
+          <ol className="bc-d6-list" aria-label={label}>{items(0)}</ol>
+          <a className="bc-d6-official" href={D6_OFFICIAL_URL} target="_blank" rel="noopener noreferrer" title={official}>
+            Official ranking{d6.updatedAt ? ` · ${d6.updatedAt}` : ""}<ExternalIcon size={11} />
+          </a>
+        </div>
+      ) : (
+        /* Two copies end to end so the crawl loops without a gap; the second is for the eye only. */
+        <div className="bc-d6-view" ref={viewRef} onClick={toggle}>
+          <div className="bc-d6-track" style={{ "--d6-dur": `${Math.max(20, d6.rows.length * 4)}s` } as React.CSSProperties}>
+            <ol className="bc-d6-list" aria-label={label}>{items(0)}</ol>
+            <ol className="bc-d6-list bc-d6-echo" aria-hidden="true">{items(1)}</ol>
+          </div>
+        </div>
       )}
-      <div className="bc-d6-links">
-        <a href={D6_SIMULATOR_URL} target="_blank" rel="noopener noreferrer" title="D6 rankings and playoff scenarios">Scenarios<ExternalIcon size={11} /></a>
-        <a href={PL_MAXPREPS_URL} target="_blank" rel="noopener noreferrer" title="PL Dragons football on MaxPreps">MaxPreps<ExternalIcon size={11} /></a>
-      </div>
     </nav>
   );
 }
