@@ -26,6 +26,10 @@ export interface D6Row {
   ties: number;
   /** D6 power points per game played — what the district ranks by. */
   avg: number;
+  /** Total ranking points from Blackline's report, which the ticker shows.
+   *  Null when the report has none, and absent on copies cached before the
+   *  field was read. */
+  points?: number | null;
   us: boolean;
 }
 
@@ -40,7 +44,7 @@ export interface D6Standings {
 
 interface FeedTeam {
   name?: unknown; district?: unknown; cls?: unknown;
-  wins?: unknown; losses?: unknown; ties?: unknown; averagePoints?: unknown;
+  wins?: unknown; losses?: unknown; ties?: unknown; rankingPoints?: unknown; averagePoints?: unknown;
 }
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -58,6 +62,7 @@ export function standingsFromFeed(feed: unknown, ourTeam: string): D6Standings |
       name: t.name as string,
       wins: num(t.wins), losses: num(t.losses), ties: num(t.ties),
       avg: t.averagePoints as number,
+      points: typeof t.rankingPoints === "number" && Number.isFinite(t.rankingPoints) ? t.rankingPoints : null,
       us: t.name === ourTeam,
     }))
     .sort((a, b) => b.avg - a.avg || b.wins - a.wins || a.name.localeCompare(b.name));

@@ -430,8 +430,9 @@ function D6Bar({ d6 }: { d6: D6Standings | null }) {
       <Fragment key={`${copy}-${r.name}`}>
         {firstOut && <li className="bc-d6-cut" aria-label={`Top ${d6.cut} make the district playoffs`}>Top {d6.cut}</li>}
         <li className={`${r.us ? "us" : ""}${out ? " out" : ""}`}
-          title={`${r.name}: ${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ""}, ${r.avg.toFixed(2)} average points`}>
-          <b>{r.rank}</b><span>{r.name}</span><em>{r.avg.toFixed(2)}</em>
+          title={`${r.name}: ${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ""}${r.points != null ? `, ${r.points} ranking points` : ""}, ${r.avg.toFixed(2)} average`}>
+          {/* Ordered by average, as the district ranks, but labelled with the total ranking points. */}
+          <b>{r.rank}</b><span>{r.name}</span>{r.points != null && <em>{r.points}</em>}
         </li>
       </Fragment>
     );
