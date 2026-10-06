@@ -35,6 +35,12 @@
           window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash);
         }
       })(window.location);
+
+      // The installed iPhone/iPad app. It runs under the status bar
+      // (black-translucent below), and screens that open with something
+      // other than the black header need extra room up there. Set before
+      // the first paint so nothing jumps.
+      if (window.navigator.standalone === true) document.documentElement.classList.add("ios-app");
     </script>
   </head>
   <body class="bg-surface-bg text-white antialiased">

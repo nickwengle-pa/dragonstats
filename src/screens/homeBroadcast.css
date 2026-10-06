@@ -204,6 +204,13 @@ html[data-theme="dark"] .bc {
 .bc-d6-official { display: flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 16px; color: var(--bc-mute); font-size: 10px; }
 .bc-d6 .bc-d6-official { color: var(--bc-mute); }
 .bc-d6-official:hover { color: var(--bc-ink); }
+/* In the installed iOS app the system paints an opaque strip over the top of
+   the page that reaches below env(safe-area-inset-top), and on iPadOS 26 that
+   inset can read 0. Every screen used to open with the black header, whose
+   empty top padding sat under the strip unnoticed. The ticker now comes
+   first, so it gets a black band of its own, at least as deep as that
+   padding ever was. */
+html.ios-app .bc-home > .bc-d6 { border-top: 32px solid var(--bc-bug); }
 @media (prefers-reduced-motion: reduce) {
   .bc-d6-track { animation: none; }
   .bc-d6-view { overflow-x: auto; scrollbar-width: none; -webkit-mask-image: none; mask-image: none; }
