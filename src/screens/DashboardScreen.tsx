@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { useTheme } from "@/hooks/useTheme";
+import { useD6Standings } from "@/hooks/useD6Standings";
+import { OUR_D6_TEAM } from "@/services/d6Rankings";
 import { readSeasonGames, readSeasonRoster, readSeasonReviewCounts } from "@/services/offlineCache";
 import HomeBroadcast, { type HomeGame } from "@/components/home/HomeBroadcast";
 import { TabBar } from "@/components/TabBar";
@@ -66,6 +68,7 @@ export default function DashboardScreen() {
   const { program, season } = useProgramContext();
   const navigate = useNavigate();
   const [theme, toggleTheme] = useTheme();
+  const d6 = useD6Standings(OUR_D6_TEAM, season?.year ?? null);
 
   const [games, setGames] = useState<HomeGame[]>([]);
   const [rosterCount, setRosterCount] = useState<number | null>(null);
@@ -140,6 +143,7 @@ export default function DashboardScreen() {
         rosterCount,
         games,
         loaded,
+        d6,
       }}
       theme={theme}
       onToggleTheme={toggleTheme}

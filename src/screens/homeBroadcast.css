@@ -101,17 +101,6 @@ html[data-theme="dark"] .bc {
 .bc-home > .bc-hdr > .bc-hdr-right { margin-left: auto; }
 .bc-hdr-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
 .bc-rec-row { display: flex; align-items: stretch; gap: 4px; }
-/* The rankings link: a white bug beside the red record chip, angled the other
-   way so the pair reads as one strip. */
-.bc-rank {
-  display: flex; align-items: center; gap: 5px;
-  background: #fff; color: var(--bc-bug, #0b0d10);
-  padding: 4px 12px 4px 10px;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
-  font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-  text-decoration: none; cursor: pointer; transition: background-color 200ms;
-}
-.bc-rank:hover { background: #e6e8ec; }
 .bc-rec {
   display: flex; align-items: center; gap: 8px;
   background: var(--bc-red); color: #fff;
@@ -148,6 +137,55 @@ html[data-theme="dark"] .bc {
 /* Sub-header line under the bar: the season, a count, a filter. */
 .bc-subbar { padding: 22px 20px 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .bc-subbar .bc-eyebrow { color: var(--bc-mute); }
+
+/* ── District 6 bar ──
+   Our class's table as a ticker above the bug. One row from iPad width up;
+   on a phone the links share the top row with the tag and the table scrolls
+   sideways underneath, opening on our row. */
+.bc-d6 {
+  display: flex; flex-wrap: wrap; align-items: stretch;
+  background: var(--bc-surface); color: var(--bc-ink);
+  border-bottom: 1px solid var(--bc-line);
+  font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+}
+.bc-d6 a { color: inherit; text-decoration: none; }
+.bc-d6-tag {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 32px;
+  background: var(--bc-bug); padding: 0 18px 0 12px; letter-spacing: .14em;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+.bc-d6 .bc-d6-tag { color: #fff; }
+.bc-d6-tag svg { color: var(--bc-red); }
+.bc-d6-list {
+  order: 3; flex: 1 0 100%; min-width: 0; height: 32px; position: relative;
+  display: flex; align-items: center; gap: 2px; margin: 0; padding: 0 8px; list-style: none;
+  overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--bc-line);
+}
+.bc-d6-list::-webkit-scrollbar { display: none; }
+.bc-d6-list li { display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; white-space: nowrap; flex-shrink: 0; }
+.bc-d6-list b, .bc-d6-list em { color: var(--bc-mute); font-variant-numeric: tabular-nums; }
+.bc-d6-list em { font-style: normal; font-weight: 600; }
+.bc-d6-list li.out { opacity: .55; }
+.bc-d6-list li.us {
+  opacity: 1; background: var(--bc-red); color: #fff; padding: 4px 14px;
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+.bc-d6-list li.us b, .bc-d6-list li.us em { color: rgba(255, 255, 255, .85); }
+.bc-d6-list li.bc-d6-cut {
+  align-self: stretch; align-items: center; margin: 0 4px; padding: 0 8px;
+  border-left: 2px dashed var(--bc-red); color: var(--bc-red-text); font-size: 9px; letter-spacing: .16em;
+}
+.bc-d6-links { margin-left: auto; display: flex; align-items: stretch; }
+.bc-d6-links a { display: flex; align-items: center; gap: 5px; padding: 0 12px; min-height: 32px; border-left: 1px solid var(--bc-line); transition: background-color 200ms; }
+.bc-d6-links a:hover { background: var(--bc-surface-2); }
+.bc-d6-links svg { color: var(--bc-mute); }
+@media (min-width: 768px) {
+  .bc-d6 { flex-wrap: nowrap; }
+  .bc-d6-list { order: 0; flex: 1 1 0; border-top: 0; }
+}
+
+/* The PL Strength link: a season-style row that leaves for another app. */
+.bc .bc-strength { text-decoration: none; color: var(--bc-ink); }
 
 /* ── stage ── */
 .bc-stage { padding: 26px 20px 0; }
@@ -361,6 +399,7 @@ html[data-theme="dark"] .bc {
   border-top: 1px solid #1a1e25;
 }
 .bc-tab {
+  text-decoration: none;
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   cursor: pointer; color: rgba(255, 255, 255, .5); position: relative; transition: color 200ms; user-select: none;
   background: none; border: 0; padding: 0; font: inherit;

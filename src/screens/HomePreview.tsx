@@ -1,5 +1,6 @@
 import { useState } from "react";
 import HomeBroadcast, { type HomeData, type HomeGame } from "@/components/home/HomeBroadcast";
+import type { D6Standings } from "@/services/d6Rankings";
 import { useTheme } from "@/hooks/useTheme";
 import dragon from "@/assets/pl-dragon.png";
 
@@ -13,7 +14,8 @@ import dragon from "@/assets/pl-dragon.png";
    ?state=done      season over, no next game
    ?state=loading   first load, nothing known yet
    ?state=error     the loader failed
-   ?theme=dark      start in the dark palette (it is saved like a real toggle) */
+   ?theme=dark      start in the dark palette (it is saved like a real toggle)
+   ?d6=none         no District 6 table yet (offline first run): links only */
 
 {
   const t = new URLSearchParams(window.location.search).get("theme");
@@ -60,6 +62,17 @@ const LIVE: HomeGame = game({
   current_quarter: 3, current_clock: "7:42", current_down: 2, current_distance: 7, current_yard_line: 66, current_possession: "us",
 });
 
+/* District 6 Class A as it stood on 2026-10-05. */
+const D6: D6Standings = {
+  cls: "A", cut: 8, updatedAt: "10/05/2026 12:17",
+  rows: ([
+    ["Bishop Guilfoyle", 5, 1, 123.33], ["Homer-Center", 5, 1, 106.67], ["Juniata Valley", 4, 2, 90],
+    ["Moshannon Valley", 4, 2, 86.67], ["Bishop McCort", 3, 3, 65], ["Purchase Line", 3, 3, 60],
+    ["Northern Cambria", 3, 3, 56.67], ["Portage", 3, 3, 55], ["Glendale", 2, 4, 40],
+    ["West Branch", 2, 4, 38.33], ["Penns Manor", 1, 5, 16.67], ["Conemaugh Valley", 0, 6, 0],
+  ] as const).map(([name, wins, losses, avg], i) => ({ rank: i + 1, name, wins, losses, ties: 0, avg, us: name === "Purchase Line" })),
+};
+
 const BASE: HomeData = {
   abbreviation: "PL",
   programName: "Purchase Line",
@@ -70,6 +83,7 @@ const BASE: HomeData = {
   rosterCount: 42,
   games: [...PLAYED, ...UPCOMING],
   loaded: true,
+  d6: D6,
 };
 
 export default function HomePreview() {
@@ -85,6 +99,7 @@ export default function HomePreview() {
   if (state === "done") data = { ...BASE, games: PLAYED };
   if (state === "loading") { data = { ...BASE, games: [], rosterCount: null, loaded: false }; loading = true; }
   if (state === "error") { data = { ...BASE, games: [], rosterCount: null, loaded: false }; error = "Could not load the schedule and roster. Check your connection and try again."; }
+  if (new URLSearchParams(window.location.search).get("d6") === "none") data = { ...data, d6: null };
 
   return (
     <>

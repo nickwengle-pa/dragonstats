@@ -1,7 +1,8 @@
 import { useLayoutEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ensureTheme } from "@/hooks/useTheme";
-import { GoalpostIcon, CalendarIcon, JerseyIcon, StatsIcon, HeadsetIcon } from "@/components/icons/BroadcastIcons";
+import { GoalpostIcon, CalendarIcon, JerseyIcon, StatsIcon, HeadsetIcon, BarbellIcon } from "@/components/icons/BroadcastIcons";
+import { PL_STRENGTH_URL } from "@/lib/externalLinks";
 import "@/screens/homeBroadcast.css";
 
 const TABS = [
@@ -32,6 +33,11 @@ export function TabBar() {
           <span>{label}</span>
         </button>
       ))}
+      {/* The weight-room app. A link out, not a screen here, so it never shows as active. */}
+      <a className="bc-tab" href={PL_STRENGTH_URL} target="_blank" rel="noopener noreferrer" title="Open PL Strength">
+        <BarbellIcon size={20} />
+        <span>Lift</span>
+      </a>
     </nav>
   );
 }

@@ -91,4 +91,10 @@ export const ExternalIcon = make("ExternalIcon", <><path d="M14 4h6v6M20 4l-9 9"
 export const PlusIcon = make("PlusIcon", <path d="M12 5v14M5 12h14" />);
 export const UploadIcon = make("UploadIcon", <><path d="M12 16V4M6 10l6-6 6 6" /><path d="M4 20h16" /></>);
 export const ShieldIcon = make("ShieldIcon", <path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6Z" />);
+/* Plates, collars and the bar between them: the PL Strength app. */
+export const BarbellIcon = make("BarbellIcon", <>
+  <rect x="5" y="6" width="3" height="12" />
+  <rect x="16" y="6" width="3" height="12" />
+  <path d="M8 12h8M2 9v6M22 9v6M3 12h2M19 12h2" />
+</>);
 export const SchoolIcon = make("SchoolIcon", <><path d="M3 21V10l9-6 9 6v11" /><path d="M3 21h18M9 21v-6h6v6" /></>);

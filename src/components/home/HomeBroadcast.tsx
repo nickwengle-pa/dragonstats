@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { TabBar } from "@/components/TabBar";
 import { statsState, statsStateLabel, type StatsState } from "@/services/gameCompletion";
 import type { Theme } from "@/hooks/useTheme";
 import {
   CalendarIcon, JerseyIcon, StatsIcon, WhistleIcon, SheetIcon, GridIcon, TrendIcon, FilmIcon,
-  ChevronIcon, ClockIcon, PinIcon, PlayIcon, SunIcon, MoonIcon, PowerIcon, TrophyIcon,
+  ChevronIcon, ClockIcon, PinIcon, PlayIcon, SunIcon, MoonIcon, PowerIcon, TrophyIcon, BarbellIcon, ExternalIcon,
 } from "@/components/icons/BroadcastIcons";
+import { D6_OFFICIAL_URL, D6_SIMULATOR_URL, PL_MAXPREPS_URL, type D6Standings } from "@/services/d6Rankings";
+import { PL_STRENGTH_URL } from "@/lib/externalLinks";
 import "@/screens/homeBroadcast.css";
 
 /* ── data shape ──
@@ -58,12 +60,10 @@ export interface HomeData {
   games: HomeGame[];
   /** False until the schedule has landed once; the record shows a dash. */
   loaded: boolean;
+  /** Our District 6 class table for the bar up top. Null until a copy has
+   *  ever been read; the bar then shows only its links. */
+  d6?: D6Standings | null;
 }
-
-/** District 6 football rankings (PIAA). Sits beside the record so the
- *  standings are one tap from the score that feeds them. */
-export const D6_RANKINGS_URL = "https://sports.blkline.com/sports/reports/d6FootballRanking.action";
-const PL_MAXPREPS_URL = "https://www.maxpreps.com/pa/commodore/purchase-line-red-dragons/football/";
 
 interface Props {
   data: HomeData;
@@ -183,6 +183,7 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
 
   return (
     <div className="bc bc-home screen safe-top pb-20">
+      <D6Bar d6={data.d6 ?? null} />
       {/* ── header: the bug ── */}
       <header className="bc-hdr">
         <div className="bc-brand">
@@ -197,12 +198,6 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
         <div className="bc-hdr-right">
           <div className="bc-rec-row">
             <div className="bc-rec"><span className="bc-rec-l">Record</span><span className="bc-rec-v">{record}</span></div>
-            <a className="bc-rank" href={D6_RANKINGS_URL} target="_blank" rel="noopener noreferrer" title="District 6 football rankings">
-              <TrophyIcon size={14} /><span>D6</span>
-            </a>
-            <a className="bc-rank" href={PL_MAXPREPS_URL} target="_blank" rel="noopener noreferrer" title="PL Dragons football on MaxPreps" aria-label="PL Dragons football on MaxPreps">
-              <span>MaxPreps</span>
-            </a>
           </div>
           <div className="bc-hdr-tools">
             {last5.length > 0 && (
@@ -369,6 +364,14 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
               <Row icon={<SheetIcon />} label="Season Report" meta="printable" onClick={() => onNavigate("/season-report")} />
               <Row icon={<WhistleIcon />} label="Game Setup" meta="periods · clock · rules" onClick={() => onNavigate("/game-settings")} />
             </div>
+            <div className="bc-block">
+              <div className="bc-section"><span>Weight Room</span></div>
+              <a className="bc-card bc-row bc-strength tap" href={PL_STRENGTH_URL} target="_blank" rel="noopener noreferrer">
+                <BarbellIcon />
+                <div className="bc-row-body"><span className="bc-name">PL Strength</span><span className="bc-row-meta">lifts · maxes</span></div>
+                <ExternalIcon size={16} className="bc-chev" />
+              </a>
+            </div>
           </section>
         </div>
       </div>
@@ -376,6 +379,51 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
       {version && <p className="bc-version">Dragon Stats {version}</p>}
       <TabBar />
     </div>
+  );
+}
+
+/* ── District 6 bar ──
+   Our class's official table as a ticker across the top, with the playoff cut
+   marked and our row lit, plus the two pages a coach checks on a Saturday:
+   the playoff-scenario simulator and our MaxPreps page. */
+function D6Bar({ d6 }: { d6: D6Standings | null }) {
+  const listRef = useRef<HTMLOListElement>(null);
+  /* Bring our row into view on a phone, where the table scrolls sideways. */
+  useEffect(() => {
+    const list = listRef.current;
+    const ours = list?.querySelector<HTMLElement>("li.us");
+    if (list && ours) list.scrollLeft = Math.max(0, ours.offsetLeft - (list.clientWidth - ours.offsetWidth) / 2);
+  }, [d6]);
+
+  const label = d6 ? `D6 · Class ${d6.cls}` : "D6 Rankings";
+  return (
+    <nav className="bc-d6" aria-label="District 6 rankings">
+      <a className="bc-d6-tag" href={D6_OFFICIAL_URL} target="_blank" rel="noopener noreferrer"
+        title={d6?.updatedAt ? `Official District 6 ranking, updated ${d6.updatedAt}` : "Official District 6 ranking"}>
+        <TrophyIcon size={12} /><span>{label}</span>
+      </a>
+      {d6 && (
+        <ol className="bc-d6-list" ref={listRef} aria-label={`District 6 Class ${d6.cls} by average points`}>
+          {d6.rows.map((r, i) => {
+            const out = d6.cut != null && r.rank > d6.cut;
+            const firstOut = out && i > 0 && d6.rows[i - 1].rank <= d6.cut!;
+            return (
+              <Fragment key={r.name}>
+                {firstOut && <li className="bc-d6-cut" aria-label={`Top ${d6.cut} make the district playoffs`}>Top {d6.cut}</li>}
+                <li className={`${r.us ? "us" : ""}${out ? " out" : ""}`}
+                  title={`${r.name}: ${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ""}, ${r.avg.toFixed(2)} average points`}>
+                  <b>{r.rank}</b><span>{r.name}</span><em>{r.avg.toFixed(2)}</em>
+                </li>
+              </Fragment>
+            );
+          })}
+        </ol>
+      )}
+      <div className="bc-d6-links">
+        <a href={D6_SIMULATOR_URL} target="_blank" rel="noopener noreferrer" title="D6 rankings and playoff scenarios">Scenarios<ExternalIcon size={11} /></a>
+        <a href={PL_MAXPREPS_URL} target="_blank" rel="noopener noreferrer" title="PL Dragons football on MaxPreps">MaxPreps<ExternalIcon size={11} /></a>
+      </div>
+    </nav>
   );
 }
 
