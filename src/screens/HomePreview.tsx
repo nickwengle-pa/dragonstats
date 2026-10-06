@@ -62,15 +62,15 @@ const LIVE: HomeGame = game({
   current_quarter: 3, current_clock: "7:42", current_down: 2, current_distance: 7, current_yard_line: 66, current_possession: "us",
 });
 
-/* District 6 Class A as it stood on 2026-10-05. */
+/* District 6 Class A as it stood on 2026-10-05: name, wins, losses, average, ranking points. */
 const D6: D6Standings = {
   cls: "A", cut: 8, updatedAt: "10/05/2026 12:17",
   rows: ([
-    ["Bishop Guilfoyle", 5, 1, 123.33], ["Homer-Center", 5, 1, 106.67], ["Juniata Valley", 4, 2, 90],
-    ["Moshannon Valley", 4, 2, 86.67], ["Bishop McCort", 3, 3, 65], ["Purchase Line", 3, 3, 60],
-    ["Northern Cambria", 3, 3, 56.67], ["Portage", 3, 3, 55], ["Glendale", 2, 4, 40],
-    ["West Branch", 2, 4, 38.33], ["Penns Manor", 1, 5, 16.67], ["Conemaugh Valley", 0, 6, 0],
-  ] as const).map(([name, wins, losses, avg], i) => ({ rank: i + 1, name, wins, losses, ties: 0, avg, us: name === "Purchase Line" })),
+    ["Bishop Guilfoyle", 5, 1, 123.33, 740], ["Homer-Center", 5, 1, 106.67, 640], ["Juniata Valley", 4, 2, 90, 540],
+    ["Moshannon Valley", 4, 2, 86.67, 520], ["Bishop McCort", 3, 3, 65, 390], ["Purchase Line", 3, 3, 60, 360],
+    ["Northern Cambria", 3, 3, 56.67, 340], ["Portage", 3, 3, 55, 330], ["Glendale", 2, 4, 40, 240],
+    ["West Branch", 2, 4, 38.33, 230], ["Penns Manor", 1, 5, 16.67, 100], ["Conemaugh Valley", 0, 6, 0, 0],
+  ] as const).map(([name, wins, losses, avg, points], i) => ({ rank: i + 1, name, wins, losses, ties: 0, avg, points, us: name === "Purchase Line" })),
 };
 
 const BASE: HomeData = {

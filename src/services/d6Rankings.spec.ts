@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { standingsFromFeed } from "./d6Rankings";
 
 const team = (name: string, cls: string, wins: number, losses: number, averagePoints: number, district = 6) =>
-  ({ name, cls, district, wins, losses, ties: 0, averagePoints });
+  ({ name, cls, district, wins, losses, ties: 0, averagePoints, rankingPoints: Math.round(averagePoints * (wins + losses)) });
 
 const feed = {
   sources: { rankingsUpdatedAt: "10/05/2026 12:17" },
@@ -30,6 +30,13 @@ describe("standingsFromFeed", () => {
   it("gives teams level on average points the same rank", () => {
     const s = standingsFromFeed(feed, "Purchase Line")!;
     expect(s.rows.slice(3).map(r => r.rank)).toEqual([4, 4]);
+  });
+
+  it("carries each team's ranking points, and none where the report has none", () => {
+    const s = standingsFromFeed(feed, "Purchase Line")!;
+    expect(s.rows.find(r => r.us)?.points).toBe(360);
+    const blank = { ...feed, teams: feed.teams.map(t => (t.name === "Portage" ? { ...t, rankingPoints: null } : t)) };
+    expect(standingsFromFeed(blank, "Purchase Line")!.rows.find(r => r.name === "Portage")?.points).toBeNull();
   });
 
   it("leaves out other classes and other districts", () => {
