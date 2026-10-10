@@ -3,7 +3,7 @@ import { TabBar } from "@/components/TabBar";
 import { statsState, statsStateLabel, type StatsState } from "@/services/gameCompletion";
 import type { Theme } from "@/hooks/useTheme";
 import {
-  CalendarIcon, JerseyIcon, StatsIcon, WhistleIcon, SheetIcon, GridIcon, TrendIcon, FilmIcon,
+  CalendarIcon, JerseyIcon, StatsIcon, WhistleIcon, SheetIcon, GridIcon, TrendIcon, FilmIcon, DrivesIcon,
   ChevronIcon, ClockIcon, PinIcon, PlayIcon, SunIcon, MoonIcon, PowerIcon, TrophyIcon, BarbellIcon, ExternalIcon,
 } from "@/components/icons/BroadcastIcons";
 import { D6_OFFICIAL_URL, D6_SIMULATOR_URL, PL_MAXPREPS_URL, type D6Standings } from "@/services/d6Rankings";
@@ -324,6 +324,7 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
                   <button type="button" className="bc-q" onClick={() => onNavigate(`/game/${featured.id}/boxscore`)}><GridIcon size={18} /><span>Box</span></button>
                   <button type="button" className="bc-q" onClick={() => onNavigate(`/game/${featured.id}/summary`)}><TrendIcon size={18} /><span>Summary</span></button>
                   <button type="button" className="bc-q" onClick={() => onNavigate(`/game/${featured.id}/review`)}><FilmIcon size={18} /><span>Plays</span></button>
+                  <button type="button" className="bc-q" onClick={() => onNavigate(`/game/${featured.id}/drives`)}><DrivesIcon size={18} /><span>Drives</span></button>
                 </div>
               </div>
             </section>
