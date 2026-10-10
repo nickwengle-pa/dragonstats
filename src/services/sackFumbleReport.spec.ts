@@ -44,6 +44,14 @@ describe("fumbles on a sack or a run in the game report", () => {
     const r = report([snap({ play_type: "rush", yards_gained: 4 }, forced,
       [{ player_id: "qb", role: "rusher" }, { player_id: "qb", role: "fumble_recovery" }])]);
     expect(stat(r, "Fumbles: Number-Lost")).toMatchObject({ us: "1-0" });
+    expect(r.rushing.find(x => x.name.includes("Qb"))).toMatchObject({ fum: 1 });
+  });
+
+  it("counts a fumble we kept with nobody tagged", () => {
+    const r = report([snap({ play_type: "rush", yards_gained: 3, play_data: { fumble_recovered_at: 33 } }, [],
+      [{ player_id: "qb", role: "rusher" }])]);
+    expect(stat(r, "Fumbles: Number-Lost")).toMatchObject({ us: "1-0" });
+    expect(r.rushing.find(x => x.name.includes("Qb"))).toMatchObject({ fum: 1 });
   });
 
   it("does not count an ordinary sack", () => {
