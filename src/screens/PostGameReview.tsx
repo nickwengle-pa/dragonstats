@@ -913,10 +913,10 @@ export default function PostGameReview() {
      writes it back; this screen never did, so a gain changed here left every
      play after it on the spot it had before - on this list, in the editor,
      and in every report that reads the stored spots. Same replay, same writes. */
-  const rechain = useCallback(async (rows: PlayWithPlayers[]): Promise<PlayWithPlayers[]> => {
+  const rechain = useCallback(async (rows: PlayWithPlayers[], removedId?: string): Promise<PlayWithPlayers[]> => {
     if (!meta || rows.length === 0) return rows;
     const gc = resolveGameConfig(getGameConfig(program ?? null), meta.rules_config);
-    const rewrites = rechainStoredPlays(rows, meta.pregame, gc);
+    const rewrites = rechainStoredPlays(rows, meta.pregame, gc, removedId);
     if (rewrites.length === 0) return rows;
     await Promise.all(rewrites.map((r) => updatePlaySituation(r.id, r.fields, r.playData, { gameId })));
     return load();
@@ -1111,12 +1111,18 @@ export default function PostGameReview() {
 
   const handleDeletePlayEdit = useCallback(async (playId: string) => {
     if (!window.confirm("Delete this play? Game and season stats will update to match.")) return;
-    await deletePlay(playId, gameId);
+    // The list as it stood, deleted play included - see rechainStoredPlays.
+    const before = rawPlays;
+    const deleted = await deletePlay(playId, gameId);
     setEditRecord(null);
     setEditingPlay(null);
     setDraft(null);
-    await rechain(await load());
-  }, [gameId, load, rechain]);
+    if (!deleted) {
+      await load();
+      return;
+    }
+    await rechain(before.some((p) => p.id === playId) ? before : await load(), playId);
+  }, [gameId, load, rechain, rawPlays]);
 
   /* ── Filtering ────────────────────────────────────────────────────────
      A film chart is read looking for something: our defensive snaps, or every

@@ -1012,3 +1012,46 @@ export function rebuildPlaySituations(
     currentSituation,
   };
 }
+
+/**
+ * The play list without one play, ready to re-chain.
+ *
+ * Deleting a play is not an edit of it. An edit moves where the play left the
+ * ball, and a stated next spot on the play after it moves the same distance
+ * (carryOverride). A delete says the play never happened - a touchdown wiped
+ * out by a pre-snap flag, a snap entered twice - and the spot typed on the play
+ * after it is where the ball really went, read off the field. Carried, it
+ * walked by however far the deleted play had moved the ball: deleting a 3-yard
+ * TD in front of a hand-spotted False Start at the PL 11 put the ball on the
+ * PL 14.
+ *
+ * So the follower is re-recorded as starting where the chain now puts it,
+ * which leaves carryOverride nothing to shift. A hand-set start stays where it
+ * was set, and a play the replay re-derives has nothing to protect.
+ */
+export function withoutPlay(
+  plays: PlayRecord[],
+  playId: string,
+  pregame: PregameConfig | null,
+  config: GameConfig,
+): PlayRecord[] {
+  const index = plays.findIndex((p) => p.id === playId);
+  if (index === -1) return plays;
+  const remaining = [...plays.slice(0, index), ...plays.slice(index + 1)];
+  const follower = remaining[index];
+  if (
+    !follower
+    || follower.type === "quarter_change"
+    || follower.playData?.start_override === true
+    || !getAuthoritativeNextSituation(follower)
+  ) return remaining;
+  const start = rebuildPlaySituations(remaining.slice(0, index + 1), pregame, config).plays[index];
+  remaining[index] = {
+    ...follower,
+    possession: start.possession,
+    down: start.down,
+    distance: start.distance,
+    ballOn: start.ballOn,
+  };
+  return remaining;
+}
