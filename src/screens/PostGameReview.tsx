@@ -914,10 +914,12 @@ export default function PostGameReview() {
      play after it on the spot it had before - on this list, in the editor,
      and in every report that reads the stored spots. Same replay, same writes. */
   const rechain = useCallback(async (rows: PlayWithPlayers[], removedId?: string): Promise<PlayWithPlayers[]> => {
-    if (!meta || rows.length === 0) return rows;
+    if (!meta || rows.length === 0) return removedId ? load() : rows;
     const gc = resolveGameConfig(getGameConfig(program ?? null), meta.rules_config);
     const rewrites = rechainStoredPlays(rows, meta.pregame, gc, removedId);
-    if (rewrites.length === 0) return rows;
+    // After a delete `rows` still holds the deleted play, so reload even when
+    // nothing after it moved - deleting the last play rewrites nothing.
+    if (rewrites.length === 0) return removedId ? load() : rows;
     await Promise.all(rewrites.map((r) => updatePlaySituation(r.id, r.fields, r.playData, { gameId })));
     return load();
   }, [meta, program, gameId, load]);

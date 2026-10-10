@@ -2239,7 +2239,7 @@ export default function GameScreen() {
     if (plays.length === 0 || !gameId) return;
     const last = plays[plays.length - 1];
     if (!(await finalGuard.guard(plays.slice(0, -1)))) return;
-    const deleted = await deletePlay(last.id, gameId);
+    const deleted = await deletePlay(last.id, gameId, { optimistic: true });
     if (!deleted) return;
 
     await recalcScoreAndState(plays.slice(0, -1));
@@ -2466,9 +2466,15 @@ export default function GameScreen() {
     // Not a plain filter: the play after it keeps the spot typed on it.
     const newPlays = withoutPlay(plays, playId, pregame, gc);
     if (!(await finalGuard.guard(newPlays))) return;
-    const deleted = await deletePlay(playId, gameId);
+    const deleted = await deletePlay(playId, gameId, { optimistic: true });
     if (!deleted) return;
 
+    // An insert armed after this play now belongs after the one before it;
+    // left pointing at a play that is gone, it quietly became an append.
+    if (insertAfterPlayId === playId) {
+      const idx = plays.findIndex(p => p.id === playId);
+      setInsertAfterPlayId(idx > 0 ? plays[idx - 1].id : null);
+    }
     setEditPlay(null);
     await recalcScoreAndState(newPlays);
   };

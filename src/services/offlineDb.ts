@@ -332,9 +332,17 @@ export async function updateCachedPlayWithIntent(
  * nothing owed. The next load pulled it straight back — a deleted play
  * reappearing mid-game, which reads as the app inventing a snap.
  */
+/**
+ * Drops the cached play and queues its deletion, in one transaction - and
+ * drops the play's own queued insert or update with it, because a deleted
+ * play owes the server only its deletion. Left behind, an insert still queued
+ * from flaky wifi went out AFTER the delete had been sent and marked done,
+ * and put the play back. One the drain is already sending cannot be pulled,
+ * so the delete is flagged to wait its turn behind it (`behindInFlight`).
+ */
 export async function deleteCachedPlayWithIntent(
   params: EnqueueDeleteParams,
-): Promise<SyncQueueItem> {
+): Promise<SyncQueueItem & { behindInFlight?: boolean }> {
   const item: SyncQueueItem = {
     id: newQueueId(),
     op: "delete",
@@ -349,12 +357,17 @@ export async function deleteCachedPlayWithIntent(
 
   const db = await getDb();
   const tx = db.transaction(["plays_cache", "sync_queue"], "readwrite");
+  const queue = tx.objectStore("sync_queue");
+  const owed = (await queue.index("by-game").getAll(params.gameId))
+    .filter((i) => i.playId === params.playId && (i.op === "insert" || i.op === "update"));
+  const behindInFlight = owed.some((i) => i.status === "syncing");
   await Promise.all([
     tx.objectStore("plays_cache").delete(params.playId),
-    tx.objectStore("sync_queue").put(item),
+    ...owed.filter((i) => i.status !== "syncing").map((i) => queue.delete(i.id)),
+    queue.put(item),
   ]);
   await tx.done;
-  return item;
+  return behindInFlight ? { ...item, behindInFlight } : item;
 }
 
 export interface EnqueueDeleteParams {
