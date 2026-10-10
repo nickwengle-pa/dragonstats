@@ -386,6 +386,52 @@ export function getAuthoritativeNextSituation(
   return getRecordedNextSituation(play);
 }
 
+/* A fumble is a turnover only when the other team comes up with it.
+
+   The modal's "Recovered by" defaults to the defense, so a fumble the offense
+   fell on can be saved as lost and then put right with the situation editor:
+   offense's ball, next down. That fixed the spot and left the turnover flag
+   behind, and every TO label and turnover count reads the flag. When the
+   operator's stated next situation keeps the ball with the team that snapped
+   it, that is the recovery, and it outranks the flag the same way it
+   outranks the engine. Picks and kicks are left alone: a muffed punt the
+   kicking team recovers is the receiving team's turnover with the ball
+   staying put, and a score hands the ball over on the kickoff anyway. */
+const NOT_A_FUMBLE_TURNOVER = ["int", "kickoff", "onside_kick", "punt", "fair_catch", "blocked_kick"];
+
+export function fumbleKeptByOffense(play: {
+  type: string;
+  possession: TeamSide;
+  turnover?: boolean | null;
+  isTouchdown?: boolean | null;
+} & Pick<AdvanceablePlay, "nextPossession" | "nextDown" | "nextDistance" | "nextBallOn" | "playData">): boolean {
+  if (!play.turnover || play.isTouchdown || NOT_A_FUMBLE_TURNOVER.includes(play.type)) return false;
+  const stated = getAuthoritativeNextSituation(play);
+  return stated !== null && stated.possession === play.possession;
+}
+
+/** A stored row's turnover flag with a kept fumble cleared. See fumbleKeptByOffense. */
+export function storedRowTurnover(row: {
+  play_type: string;
+  possession: TeamSide;
+  is_turnover: boolean | null;
+  is_touchdown: boolean | null;
+  play_data?: Record<string, unknown> | null;
+}): boolean {
+  const pd = (row.play_data ?? {}) as Record<string, unknown>;
+  return Boolean(row.is_turnover) && !fumbleKeptByOffense({
+    type: row.play_type,
+    possession: row.possession,
+    turnover: row.is_turnover,
+    isTouchdown: row.is_touchdown,
+    nextPossession: pd.next_possession === "us" || pd.next_possession === "them" ? pd.next_possession : undefined,
+    nextDown: typeof pd.next_down === "number" ? pd.next_down : undefined,
+    nextDistance: typeof pd.next_distance === "number" ? pd.next_distance : undefined,
+    nextBallOn: typeof pd.next_yard_line === "number" ? pd.next_yard_line : undefined,
+    playData: pd,
+  });
+}
+
 type SituatedPlay = Pick<PlayRecord, "possession" | "down" | "distance" | "ballOn" | "playData" | "type" | "quarter"
   | "nextPossession" | "nextDown" | "nextDistance" | "nextBallOn">;
 
@@ -949,6 +995,8 @@ export function rebuildPlaySituations(
     currentQuarter = playQuarter;
     return {
       ...nextPlay,
+      turnover: override && fumbleKeptByOffense({ ...nextPlay, nextPossession: nextSituation.possession })
+        ? false : nextPlay.turnover,
       nextPossession: nextSituation.possession,
       nextDown: nextSituation.down,
       nextDistance: nextSituation.distance,

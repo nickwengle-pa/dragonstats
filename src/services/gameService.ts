@@ -5,6 +5,7 @@ import {
   createInitialSituation,
   getRecordedNextSituation,
   normalizeQuarter,
+  storedRowTurnover,
   type PregameConfig,
 } from "./gameFlow";
 import { TEAM_PLAYER_ID } from "@/components/game/types";
@@ -431,7 +432,17 @@ export interface PlayWithPlayers extends PlayRow {
   })[];
 }
 
+/* Every screen and report reads plays through here, so a fumble the offense
+   kept is cleared of its turnover flag once, for all of them. */
 export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> {
+  const plays = await loadGamePlayRows(gameId);
+  return plays.map(p => {
+    const turnover = storedRowTurnover(p);
+    return turnover === Boolean(p.is_turnover) ? p : { ...p, is_turnover: turnover };
+  });
+}
+
+async function loadGamePlayRows(gameId: string): Promise<PlayWithPlayers[]> {
   const { replaceGameCache, getCachedPlays, getQueuedPlayIds, isOfflineSupported } =
     await import("./offlineDb");
 
