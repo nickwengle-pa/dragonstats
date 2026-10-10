@@ -46,6 +46,7 @@ import {
   resolveGameConfig,
   toDisplayFieldPosition,
   withHandSetStart,
+  withoutPlay,
   MAX_QUARTER,
   canStartOvertime,
   type PregameConfig,
@@ -2462,7 +2463,8 @@ export default function GameScreen() {
 
   /* ── Delete play from edit modal ── */
   const handleDeletePlay = async (playId: string) => {
-    const newPlays = plays.filter(p => p.id !== playId);
+    // Not a plain filter: the play after it keeps the spot typed on it.
+    const newPlays = withoutPlay(plays, playId, pregame, gc);
     if (!(await finalGuard.guard(newPlays))) return;
     const deleted = await deletePlay(playId, gameId);
     if (!deleted) return;

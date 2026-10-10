@@ -12,7 +12,7 @@
  */
 import type { PlayRecord } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
-import { markHandSetStarts, rebuildPlaySituations, type PregameConfig } from "./gameFlow";
+import { markHandSetStarts, rebuildPlaySituations, withoutPlay, type PregameConfig } from "./gameFlow";
 import type { GameConfig } from "./programService";
 import { readFumbleSpots } from "./fumbleSpots";
 
@@ -24,6 +24,7 @@ export interface SituationRewrite {
     distance: number;
     yard_line: number;
     end_yard_line: number;
+    sequence: number;
   };
   playData: Record<string, unknown>;
 }
@@ -63,19 +64,33 @@ function situationRecord(row: PlayWithPlayers): PlayRecord {
   };
 }
 
+/**
+ * `removedId` names a play being deleted, with `rows` still as they were
+ * before it went. Hand-set starts are read off that list: read off the list
+ * without it, the start the deleted play handed the next one disagrees with
+ * the play now in front, reads as set by hand, and freezes there for good -
+ * a False Start left on the PL 3 by a touchdown that had been deleted.
+ */
 export function rechainStoredPlays(
   rows: PlayWithPlayers[],
   pregame: PregameConfig | null,
   config: GameConfig,
+  removedId?: string,
 ): SituationRewrite[] {
-  const records = markHandSetStarts(rows.map(situationRecord), pregame, config);
+  const marked = markHandSetStarts(rows.map(situationRecord), pregame, config);
+  const records = removedId ? withoutPlay(marked, removedId, pregame, config) : marked;
+  const kept = removedId ? rows.filter((r) => r.id !== removedId) : rows;
   const rebuilt = rebuildPlaySituations(records, pregame, config).plays;
   const rewrites: SituationRewrite[] = [];
   rebuilt.forEach((play, i) => {
-    const row = rows[i];
+    const row = kept[i];
     const pd = (row.play_data ?? {}) as Record<string, unknown>;
     const startOverride = records[i].playData?.start_override === true;
-    const unchanged = row.possession === play.possession
+    // Numbered by position, as the game screen writes it, so a delete here
+    // leaves no gap for the film chart's # column to count across.
+    const sequence = i + 1;
+    const unchanged = row.sequence === sequence
+      && row.possession === play.possession
       && row.down === play.down
       && row.distance === play.distance
       && row.yard_line === play.ballOn
@@ -95,6 +110,7 @@ export function rechainStoredPlays(
         distance: play.distance,
         yard_line: play.ballOn,
         end_yard_line: play.nextBallOn,
+        sequence,
       },
       playData: {
         ...pd,
