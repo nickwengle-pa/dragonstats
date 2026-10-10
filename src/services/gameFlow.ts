@@ -1013,21 +1013,37 @@ export function rebuildPlaySituations(
   };
 }
 
+/** Rows that hand the ball on where they found it. */
+const handsBallOn = (play: Pick<PlayRecord, "type">) =>
+  play.type === "timeout" || play.type === "score_correction" || play.type === "quarter_change";
+
+const startOf = (play: SituatedPlay): LiveSituation =>
+  ({ possession: play.possession, down: play.down, distance: play.distance, ballOn: play.ballOn });
+
 /**
  * The play list without one play, ready to re-chain.
  *
  * Deleting a play is not an edit of it. An edit moves where the play left the
  * ball, and a stated next spot on the play after it moves the same distance
  * (carryOverride). A delete says the play never happened - a touchdown wiped
- * out by a pre-snap flag, a snap entered twice - and the spot typed on the play
- * after it is where the ball really went, read off the field. Carried, it
- * walked by however far the deleted play had moved the ball: deleting a 3-yard
- * TD in front of a hand-spotted False Start at the PL 11 put the ball on the
- * PL 14.
+ * out by a pre-snap flag, a snap entered twice - so:
  *
- * So the follower is re-recorded as starting where the chain now puts it,
- * which leaves carryOverride nothing to shift. A hand-set start stays where it
- * was set, and a play the replay re-derives has nothing to protect.
+ * - A start set by hand on it is still where the ball was, and passes to the
+ *   row after it. Dropped with the play, an overtime possession flipped on the
+ *   scoreboard went back to the other team, and the flag after it was charged
+ *   to the wrong side.
+ * - A spot typed on the next snap is where the ball really went, read off the
+ *   field. Carried, it walked by however far the deleted play had moved the
+ *   ball: deleting a 3-yard TD in front of a hand-spotted False Start at the
+ *   PL 11 put the ball on the PL 14. A timeout or quarter change in between
+ *   moves nothing, so it is the next SNAP that is protected.
+ * - The Adjust sheet stores "manual" for a spot it was only asked to confirm,
+ *   and that spot was the rules applied to a ball the deleted play had moved.
+ *   It is worked out again from the right start. Pinned, deleting a duplicate
+ *   run left the False Start after it 7 yards and a down off.
+ *
+ * Either way the snap is re-recorded as starting where the chain now puts it,
+ * which leaves carryOverride nothing to shift.
  */
 export function withoutPlay(
   plays: PlayRecord[],
@@ -1037,21 +1053,75 @@ export function withoutPlay(
 ): PlayRecord[] {
   const index = plays.findIndex((p) => p.id === playId);
   if (index === -1) return plays;
+  const deleted = plays[index];
   const remaining = [...plays.slice(0, index), ...plays.slice(index + 1)];
+  if (index === remaining.length) return remaining;
+
+  let snap = index;
+  while (snap < remaining.length && handsBallOn(remaining[snap])) snap += 1;
+  const through = snap < remaining.length ? snap : index;
+
+  /* The chain as if the play had never been snapped: it keeps its place only
+     to hand the ball on from where it found it, so chained[i + 1] is where
+     remaining[i] starts. */
+  const handSet = deleted.playData?.start_override === true;
+  const placeholder: PlayRecord = {
+    ...deleted,
+    type: "timeout",
+    yards: 0,
+    penalty: null,
+    flagYards: 0,
+    isTouchdown: false,
+    firstDown: false,
+    turnover: false,
+    playData: handSet ? { start_override: true, goal_to_go: deleted.playData?.goal_to_go } : {},
+  };
+  const chained = rebuildPlaySituations(
+    [...plays.slice(0, index), placeholder, ...plays.slice(index + 1, through + 2)], pregame, config,
+  ).plays;
+
   const follower = remaining[index];
-  if (
-    !follower
-    || follower.type === "quarter_change"
-    || follower.playData?.start_override === true
-    || !getAuthoritativeNextSituation(follower)
-  ) return remaining;
-  const start = rebuildPlaySituations(remaining.slice(0, index + 1), pregame, config).plays[index];
-  remaining[index] = {
-    ...follower,
-    possession: start.possession,
-    down: start.down,
-    distance: start.distance,
-    ballOn: start.ballOn,
+  if (handSet && follower.playData?.start_override !== true) {
+    const kept = chained[index + 1];
+    const lost = rebuildPlaySituations(remaining.slice(0, index + 1), pregame, config).plays[index];
+    if (!sameSituation(startOf(kept), startOf(lost))) {
+      remaining[index] = {
+        ...follower,
+        ...startOf(kept),
+        // A hand-set quarter change replays from what it handed on.
+        ...(follower.type === "quarter_change" ? {
+          nextPossession: kept.nextPossession,
+          nextDown: kept.nextDown,
+          nextDistance: kept.nextDistance,
+          nextBallOn: kept.nextBallOn,
+        } : {}),
+        playData: { ...kept.playData, start_override: true },
+      };
+    }
+  }
+
+  if (snap === remaining.length) return remaining;
+  const recorded = plays[snap + 1];
+  const stated = getAuthoritativeNextSituation(recorded);
+  if (!stated || recorded.playData?.start_override === true) return remaining;
+  const start = startOf(chained[snap + 1]);
+  const current = remaining[snap];
+  // The same test the play editor opens a spot with: only one off the rules was typed.
+  if (!sameSituation(stated, advanceSituationAfterPlay(recorded, startOf(recorded), config))) {
+    remaining[snap] = { ...current, ...start };
+    return remaining;
+  }
+  const next = advanceSituationAfterPlay(current, start, config);
+  const pd = current.playData ?? {};
+  remaining[snap] = {
+    ...current,
+    ...start,
+    nextPossession: next.possession,
+    nextDown: next.down,
+    nextDistance: next.distance,
+    nextBallOn: next.ballOn,
+    playData: typeof next.goalToGo === "boolean" || "next_goal_to_go" in pd
+      ? { ...pd, next_goal_to_go: next.goalToGo ?? null } : pd,
   };
   return remaining;
 }
