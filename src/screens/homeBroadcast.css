@@ -358,6 +358,14 @@ html.ios-app .bc-home > .bc-d6 { border-top: 32px solid var(--bc-bug); }
 .bc-q:hover { background: var(--bc-surface); border-color: var(--bc-ink); }
 .bc-q svg { color: var(--bc-red); }
 .bc-q span { font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+/* Five buttons share the row. min-width 0 lets them shrink below their label,
+   and the narrowest screens (iPad Slide Over, a 320px phone) tighten the label
+   rather than push the last button past the card edge. */
+.bc-q { min-width: 0; }
+@media (max-width: 359px) {
+  .bc-quick { gap: 4px; }
+  .bc-q span { font-size: 10px; letter-spacing: .04em; }
+}
 .bc-rows { display: flex; flex-direction: column; gap: 6px; }
 .bc-row { display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 16px; cursor: pointer; border-left: 4px solid var(--bc-red); width: 100%; }
 .bc-row > svg { color: var(--bc-ink); flex-shrink: 0; }

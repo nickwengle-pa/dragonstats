@@ -83,15 +83,13 @@ export default function DriveChartScreen() {
     // Always offer the four regulation quarters; overtime only once it exists.
     return [...new Set([1, 2, 3, 4, ...seen])].sort((a, b) => a - b);
   }, [byQuarter]);
-  const lastDrive = useMemo(() => {
-    let max = 0;
-    for (const list of byQuarter.values()) for (const d of list) max = Math.max(max, d.driveNumber);
-    return max;
-  }, [byQuarter]);
-
   const live = bundle?.game.status !== "completed";
   const latestQuarter = Math.max(1, ...byQuarter.keys());
-  const selected = params.get("q") ?? (live ? String(latestQuarter) : "1");
+  // A tab that does not exist (a mangled link, ?q=, an OT that never came)
+  // falls back to the default rather than an empty "1st Quarter".
+  const requested = params.get("q");
+  const selected = requested === "all" || quarters.some((q) => String(q) === requested)
+    ? requested! : live ? String(latestQuarter) : "1";
   const shown = selected === "all" ? quarters : [Number(selected)];
   const pick = (q: string) => setParams({ q }, { replace: true });
 
@@ -99,6 +97,9 @@ export default function DriveChartScreen() {
   const oppName = bundle?.game.opponent.name ?? "Opponent";
   const oppAbbr = bundle?.game.opponent.abbreviation ?? oppName.slice(0, 3).toUpperCase();
   const usColor = program?.primary_color ?? "#3b82f6";
+  // Printed with one team filtered out, the sheet must say so, or a reader
+  // takes the missing side for a team that never had the ball.
+  const teamOnly = team === "us" ? usAbbr : team === "them" ? oppAbbr : null;
 
   return (
     <div ref={screenRoot} className="screen safe-top safe-bottom">
@@ -113,7 +114,7 @@ export default function DriveChartScreen() {
         </div>
         <PrintReportButton
           root={() => screenRoot.current}
-          filename={pdfFilename(`${usAbbr} vs ${oppName} Drives ${selected === "all" ? "All" : `Q${selected}`}`)}
+          filename={pdfFilename(`${usAbbr} vs ${oppName} ${teamOnly ? `${teamOnly} ` : ""}Drives ${selected === "all" ? "All" : `Q${selected}`}`)}
           className="btn-ghost p-2 cursor-pointer"
           disabled={!bundle}
         >
@@ -147,7 +148,11 @@ export default function DriveChartScreen() {
         {loading && <div className="card p-8 text-center text-slate-500 animate-pulse">Loading drives...</div>}
         {error && <div className="card p-5 border border-red-500/30 text-red-400 text-sm">{error}</div>}
         {!loading && !error && !bundle && (
-          <div className="card p-8 text-center text-slate-500 text-sm">No play data recorded yet.</div>
+          <div className="card p-8 text-center text-slate-500 text-sm">
+            {typeof navigator !== "undefined" && !navigator.onLine
+              ? "You're offline. The Drive Chart needs a connection to load; the plays themselves are safe on this device."
+              : "No play data recorded yet."}
+          </div>
         )}
 
         {bundle && shown.map((q) => {
@@ -155,7 +160,7 @@ export default function DriveChartScreen() {
           return (
             <section key={q} className="space-y-3">
               <h2 className="text-sm font-display font-extrabold uppercase tracking-[0.12em] text-surface-muted">
-                {quarterLabel(q)} Quarter
+                {quarterLabel(q)} Quarter{teamOnly ? ` · ${teamOnly} drives only` : ""}
               </h2>
               {drives.length === 0 && (
                 <div className="card p-5 text-center text-sm text-surface-muted">No plays recorded in the {quarterLabel(q)}.</div>
@@ -164,7 +169,7 @@ export default function DriveChartScreen() {
                 <DriveCard key={`${d.driveNumber}-${q}`} drive={d}
                   abbr={d.possession === "us" ? usAbbr : oppAbbr}
                   color={d.possession === "us" ? usColor : oppColor}
-                  inProgress={live && d.driveNumber === lastDrive} />
+                  inProgress={live && d.ongoing} />
               ))}
             </section>
           );
@@ -188,12 +193,18 @@ function QuarterTab({ active, onClick, label, count }: { active: boolean; onClic
 
 function DriveCard({ drive, abbr, color, inProgress }: { drive: QuarterDrive; abbr: string; color: string; inProgress: boolean }) {
   if (drive.kickoffOnly) {
-    const kick = drive.plays.find((p) => p.play_type === "kickoff") ?? drive.plays[0];
+    // Every row, not just the first kick: a re-kick voids the kick before it,
+    // so the one that put the ball in play is the last.
+    const kind = drive.plays.some((p) => p.play_type === "kickoff" || p.play_type === "onside_kick") ? "kickoff" : "try";
     return (
-      <div className="flex items-start gap-3 px-3 py-2 rounded-xl border border-surface-border/60 text-xs">
-        <span className="font-black uppercase tracking-wider shrink-0" style={{ color }}>{abbr} kickoff</span>
-        <span className="font-mono text-surface-muted shrink-0">{kick.clock ?? ""}</span>
-        <span className="text-slate-300">{kick.description}</span>
+      <div className="px-3 py-2 rounded-xl border border-surface-border/60 text-xs break-inside-avoid space-y-1">
+        {drive.plays.map((p, i) => (
+          <div key={p.id} className="flex items-start gap-3">
+            <span className={`w-24 shrink-0 font-black uppercase tracking-wider ${i > 0 ? "invisible" : ""}`} style={{ color }}>{abbr} {kind}</span>
+            <span className="w-10 shrink-0 font-mono text-surface-muted">{p.clock ?? ""}</span>
+            <span className="flex-1 min-w-0 text-slate-300 print:text-black">{p.description}</span>
+          </div>
+        ))}
       </div>
     );
   }
@@ -202,7 +213,10 @@ function DriveCard({ drive, abbr, color, inProgress }: { drive: QuarterDrive; ab
   const ends = drive.continuesInto === null;
   const result = s && ends && !inProgress ? RESULT_LABEL[s.result] ?? { short: s.result, color: "text-surface-muted" } : null;
   return (
-    <article className="card overflow-hidden border-l-4 break-inside-avoid" style={{ borderLeftColor: color }}>
+    <article className="card overflow-hidden flex break-inside-avoid">
+      {/* A stripe, not a border: the print sheet greys every .card border. */}
+      <div aria-hidden="true" className="w-1 shrink-0" style={{ background: color, printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }} />
+      <div className="flex-1 min-w-0">
       <header className="px-4 pt-3 pb-2 border-b border-surface-border/60">
         <div className="flex items-center gap-2">
           <span className="font-display font-extrabold uppercase tracking-wider" style={{ color }}>{abbr}</span>
@@ -213,7 +227,7 @@ function DriveCard({ drive, abbr, color, inProgress }: { drive: QuarterDrive; ab
             </span>
           )}
           <span className="flex-1" />
-          {result && <span className={`text-xs font-black ${result.color}`}>{result.short}</span>}
+          {result && <span className={`text-xs font-black ${result.color} print:text-black`}>{result.short}</span>}
           {ends && inProgress && <span className="text-[10px] font-black uppercase text-red-400">In progress</span>}
           {drive.continuesInto !== null && (
             <span className="text-[10px] font-bold uppercase text-surface-muted">Continues in {quarterLabel(drive.continuesInto)} ›</span>
@@ -233,7 +247,7 @@ function DriveCard({ drive, abbr, color, inProgress }: { drive: QuarterDrive; ab
             <span className="w-24 shrink-0 font-mono">
               {downDistance(p)}{downDistance(p) ? " · " : ""}<span className="text-surface-muted">{yardLabel(p.yard_line ?? 0)}</span>
             </span>
-            <span className="flex-1 min-w-0 text-slate-300">
+            <span className="flex-1 min-w-0 text-slate-300 print:text-black">
               {p.description}
               {p.is_touchdown && <Flag text="TD" cls="bg-emerald-900/50 text-emerald-400" />}
               {p.is_turnover && <Flag text="TO" cls="bg-red-900/50 text-red-400" />}
@@ -243,10 +257,11 @@ function DriveCard({ drive, abbr, color, inProgress }: { drive: QuarterDrive; ab
           </li>
         ))}
       </ol>
+      </div>
     </article>
   );
 }
 
 function Flag({ text, cls }: { text: string; cls: string }) {
-  return <span className={`ml-1.5 inline-block px-1 rounded text-[9px] font-black align-middle ${cls}`}>{text}</span>;
+  return <span className={`ml-1.5 inline-block px-1 rounded text-[9px] font-black align-middle ${cls} print:text-black print:border print:border-black`}>{text}</span>;
 }
