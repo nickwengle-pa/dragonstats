@@ -46,4 +46,16 @@ describe("drives by quarter", () => {
     const q1 = drivesByQuarter([b, a], []).get(1)!;
     expect(q1.map((d) => d.possession)).toEqual(["us", "them"]);
   });
+
+  it("calls only the drive still holding the ball ongoing", () => {
+    const ongoing = (plays: PlayWithPlayers[]) =>
+      [...drivesByQuarter(plays, []).values()].flat().filter((d) => d.ongoing).map((d) => d.possession);
+    expect(ongoing([play({ possession: "them" }), play(), play()])).toEqual(["us"]);
+    // Punted, the other team not yet on the field: over.
+    expect(ongoing([play(), play({ play_type: "punt", play_data: { next_possession: "them" } })])).toEqual([]);
+    // Scored and kicked off: over, even before the other team snaps.
+    expect(ongoing([play(), play({ is_touchdown: true }), play({ play_type: "pat" }), play({ play_type: "kickoff" })])).toEqual([]);
+    // Ran out the half: over at halftime.
+    expect(ongoing([play({ quarter: 2 }), play({ quarter: 2, play_type: "quarter_change" })])).toEqual([]);
+  });
 });
