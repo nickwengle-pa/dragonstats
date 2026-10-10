@@ -117,4 +117,74 @@ describe("deleting a play from the middle of a game", () => {
     });
     expect(rechainStoredPlays(written, null, config)).toEqual([]);
   });
+
+  it("works a confirmed spot out again from where the ball really was", () => {
+    // A run entered twice, then a False Start whose Adjust sheet was only
+    // confirmed: stored as manual, but exactly what the rules gave.
+    const chained = rebuildPlaySituations([
+      play({ id: "run", yards: 7 }),
+      play({ id: "twice", yards: 7 }),
+      play({ id: "flag", type: "penalty_only", penalty: "False Start", flagYards: 5 }),
+      play({ id: "after", yards: 4 }),
+    ], null, config).plays;
+    const confirmed = chained.map((p) => p.id === "flag"
+      ? { ...p, playData: { ...(p.playData ?? {}), next_situation_source: "manual_override" } }
+      : p);
+
+    const rebuilt = rebuildPlaySituations(withoutPlay(confirmed, "twice", null, config), null, config).plays;
+    const expected = rebuildPlaySituations(chained.filter((p) => p.id !== "twice"), null, config).plays;
+    const flag = rebuilt.find((p) => p.id === "flag")!;
+    expect(flag.ballOn).toBe(chained[1].ballOn);
+    expect([flag.nextDown, flag.nextDistance, flag.nextBallOn])
+      .toEqual([expected[1].nextDown, expected[1].nextDistance, expected[1].nextBallOn]);
+    expect(rebuilt.find((p) => p.id === "after")!.ballOn).toBe(expected[2].ballOn);
+  });
+
+  it("protects the typed spot on the next snap with a timeout in between", () => {
+    const base = recorded();
+    const typed = base[2].nextBallOn;
+    const realStart = base[1].ballOn;
+    const timeout = play({
+      id: "to", type: "timeout",
+      possession: base[1].nextPossession, down: base[1].nextDown, distance: base[1].nextDistance, ballOn: base[1].nextBallOn,
+    });
+    const plays = [base[0], base[1], timeout, base[2], base[3]];
+
+    const rebuilt = rebuildPlaySituations(withoutPlay(plays, "wiped", null, config), null, config).plays;
+    expect(rebuilt.find((p) => p.id === "to")!.ballOn).toBe(realStart);
+    expect(rebuilt.find((p) => p.id === "flag")!.ballOn).toBe(realStart);
+    expect(rebuilt.find((p) => p.id === "flag")!.nextBallOn).toBe(typed);
+  });
+
+  it("keeps a start set by hand on the deleted play, team included", () => {
+    // Possession flipped on the scoreboard before the deleted snap, then a
+    // flag with its spot typed and a run with nothing typed.
+    const chained = rebuildPlaySituations([
+      play({ id: "gain", yards: 20 }),
+      play({ id: "set", yards: 10, possession: "them", down: 1, distance: 10, ballOn: 90,
+        playData: { start_override: true } }),
+      play({ id: "flag", type: "penalty_only", penalty: "False Start", flagYards: 5 }),
+      play({ id: "after", yards: 4 }),
+    ], null, config).plays;
+    const plays = chained.map((p) => p.id === "flag"
+      ? { ...p, nextPossession: "them" as const, nextDown: 1, nextDistance: 15, nextBallOn: 85,
+          playData: { ...(p.playData ?? {}), next_situation_source: "manual_override" } }
+      : p);
+
+    const rebuilt = rebuildPlaySituations(withoutPlay(plays, "set", null, config), null, config).plays;
+    const flag = rebuilt.find((p) => p.id === "flag")!;
+    expect([flag.possession, flag.down, flag.distance, flag.ballOn]).toEqual(["them", 1, 10, 90]);
+    expect(flag.playData?.start_override).toBe(true);
+    expect([flag.nextPossession, flag.nextBallOn]).toEqual(["them", 85]);
+
+    // With nothing typed on the play after, the run still starts where the ball was set.
+    const run = rebuildPlaySituations(withoutPlay(chained.filter((p) => p.id !== "flag"), "set", null, config), null, config)
+      .plays.find((p) => p.id === "after")!;
+    expect([run.possession, run.ballOn]).toEqual(["them", 90]);
+
+    // And on the film chart, where hand-set starts are read off the stored rows.
+    const rewrite = rechainStoredPlays(plays.map(toRow), null, config, "set").find((w) => w.id === "flag")!;
+    expect(rewrite.playData.start_override).toBe(true);
+    expect([rewrite.fields.possession, rewrite.fields.yard_line, rewrite.fields.end_yard_line]).toEqual(["them", 90, 85]);
+  });
 });

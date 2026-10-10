@@ -632,14 +632,36 @@ export async function discardQueuedEntity(expected: SyncQueueItem[], serverPlay:
   await tx.done;
 }
 
-export async function markFailed(queueId: string, error: string): Promise<void> {
+/**
+ * Drop a failed insert or update when its play has since been deleted.
+ *
+ * deleteCachedPlayWithIntent leaves one the drain is already sending in place
+ * and queues the delete behind it, which only keeps the order if that attempt
+ * succeeds. Failed and kept, the delete went out first, matched nothing, and
+ * the retry put the deleted play back on the server.
+ */
+async function settleFailure(queueId: string, error: string, apply: (item: SyncQueueItem) => void): Promise<void> {
   if (!isOfflineSupported()) return;
   const db = await getDb();
-  const item = await db.get("sync_queue", queueId);
-  if (!item) return;
-  item.status = "failed";
-  item.lastError = error;
-  await db.put("sync_queue", item);
+  const tx = db.transaction("sync_queue", "readwrite");
+  const item = await tx.store.get(queueId);
+  if (!item) return tx.done;
+  const deleted = (item.op === "insert" || item.op === "update")
+    && (await tx.store.getAll()).some((i) => i.op === "delete" && i.playId === item.playId);
+  if (deleted) {
+    await tx.store.delete(queueId);
+  } else {
+    item.lastError = error;
+    apply(item);
+    await tx.store.put(item);
+  }
+  await tx.done;
+}
+
+export async function markFailed(queueId: string, error: string): Promise<void> {
+  await settleFailure(queueId, error, (item) => {
+    item.status = "failed";
+  });
 }
 
 /**
@@ -651,14 +673,10 @@ export async function markFailed(queueId: string, error: string): Promise<void> 
  * never syncs again even once service is back.
  */
 export async function markRetryable(queueId: string, error: string): Promise<void> {
-  if (!isOfflineSupported()) return;
-  const db = await getDb();
-  const item = await db.get("sync_queue", queueId);
-  if (!item) return;
-  item.status = "pending";
-  item.lastError = error;
-  item.attempts = Math.max(0, item.attempts - 1);
-  await db.put("sync_queue", item);
+  await settleFailure(queueId, error, (item) => {
+    item.status = "pending";
+    item.attempts = Math.max(0, item.attempts - 1);
+  });
 }
 
 /**
