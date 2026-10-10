@@ -58,4 +58,11 @@ describe("blank roles record as TEAM", () => {
     const roles = out!.tagged.map(t => t.role);
     expect(roles.length).toBe(new Set(roles.filter(r => r !== "tackler")).size + roles.filter(r => r === "tackler").length);
   });
+
+  it("leaves an unnamed interceptor as ? rather than TEAM", async () => {
+    const out = await recordBlank("int", "them");
+    expect(out).toBeTruthy();
+    expect(out!.tagged.find(t => t.role === "interceptor")).toBeUndefined();
+    expect(out!.description).toMatch(/INT by \?/);
+  });
 });

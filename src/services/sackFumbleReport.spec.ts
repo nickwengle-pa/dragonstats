@@ -59,3 +59,13 @@ describe("fumbles on a sack or a run in the game report", () => {
     expect(stat(r, "Fumbles: Number-Lost")).toMatchObject({ us: "0-0" });
   });
 });
+
+describe("a pick with nobody named in the game report", () => {
+  it("still counts as our interception", () => {
+    const r = report([snap({
+      possession: "them", play_type: "int", yards_gained: -12, is_turnover: true,
+      play_data: { interception_return_yards: 12 },
+    }, [{ id: "opp_7", name: "#7", role: "passer", jersey_number: 7 }], [])]);
+    expect(stat(r, "Interceptions: Number-Yards-TD")).toMatchObject({ us: "1-12-0" });
+  });
+});
