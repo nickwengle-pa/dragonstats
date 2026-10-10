@@ -1403,26 +1403,9 @@ export default function PlayEntryModal({
   const goBack = () => { if (stepIdx > 0) setStepIdx(s => s - 1); };
 
   /**
-   * Blank roles that will actually go unrecorded.
-   *
-   * Opponent-side roles are deliberately excluded. handleSubmit auto-fills
-   * those with the TEAM placeholder, so skipping the other side's passer and
-   * receiver is the intended fast path rather than a mistake — warning about
-   * it would put a second Next tap on most defensive snaps to report something
-   * the app already handles correctly. Our own skipped roles get no fallback,
-   * so those are the only ones worth stopping for.
-   */
-  const untaggedRoles = roles.filter(r =>
-    !tagged.some(t => t.role === r)
-    && !roleUsesOpponentRoster(r, isTheirBall, {
-      playTypeId: playType.id,
-      fumbleRecoveredByUs,
-      onsideRecoveredByKicker,
-    blockedRecoveredByKicking,
-    }),
-  );
-  /**
-   * Opponent-side roles nobody has named. These record as TEAM.
+   * Roles nobody has named. These record as TEAM - ours as well as theirs,
+   * at Nick's call: a forced fumble or a recovery nobody saw is still the
+   * team's, and a blank simply vanished from the stats.
    *
    * Their stats have to land somewhere - a punt with no punter is a punt that
    * never happened as far as the report is concerned - and we do not chart
@@ -1438,16 +1421,16 @@ export default function PlayEntryModal({
        review screen now displays that list, so it was visible as well as
        wrong. Touchback was already excluded; the other two were not. */
     ? [kickerRole, ...((hasReturnSpot || kickOutcome === "fair_catch") ? ["returner"] : [])]
-    : roles
-  ).filter(role =>
-    !tagged.some(t => t.role === role)
-    && roleUsesOpponentRoster(role, isTheirBall, {
-      playTypeId: playType.id,
-      fumbleRecoveredByUs,
-      onsideRecoveredByKicker,
-      blockedRecoveredByKicking,
-    }),
-  );
+    : [...new Set([...roles, ...(isFumblePlay ? ["fumble_recovery"] : [])])]
+  ).filter(role => !tagged.some(t => t.role === role));
+  const teamDefaultIsOpponent = (role: string) => roleUsesOpponentRoster(role, isTheirBall, {
+    playTypeId: playType.id,
+    fumbleRecoveredByUs,
+    onsideRecoveredByKicker,
+    blockedRecoveredByKicking,
+  });
+  /* A tackle left blank is TEAM too, unless the operator said there was none. */
+  const teamDefaultTackle = steps.includes("defense") && tacklersAreOurs && shownTacklers.length === 0 && !noTackle;
 
   /** Set when Next is held back to ask about blank roles; null the rest of the time. */
   const [skipWarning, setSkipWarning] = useState<string[] | null>(null);
@@ -1462,33 +1445,16 @@ export default function PlayEntryModal({
    * Next now agrees with it. This also makes the carried-pick hint literal:
    * "Next to keep" keeps this role and moves to the next one.
    *
-   * Leaving the step with a role still blank asks first. It does not block —
-   * canGoNext stays permissive on purpose (empty opponent roster, unforced
-   * fumble, unidentified returner all have to go through) — but a skip should
-   * be a decision rather than the default outcome of one extra tap.
+   * Leaving the step with a role still blank no longer asks: the blank
+   * records as TEAM (teamDefaultRoles), which the role step and the review
+   * both say on screen.
    */
-  /**
-   * The tackler step needs the same guard, and it lives in its own state.
-   * Only when the tackle is ours: an untagged opponent tackler is somebody
-   * else's player and there is nothing useful to record against him.
-   */
-  const defenseNeedsTackler =
-    currentStep === "defense" && tacklersAreOurs && tacklers.length === 0 && !noTackle;
-
   const goNextFromButton = () => {
     if (currentStep === "players") {
       if (currentRoleIdx < roles.length - 1) {
         setCurrentRoleIdx(i => i + 1);
         return;
       }
-      if (untaggedRoles.length > 0 && !skipWarning) {
-        setSkipWarning(untaggedRoles);
-        return;
-      }
-    }
-    if (defenseNeedsTackler && !skipWarning) {
-      setSkipWarning([defensiveCreditRole]);
-      return;
     }
     setSkipWarning(null);
     goNext();
@@ -1810,23 +1776,23 @@ export default function PlayEntryModal({
       allTagged.push(makeTeamTag("rusher"));
     }
 
-    // ── Fill opponent-side roles nobody named with the TEAM placeholder ──
-    // Our own skipped roles stay untagged: a coach should attribute his own
-    // players, and a blank is the signal to go back and do it. Their side has
-    // no roster to attribute to, so the stat lands on TEAM rather than
-    // vanishing. teamDefaultRoles is the same list the steps and the review
-    // showed on the way here, so nothing appears at submit that was not on
-    // screen first.
+    // ── Fill roles nobody named with the TEAM placeholder ──
+    // Their side has no roster to attribute to, and on ours a blank simply
+    // vanished from the stats. Ours goes in as the unconfirmed TEAM - the
+    // identify-on-film-later tag - so film review still lists it to fix.
+    // teamDefaultRoles is the same list the steps and the review showed on
+    // the way here, so nothing appears at submit that was not on screen first.
     for (const role of (draftOnly ? [] : teamDefaultRoles)) {
-      allTagged.push({
+      allTagged.push(teamDefaultIsOpponent(role) ? {
         id: OPP_TEAM_PLAYER.id,
         player_id: OPP_TEAM_PLAYER.id,
         jersey_number: null,
         name: OPP_TEAM_PLAYER.name,
         role,
         isOpponent: true,
-      });
+      } : makeTeamTag(role));
     }
+    if (!draftOnly && teamDefaultTackle) allTagged.push({ ...makeTeamTag(defensiveCreditRole), credit: 1 });
     const passResult = playType.id === "pass_comp" ? "Complete" : playType.id === "pass_inc" ? "Incomplete" : "";
     const finalResult = result || passResult;
 
@@ -3003,7 +2969,7 @@ export default function PlayEntryModal({
 
               {/* Their side is recorded as TEAM unless a number was caught, so
                   say so here instead of leaving it to happen at submit. */}
-              {showOpponentRoster && teamDefaultRoles.includes(currentRole) && (
+              {teamDefaultRoles.includes(currentRole) && (
                 <div className="px-3 py-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-[11px] text-amber-400/80">
                   Records as <span className="font-black">TEAM</span> unless you pick someone.
                 </div>
@@ -4367,11 +4333,13 @@ export default function PlayEntryModal({
                 ))}
                 {/* What is about to be filled in for us, before it happens
                     rather than in the play log afterwards. */}
-                {teamDefaultRoles.map(role => (
+                {[...teamDefaultRoles, ...(teamDefaultTackle ? [defensiveCreditRole] : [])].map(role => (
                   <div key={`team-${role}`} className="flex justify-between">
-                    <span className="text-slate-500 capitalize">{role}</span>
+                    <span className="text-slate-500 capitalize">{role.replace(/_/g, " ")}</span>
                     <span className="font-bold text-amber-400/80">
-                      <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>TEAM
+                      {teamDefaultIsOpponent(role) && role !== defensiveCreditRole
+                        ? <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>
+                        : <span className="text-[10px] mr-1">{progTag}</span>}TEAM
                     </span>
                   </div>
                 ))}
