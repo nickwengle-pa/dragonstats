@@ -8,7 +8,7 @@ interface Props {
   opponentAbbr?: string;
 }
 
-const RESULT_LABEL: Record<DriveResult, { short: string; color: string }> = {
+export const RESULT_LABEL: Record<DriveResult, { short: string; color: string }> = {
   [DriveResult.Touchdown]: { short: "TD", color: "text-emerald-400" },
   [DriveResult.FieldGoal]: { short: "FG", color: "text-amber-400" },
   [DriveResult.Punt]: { short: "PUNT", color: "text-surface-muted" },

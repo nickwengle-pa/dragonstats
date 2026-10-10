@@ -48,6 +48,7 @@ const SeasonReportScreen = lazyWithReload(() => import("@/screens/SeasonReportSc
 const GameSettingsScreen = lazyWithReload(() => import("@/screens/GameSettingsScreen"));
 const BoxScoreScreen = lazyWithReload(() => import("@/screens/BoxScoreScreen"));
 const GameReportScreen = lazyWithReload(() => import("@/screens/GameReportScreen"));
+const DriveChartScreen = lazyWithReload(() => import("@/screens/DriveChartScreen"));
 
 function LoadingFallback() {
   return (
@@ -172,6 +173,7 @@ function AppRoutes() {
         <Route path="/game/:gameId/summary" element={<ProtectedRoute><GameSummaryScreen /></ProtectedRoute>} />
         <Route path="/game/:gameId/boxscore" element={<ProtectedRoute><BoxScoreScreen /></ProtectedRoute>} />
         <Route path="/game/:gameId/report" element={<ProtectedRoute><GameReportScreen /></ProtectedRoute>} />
+        <Route path="/game/:gameId/drives" element={<ProtectedRoute><DriveChartScreen /></ProtectedRoute>} />
         <Route path="/game/:gameId/review" element={<ProtectedRoute><PostGameReview /></ProtectedRoute>} />
         <Route path="/player/:playerId" element={<ProtectedRoute><PlayerScreen /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
