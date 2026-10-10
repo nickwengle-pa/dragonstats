@@ -366,7 +366,11 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
 function buildFumble(play: PlayWithPlayers, ballCarrier: string, ctx: TransformContext): FumbleEvent | undefined {
   const recoverer = firstPlayerByRole(play, "fumble_recovery");
   const forcer = firstPlayerByRole(play, "forced_fumble");
-  if (!recoverer && !forcer && !play.is_turnover) return undefined;
+  // A fumble the offense fell on with nobody tagged is still a fumble: the
+  // recovery spot is stored only on a play that had one.
+  const hadFumble = play.play_type === "fumble"
+    || readFumbleSpots(play.play_data as Record<string, unknown>).fumbleRecoveredAt != null;
+  if (!recoverer && !forcer && !play.is_turnover && !hadFumble) return undefined;
 
   const possTeamId = play.possession === "us" ? ctx.programTeamId : otherTeam(ctx.programTeamId, ctx);
   // recoveryYards has been on FumbleEvent all along with nothing filling it,

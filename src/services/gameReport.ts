@@ -34,6 +34,7 @@ import { firstPlayerByRole } from "./playTransformer";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
 import { nullifiedStats } from "./statAuditRules";
+import { readFumbleSpots } from "./fumbleSpots";
 
 /* ── Play-type groupings ──────────────────────────────────────────────────── */
 
@@ -901,6 +902,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const hadFumble = (p: PlayWithPlayers) => !nullifiedStats(p) && (
     p.play_type === "fumble"
     || hasFumbleRole(p)
+    || readFumbleSpots(p.play_data).fumbleRecoveredAt != null
     || isFumbleLost(p));
   const fumblesUs = countPlays("us", hadFumble) + lostMuffs("us");
   const fumblesThem = countPlays("them", hadFumble) + lostMuffs("them");
