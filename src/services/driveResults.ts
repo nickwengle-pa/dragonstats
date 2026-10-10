@@ -17,11 +17,11 @@
  * finds. The engine ships prebuilt and is not ours to recompile, so the
  * correction happens here, over the top of what it returned.
  *
- * Drives map to plays by position: both producers of a GameSummary number
- * drives by counting possession changes, so the Nth run of consecutive
- * same-possession plays is the Nth drive. If that ever stops being true the
- * counts disagree and the original results are returned untouched — a stale
- * label is better than a confidently wrong one.
+ * Drives map to plays by number: both producers of a GameSummary number
+ * drives by counting possession changes, so drive N is the Nth run of
+ * consecutive same-possession plays (see matchesByNumber). If that ever stops
+ * being true the original results are returned untouched — a stale label is
+ * better than a confidently wrong one.
  */
 
 import type { DriveStats } from "football-stats-engine";
@@ -78,7 +78,13 @@ function classify(
   if (!play) {
     return isLastOfGame ? DriveResult.EndOfGame : DriveResult.Punt;
   }
-  if (play.isTouchdown) return DriveResult.Touchdown;
+  // A touchdown the other team ran back (pick-six, scoop-and-score, punt
+  // return) ended this drive in a turnover or a punt, not a score. Same test as
+  // isReturnTouchdown in scoringLedger.ts, written out to keep this module free
+  // of imports.
+  const returned = play.isTurnover || play.playType === "int"
+    || play.playType === "punt" || play.playType === "blocked_kick";
+  if (play.isTouchdown && !returned) return DriveResult.Touchdown;
   if (play.playType === "fg") {
     return play.result === "Good" ? DriveResult.FieldGoal : DriveResult.MissedFieldGoal;
   }
@@ -117,24 +123,55 @@ function possessionRuns(plays: DriveResultPlay[]): DriveResultPlay[][] {
   return runs;
 }
 
+/**
+ * Whether each drive can be found by its number: drive N is run N.
+ *
+ * The engine skips kickoffs when it builds drives, so the opening kickoff (and
+ * the one after a safety or a return score) is a run with no drive. Matching by
+ * position then fails on the count in nearly every game, which left every drive
+ * labelled the engine's PUNT. Both producers number drives by run, so the
+ * number is the reliable key. Older games were charted before drives carried a
+ * number (all #0) and fall back to position. As a guard against a numbering
+ * that does not line up after all, one team must never map to both sides.
+ */
+function matchesByNumber(drives: DriveStats[], runs: DriveResultPlay[][]): boolean {
+  if (drives.length === 0) return false;
+  const seen = new Set<number>();
+  const side = new Map<string, "us" | "them">();
+  for (const drive of drives) {
+    const n = drive.driveNumber;
+    if (!Number.isInteger(n) || n < 1 || n > runs.length || seen.has(n)) return false;
+    seen.add(n);
+    const possession = runs[n - 1][0].possession;
+    if ((side.get(drive.team) ?? possession) !== possession) return false;
+    side.set(drive.team, possession);
+  }
+  return true;
+}
+
 /** Drives with their result corrected. Same array shape, same order. */
 export function resolveDriveResults(
   drives: DriveStats[],
   plays: DriveResultPlay[],
 ): DriveStats[] {
   const runs = possessionRuns(plays);
-  if (runs.length !== drives.length) return drives;
+  const byNumber = matchesByNumber(drives, runs);
+  if (!byNumber && runs.length !== drives.length) return drives;
 
-  return drives.map((drive, i) => {
+  return drives.map((drive, index) => {
+    const i = byNumber ? drive.driveNumber - 1 : index;
     const run = runs[i];
     const decider = [...run].reverse().find(p => !AFTERMATH.has(p.playType));
     // The half ends when the next drive starts in a later half than this one.
     const nextRun = runs[i + 1];
     const half = (q: number) => (q <= 2 ? 1 : 2);
     const isLastOfGame = i === runs.length - 1;
+    // Measured from the play that ended the drive: the kickoff riding on the
+    // end of the run may already be in the next half.
+    const endedIn = (decider ?? run[run.length - 1]).quarter;
     const isLastOfHalf = !isLastOfGame
       && nextRun.length > 0
-      && half(nextRun[0].quarter) !== half(run[run.length - 1].quarter);
+      && half(nextRun[0].quarter) !== half(endedIn);
     return {
       ...drive,
       result: classify(decider, isLastOfHalf, isLastOfGame) as DriveResultValue,

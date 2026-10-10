@@ -175,4 +175,35 @@ test("a mismatch between drives and possession runs leaves the labels alone", ()
   assert.equal(out.map(d => d.result).join(","), "punt,punt,punt");
 });
 
+test("an opening kickoff, which the engine makes no drive for, still lets every drive be read", () => {
+  // The engine skips kickoffs, so the opening kick is a run with no drive and
+  // the counts never match. Drive numbers still do: drive N is run N.
+  const plays = [
+    p("them", "kickoff"),
+    p("us", "rush"), p("us", "fg", { down: 4, result: "Good" }), p("us", "kickoff"),
+    p("them", "rush"), p("them", "int", { isTurnover: true }),
+    p("us", "rush"),
+  ];
+  const drives = [
+    { driveNumber: 2, team: "us", result: "punt" },
+    { driveNumber: 3, team: "them", result: "punt" },
+    { driveNumber: 4, team: "us", result: "punt" },
+  ];
+  const out = resolveDriveResults(drives as any, plays);
+  assert.equal(out.map(d => d.result).join(","), "field_goal,turnover,end_of_game");
+});
+
+test("a pick-six ends the thrower's drive in a turnover, not a touchdown", () => {
+  const plays = [p("us", "rush"), p("us", "int", { isTurnover: true, isTouchdown: true }), p("them", "pat"), p("them", "kickoff"), p("us", "rush")];
+  assert.equal(firstResultOf(plays), "turnover");
+});
+
+test("a drive run out at the half is end of half when the 3rd-quarter kickoff rides on its end", () => {
+  const plays = [
+    p("them", "rush", { quarter: 2 }), p("them", "rush", { quarter: 2, down: 2 }),
+    p("them", "kickoff", { quarter: 3 }), p("us", "rush", { quarter: 3 }),
+  ];
+  assert.equal(firstResultOf(plays), "end_of_half");
+});
+
 console.log(`\n${passed}/${total} passed`);
