@@ -58,6 +58,7 @@ export const FilmIcon = make("FilmIcon", <>
   <rect x="3" y="4" width="18" height="16" />
   <path d="M3 9h18M3 15h18M7 4v5M17 4v5M7 15v5M17 15v5M12 9v6" />
 </>);
+export const DrivesIcon = make("DrivesIcon", <><path d="M3 19h4l3-7h4l3-7h4" /><path d="M18 5h3v3" /></>);
 export const FlagIcon = make("FlagIcon", <path d="M5 21V4h11l-2 4 2 4H5" />);
 
 /* ── season & misc ── */
