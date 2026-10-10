@@ -10,6 +10,7 @@
  */
 import type { PlayWithPlayers } from "./gameService";
 import { readFumbleSpots } from "./fumbleSpots";
+import { storedRowTurnover } from "./gameFlow";
 import {
   type PlayRecord,
   type BlockedKickType,
@@ -49,7 +50,7 @@ export function playRecordFromRow(p: PlayWithPlayers, roster: RosterLookups = {}
     flagYards: pd.penalty_yards ?? 0,
     isTouchdown: p.is_touchdown,
     firstDown: pd.is_first_down ?? false,
-    turnover: p.is_turnover,
+    turnover: storedRowTurnover(p),
     isTouchback: !!pd.is_touchback,
     penaltyCategory: pd.play_category === "offense" || pd.play_category === "defense" ? pd.play_category : null,
     penaltyEnforcement: pd.penalty_enforcement === "declined" || pd.penalty_enforcement === "offset" ? pd.penalty_enforcement : "accepted",
