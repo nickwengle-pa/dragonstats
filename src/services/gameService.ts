@@ -379,8 +379,12 @@ export async function insertPlay(
    Removes play_players first, then the play.
    ───────────────────────────────────────────── */
 
-export async function deletePlay(playId: string, gameId?: string): Promise<boolean> {
-  const { deleteCachedPlayWithIntent, markSynced } = await import("./offlineDb");
+export async function deletePlay(
+  playId: string,
+  gameId?: string,
+  options: { optimistic?: boolean } = {},
+): Promise<boolean> {
+  const { deleteCachedPlayWithIntent, markSynced, isOfflineSupported } = await import("./offlineDb");
   const { refreshSyncStatus } = await import("./syncWorker");
 
   /* WRITE-AHEAD. Dropping the cached play and recording the intent to delete
@@ -392,8 +396,11 @@ export async function deletePlay(playId: string, gameId?: string): Promise<boole
   const intent = await deleteCachedPlayWithIntent({ gameId: gameId ?? "", playId });
   await refreshSyncStatus();
 
-  const goOnline = typeof navigator === "undefined" || navigator.onLine;
-  if (goOnline) {
+  const push = async () => {
+    const goOnline = typeof navigator === "undefined" || navigator.onLine;
+    // Behind an insert or update still being sent, the delete has to wait for
+    // the drain: sent now, it would land first and that write would undo it.
+    if (!goOnline || intent.behindInFlight) return;
     try {
       // Credits first, and the error is NOT ignored: deleting the play while
       // its attributions survive leaves them orphaned against a play that no
@@ -405,7 +412,7 @@ export async function deletePlay(playId: string, gameId?: string): Promise<boole
         if (!error) {
           await markSynced(intent.id);
           await refreshSyncStatus();
-          return true;
+          return;
         }
         console.warn("deletePlay network failed, staying queued:", error);
       } else {
@@ -414,9 +421,19 @@ export async function deletePlay(playId: string, gameId?: string): Promise<boole
     } catch (err) {
       console.warn("deletePlay network threw, staying queued:", err);
     }
+  };
+
+  /* The game screen returns on the local write, as live entry does. Waiting on
+     two requests over press-box wifi left the screen taking snaps against a
+     list that still held the deleted play, and the list the delete then put
+     back dropped whatever had been recorded in between. */
+  if (options.optimistic && isOfflineSupported()) {
+    void push().catch((err) => console.warn("deletePlay background push threw:", err));
+    return true;
   }
 
   // The intent is already queued; failure just means leaving it alone.
+  await push();
   return true;
 }
 
