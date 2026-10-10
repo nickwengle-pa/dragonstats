@@ -206,6 +206,17 @@ function ourRows<T>(
  * opponent's kicker on a recorded PAT would come back empty and the scoring
  * line would say "(Kick Good)" for a man whose number we actually have.
  */
+/** A fumble was tagged on the play, by anyone - a TEAM placeholder included,
+ *  which tagWithRole deliberately skips because it is no name. */
+const FUMBLE_ROLES = ["forced_fumble", "fumble_recovery"];
+function hasFumbleRole(play: PlayWithPlayers): boolean {
+  const loose = [
+    ...(Array.isArray(play.play_data?.opp_tagged) ? play.play_data.opp_tagged : []),
+    ...(Array.isArray(play.play_data?.pending_tagged) ? play.play_data.pending_tagged : []),
+  ] as Array<{ role?: string }>;
+  return [...(play.play_players ?? []), ...loose].some(t => FUMBLE_ROLES.includes(t.role ?? ""));
+}
+
 function tagWithRole(
   play: PlayWithPlayers,
   roles: string[],
@@ -883,8 +894,16 @@ export function buildGameReport(input: BuildReportInput): GameReport {
      that did not have the ball at the snap. See lostMuffs.ts. */
   const lostMuffs = (receiving: "us" | "them") => countPlays(receiving === "us" ? "them" : "us",
     p => kickReceiptOf(p.play_data).muffLostToKickers && !isWipedByPenaltyRow(p));
-  const fumblesUs = countPlays("us", p => p.play_type === "fumble" || Boolean(p.play_data?.had_fumble)) + lostMuffs("us");
-  const fumblesThem = countPlays("them", p => p.play_type === "fumble" || Boolean(p.play_data?.had_fumble)) + lostMuffs("them");
+  /* A fumble on a sack, a run or a catch keeps that play's type, and the
+     had_fumble flag this once read is written nowhere - so a lost
+     sack-fumble printed "0-1". A fumble role on the play, or a lost one,
+     is the fumble. */
+  const hadFumble = (p: PlayWithPlayers) => !nullifiedStats(p) && (
+    p.play_type === "fumble"
+    || hasFumbleRole(p)
+    || isFumbleLost(p));
+  const fumblesUs = countPlays("us", hadFumble) + lostMuffs("us");
+  const fumblesThem = countPlays("them", hadFumble) + lostMuffs("them");
 
   /* ── Team comparison ──────────────────────────────────────────────────── */
   /* Rushing gain and loss, per side, off the plays. Every play is charted
