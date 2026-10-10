@@ -1422,7 +1422,10 @@ export default function PlayEntryModal({
        wrong. Touchback was already excluded; the other two were not. */
     ? [kickerRole, ...((hasReturnSpot || kickOutcome === "fair_catch") ? ["returner"] : [])]
     : [...new Set([...roles, ...(isFumblePlay ? ["fumble_recovery"] : [])])]
-  ).filter(role => !tagged.some(t => t.role === role));
+  ).filter(role => !tagged.some(t => t.role === role)
+    /* The one exception: an unnamed interceptor reads "INT by ?", not TEAM.
+       The pick still counts for the team - the report counts the plays. */
+    && role !== "interceptor");
   const teamDefaultIsOpponent = (role: string) => roleUsesOpponentRoster(role, isTheirBall, {
     playTypeId: playType.id,
     fumbleRecoveredByUs,

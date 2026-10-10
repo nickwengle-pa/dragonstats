@@ -848,6 +848,13 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       const stored = Number(p.play_data?.fumble_return_yards);
       return s + (Number.isFinite(stored) ? stored : 0);
     }, 0);
+  /* Our picks off the plays, not off the return table: a pick with nobody
+     named ("INT by ?") is in no player's row but is still the team's. */
+  const ourPicks = plays.filter(p => p.play_type === "int" && p.possession === "them" && !nullifiedStats(p));
+  const ourIntReturnYards = ourPicks.reduce((s, p) => {
+    const stored = p.play_data?.interception_return_yards;
+    return s + (typeof stored === "number" ? stored : Math.max(0, num(p.yards_gained)));
+  }, 0);
   const theirIntReturnYards = plays
     .filter(p => p.play_type === "int" && p.possession === "us")
     .reduce((s, p) => {
@@ -978,7 +985,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     row("Average Per Return", avg(returnsTotal.ko.yds, returnsTotal.ko.no).toFixed(1),
       avg(theirKoReturnYards, theirKoReturns).toFixed(1), "sub"),
     row("Interceptions: Number-Yards-TD",
-      `${returnsTotal.int.no}-${returnsTotal.int.yds}-${intTdUs}`,
+      `${ourPicks.length}-${ourIntReturnYards}-${intTdUs}`,
       `${usTeam.interceptionsThrown}-${theirIntReturnYards}-${intTdThem}`),
     // A muff we fell on counts as a recovery here, the mirror of the other
     // side's column, which is our fumbles lost and so already includes it.
