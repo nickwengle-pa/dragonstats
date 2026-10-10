@@ -2,7 +2,7 @@ import GameHomeLink from "@/components/game/GameHomeLink";
 import PrintReportButton from "@/components/report/PrintReportButton";
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Share2, Film, FileText, ClipboardList } from "lucide-react";
+import { ArrowLeft, Download, Share2, Film, FileText, ClipboardList, ListOrdered } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
@@ -348,6 +348,21 @@ export default function GameSummaryScreen() {
           <div className="flex-1 min-w-0">
             <div className="text-sm font-bold">Game Report</div>
             <div className="text-xs text-surface-muted">Scoring summary, points, full individual &amp; team stats · print or save PDF</div>
+          </div>
+          <ArrowLeft className="w-4 h-4 text-surface-muted rotate-180 shrink-0" />
+        </button>
+
+        {/* Drive chart — every play, grouped into drives, picked by quarter */}
+        <button
+          onClick={() => navigate(`/game/${gameId}/drives`)}
+          className="w-full card card-hover p-4 flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
+        >
+          <div className="w-10 h-10 rounded-xl bg-sky-500/15 flex items-center justify-center shrink-0">
+            <ListOrdered className="w-5 h-5 text-sky-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold">Drive Chart</div>
+            <div className="text-xs text-surface-muted">Pick a quarter · every play grouped into each team&apos;s drives · print or save PDF</div>
           </div>
           <ArrowLeft className="w-4 h-4 text-surface-muted rotate-180 shrink-0" />
         </button>
