@@ -3106,6 +3106,10 @@ export default function GameScreen() {
              the plays pane, so without this the tap looks like it did nothing
              while the screen is quietly armed to splice the next play. */
           onInsertAfter={p => { setShowLog(false); setInsertAfterPlayId(p.id); setPhonePane("play"); }}
+          /* Close the log first, as Undo does: on a finished game the delete
+             asks to confirm the new final, and that sheet must not open
+             underneath this one. */
+          onDelete={p => { setShowLog(false); void handleDeletePlay(p.id); }}
           onUndo={() => { handleUndo(); setShowLog(false); }}
           onClose={() => setShowLog(false)}
           pendingPlayIds={pendingPlayIds}

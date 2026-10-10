@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { X, Pencil, RotateCcw, CloudOff, Plus } from "lucide-react";
+import { X, Pencil, RotateCcw, CloudOff, Plus, Trash2 } from "lucide-react";
 import { fmtClock, quarterLabel, yardLabel, TEAM_JERSEY, type PlayRecord } from "./types";
 
 import { OffensivePlayBadge, PlayTacklers } from "./PlayRowDetails";
@@ -36,6 +36,9 @@ interface Props {
   /** Record a play that belongs immediately after this one - a snap missed
    *  live and noticed a few downs later. */
   onInsertAfter?: (play: PlayRecord) => void;
+  /** Remove one play from anywhere in the game - a snap that never counted,
+   *  like a touchdown wiped out by a pre-snap flag. */
+  onDelete?: (play: PlayRecord) => void;
   onUndo: () => void;
   onClose: () => void;
   /** Play ids that are still in the sync queue (haven't pushed to server yet). */
@@ -76,7 +79,7 @@ const PLAY_ICON_COLORS: Record<string, string> = {
   timeout: "text-amber-300",
 };
 
-export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose, pendingPlayIds }: Props) {
+export default function PlayLog({ plays, onEdit, onInsertAfter, onDelete, onUndo, onClose, pendingPlayIds }: Props) {
   const [filter, setFilter] = useState<LogFilter>("all");
   const [playerQuery, setPlayerQuery] = useState("");
 
@@ -309,6 +312,21 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
                         title={`Insert a play between #${number} and #${number + 1}`}
                       >
                         <Plus className="w-3 h-3" />
+                      </button>
+                    )}
+                    {/* Deleting used to mean opening the edit and paging through
+                        every step to reach the trash can on the last one. The
+                        confirm names the play, since a mis-tap here takes a
+                        snap out of the game. */}
+                    {onDelete && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Delete play #${number}?\n\n${play.description}\n\nEverything after it re-chains.`)) onDelete(play);
+                        }}
+                        className="btn-ghost p-1 text-red-400/60 cursor-pointer"
+                        title={`Delete play #${number}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     )}
                   </div>
