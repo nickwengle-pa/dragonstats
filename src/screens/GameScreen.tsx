@@ -103,6 +103,7 @@ import {
   fmtClock,
   quarterLabel,
 } from "@/components/game/types";
+import BadSnapTag from "@/components/game/BadSnapTag";
 
 interface LiveSituationSnapshot {
   goalToGo?: boolean;
@@ -3015,7 +3016,7 @@ export default function GameScreen() {
                     {isTimeout ? "TO" : ourOffense ? "Off" : "Def"}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-body font-semibold truncate">{play.description}</div>
+                    <div className="text-xs font-body font-semibold truncate"><BadSnapTag type={play.type} playData={play.playData} />{play.description}</div>
                     <div className="text-[10px] text-surface-muted font-body">
                       <OffensivePlayBadge play={play} />{" "}
                       {QUARTER_LABELS[play.quarter]} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance} · {formatTeamYardLabel(play.ballOn, play.possession, progAbbr, oppAbbr)}

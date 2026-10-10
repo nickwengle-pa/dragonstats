@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { fmtClock, quarterLabel, type PlayRecord } from "./types";
 import type { LiveDriveRow } from "@/services/liveDriveRows";
 import { OffensivePlayBadge, PlayTacklers } from "./PlayRowDetails";
+import BadSnapTag from "./BadSnapTag";
 
 export default function DriveDetails({ drive, plays, team, onClose }: {
   drive: LiveDriveRow; plays: PlayRecord[]; team: string; onClose: () => void;
@@ -34,7 +35,7 @@ export default function DriveDetails({ drive, plays, team, onClose }: {
           <p className="text-xs text-slate-400">Plays in game order</p>
           {plays.map(play => <article key={play.id} className="rounded-lg border border-slate-700 bg-slate-900 p-3">
             <p className="text-xs text-slate-400 tabular-nums">{quarterLabel(play.quarter)} · {fmtClock(play.clock)}{play.type !== "timeout" ? ` · Down ${play.down} & ${play.distance}` : ""}</p>
-            <p className="mt-1 text-sm font-semibold">{play.description}</p>
+            <p className="mt-1 text-sm font-semibold"><BadSnapTag type={play.type} playData={play.playData} />{play.description}</p>
             <div className="mt-1 text-xs text-slate-300"><OffensivePlayBadge play={play} /><PlayTacklers play={play} /></div>
           </article>)}
         </div>

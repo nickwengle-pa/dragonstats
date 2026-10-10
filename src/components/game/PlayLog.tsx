@@ -4,6 +4,7 @@ import { fmtClock, quarterLabel, yardLabel, TEAM_JERSEY, type PlayRecord } from 
 
 import { OffensivePlayBadge, PlayTacklers } from "./PlayRowDetails";
 import QuarterChangeRow from "./QuarterChangeRow";
+import BadSnapTag from "./BadSnapTag";
 
 type LogFilter = "all" | "off" | "def" | "k";
 
@@ -242,7 +243,7 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onUndo, onClose,
                     {PLAY_ICONS[play.type] ?? "\u25B8"}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-body font-semibold truncate">{play.description}</div>
+                    <div className="text-xs font-body font-semibold truncate"><BadSnapTag type={play.type} playData={play.playData} />{play.description}</div>
                     <div className="text-[10px] text-surface-muted mt-0.5 font-body">
                       <OffensivePlayBadge play={play} />{" "}
                       {quarterLabel(play.quarter)} · {fmtClock(play.clock)} · {play.down}{play.down === 1 ? "st" : play.down === 2 ? "nd" : play.down === 3 ? "rd" : "th"}&{play.distance} · {yardLabel(play.ballOn)}

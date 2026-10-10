@@ -47,6 +47,7 @@ import NumberField from "@/components/game/NumberField";
 import TimeoutEditModal, { timeoutCallerLabel, type TimeoutEdit } from "@/components/game/TimeoutEditModal";
 import {
   findPlayTypeDef,
+  isBadSnap,
   type PlayCategory,
   isRosterTag,
   makePendingId,
@@ -376,11 +377,12 @@ function ChartingSheet({
               <Field label="R/P" value={runPassFor(play)} />
               <Field label="Gain" value={gainLabel(play)} />
             </div>
-            {(play.is_touchdown || play.is_turnover || play.is_penalty) && (
+            {(play.is_touchdown || play.is_turnover || play.is_penalty || isBadSnap(play.play_type, play.play_data)) && (
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {play.is_touchdown && <Flag text="TD" cls="bg-emerald-900/50 text-emerald-400" />}
                 {play.is_turnover && <Flag text="TURNOVER" cls="bg-red-900/50 text-red-400" />}
                 {play.is_penalty && <Flag text="PENALTY" cls="bg-yellow-900/40 text-yellow-400" />}
+                {isBadSnap(play.play_type, play.play_data) && <Flag text="BAD SNAP" cls="bg-orange-900/40 text-orange-300" />}
               </div>
             )}
             {tagged.length > 0 && (
@@ -1542,6 +1544,7 @@ export default function PostGameReview() {
                           {p.is_touchdown && <Flag text="TD" cls="bg-emerald-900/50 text-emerald-400" />}
                           {p.is_turnover && <Flag text="TO" cls="bg-red-900/50 text-red-400" />}
                           {p.is_penalty && <Flag text="PEN" cls="bg-yellow-900/40 text-yellow-400" />}
+                          {isBadSnap(p.play_type, p.play_data) && <Flag text="BS" cls="bg-orange-900/40 text-orange-300" />}
                         </span>
                       </Td>
                       <Td>

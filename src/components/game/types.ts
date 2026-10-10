@@ -329,6 +329,38 @@ export function findPlayTypeDef(typeId: string): PlayTypeDef | undefined {
   return PLAY_TYPES.find(p => p.id === typeId);
 }
 
+/* Plays that start with a snap, so the snap can be a bad one. A kickoff is
+   kicked off a tee, and a pre-snap flag never got that far. */
+const SNAPPED_PLAY_TYPES = new Set([
+  "rush", "scramble", "kneel", "bad_snap", "fumble", "safety",
+  "pass_comp", "pass_inc", "throwaway", "drop", "sack", "int", "spike",
+  "pat", "two_pt", "fg", "punt", "fair_catch", "blocked_kick",
+]);
+
+export function canFlagBadSnap(typeId: string): boolean {
+  return SNAPPED_PLAY_TYPES.has(typeId);
+}
+
+/** Whether the play had a bad snap: either the Bad Snap play type, where nobody
+ *  had the ball and the loss is TEAM's, or any other snapped play the operator
+ *  flagged (a punt snapped over the punter's head that he still got off, a
+ *  low snap the quarterback scooped and threw). The flag rides in play_data so
+ *  it costs no schema change and syncs offline like everything else there. */
+export function isBadSnap(typeId: string | null | undefined, playData: unknown): boolean {
+  if (typeId === "bad_snap") return true;
+  if (!typeId || !canFlagBadSnap(typeId)) return false;
+  return (playData as Record<string, unknown> | null | undefined)?.bad_snap === true;
+}
+
+/** Bad snaps by the team that snapped the ball, read off stored play rows. */
+export function countBadSnaps(
+  rows: ReadonlyArray<{ play_type?: unknown; play_data?: unknown; possession?: unknown }>,
+  side: "us" | "them",
+): number {
+  return rows.filter(row => (row.possession === "them" ? "them" : "us") === side
+    && isBadSnap(typeof row.play_type === "string" ? row.play_type : null, row.play_data)).length;
+}
+
 /**
  * Roles where the same player recurs snap after snap, so the last selection is
  * carried into the next play to save taps during live entry.

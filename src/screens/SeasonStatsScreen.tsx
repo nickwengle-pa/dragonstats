@@ -9,6 +9,7 @@ import { defensiveReturnsFromPlays, type DefensiveReturnTally } from "@/services
 import type { GameSummary } from "football-stats-engine";
 import BroadcastHeader from "@/components/BroadcastHeader";
 import { SheetIcon } from "@/components/icons/BroadcastIcons";
+import { countBadSnaps } from "@/components/game/types";
 
 /* ─── Aggregate interfaces ─── */
 
@@ -94,6 +95,7 @@ export default function SeasonStatsScreen() {
   // the engine does not keep.
   const [defReturnsByGame, setDefReturnsByGame] = useState<Map<string, DefensiveReturnTally>[]>([]);
   const [rosterIds, setRosterIds] = useState<Set<string>>(new Set());
+  const [badSnaps, setBadSnaps] = useState(0);
 
   useEffect(() => {
     if (!program || !season) return;
@@ -123,6 +125,7 @@ export default function SeasonStatsScreen() {
 
       const results: GameSummary[] = [];
       const returnTallies: Map<string, DefensiveReturnTally>[] = [];
+      let snaps = 0;
       for (const g of games) {
         const bundle = await computeGameStatsBundle(g.id, {
           id: program.id, name: program.name, abbreviation: program.abbreviation, game_config: program.game_config,
@@ -131,11 +134,13 @@ export default function SeasonStatsScreen() {
         if (bundle) {
           results.push(bundle.summary);
           returnTallies.push(defensiveReturnsFromPlays(bundle.plays));
+          snaps += countBadSnaps(bundle.plays, "us");
         }
       }
 
       setSummaries(results);
       setDefReturnsByGame(returnTallies);
+      setBadSnaps(snaps);
       setLoading(false);
     })();
 
@@ -315,12 +320,13 @@ export default function SeasonStatsScreen() {
               ))}
             </div>
 
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-5 gap-1.5">
               {[
                 { label: "Total Pts", val: teamTotals.pts },
                 { label: "Rush Yds", val: teamTotals.rushYds },
                 { label: "Pass Yds", val: teamTotals.passYds },
                 { label: "1st Downs", val: teamTotals.firstDowns },
+                { label: "Bad Snaps", val: badSnaps },
               ].map(s => (
                 <div key={s.label} className="card p-2 text-center">
                   <div className="text-sm font-display font-extrabold tabular-nums">{s.val}</div>

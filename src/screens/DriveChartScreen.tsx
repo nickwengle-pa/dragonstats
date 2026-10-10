@@ -10,7 +10,7 @@ import { drivesByQuarter, type QuarterDrive } from "@/services/drivesByQuarter";
 import { pdfFilename } from "@/services/reportPrint";
 import type { PlayWithPlayers } from "@/services/gameService";
 import { RESULT_LABEL } from "@/components/game/DrivesList";
-import { quarterLabel, yardLabel } from "@/components/game/types";
+import { isBadSnap, quarterLabel, yardLabel } from "@/components/game/types";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    DRIVE CHART — every play, grouped into drives, one quarter at a time.
@@ -238,6 +238,7 @@ function DriveCard({ drive, abbr, color, inProgress }: { drive: QuarterDrive; ab
               {p.is_touchdown && <Flag text="TD" cls="bg-emerald-900/50 text-emerald-400" />}
               {p.is_turnover && <Flag text="TO" cls="bg-red-900/50 text-red-400" />}
               {p.is_penalty && <Flag text="PEN" cls="bg-yellow-900/40 text-yellow-400" />}
+              {isBadSnap(p.play_type, p.play_data) && <Flag text="BS" cls="bg-orange-900/40 text-orange-300" />}
             </span>
             <span className="w-9 shrink-0 text-right font-mono font-bold">{p.play_type === "timeout" ? "" : gain(p)}</span>
           </li>

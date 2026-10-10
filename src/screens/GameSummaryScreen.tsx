@@ -13,6 +13,7 @@ import { subscribeSyncStatus } from "@/services/syncWorker";
 import DrivesList from "@/components/game/DrivesList";
 import TeamCrest from "@/components/TeamCrest";
 import { type GameSummary, type TeamStats, type PassingStats, type RushingStats, type ReceivingStats, type DefensiveStats } from "football-stats-engine";
+import { countBadSnaps } from "@/components/game/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -178,6 +179,7 @@ export default function GameSummaryScreen() {
   }, [gameId]);
   const [offFormations, setOffFormations] = useState<FormationBreakdown[]>([]);
   const [defFormations, setDefFormations] = useState<FormationBreakdown[]>([]);
+  const [badSnaps, setBadSnaps] = useState({ us: 0, them: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -241,6 +243,7 @@ export default function GameSummaryScreen() {
         if (!cancelled) {
           setOffFormations(computeFormationStats(rawPlays, "us", "offensive_formation"));
           setDefFormations(computeFormationStats(rawPlays, "us", "defensive_formation"));
+          setBadSnaps({ us: countBadSnaps(rawPlays, "us"), them: countBadSnaps(rawPlays, "them") });
         }
       } catch (e) {
         if (!cancelled) setError("Failed to compute stats");
@@ -467,6 +470,7 @@ export default function GameSummaryScreen() {
               away={`${theirTeamStats.thirdDownConversions}/${theirTeamStats.thirdDownAttempts}`}
             />
             <StatRow label="Turnovers" home={fmt(ourTeamStats.turnovers)} away={fmt(theirTeamStats.turnovers)} />
+            <StatRow label="Bad Snaps" home={String(badSnaps.us)} away={String(badSnaps.them)} />
             <StatRow
               label="Penalties"
               home={`${ourTeamStats.penalties}-${ourTeamStats.penaltyYards}`}
