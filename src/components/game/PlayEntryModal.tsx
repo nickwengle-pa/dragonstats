@@ -15,6 +15,7 @@ import {
   type PlayRecord,
   BLOCKED_KICK_TYPES,
   PLAY_TYPES,
+  canFlagBadSnap,
   PENALTIES,
   PENALTY_DEFAULT_YARDS,
   PENALTY_RULES,
@@ -943,6 +944,14 @@ export default function PlayEntryModal({
    * This only says the blank was on purpose.
    */
   const [noTackle, setNoTackle] = useState((editing ?? initialDraft)?.playData?.no_tackle === true);
+  /* The snap was bad, whatever happened after it. The Bad Snap play type is
+     one, by definition; this marks any other snapped play - a punt snapped
+     over the punter's head, a low snap the quarterback scooped and threw. A
+     Bad Snap play opens with it on, so changing its type keeps the mark. */
+  const [badSnap, setBadSnap] = useState(() => {
+    const source = editing ?? initialDraft;
+    return source?.type === "bad_snap" || source?.playData?.bad_snap === true;
+  });
   /* On a sack the defender who got there IS the tackler — the engine already
      reads sackers first and falls back to tacklers. Tagging the role by play
      type keeps one step instead of two and lets a split sack hold both names. */
@@ -1895,6 +1904,9 @@ export default function PlayEntryModal({
         next_goal_to_go: goalChoiceRequired ? nextGoalToGo ?? null : storedNextSituation?.goalToGo ?? null,
         kickoff_out_of_bounds_choice: isKickoffOutOfBounds ? outOfBoundsChoice : null,
         no_tackle: noTackle && allTagged.every(t => t.role !== "tackler" && t.role !== "sacker"),
+        // Always written, true or false: an edit merges over the stored
+        // play_data, so leaving it out could never clear one set by mistake.
+        bad_snap: playType.id === "bad_snap" || badSnap && canFlagBadSnap(playType.id),
         foul_spot_ball_on: penalty ? foulSpotBallOn : null,
         penalty_enforcement_from: penalty ? penaltyEnforcementFrom : null,
         penalty_down_outcome: penalty ? penaltyDownOutcome : null,
@@ -2674,6 +2686,8 @@ export default function PlayEntryModal({
         setTagged(prev => prev.filter(tag => tag.role !== "rusher"));
         setPlayTypeOverride(badSnap);
       }}
+      badSnap={badSnap}
+      onToggleBadSnap={playType.id === "rush" || playType.id === "bad_snap" ? undefined : () => setBadSnap(value => !value)}
       playerUsage={playerUsage}
       inline={inlineSimple}
       fieldSpotRequest={fieldSpotRequest}
@@ -4298,7 +4312,16 @@ export default function PlayEntryModal({
                 {isEditing ? "Review Changes" : "Review Play"}
               </div>
               {goalChoiceRequired && <GoalToGoChoice value={nextGoalToGo} onChange={setNextGoalToGo} />}
-              {isKickoffOutOfBounds && <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
+              {canFlagBadSnap(playType.id) && playType.id !== "bad_snap" && (
+                <button type="button" aria-pressed={badSnap} onClick={() => setBadSnap(value => !value)}
+                  className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 py-2 text-sm font-bold ${
+                    badSnap ? "border-orange-500 bg-orange-500/15 text-orange-300" : "border-surface-border bg-surface-bg text-slate-400"
+                  }`}>
+                  <span>Bad snap</span>
+                  <span className="text-xs">{badSnap ? "Yes · shows BS in the log" : "No"}</span>
+                </button>
+              )}
+              {isKickoffOutOfBounds &&<div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
                 <strong>Penalty: Kickoff Out of Bounds</strong>
                 <div className="mt-1">{outOfBoundsSummary}</div>
               </div>}

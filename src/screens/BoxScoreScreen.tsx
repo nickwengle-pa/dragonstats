@@ -11,7 +11,7 @@ import { scoringEvents, scoreByQuarter } from "@/services/scoringLedger";
 import { buildGameReport, type ScoringRow } from "@/services/gameReport";
 import { pdfFilename } from "@/services/reportPrint";
 
-import { TEAM_JERSEY, TEAM_PLAYER_ID, fmtClock } from "@/components/game/types";
+import { TEAM_JERSEY, TEAM_PLAYER_ID, countBadSnaps, fmtClock } from "@/components/game/types";
 import type {
   GameSummary, PassingStats, RushingStats, ReceivingStats, DefensiveStats, KickingStats,
 } from "football-stats-engine";
@@ -492,6 +492,7 @@ export default function BoxScoreScreen() {
                 {statRow("Total Yards", fmt(ourStats?.totalYards), fmt(theirStats?.totalYards))}
                 {statRow("3rd Down", `${fmt(ourStats?.thirdDownConversions)}/${fmt(ourStats?.thirdDownAttempts)}`, `${fmt(theirStats?.thirdDownConversions)}/${fmt(theirStats?.thirdDownAttempts)}`)}
                 {statRow("Turnovers", fmt(ourStats?.turnovers), fmt(theirStats?.turnovers))}
+                {statRow("Bad Snaps", summary ? String(countBadSnaps(scorePlays, "us")) : "—", summary ? String(countBadSnaps(scorePlays, "them")) : "—")}
                 {statRow("Penalties", `${fmt(ourStats?.penalties)}–${fmt(ourStats?.penaltyYards)}`, `${fmt(theirStats?.penalties)}–${fmt(theirStats?.penaltyYards)}`)}
                 {statRow("Time of Poss.", ourStats?.timeOfPossession ?? "—", theirStats?.timeOfPossession ?? "—")}
               </tbody>

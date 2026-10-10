@@ -31,7 +31,7 @@ import { defensiveReturnsFromPlays, isFumbleLost } from "./defensiveReturns";
 import { kickReceiptOf, netKickYards, resolveKickSpots } from "./kickSpots";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { firstPlayerByRole } from "./playTransformer";
-import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
+import { TEAM_JERSEY, TEAM_PLAYER_ID, countBadSnaps, isWipedByPenaltyRow } from "@/components/game/types";
 import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
 import { nullifiedStats } from "./statAuditRules";
 import { readFumbleSpots } from "./fumbleSpots";
@@ -958,6 +958,8 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       avg(themTeam.totalYards, themTeam.totalPlays).toFixed(1), "sub"),
     row("Fumbles: Number-Lost", dash(fumblesUs, usTeam.fumblesLost),
       dash(fumblesThem, themTeam.fumblesLost)),
+    // Off every recorded snap, a flagged-out one included: the snap was still bad.
+    row("Bad Snaps", countBadSnaps(recordedPlays, "us"), countBadSnaps(recordedPlays, "them")),
     row("Penalties: Number-Yards", dash(usTeam.penalties, usTeam.penaltyYards),
       dash(themTeam.penalties, themTeam.penaltyYards)),
     row("PUNTS-YARDS", dash(puntingTotal.att, puntingTotal.yds),

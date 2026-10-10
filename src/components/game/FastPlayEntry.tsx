@@ -59,6 +59,9 @@ interface Props {
   onSubmit: () => void | Promise<void>;
   onClose: () => void;
   onBadSnap: () => void;
+  /** A pass or sack off a bad snap. A run off one is the Bad Snap play. */
+  badSnap?: boolean;
+  onToggleBadSnap?: () => void;
   onKneel: () => void | Promise<void>;
 }
 
@@ -114,6 +117,7 @@ export default function FastPlayEntry(p: Props) {
       if (p.tacklers.length) parts.push(`${sack ? "sacked" : "tackled"} by ${p.tacklers.map(tacklerLabel).join(", ")}`);
       else if (p.noTackle) parts.push("no tackle");
     }
+    if (p.badSnap && p.onToggleBadSnap) parts.unshift("Bad snap");
     return parts.join(" · ");
   })();
   const changeYards = (yards: number) => {
@@ -224,6 +228,7 @@ export default function FastPlayEntry(p: Props) {
           <div className="fast-actions">
             <button onClick={()=>p.onDetailed("penalty")} className={`${button} ${idle}`}><Flag size={15} />Penalty</button>
             {!incomplete && <button onClick={()=>p.onDetailed("fumble")} className={`${button} ${idle}`}>Fumble on this play</button>}
+            {p.onToggleBadSnap && <button type="button" aria-pressed={!!p.badSnap} onClick={p.onToggleBadSnap} className={`${button} ${p.badSnap ? selected : idle}`}>Bad snap</button>}
             <button onClick={()=>p.onDetailed("players")} className={`${button} ${idle}`}>Full details</button>
             <button disabled={!ready||saving} onClick={async()=>{setSaving(true);setSaveError("");try{await p.onSubmit();}catch{setSaveError("Could not save. Try again.");}finally{setSaving(false);}}} className="btn-primary fast-save disabled:opacity-40">{saving?"Saving…":p.attachedDetails?"Review details":"Save Play"}</button>
           </div>
