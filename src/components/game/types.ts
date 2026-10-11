@@ -730,6 +730,16 @@ function kickReturnLabel(
   return ret ? `${muffed}, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : muffed;
 }
 
+/** A saved description, cleaned of what buildDescription no longer writes.
+ *  Incomplete passes saved with no target read "#7 → ? inc", or "→ TEAM inc"
+ *  once a blank target began recording as TEAM; they now read "#7 inc". The
+ *  description is stored text, so plays already in the books need this on the
+ *  way out to match the ones saved from here on. */
+export function tidyStoredDescription(playType: string, description: string): string {
+  if (playType !== "pass_inc") return description;
+  return description.replace(/ → (?:\?|TEAM) inc(?= · |$)/, " inc");
+}
+
 export function buildDescription(
   pt: PlayTypeDef,
   tagged: TaggedPlayer[],
@@ -780,8 +790,12 @@ export function buildDescription(
       break;
     }
     case "pass_inc": {
+      // The target is optional, so with nobody named the pass simply went
+      // incomplete: "#7 inc", not "#7 → ? inc". The TEAM placeholder a blank
+      // target records as names nobody either.
       const p = byRole("passer"), r = byRole("target");
-      parts.push(`${playerLabel(p)} → ${playerLabel(r)} inc`);
+      const named = r && !r.isTeam && !isTeamId(r.player_id) && r.player_id !== "opp_team";
+      parts.push(`${playerLabel(p)}${named ? ` → ${playerLabel(r)}` : ""} inc`);
       break;
     }
     case "sack": {
