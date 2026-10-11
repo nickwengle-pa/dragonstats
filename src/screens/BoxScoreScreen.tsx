@@ -1,5 +1,7 @@
 import GameHomeLink from "@/components/game/GameHomeLink";
 import PrintReportButton from "@/components/report/PrintReportButton";
+import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
+import { PERIOD_LONG, inPeriod } from "@/services/statPeriod";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer } from "lucide-react";
@@ -147,6 +149,7 @@ export default function BoxScoreScreen() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
   const { program, season } = useProgramContext();
+  const [period, setPeriod] = useStatPeriod("game");
 
   const [summary, setSummary] = useState<GameSummary | null>(null);
   /* The line score is derived from the plays, not from the engine ledger — see
@@ -183,7 +186,7 @@ export default function BoxScoreScreen() {
           name: program.name,
           abbreviation: program.abbreviation,
           game_config: program.game_config,
-        }),
+        }, period),
       ]);
       if (cancelled) return;
 
@@ -211,7 +214,7 @@ export default function BoxScoreScreen() {
       }
       setRoster(map);
       setSummary(result?.summary ?? null);
-      setScorePlays((result?.plays ?? []) as unknown as Array<Record<string, unknown>>);
+      setScorePlays((result?.allPlays ?? []) as unknown as Array<Record<string, unknown>>);
 
       if (result && gData && program) {
         const opp = gData.opponent as unknown as {
@@ -248,7 +251,7 @@ export default function BoxScoreScreen() {
     })();
 
     return () => { cancelled = true; };
-  }, [gameId, program, season]);
+  }, [gameId, program, season, period]);
 
   /* TEAM holds our stats that nobody got a number on, so it belongs in the
      box score alongside the named players - the same way it does on the
@@ -289,6 +292,13 @@ export default function BoxScoreScreen() {
       })),
     ),
     [scorePlays],
+  );
+
+  /* scorePlays is the whole game, for the line score; counts that belong to
+     the period being shown come from its own plays. */
+  const periodPlays = useMemo(
+    () => scorePlays.filter((p) => inPeriod(Number(p.quarter ?? 1), period)),
+    [scorePlays, period],
   );
 
   const lineScore = useMemo(() => {
@@ -365,14 +375,15 @@ export default function BoxScoreScreen() {
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Box Score</h1>
         <PrintReportButton
           root={() => screenRoot.current}
-          filename={pdfFilename(`${progAbbr} vs ${gameInfo?.opponent_name ?? "Opponent"} ${gameInfo?.game_date ?? ""} Box Score`)}
+          filename={pdfFilename(`${progAbbr} vs ${gameInfo?.opponent_name ?? "Opponent"} ${gameInfo?.game_date ?? ""} Box Score${period === "game" ? "" : ` ${PERIOD_LONG[period]}`}`)}
           className="btn-ghost p-2 cursor-pointer"
           disabled={!summary}
         >
           <Printer className="w-5 h-5" />
         </PrintReportButton>
       </div>
-      <div className="mx-5 mt-1 mb-4 accent-line print:hidden" />
+      <div className="mx-5 mt-1 mb-3 accent-line print:hidden" />
+      <PeriodSwitch value={period} onChange={setPeriod} showOT={lineScore.hasOT} className="px-5 pb-3" />
 
       <div className="flex-1 px-5 overflow-y-auto pb-8 print:overflow-visible print:px-0">
         {loading && <div className="card p-8 text-center text-slate-500 animate-pulse">Building box score...</div>}
@@ -405,6 +416,11 @@ export default function BoxScoreScreen() {
                 {dateLabel ? ` · ${dateLabel}` : ""}
                 {gameInfo.status === "live" ? " · IN PROGRESS" : " · FINAL"}
               </div>
+              {period !== "game" && (
+                <div className="text-center text-sm font-display font-extrabold uppercase tracking-[0.12em] mt-1">
+                  {PERIOD_LONG[period]} stats
+                </div>
+              )}
             </div>
 
             {/* Line score */}
@@ -492,7 +508,7 @@ export default function BoxScoreScreen() {
                 {statRow("Total Yards", fmt(ourStats?.totalYards), fmt(theirStats?.totalYards))}
                 {statRow("3rd Down", `${fmt(ourStats?.thirdDownConversions)}/${fmt(ourStats?.thirdDownAttempts)}`, `${fmt(theirStats?.thirdDownConversions)}/${fmt(theirStats?.thirdDownAttempts)}`)}
                 {statRow("Turnovers", fmt(ourStats?.turnovers), fmt(theirStats?.turnovers))}
-                {statRow("Bad Snaps", summary ? String(countBadSnaps(scorePlays, "us")) : "—", summary ? String(countBadSnaps(scorePlays, "them")) : "—")}
+                {statRow("Bad Snaps", summary ? String(countBadSnaps(periodPlays, "us")) : "—", summary ? String(countBadSnaps(periodPlays, "them")) : "—")}
                 {statRow("Penalties", `${fmt(ourStats?.penalties)}–${fmt(ourStats?.penaltyYards)}`, `${fmt(theirStats?.penalties)}–${fmt(theirStats?.penaltyYards)}`)}
                 {statRow("Time of Poss.", ourStats?.timeOfPossession ?? "—", theirStats?.timeOfPossession ?? "—")}
               </tbody>

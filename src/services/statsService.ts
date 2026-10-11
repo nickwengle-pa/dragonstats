@@ -21,7 +21,9 @@ import {
   type GameSummary,
   type TeamId,
   type DefensiveStats,
+  type Play as EnginePlay,
 } from "football-stats-engine";
+import { inPeriod, type StatPeriod } from "./statPeriod";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -122,7 +124,11 @@ async function loadRoster(seasonId: string): Promise<RosterPlayer[]> {
  */
 export interface GameStatsBundle {
   summary: GameSummary;
+  /** The plays in the period the summary covers. */
   plays: PlayWithPlayers[];
+  /** Every play in the game, for whatever needs the whole game's context. */
+  allPlays: PlayWithPlayers[];
+  period: StatPeriod;
   roster: RosterPlayer[];
   game: GameRecord;
 }
@@ -135,15 +141,20 @@ export interface GameStatsBundle {
 export async function computeGameStats(
   gameId: string,
   program: ProgramInfo,
+  period: StatPeriod = "game",
 ): Promise<GameSummary | null> {
-  const bundle = await computeGameStatsBundle(gameId, program);
+  const bundle = await computeGameStatsBundle(gameId, program, period);
   return bundle?.summary ?? null;
 }
 
-/** As computeGameStats, but keeps the inputs the summary was built from. */
+/**
+ * As computeGameStats, but keeps the inputs the summary was built from.
+ * `period` narrows the stats to one quarter or half; see statPeriod.ts.
+ */
 export async function computeGameStatsBundle(
   gameId: string,
   program: ProgramInfo,
+  period: StatPeriod = "game",
 ): Promise<GameStatsBundle | null> {
   // 1. Load game, plays, roster in parallel
   const [game, plays] = await Promise.all([
@@ -196,16 +207,7 @@ export async function computeGameStatsBundle(
     direction: null,
   });
 
-  // 4. Set up engine
-  const engine = new FootballStatsEngine({
-    enableGameState: true,
-    rules: level,
-    ...(customRules ? { customRules } : {}),
-    trackSituationalSplits: true,
-    trackDrives: true,
-    computePasserRating: true,
-  });
-
+  // 4. Teams and players, shared by every engine pass below
   const homeTeam: TeamId = {
     id: homeTeamId,
     name: homeTeamName,
@@ -218,28 +220,6 @@ export async function computeGameStatsBundle(
     abbreviation: game.is_home ? (game.opponent.abbreviation ?? "OPP") : program.abbreviation,
   };
 
-  engine.setTeams(homeTeam, awayTeam);
-
-  if (pregame) {
-    const openingKickoffReceiver = pregame.openingKickoffReceiver === "us" ? program.id : game.opponent.id;
-    const secondHalfKickoffReceiver = openingKickoffReceiver === program.id ? game.opponent.id : program.id;
-    const coinTossWinner = pregame.tossWinner === "us" ? program.id : game.opponent.id;
-    const coinTossChoiceMap: Record<string, CoinTossChoice> = {
-      receive: CoinTossChoice.Receive,
-      kick: CoinTossChoice.Kick,
-      defer: CoinTossChoice.Defer,
-      defend_goal: CoinTossChoice.DefendGoal,
-    };
-
-    engine.configureKickoffReceivers(
-      openingKickoffReceiver,
-      secondHalfKickoffReceiver,
-      coinTossWinner,
-      coinTossChoiceMap[pregame.tossChoice],
-    );
-  }
-
-  // 5. Register players (our roster + opponent players)
   const rosterPlayers = roster.map((r) => ({
     id: r.player_id,
     name: `${r.first_name} ${r.last_name}`.trim(),
@@ -249,31 +229,65 @@ export async function computeGameStatsBundle(
      tackle comes back as "Unknown". Jersey 100 is the convention the printed
      sheets already use for a team-credited stop. */
   const placeholders = collectPlaceholderPlayers(plays);
-  engine.registerPlayers([...rosterPlayers, ...oppPlayers, ...placeholders]);
+  const allPlayers = [...rosterPlayers, ...oppPlayers, ...placeholders];
 
-  // 6. Process plays
-  engine.processPlays(enginePlays);
+  /* One engine pass over a run of plays: the whole game, or one period of it. */
+  const summarize = (subset: EnginePlay[], subsetPlays: PlayWithPlayers[]): GameSummary => {
+    const engine = new FootballStatsEngine({
+      enableGameState: true,
+      rules: level,
+      ...(customRules ? { customRules } : {}),
+      trackSituationalSplits: true,
+      trackDrives: true,
+      computePasserRating: true,
+    });
 
-  // 7. Get summary
-  const summary = engine.getGameSummary();
+    engine.setTeams(homeTeam, awayTeam);
 
-  // 8. Supplement defensive stats with PBU/hurry from app's own calculator
-  supplementDefenseStats(summary, plays, rosterPlayers);
+    if (pregame) {
+      const openingKickoffReceiver = pregame.openingKickoffReceiver === "us" ? program.id : game.opponent.id;
+      const secondHalfKickoffReceiver = openingKickoffReceiver === program.id ? game.opponent.id : program.id;
+      const coinTossWinner = pregame.tossWinner === "us" ? program.id : game.opponent.id;
+      const coinTossChoiceMap: Record<string, CoinTossChoice> = {
+        receive: CoinTossChoice.Receive,
+        kick: CoinTossChoice.Kick,
+        defer: CoinTossChoice.Defer,
+        defend_goal: CoinTossChoice.DefendGoal,
+      };
 
-  // 9. Punts inside the 20. The engine has no logic for this at all - its own
-  //    comment says it would need the landing spot, which it was never given -
-  //    so the column read zero however well anyone punted.
-  supplementPuntsInside20(summary, plays);
+      engine.configureKickoffReceivers(
+        openingKickoffReceiver,
+        secondHalfKickoffReceiver,
+        coinTossWinner,
+        coinTossChoiceMap[pregame.tossChoice],
+      );
+    }
 
-  // 9b. A muff the kicking team recovered is a fumble lost for the receiver
-  //     and his team. The engine charges fumbles to the team in possession,
-  //     which on a kick is the wrong one. See lostMuffs.ts.
-  applyLostMuffs(summary, enginePlays,
-    new Map([...rosterPlayers, ...oppPlayers, ...placeholders].map(p => [p.id, p.name])));
+    engine.registerPlayers(allPlayers);
+    engine.processPlays(subset);
+    const summary = engine.getGameSummary();
 
-  // 10. Correct drive results — the engine labels every non-touchdown drive a
-  //     punt, field goals and turnovers included. See driveResults.ts.
-  summary.drives = resolveDriveResults(summary.drives, plays.map(p => ({
+    // Supplement defensive stats with PBU/hurry from app's own calculator
+    supplementDefenseStats(summary, subsetPlays, rosterPlayers);
+
+    // Punts inside the 20. The engine has no logic for this at all - its own
+    // comment says it would need the landing spot, which it was never given -
+    // so the column read zero however well anyone punted.
+    supplementPuntsInside20(summary, subsetPlays);
+
+    // A muff the kicking team recovered is a fumble lost for the receiver
+    // and his team. The engine charges fumbles to the team in possession,
+    // which on a kick is the wrong one. See lostMuffs.ts.
+    applyLostMuffs(summary, subset, new Map(allPlayers.map(p => [p.id, p.name])));
+    return summary;
+  };
+
+  // 5. The whole game
+  const full = summarize(enginePlays, plays);
+
+  // Correct drive results — the engine labels every non-touchdown drive a
+  // punt, field goals and turnovers included. See driveResults.ts.
+  full.drives = resolveDriveResults(full.drives, plays.map(p => ({
     possession: p.possession,
     playType: p.play_type,
     quarter: p.quarter,
@@ -283,16 +297,31 @@ export async function computeGameStatsBundle(
     result: String(p.play_data?.result ?? ""),
   })));
 
-  // 11. A final game ran its clock out, set to 0:00 or not. The time left
-  //     after the last snap goes to whoever had the ball. See finalClock.ts.
+  // 6. One period of it. The plays were transformed as a whole game first, so
+  //    each keeps its real score and drive number; only the stat pass is cut
+  //    down. Drives come from the whole game - a period's drives are the ones
+  //    that started in it - so a drive across a quarter break is not cut in
+  //    two and given a result it never had.
+  let summary = full;
+  let periodPlays = plays;
+  if (period !== "game") {
+    periodPlays = plays.filter(p => inPeriod(Number(p.quarter), period));
+    summary = summarize(enginePlays.filter(p => inPeriod(p.context.quarter, period)), periodPlays);
+    summary.drives = full.drives.filter(d => inPeriod(d.startQuarter, period));
+  }
+
+  // 7. A final game ran its clock out, set to 0:00 or not. The time left
+  //    after the last snap goes to whoever had the ball. See finalClock.ts.
+  //    A period that ends before the 4th quarter has nothing to run out: its
+  //    last drive did not end in the 4th.
   if (game.status === "completed") {
     const last = plays[plays.length - 1];
     const side = last.play_data?.next_possession ?? last.possession;
     const holder = side === "us" ? program.id : side === "them" ? game.opponent.id : null;
-    return { summary: runOutFinalClock(summary, holder), plays, roster, game };
+    summary = runOutFinalClock(summary, holder);
   }
 
-  return { summary, plays, roster, game };
+  return { summary, plays: periodPlays, allPlays: plays, period, roster, game };
 }
 
 // ---------------------------------------------------------------------------
@@ -463,6 +492,7 @@ export interface PlayerSeasonBlock {
 export async function computePlayerCareerStats(
   playerId: string,
   program: ProgramInfo,
+  period: StatPeriod = "game",
 ): Promise<PlayerSeasonBlock[]> {
   const { data: rosterRows, error } = await supabase
     .from("season_rosters")
@@ -478,7 +508,7 @@ export async function computePlayerCareerStats(
 
   const blocks: PlayerSeasonBlock[] = [];
   for (const s of seasons) {
-    const lines = await computePlayerSeasonStats(playerId, s.id, program);
+    const lines = await computePlayerSeasonStats(playerId, s.id, program, period);
     blocks.push({ seasonId: s.id, year: s.year, level: s.level ?? null, lines });
   }
   return blocks;
@@ -491,6 +521,7 @@ export async function computePlayerSeasonStats(
   playerId: string,
   seasonId: string,
   program: ProgramInfo,
+  period: StatPeriod = "game",
 ): Promise<PlayerGameLine[]> {
   // Load all completed (or live) games for the season
   const { data: games, error } = await supabase
@@ -505,7 +536,7 @@ export async function computePlayerSeasonStats(
   const lines: PlayerGameLine[] = [];
 
   for (const game of games) {
-    const summary = await computeGameStats(game.id, program);
+    const summary = await computeGameStats(game.id, program, period);
     if (!summary) continue;
 
     const opp = game.opponent as any;

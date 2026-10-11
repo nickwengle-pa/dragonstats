@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Shield, Zap, Target } from "lucide-react";
 import { TabBar } from "@/screens/DashboardScreen";
@@ -85,6 +86,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 export default function SeasonStatsScreen() {
   const navigate = useNavigate();
   const { program, season } = useProgramContext();
+  const [period, setPeriod] = useStatPeriod("season");
 
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("offense");
@@ -129,7 +131,7 @@ export default function SeasonStatsScreen() {
       for (const g of games) {
         const bundle = await computeGameStatsBundle(g.id, {
           id: program.id, name: program.name, abbreviation: program.abbreviation, game_config: program.game_config,
-        });
+        }, period);
         if (cancelled) return;
         if (bundle) {
           results.push(bundle.summary);
@@ -145,7 +147,7 @@ export default function SeasonStatsScreen() {
     })();
 
     return () => { cancelled = true; };
-  }, [program, season]);
+  }, [program, season, period]);
 
   /* ── Aggregate stats across all games ── */
   const { passing, rushing, receiving, defense, kicking, punting, returns, defReturns } = useMemo(() => {
@@ -292,6 +294,9 @@ export default function SeasonStatsScreen() {
       />
 
       <div className="flex-1 px-5 pt-7 overflow-y-auto pb-8 space-y-4">
+        {/* Season totals for one slice of every game: Q4 is the season's 4th
+            quarters added up. The Season PDF follows the same pick. */}
+        <PeriodSwitch value={period} onChange={setPeriod} showOT />
         {loading && (
           <div className="card p-8 text-center">
             <div className="text-neutral-500 animate-pulse">Computing season stats...</div>

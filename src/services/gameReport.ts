@@ -35,6 +35,7 @@ import { TEAM_JERSEY, TEAM_PLAYER_ID, countBadSnaps, isWipedByPenaltyRow } from 
 import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
 import { nullifiedStats } from "./statAuditRules";
 import { readFumbleSpots } from "./fumbleSpots";
+import { inPeriod, type StatPeriod } from "./statPeriod";
 
 /* ── Play-type groupings ──────────────────────────────────────────────────── */
 
@@ -137,6 +138,8 @@ export interface TeamStatRow {
 }
 
 export interface GameReport {
+  /** The slice of the game the stats cover. The line score is always the whole game. */
+  period: StatPeriod;
   dateLabel: string;
   /** Whatever the game was called, e.g. "SENIOR NIGHT". Null when unset. */
   occasion: string | null;
@@ -390,13 +393,18 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     ? summary.awayTeamStats
     : summary.homeTeamStats;
 
+  /* The line score and the scoring summary always cover the whole game: a
+     running score that restarted at 0-0 in the 3rd quarter would be wrong.
+     A period only trims which scores are listed. */
+  const gamePlays = (bundle.allPlays ?? recordedPlays).filter(play => !nullifiedStats(play));
+
   /* ── Line score ───────────────────────────────────────────────────────── */
   /* From the plays via the scoring ledger, NOT from the engine's scoringPlays.
      The engine's ledger never scored a two-point conversion or a safety at all
      and credited every score to whoever had the ball at the snap, so the
      quarters did not add up to the FINAL column printed beside them — on the
      sheet a coach hands out. */
-  const events = scoringEvents(plays.map((p) => ({
+  const events = scoringEvents(gamePlays.map((p) => ({
     quarter: p.quarter,
     type: p.play_type,
     possession: p.possession === "them" ? "them" : "us",
@@ -419,7 +427,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const scoring: ScoringRow[] = [];
   let runningUs = 0;
   let runningThem = 0;
-  plays.forEach((play, idx) => {
+  gamePlays.forEach((play, idx) => {
     const isUs = play.possession === "us";
     /* A return touchdown is scored by the team that did NOT have the ball.
        The rule lives in scoringLedger so this and the box score's quarter
@@ -435,7 +443,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
 
     if (play.is_touchdown) {
       // The try is the next non-timeout play, and only if it IS a try.
-      const next = plays.slice(idx + 1).find(p => !["timeout", "quarter_change"].includes(p.play_type));
+      const next = gamePlays.slice(idx + 1).find(p => !["timeout", "quarter_change"].includes(p.play_type));
       const tryPlay = next && ["pat", "two_pt"].includes(next.play_type) ? next : undefined;
       const conversionPoints = tryPlay && String(tryPlay.play_data?.result ?? "") === "Good"
         ? (tryPlay.play_type === "pat" ? 1 : 2)
@@ -517,6 +525,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       });
     }
   });
+  const scoringInPeriod = scoring.filter(row => inPeriod(row.quarter, bundle.period ?? "game"));
 
   /* ── Points by player (ours) ──────────────────────────────────────────── */
   const pointsById = new Map<string, number>();
@@ -1029,7 +1038,8 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       usTotal: input.ourScore,
       themTotal: input.theirScore,
     },
-    scoring,
+    period: bundle.period ?? "game",
+    scoring: scoringInPeriod,
     points, pointsTotal,
     rushing, rushingTotal, rushingChecks,
     passing, passingTotal,

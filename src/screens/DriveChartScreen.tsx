@@ -8,6 +8,8 @@ import { supabase } from "@/lib/supabase";
 import { computeGameStatsBundle, type GameStatsBundle } from "@/services/statsService";
 import { drivesByQuarter, type QuarterDrive } from "@/services/drivesByQuarter";
 import { pdfFilename } from "@/services/reportPrint";
+import { useStatPeriod } from "@/components/report/PeriodSwitch";
+import type { StatPeriod } from "@/services/statPeriod";
 import type { PlayWithPlayers } from "@/services/gameService";
 import { RESULT_LABEL } from "@/components/game/DrivesList";
 import { isBadSnap, quarterLabel, yardLabel } from "@/components/game/types";
@@ -53,6 +55,8 @@ export default function DriveChartScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamFilter>("both");
+  // The period picked on the other stat screens; the tabs here follow it.
+  const [period, setPeriod] = useStatPeriod("game");
 
   useEffect(() => {
     if (!gameId || !program) return;
@@ -95,11 +99,24 @@ export default function DriveChartScreen() {
   const latestQuarter = Math.max(1, ...byQuarter.keys());
   // A tab that does not exist (a mangled link, ?q=, an OT that never came)
   // falls back to the default rather than an empty "1st Quarter".
-  const requested = params.get("q");
-  const selected = requested === "all" || quarters.some((q) => String(q) === requested)
+  const fromPeriod = period === "game" ? null
+    : period === "h1" || period === "h2" ? period
+    : period === "ot" ? String(quarters.find((q) => q > 4) ?? "")
+    : period.slice(1);
+  const requested = params.get("q") ?? fromPeriod;
+  const selected = requested === "all" || requested === "h1" || requested === "h2"
+    || quarters.some((q) => String(q) === requested)
     ? requested! : live ? String(latestQuarter) : "1";
-  const shown = selected === "all" ? quarters : [Number(selected)];
-  const pick = (q: string) => setParams({ q }, { replace: true });
+  const shown = selected === "all" ? quarters
+    : selected === "h1" ? quarters.filter((q) => q <= 2)
+    : selected === "h2" ? quarters.filter((q) => q === 3 || q === 4)
+    : [Number(selected)];
+  const pick = (q: string) => {
+    setParams({ q }, { replace: true });
+    const n = Number(q);
+    setPeriod((q === "all" ? "game" : q === "h1" || q === "h2" ? q : n > 4 ? "ot" : `q${n}`) as StatPeriod);
+  };
+  const tabLabel = selected === "all" ? "All" : selected === "h1" ? "1st Half" : selected === "h2" ? "2nd Half" : `Q${selected}`;
 
   const usAbbr = program?.abbreviation ?? "US";
   const oppName = bundle?.game.opponent.name ?? "Opponent";
@@ -122,7 +139,7 @@ export default function DriveChartScreen() {
         </div>
         <PrintReportButton
           root={() => screenRoot.current}
-          filename={pdfFilename(`${usAbbr} vs ${oppName} ${teamOnly ? `${teamOnly} ` : ""}Drives ${selected === "all" ? "All" : `Q${selected}`}`)}
+          filename={pdfFilename(`${usAbbr} vs ${oppName} ${teamOnly ? `${teamOnly} ` : ""}Drives ${tabLabel}`)}
           className="btn-ghost p-2 cursor-pointer"
           disabled={!bundle}
         >
@@ -138,6 +155,8 @@ export default function DriveChartScreen() {
             <QuarterTab key={q} active={selected === String(q)} onClick={() => pick(String(q))}
               label={quarterLabel(q)} count={(byQuarter.get(q) ?? []).filter((d) => !d.kickoffOnly).length} />
           ))}
+          <QuarterTab active={selected === "h1"} onClick={() => pick("h1")} label="1st Half" />
+          <QuarterTab active={selected === "h2"} onClick={() => pick("h2")} label="2nd Half" />
           <QuarterTab active={selected === "all"} onClick={() => pick("all")} label="All" />
         </div>
         <div className="flex gap-1.5" role="group" aria-label="Team">
