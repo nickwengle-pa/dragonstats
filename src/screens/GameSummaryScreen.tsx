@@ -8,6 +8,8 @@ import { supabase } from "@/lib/supabase";
 import { computeGameStats } from "@/services/statsService";
 import { exportGameSummaryCsv } from "@/services/csvExport";
 import { pdfFilename } from "@/services/reportPrint";
+import { inPeriod } from "@/services/statPeriod";
+import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
 import { loadGamePlays } from "@/services/gameService";
 import { subscribeSyncStatus } from "@/services/syncWorker";
 import DrivesList from "@/components/game/DrivesList";
@@ -145,6 +147,8 @@ export default function GameSummaryScreen() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
   const { program, season } = useProgramContext();
+  const [period, setPeriod] = useStatPeriod("game");
+  const [hasOT, setHasOT] = useState(false);
 
   const [summary, setSummary] = useState<GameSummary | null>(null);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
@@ -233,13 +237,15 @@ export default function GameSummaryScreen() {
           name: program.name,
           abbreviation: program.abbreviation,
           game_config: program.game_config,
-        });
+        }, period);
 
         if (cancelled) return;
         setSummary(result);
 
         // Load raw plays for formation breakdowns
-        const rawPlays = await loadGamePlays(gameId);
+        const gamePlays = await loadGamePlays(gameId);
+        setHasOT(gamePlays.some((p) => Number(p.quarter) > 4));
+        const rawPlays = gamePlays.filter((p) => inPeriod(Number(p.quarter), period));
         if (!cancelled) {
           setOffFormations(computeFormationStats(rawPlays, "us", "offensive_formation"));
           setDefFormations(computeFormationStats(rawPlays, "us", "defensive_formation"));
@@ -254,7 +260,7 @@ export default function GameSummaryScreen() {
     })();
 
     return () => { cancelled = true; };
-  }, [gameId, program, season]);
+  }, [gameId, program, season, period]);
 
   // Determine which team stats are "ours"
   const ourTeamStats: TeamStats | null = summary
@@ -384,6 +390,11 @@ export default function GameSummaryScreen() {
           </div>
           <ArrowLeft className="w-4 h-4 text-surface-muted rotate-180 shrink-0" />
         </button>
+
+        {/* Everything below follows this: team stats, leaders, formations,
+            scoring and drives. The Box Score, Game Report and Drive Chart
+            open on the same pick. */}
+        <PeriodSwitch value={period} onChange={setPeriod} showOT={hasOT} className="pt-1" />
 
         {/* Loading / error */}
         {loading && (

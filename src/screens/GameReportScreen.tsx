@@ -1,5 +1,7 @@
 import GameHomeLink from "@/components/game/GameHomeLink";
 import PrintReportButton from "@/components/report/PrintReportButton";
+import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
+import { PERIOD_LONG } from "@/services/statPeriod";
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer } from "lucide-react";
@@ -156,6 +158,7 @@ function Page({
       >
         <span className="uppercase tracking-wider font-semibold">
           {report.us.abbr} vs {report.them.abbr} · {report.dateLabel}
+          {report.period !== "game" ? ` · ${PERIOD_LONG[report.period]}` : ""}
         </span>
         <span className="tabular-nums">Page {pageNo} of {pageCount}</span>
       </footer>
@@ -321,6 +324,7 @@ export default function GameReportScreen() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
   const { program, season } = useProgramContext();
+  const [period, setPeriod] = useStatPeriod("game");
 
   const [report, setReport] = useState<GameReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -343,7 +347,7 @@ export default function GameReportScreen() {
           name: program.name,
           abbreviation: program.abbreviation,
           game_config: program.game_config,
-        }),
+        }, period),
       ]);
       if (cancelled) return;
 
@@ -402,7 +406,7 @@ export default function GameReportScreen() {
     })();
 
     return () => { cancelled = true; };
-  }, [gameId, program, season]);
+  }, [gameId, program, season, period]);
 
   const PAGES = 4;
 
@@ -419,14 +423,15 @@ export default function GameReportScreen() {
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Report</h1>
         <PrintReportButton
           root={() => screenRoot.current}
-          filename={report ? pdfFilename(`${report.us.abbr} vs ${report.them.abbr} ${report.dateLabel}`) : "Game Report.pdf"}
+          filename={report ? pdfFilename(`${report.us.abbr} vs ${report.them.abbr} ${report.dateLabel}${report.period === "game" ? "" : ` ${PERIOD_LONG[report.period]}`}`) : "Game Report.pdf"}
           className="btn-ghost p-2 cursor-pointer"
           disabled={!report}
         >
           <Printer className="w-5 h-5" />
         </PrintReportButton>
       </div>
-      <div className="mx-5 mt-1 mb-4 accent-line print:hidden" />
+      <div className="mx-5 mt-1 mb-3 accent-line print:hidden" />
+      <PeriodSwitch value={period} onChange={setPeriod} showOT={report?.quarters.includes("OT")} className="px-5 pb-3" />
 
       {/* The pages are a fixed 8 inches. Narrower than that on screen and this
           scrolls sideways rather than reflowing — reflowing is exactly how the
@@ -460,6 +465,11 @@ export default function GameReportScreen() {
                     {report.kickoffLabel ? ` · ${report.kickoffLabel}` : ""}
                     {report.occasion ? ` · ${report.occasion}` : ""}
                   </div>
+                  {report.period !== "game" && (
+                    <div className="text-[9pt] font-black uppercase tracking-[0.14em] mt-1">
+                      {PERIOD_LONG[report.period]} stats · line score is the full game
+                    </div>
+                  )}
                 </div>
                 <Crest logoUrl={report.them.logoUrl} abbr={report.them.abbr} color={report.them.color} size={44} />
               </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
@@ -418,6 +419,7 @@ export default function PlayerScreen() {
   const { playerId } = useParams<{ playerId: string }>();
   const navigate = useNavigate();
   const { program, season } = useProgramContext();
+  const [period, setPeriod] = useStatPeriod("season");
 
   const [player, setPlayer] = useState<PlayerInfo | null>(null);
   const [lines, setLines] = useState<PlayerGameLine[]>([]);
@@ -460,7 +462,7 @@ export default function PlayerScreen() {
         id: program.id,
         name: program.name,
         abbreviation: program.abbreviation,
-      });
+      }, period);
 
       if (cancelled) return;
       setLines(result);
@@ -472,12 +474,12 @@ export default function PlayerScreen() {
         id: program.id,
         name: program.name,
         abbreviation: program.abbreviation,
-      });
+      }, period);
       if (!cancelled) setCareer(careerBlocks);
     })();
 
     return () => { cancelled = true; };
-  }, [playerId, program, season]);
+  }, [playerId, program, season, period]);
 
   return (
     <div className="screen safe-top safe-bottom">
@@ -492,7 +494,7 @@ export default function PlayerScreen() {
             const name = player.preferred_name || player.first_name;
             const safe = `${name}_${player.last_name}`.replace(/[^a-z0-9-_]+/gi, "_");
             exportPlayerSeasonCsv(lines, {
-              filename: `${safe}_season.csv`,
+              filename: `${safe}_season${period === "game" ? "" : `_${period}`}.csv`,
               playerName: `${name} ${player.last_name}`,
             });
           }}
@@ -503,7 +505,8 @@ export default function PlayerScreen() {
           <Download className="w-5 h-5" />
         </button>
       </div>
-      <div className="mx-5 mt-1 mb-4 accent-line" />
+      <div className="mx-5 mt-1 mb-3 accent-line" />
+      <PeriodSwitch value={period} onChange={setPeriod} showOT className="px-5 pb-3" />
 
       <div className="flex-1 px-5 space-y-4 overflow-y-auto pb-8">
         {/* Player header */}

@@ -23,6 +23,7 @@ export function combineSeasonBundles(bundles: GameStatsBundle[], programId: stri
   summary.homeTeamStats = { ...merge(own), teamId: programId } as typeof summary.homeTeamStats;
   summary.awayTeamStats = { ...merge(other), teamId: "season-opponents" } as typeof summary.awayTeamStats;
   result.plays = bundles.flatMap(b => b.plays);
+  result.allPlays = bundles.flatMap(b => b.allPlays ?? b.plays);
   result.roster = [...new Map(bundles.flatMap(b => b.roster).map(r => [r.player_id, r])).values()];
   return result;
 }

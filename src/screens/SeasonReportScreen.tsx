@@ -7,9 +7,12 @@ import { computeGameStatsBundle } from "@/services/statsService";
 import { buildSeasonReport, combineSeasonBundles, paginateSeasonSections, type ReportSection } from "@/services/seasonReport";
 import { formatSeasonName } from "@/services/seasonService";
 import { pdfFilename } from "@/services/reportPrint";
+import { useStatPeriod } from "@/components/report/PeriodSwitch";
+import { PERIOD_LONG } from "@/services/statPeriod";
 
 export default function SeasonReportScreen() {
   const { program, season } = useProgramContext(); const navigate = useNavigate();
+  const [period] = useStatPeriod("season");
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [error, setError] = useState(""); const [loading, setLoading] = useState(true);
   const [record, setRecord] = useState("");
@@ -23,7 +26,7 @@ export default function SeasonReportScreen() {
         if (!games?.length) throw new Error("No completed games in this season yet.");
         const bundles = [];
         for (const g of games) {
-          const bundle = await computeGameStatsBundle(g.id, program);
+          const bundle = await computeGameStatsBundle(g.id, program, period);
           if (cancelled) return;
           if (!bundle) throw new Error("A game could not be loaded. Reload to try again; no partial report was generated.");
           bundles.push(bundle);
@@ -71,8 +74,9 @@ export default function SeasonReportScreen() {
       } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : "Unable to load season report. Please reload."); }
       finally { if (!cancelled) setLoading(false); }
     })(); return () => { cancelled = true; };
-  }, [program, season]);
-  const title = season ? formatSeasonName(season) : "Season";
+  }, [program, season, period]);
+  // A period goes in the title, so it is on every printed page and in the file name.
+  const title = `${season ? formatSeasonName(season) : "Season"}${period === "game" ? "" : ` · ${PERIOD_LONG[period]}`}`;
   return <SeasonReportDocument program={program} title={title} sections={sections} loading={loading} error={error} record={record} onBack={() => navigate("/season-stats")} />;
 }
 
