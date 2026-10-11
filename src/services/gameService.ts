@@ -8,7 +8,7 @@ import {
   storedRowTurnover,
   type PregameConfig,
 } from "./gameFlow";
-import { TEAM_PLAYER_ID } from "@/components/game/types";
+import { TEAM_PLAYER_ID, tidyStoredDescription } from "@/components/game/types";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "./programService";
 import { mergeQueuedPlays } from "./mergeQueuedPlays";
 import { cacheKeys, invalidateCache } from "./offlineCache";
@@ -450,12 +450,16 @@ export interface PlayWithPlayers extends PlayRow {
 }
 
 /* Every screen and report reads plays through here, so a fumble the offense
-   kept is cleared of its turnover flag once, for all of them. */
+   kept is cleared of its turnover flag once, for all of them, and an older
+   incomplete pass loses the "→ ?" it was saved with. */
 export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> {
   const plays = await loadGamePlayRows(gameId);
   return plays.map(p => {
     const turnover = storedRowTurnover(p);
-    return turnover === Boolean(p.is_turnover) ? p : { ...p, is_turnover: turnover };
+    const description = p.description == null ? p.description : tidyStoredDescription(p.play_type, p.description);
+    return turnover === Boolean(p.is_turnover) && description === p.description
+      ? p
+      : { ...p, is_turnover: turnover, description };
   });
 }
 
