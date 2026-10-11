@@ -23,6 +23,14 @@ import { isBadSnap, quarterLabel, yardLabel } from "@/components/game/types";
 
 type TeamFilter = "both" | "us" | "them";
 
+/** The Game Summary's drive result labels, except the two built for a narrow
+ *  table column: beside "Drive 3", "1/2" reads as a fraction. */
+function resultLabel(result: string): { short: string; color: string } {
+  if (result === "end_of_half") return { short: "End of half", color: "text-slate-500" };
+  if (result === "end_of_game") return { short: "End of game", color: "text-slate-500" };
+  return RESULT_LABEL[result as keyof typeof RESULT_LABEL] ?? { short: result, color: "text-surface-muted" };
+}
+
 function downDistance(play: PlayWithPlayers): string {
   if (!play.down || play.down < 1) return "";
   return `${play.down}&${play.distance ?? 0}`;
@@ -210,25 +218,29 @@ function DriveCard({ drive, abbr, color, inProgress }: { drive: QuarterDrive; ab
   }
 
   const s = drive.stats;
-  const ends = drive.continuesInto === null;
-  const result = s && ends && !inProgress ? RESULT_LABEL[s.result] ?? { short: s.result, color: "text-surface-muted" } : null;
+  // How the whole drive ended, on every piece of it: the Q1 half of a drive
+  // that scores in Q2 still reads TD, the same way its stats line covers the
+  // whole drive.
+  const result = s && !inProgress ? resultLabel(s.result) : null;
   return (
     <article className="card overflow-hidden flex break-inside-avoid">
       {/* A stripe, not a border: the print sheet greys every .card border. */}
       <div aria-hidden="true" className="w-1 shrink-0" style={{ background: color, printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }} />
       <div className="flex-1 min-w-0">
       <header className="px-4 pt-3 pb-2 border-b border-surface-border/60">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-display font-extrabold uppercase tracking-wider" style={{ color }}>{abbr}</span>
-          <span className="text-sm font-bold">Drive {drive.label}</span>
+          <span className="text-sm font-bold">
+            Drive {drive.label}
+            {result && <> – <span className={`font-black uppercase ${result.color} print:text-black`}>{result.short}</span></>}
+            {inProgress && <> – <span className="font-black uppercase text-red-400 print:text-black">In progress</span></>}
+          </span>
           {drive.continuedFrom !== null && (
             <span className="text-[10px] font-bold uppercase rounded px-1.5 py-0.5 bg-surface-border/60 text-surface-muted">
               Cont. from {quarterLabel(drive.continuedFrom)}
             </span>
           )}
           <span className="flex-1" />
-          {result && <span className={`text-xs font-black ${result.color} print:text-black`}>{result.short}</span>}
-          {ends && inProgress && <span className="text-[10px] font-black uppercase text-red-400">In progress</span>}
           {drive.continuesInto !== null && (
             <span className="text-[10px] font-bold uppercase text-surface-muted">Continues in {quarterLabel(drive.continuesInto)} ›</span>
           )}
