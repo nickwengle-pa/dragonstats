@@ -405,7 +405,7 @@ function ReturnsSection({ lines }: { lines: PlayerGameLine[] }) {
         columns={[
           { label: "KR", render: (s: ReturnStats) => `${s.kickReturns}-${fmt(s.kickReturnYards)}` },
           { label: "PR", render: (s: ReturnStats) => `${s.puntReturns}-${fmt(s.puntReturnYards)}` },
-          { label: "TD", render: (s: ReturnStats) => fmt(s.kickReturnTouchdowns + s.puntReturnTouchdowns) },
+          { label: "TD", render: (s: ReturnStats) => fmt((s.kickReturnTouchdowns ?? 0) + (s.puntReturnTouchdowns ?? 0)) },
         ]}
       />
     </div>
