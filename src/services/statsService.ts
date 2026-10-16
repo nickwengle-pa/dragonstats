@@ -24,6 +24,7 @@ import {
   type Play as EnginePlay,
 } from "football-stats-engine";
 import { inPeriod, type StatPeriod } from "./statPeriod";
+import { playerScoringFromPlays, type PlayerScoring } from "./gameReport";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -475,6 +476,8 @@ export interface PlayerGameLine {
   kicking: GameSummary["kicking"][string] | null;
   punting: GameSummary["punting"][string] | null;
   returns: GameSummary["returns"][string] | null;
+  /** Points, touchdowns and conversions, counted off the plays. */
+  scoring: PlayerScoring | null;
 }
 
 /** One season's worth of game lines for a player (career view). */
@@ -536,8 +539,9 @@ export async function computePlayerSeasonStats(
   const lines: PlayerGameLine[] = [];
 
   for (const game of games) {
-    const summary = await computeGameStats(game.id, program, period);
-    if (!summary) continue;
+    const bundle = await computeGameStatsBundle(game.id, program, period);
+    if (!bundle) continue;
+    const { summary } = bundle;
 
     const opp = game.opponent as any;
     lines.push({
@@ -551,6 +555,7 @@ export async function computePlayerSeasonStats(
       kicking: summary.kicking[playerId] ?? null,
       punting: summary.punting[playerId] ?? null,
       returns: summary.returns[playerId] ?? null,
+      scoring: playerScoringFromPlays(bundle.plays).get(playerId) ?? null,
     });
   }
 

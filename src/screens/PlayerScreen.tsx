@@ -6,7 +6,8 @@ import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { computePlayerSeasonStats, computePlayerCareerStats, type PlayerGameLine, type PlayerSeasonBlock } from "@/services/statsService";
 import { exportPlayerSeasonCsv } from "@/services/csvExport";
-import type { PassingStats, RushingStats, ReceivingStats, DefensiveStats } from "football-stats-engine";
+import type { PassingStats, RushingStats, ReceivingStats, DefensiveStats, KickingStats, PuntingStats, ReturnStats } from "football-stats-engine";
+import type { PlayerScoring } from "@/services/gameReport";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,6 +37,38 @@ function sumField<T>(lines: PlayerGameLine[], category: keyof PlayerGameLine, fi
   return total;
 }
 
+/** Largest value of a field across game lines - for the longs, which do not add. */
+function maxField<T>(lines: PlayerGameLine[], category: keyof PlayerGameLine, field: keyof T): number {
+  let best = 0;
+  for (const line of lines) {
+    const stats = line[category] as T | null;
+    if (stats) best = Math.max(best, (stats[field] as number) ?? 0);
+  }
+  return best;
+}
+
+/* What counts as "has a line" for each area. A section with nothing in it is
+   left off the page, and a whole group (offense, defense, special teams) with
+   it. */
+const has = {
+  scoring: (l: PlayerGameLine) => !!l.scoring && l.scoring.points > 0,
+  passing: (l: PlayerGameLine) => !!l.passing && l.passing.attempts > 0,
+  rushing: (l: PlayerGameLine) => !!l.rushing && (l.rushing.carries > 0 || l.rushing.fumbles > 0),
+  receiving: (l: PlayerGameLine) => !!l.receiving && (l.receiving.receptions > 0 || l.receiving.targets > 0),
+  // Not just tackles - a corner whose only stat is a pick-six still has a line.
+  defense: (l: PlayerGameLine) => !!l.defense && (l.defense.totalTackles > 0 || l.defense.interceptions > 0
+    || l.defense.fumbleRecoveries > 0 || l.defense.sacks > 0 || l.defense.forcedFumbles > 0
+    || l.defense.passesDefended > 0 || l.defense.pressures > 0 || l.defense.safeties > 0),
+  kicking: (l: PlayerGameLine) => !!l.kicking && (l.kicking.fieldGoalAttempts > 0 || l.kicking.extraPointAttempts > 0
+    || l.kicking.kickoffs > 0 || l.kicking.onsideKickAttempts > 0),
+  punting: (l: PlayerGameLine) => !!l.punting && l.punting.punts > 0,
+  kickReturns: (l: PlayerGameLine) => !!l.returns && (l.returns.kickReturns > 0 || l.returns.kickReturnFumbles > 0),
+  puntReturns: (l: PlayerGameLine) => !!l.returns && (l.returns.puntReturns > 0 || l.returns.puntReturnFumbles > 0
+    || l.returns.puntReturnFairCatches > 0),
+};
+type Area = keyof typeof has;
+const any = (lines: PlayerGameLine[], ...areas: Area[]) => lines.some(l => areas.some(a => has[a](l)));
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -49,9 +82,44 @@ function StatBox({ label, value }: { label: string; value: string }) {
   );
 }
 
+function GroupTitle({ children }: { children: React.ReactNode }) {
+  return <div className="text-[11px] font-display font-extrabold uppercase tracking-[0.15em] text-dragon-primary pt-2">{children}</div>;
+}
+
+function ScoringSection({ lines }: { lines: PlayerGameLine[] }) {
+  if (!any(lines, "scoring")) return null;
+
+  const pts = sumField<PlayerScoring>(lines, "scoring", "points");
+  const td = sumField<PlayerScoring>(lines, "scoring", "touchdowns");
+  const two = sumField<PlayerScoring>(lines, "scoring", "twoPointMade");
+  const pat = sumField<PlayerScoring>(lines, "scoring", "patMade");
+  const fg = sumField<PlayerScoring>(lines, "scoring", "fgMade");
+
+  return (
+    <div className="card p-5">
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Scoring</div>
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        <StatBox label="PTS" value={fmt(pts)} />
+        <StatBox label="TD" value={fmt(td)} />
+        {two > 0 && <StatBox label="2-PT" value={fmt(two)} />}
+        {pat > 0 && <StatBox label="PAT" value={fmt(pat)} />}
+        {fg > 0 && <StatBox label="FG" value={fmt(fg)} />}
+      </div>
+      <GameLog
+        lines={lines.filter(has.scoring)}
+        category="scoring"
+        columns={[
+          { label: "PTS", render: (s: PlayerScoring) => fmt(s.points) },
+          { label: "TD", render: (s: PlayerScoring) => fmt(s.touchdowns) },
+          { label: "2-PT", render: (s: PlayerScoring) => fmt(s.twoPointMade) },
+        ]}
+      />
+    </div>
+  );
+}
+
 function PassingSection({ lines }: { lines: PlayerGameLine[] }) {
-  const hasData = lines.some((l) => l.passing && l.passing.attempts > 0);
-  if (!hasData) return null;
+  if (!any(lines, "passing")) return null;
 
   const comp = sumField<PassingStats>(lines, "passing", "completions");
   const att = sumField<PassingStats>(lines, "passing", "attempts");
@@ -84,12 +152,14 @@ function PassingSection({ lines }: { lines: PlayerGameLine[] }) {
 }
 
 function RushingSection({ lines }: { lines: PlayerGameLine[] }) {
-  const hasData = lines.some((l) => l.rushing && l.rushing.carries > 0);
-  if (!hasData) return null;
+  if (!any(lines, "rushing")) return null;
 
   const car = sumField<RushingStats>(lines, "rushing", "carries");
   const yds = sumField<RushingStats>(lines, "rushing", "yards");
   const td = sumField<RushingStats>(lines, "rushing", "touchdowns");
+  const lng = maxField<RushingStats>(lines, "rushing", "longRush");
+  const fum = sumField<RushingStats>(lines, "rushing", "fumbles");
+  const lost = sumField<RushingStats>(lines, "rushing", "fumblesLost");
 
   return (
     <div className="card p-5">
@@ -99,6 +169,9 @@ function RushingSection({ lines }: { lines: PlayerGameLine[] }) {
         <StatBox label="YDS" value={fmt(yds)} />
         <StatBox label="TD" value={fmt(td)} />
         <StatBox label="YPC" value={car > 0 ? (yds / car).toFixed(1) : "0.0"} />
+        <StatBox label="LONG" value={fmt(lng)} />
+        {fum > 0 && <StatBox label="FUM" value={fmt(fum)} />}
+        {fum > 0 && <StatBox label="LOST" value={fmt(lost)} />}
       </div>
       <GameLog
         lines={lines}
@@ -114,13 +187,16 @@ function RushingSection({ lines }: { lines: PlayerGameLine[] }) {
 }
 
 function ReceivingSection({ lines }: { lines: PlayerGameLine[] }) {
-  const hasData = lines.some((l) => l.receiving && l.receiving.receptions > 0);
-  if (!hasData) return null;
+  if (!any(lines, "receiving")) return null;
 
   const rec = sumField<ReceivingStats>(lines, "receiving", "receptions");
   const yds = sumField<ReceivingStats>(lines, "receiving", "yards");
   const td = sumField<ReceivingStats>(lines, "receiving", "touchdowns");
   const tgt = sumField<ReceivingStats>(lines, "receiving", "targets");
+  const lng = maxField<ReceivingStats>(lines, "receiving", "longReception");
+  const drops = sumField<ReceivingStats>(lines, "receiving", "drops");
+  const fum = sumField<ReceivingStats>(lines, "receiving", "fumbles");
+  const lost = sumField<ReceivingStats>(lines, "receiving", "fumblesLost");
 
   return (
     <div className="card p-5">
@@ -130,6 +206,11 @@ function ReceivingSection({ lines }: { lines: PlayerGameLine[] }) {
         <StatBox label="YDS" value={fmt(yds)} />
         <StatBox label="TD" value={fmt(td)} />
         <StatBox label="TGT" value={fmt(tgt)} />
+        <StatBox label="AVG" value={rec > 0 ? (yds / rec).toFixed(1) : "0.0"} />
+        <StatBox label="LONG" value={fmt(lng)} />
+        {drops > 0 && <StatBox label="DROP" value={fmt(drops)} />}
+        {fum > 0 && <StatBox label="FUM" value={fmt(fum)} />}
+        {fum > 0 && <StatBox label="LOST" value={fmt(lost)} />}
       </div>
       <GameLog
         lines={lines}
@@ -145,10 +226,7 @@ function ReceivingSection({ lines }: { lines: PlayerGameLine[] }) {
 }
 
 function DefenseSection({ lines }: { lines: PlayerGameLine[] }) {
-  // Not just tackles - a corner whose only stat is a pick-six still has a line.
-  const hasData = lines.some((l) => l.defense && (l.defense.totalTackles > 0 || l.defense.interceptions > 0
-    || l.defense.fumbleRecoveries > 0 || l.defense.sacks > 0 || l.defense.forcedFumbles > 0));
-  if (!hasData) return null;
+  if (!any(lines, "defense")) return null;
 
   const tkl = sumField<DefensiveStats>(lines, "defense", "totalTackles");
   const solo = sumField<DefensiveStats>(lines, "defense", "soloTackles");
@@ -160,6 +238,10 @@ function DefenseSection({ lines }: { lines: PlayerGameLine[] }) {
   const fr = sumField<DefensiveStats>(lines, "defense", "fumbleRecoveries");
   const defTd = sumField<DefensiveStats>(lines, "defense", "interceptionTouchdowns")
     + sumField<DefensiveStats>(lines, "defense", "fumbleRecoveryTouchdowns");
+  const intYds = sumField<DefensiveStats>(lines, "defense", "interceptionYards");
+  const frYds = sumField<DefensiveStats>(lines, "defense", "fumbleRecoveryYards");
+  const hurries = sumField<DefensiveStats>(lines, "defense", "pressures");
+  const safeties = sumField<DefensiveStats>(lines, "defense", "safeties");
 
   return (
     <div className="card p-5">
@@ -173,6 +255,10 @@ function DefenseSection({ lines }: { lines: PlayerGameLine[] }) {
         <StatBox label="PBU" value={fmt(pbu)} />
         <StatBox label="FF" value={fmt(ff)} />
         <StatBox label="FR" value={fmt(fr)} />
+        {int_ > 0 && <StatBox label="INT YDS" value={fmt(intYds)} />}
+        {fr > 0 && <StatBox label="FR YDS" value={fmt(frYds)} />}
+        {hurries > 0 && <StatBox label="HURRY" value={fmt(hurries)} />}
+        {safeties > 0 && <StatBox label="SAFETY" value={fmt(safeties)} />}
         {defTd > 0 && <StatBox label="DEF TD" value={fmt(defTd)} />}
       </div>
       <GameLog
@@ -183,6 +269,143 @@ function DefenseSection({ lines }: { lines: PlayerGameLine[] }) {
           { label: "TFL", render: (s: DefensiveStats) => fmt(s.tacklesForLoss) },
           { label: "SCK", render: (s: DefensiveStats) => fmt(s.sacks) },
           { label: "INT", render: (s: DefensiveStats) => fmt(s.interceptions) },
+        ]}
+      />
+    </div>
+  );
+}
+
+function KickingSection({ lines }: { lines: PlayerGameLine[] }) {
+  if (!any(lines, "kicking")) return null;
+
+  const fgM = sumField<KickingStats>(lines, "kicking", "fieldGoalMade");
+  const fgA = sumField<KickingStats>(lines, "kicking", "fieldGoalAttempts");
+  const fgLong = maxField<KickingStats>(lines, "kicking", "fieldGoalLong");
+  const fgBlk = sumField<KickingStats>(lines, "kicking", "fieldGoalBlocked");
+  const xpM = sumField<KickingStats>(lines, "kicking", "extraPointMade");
+  const xpA = sumField<KickingStats>(lines, "kicking", "extraPointAttempts");
+  const ko = sumField<KickingStats>(lines, "kicking", "kickoffs");
+  const tb = sumField<KickingStats>(lines, "kicking", "kickoffTouchbacks");
+  const onA = sumField<KickingStats>(lines, "kicking", "onsideKickAttempts");
+  const onR = sumField<KickingStats>(lines, "kicking", "onsideKickRecoveries");
+  // A per-game average, so weight each game by its kickoffs.
+  const koYds = lines.reduce((t, l) => t + (l.kicking ? l.kicking.averageKickoffDistance * l.kicking.kickoffs : 0), 0);
+
+  return (
+    <div className="card p-5">
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Kicking</div>
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        {fgA > 0 && <StatBox label="FG" value={`${fgM}/${fgA}`} />}
+        {fgA > 0 && <StatBox label="FG LONG" value={fmt(fgLong)} />}
+        {fgBlk > 0 && <StatBox label="FG BLK" value={fmt(fgBlk)} />}
+        {xpA > 0 && <StatBox label="PAT" value={`${xpM}/${xpA}`} />}
+        {ko > 0 && <StatBox label="KO" value={fmt(ko)} />}
+        {ko > 0 && <StatBox label="KO AVG" value={(koYds / ko).toFixed(1)} />}
+        {ko > 0 && <StatBox label="TB" value={fmt(tb)} />}
+        {onA > 0 && <StatBox label="ONSIDE" value={`${onR}/${onA}`} />}
+      </div>
+      <GameLog
+        lines={lines.filter(has.kicking)}
+        category="kicking"
+        columns={[
+          { label: "FG", render: (s: KickingStats) => `${s.fieldGoalMade}/${s.fieldGoalAttempts}` },
+          { label: "PAT", render: (s: KickingStats) => `${s.extraPointMade}/${s.extraPointAttempts}` },
+          { label: "KO", render: (s: KickingStats) => fmt(s.kickoffs) },
+        ]}
+      />
+    </div>
+  );
+}
+
+function PuntingSection({ lines }: { lines: PlayerGameLine[] }) {
+  if (!any(lines, "punting")) return null;
+
+  const no = sumField<PuntingStats>(lines, "punting", "punts");
+  const yds = sumField<PuntingStats>(lines, "punting", "puntYards");
+  const lng = maxField<PuntingStats>(lines, "punting", "puntLong");
+  const in20 = sumField<PuntingStats>(lines, "punting", "puntsInside20");
+  const tb = sumField<PuntingStats>(lines, "punting", "touchbacks");
+  const blk = sumField<PuntingStats>(lines, "punting", "puntsBlocked");
+
+  return (
+    <div className="card p-5">
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Punting</div>
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        <StatBox label="PUNTS" value={fmt(no)} />
+        <StatBox label="YDS" value={fmt(yds)} />
+        <StatBox label="AVG" value={no > 0 ? (yds / no).toFixed(1) : "0.0"} />
+        <StatBox label="LONG" value={fmt(lng)} />
+        <StatBox label="IN 20" value={fmt(in20)} />
+        <StatBox label="TB" value={fmt(tb)} />
+        {blk > 0 && <StatBox label="BLK" value={fmt(blk)} />}
+      </div>
+      <GameLog
+        lines={lines.filter(has.punting)}
+        category="punting"
+        columns={[
+          { label: "NO", render: (s: PuntingStats) => fmt(s.punts) },
+          { label: "YDS", render: (s: PuntingStats) => fmt(s.puntYards) },
+          { label: "IN 20", render: (s: PuntingStats) => fmt(s.puntsInside20) },
+        ]}
+      />
+    </div>
+  );
+}
+
+function ReturnsSection({ lines }: { lines: PlayerGameLine[] }) {
+  const showKr = any(lines, "kickReturns");
+  const showPr = any(lines, "puntReturns");
+  if (!showKr && !showPr) return null;
+
+  const kr = sumField<ReturnStats>(lines, "returns", "kickReturns");
+  const krYds = sumField<ReturnStats>(lines, "returns", "kickReturnYards");
+  const krLong = maxField<ReturnStats>(lines, "returns", "kickReturnLong");
+  const krTd = sumField<ReturnStats>(lines, "returns", "kickReturnTouchdowns");
+  const krFum = sumField<ReturnStats>(lines, "returns", "kickReturnFumbles");
+  const pr = sumField<ReturnStats>(lines, "returns", "puntReturns");
+  const prYds = sumField<ReturnStats>(lines, "returns", "puntReturnYards");
+  const prLong = maxField<ReturnStats>(lines, "returns", "puntReturnLong");
+  const prTd = sumField<ReturnStats>(lines, "returns", "puntReturnTouchdowns");
+  const prFum = sumField<ReturnStats>(lines, "returns", "puntReturnFumbles");
+  const fc = sumField<ReturnStats>(lines, "returns", "puntReturnFairCatches");
+
+  return (
+    <div className="card p-5">
+      <div className="text-xs font-bold text-slate-500 uppercase mb-3">Returns</div>
+      {showKr && (
+        <div className="mb-4">
+          <div className="text-[10px] font-bold text-slate-600 uppercase mb-2">Kick Returns</div>
+          <div className="grid grid-cols-4 gap-2">
+            <StatBox label="NO" value={fmt(kr)} />
+            <StatBox label="YDS" value={fmt(krYds)} />
+            <StatBox label="AVG" value={kr > 0 ? (krYds / kr).toFixed(1) : "0.0"} />
+            <StatBox label="LONG" value={fmt(krLong)} />
+            {krTd > 0 && <StatBox label="TD" value={fmt(krTd)} />}
+            {krFum > 0 && <StatBox label="FUM" value={fmt(krFum)} />}
+          </div>
+        </div>
+      )}
+      {showPr && (
+        <div className="mb-4">
+          <div className="text-[10px] font-bold text-slate-600 uppercase mb-2">Punt Returns</div>
+          <div className="grid grid-cols-4 gap-2">
+            <StatBox label="NO" value={fmt(pr)} />
+            <StatBox label="YDS" value={fmt(prYds)} />
+            <StatBox label="AVG" value={pr > 0 ? (prYds / pr).toFixed(1) : "0.0"} />
+            <StatBox label="LONG" value={fmt(prLong)} />
+            {prTd > 0 && <StatBox label="TD" value={fmt(prTd)} />}
+            {fc > 0 && <StatBox label="FC" value={fmt(fc)} />}
+            {prFum > 0 && <StatBox label="FUM" value={fmt(prFum)} />}
+          </div>
+        </div>
+      )}
+      <GameLog
+        lines={lines.filter(l => has.kickReturns(l) || has.puntReturns(l))}
+        category="returns"
+        columns={[
+          { label: "KR", render: (s: ReturnStats) => `${s.kickReturns}-${fmt(s.kickReturnYards)}` },
+          { label: "PR", render: (s: ReturnStats) => `${s.puntReturns}-${fmt(s.puntReturnYards)}` },
+          { label: "TD", render: (s: ReturnStats) => fmt((s.kickReturnTouchdowns ?? 0) + (s.puntReturnTouchdowns ?? 0)) },
         ]}
       />
     </div>
@@ -331,7 +554,7 @@ interface CareerRow {
 function careerRowFromLines(label: string, lines: PlayerGameLine[]): CareerRow {
   return {
     label,
-    gp: lines.filter(l => l.passing || l.rushing || l.receiving || l.defense || l.kicking || l.returns).length,
+    gp: lines.filter(l => (Object.keys(has) as Area[]).some(a => has[a](l))).length,
     cmp: sumField<PassingStats>(lines, "passing", "completions"),
     att: sumField<PassingStats>(lines, "passing", "attempts"),
     paYds: sumField<PassingStats>(lines, "passing", "yards"),
@@ -458,11 +681,14 @@ export default function PlayerScreen() {
       }
 
       // Compute season stats
-      const result = await computePlayerSeasonStats(playerId, season.id, {
+      // game_config carries the FG snap add, so kick lengths match Season Stats.
+      const programInfo = {
         id: program.id,
         name: program.name,
         abbreviation: program.abbreviation,
-      }, period);
+        game_config: program.game_config,
+      };
+      const result = await computePlayerSeasonStats(playerId, season.id, programInfo, period);
 
       if (cancelled) return;
       setLines(result);
@@ -470,11 +696,7 @@ export default function PlayerScreen() {
 
       // Career (all seasons) loads after the current season — it can span
       // several years of games, so it fills in without blocking the page.
-      const careerBlocks = await computePlayerCareerStats(playerId, {
-        id: program.id,
-        name: program.name,
-        abbreviation: program.abbreviation,
-      }, period);
+      const careerBlocks = await computePlayerCareerStats(playerId, programInfo, period);
       if (!cancelled) setCareer(careerBlocks);
     })();
 
@@ -542,21 +764,29 @@ export default function PlayerScreen() {
           </div>
         )}
 
-        {/* No data */}
-        {!loading && lines.length === 0 && (
+        {/* No data. A game the player sat out still comes back as a line,
+            just an empty one, so count the lines that hold something. */}
+        {!loading && !any(lines, ...(Object.keys(has) as Area[])) && (
           <div className="card p-8 text-center">
-            <div className="text-slate-500 text-sm">No game data yet this season.</div>
+            <div className="text-slate-500 text-sm">No stats recorded for this player yet this season.</div>
           </div>
         )}
 
-        {/* Stat sections — only show categories where the player has data */}
-        {!loading && lines.length > 0 && (
+        {/* Stat sections — only areas the player has something in */}
+        {!loading && (
           <>
+            <ScoringSection lines={lines} />
+            {any(lines, "passing", "rushing", "receiving") && <GroupTitle>Offense</GroupTitle>}
             <PassingSection lines={lines} />
             <RushingSection lines={lines} />
             <ReceivingSection lines={lines} />
-            <DefenseSection lines={lines} />
             <SituationalSection lines={lines} />
+            {any(lines, "defense") && <GroupTitle>Defense</GroupTitle>}
+            <DefenseSection lines={lines} />
+            {any(lines, "kicking", "punting", "kickReturns", "puntReturns") && <GroupTitle>Special Teams</GroupTitle>}
+            <KickingSection lines={lines} />
+            <PuntingSection lines={lines} />
+            <ReturnsSection lines={lines} />
           </>
         )}
 

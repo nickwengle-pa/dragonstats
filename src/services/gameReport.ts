@@ -253,6 +253,49 @@ function tagWithRole(
   return null;
 }
 
+/* ── Points by player ─────────────────────────────────────────────────── */
+
+export interface PlayerScoring {
+  points: number;
+  touchdowns: number;
+  twoPointMade: number;
+  patMade: number;
+  fgMade: number;
+}
+
+/**
+ * Who scored what, read off the plays: six for the player who carried, caught
+ * or returned it in, two for a good conversion, one and three for the kicker.
+ *
+ * The engine's own ledger never scores a two-point try (the transformer keeps
+ * conversions away from it), so the Game Report's points column and a player's
+ * page both count from here and cannot disagree. Every tagged id is returned,
+ * opponents included; callers keep the ones they want.
+ */
+export function playerScoringFromPlays(plays: PlayWithPlayers[]): Map<string, PlayerScoring> {
+  const out = new Map<string, PlayerScoring>();
+  const add = (id: string | undefined, field: keyof PlayerScoring, pts: number) => {
+    if (!id) return;
+    let s = out.get(id);
+    if (!s) { s = { points: 0, touchdowns: 0, twoPointMade: 0, patMade: 0, fgMade: 0 }; out.set(id, s); }
+    s[field] += 1;
+    s.points += pts;
+  };
+  for (const play of plays) {
+    if (nullifiedStats(play)) continue;
+    if (play.is_touchdown) {
+      add(tagWithRole(play, SCORER_ROLES)?.id, "touchdowns", 6);
+      continue;
+    }
+    const good = String(play.play_data?.result ?? "") === "Good";
+    if (!good) continue;
+    if (play.play_type === "pat") add(tagWithRole(play, ["kicker"])?.id, "patMade", 1);
+    if (play.play_type === "fg") add(tagWithRole(play, ["kicker"])?.id, "fgMade", 3);
+    if (play.play_type === "two_pt") add(tagWithRole(play, SCORER_ROLES)?.id, "twoPointMade", 2);
+  }
+  return out;
+}
+
 /* ── Scoring narrative ────────────────────────────────────────────────────── */
 
 /** "run", "pass from #7 Smith", "kickoff return"... — how it was scored. */
@@ -528,24 +571,9 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const scoringInPeriod = scoring.filter(row => inPeriod(row.quarter, bundle.period ?? "game"));
 
   /* ── Points by player (ours) ──────────────────────────────────────────── */
-  const pointsById = new Map<string, number>();
-  const addPoints = (id: string | undefined, pts: number) => {
-    if (!id || !ours.has(id)) return;
-    pointsById.set(id, (pointsById.get(id) ?? 0) + pts);
-  };
-  for (const play of plays) {
-    if (play.is_touchdown) {
-      const scorer = tagWithRole(play, SCORER_ROLES);
-      addPoints(scorer?.id, 6);
-      continue;
-    }
-    const good = String(play.play_data?.result ?? "") === "Good";
-    if (play.play_type === "pat" && good) addPoints(tagWithRole(play, ["kicker"])?.id, 1);
-    if (play.play_type === "fg" && good) addPoints(tagWithRole(play, ["kicker"])?.id, 3);
-    if (play.play_type === "two_pt" && good) addPoints(tagWithRole(play, SCORER_ROLES)?.id, 2);
-  }
-  const points: PointsRow[] = [...pointsById.entries()]
-    .map(([id, pts]) => ({ name: names.get(id) ?? "", points: pts }))
+  const points: PointsRow[] = [...playerScoringFromPlays(plays).entries()]
+    .filter(([id]) => ours.has(id))
+    .map(([id, s]) => ({ name: names.get(id) ?? "", points: s.points }))
     .filter(r => r.points > 0)
     .sort((a, b) => b.points - a.points);
   const pointsTotal = points.reduce((s, r) => s + r.points, 0);
