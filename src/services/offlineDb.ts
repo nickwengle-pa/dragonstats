@@ -434,6 +434,14 @@ export async function enqueueGameUpdate(
       // A merge is new work: give a previously failed entry its retries back.
       status: "pending",
       attempts: 0,
+      /* And it moves to the back of the queue. The row describes the game as
+         of the newest patch, so it belongs after every play queued before
+         that patch. Keeping the first patch's slot meant End Game, merged into
+         an entry opened early in a dead spot, could reach the server ahead of
+         the plays recorded after that point - and once a game is final, an
+         assistant's late plays are refused. A fresh createdAt is also what
+         lets saveGamePatch tell that a newer patch merged in mid-request. */
+      createdAt: Date.now(),
     };
     await tx.store.put(merged);
     await tx.done;

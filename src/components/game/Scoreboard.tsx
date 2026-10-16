@@ -37,6 +37,10 @@ interface Props {
    *  would apply to a situation that is not on screen. Values stay fully
    *  legible; only the controls stand down. */
   locked?: boolean;
+  /** View only: this person may not change this game (staff, or an assistant
+   *  on a final game). Everything `locked` does, plus timeouts, score taps
+   *  and End Game stand down. */
+  readOnly?: boolean;
 }
 
 function downLabel(down: number) {
@@ -47,10 +51,12 @@ function TimeoutButtons({
   team,
   remaining,
   onTakeTimeout,
+  disabled = false,
 }: {
   team: "us" | "them";
   remaining: number;
   onTakeTimeout: (team: "us" | "them") => void;
+  disabled?: boolean;
 }) {
   /* Three amber ticks, like the bug on a broadcast. A used one goes dim. */
   return (
@@ -62,6 +68,7 @@ function TimeoutButtons({
             key={`${team}-${slot}`}
             type="button"
             onClick={() => onTakeTimeout(team)}
+            disabled={disabled}
             data-used={!available || undefined}
             title={available ? `${team === "us" ? "Program" : "Opponent"} timeout` : "Timeout used · tap for an official timeout"}
             aria-label={available ? "Take timeout" : "Timeout used, record an official timeout"}
@@ -115,8 +122,10 @@ export default function Scoreboard({
   onTakeTimeout,
   onCorrectScore,
   onFlipPossession,
-  locked = false,
+  locked: lockedProp = false,
+  readOnly = false,
 }: Props) {
+  const locked = lockedProp || readOnly;
   /* The crests are filled with the team colour, so a black-wearing team
      needs its swatch lifted just enough to read as a tile on the black bar. */
   const effOppColor = readableAccent(oppColor);
@@ -132,9 +141,9 @@ export default function Scoreboard({
           <Crest logoUrl={progLogoUrl} abbr={progAbbr} color={effPrimaryColor} />
           <div style={{ minWidth: 0 }}>
             <div className="lv-tname" title={progName}><span className="lg:hidden">{progAbbr || progName}</span><span className="hidden lg:inline">{progName}</span></div>
-            <TimeoutButtons team="us" remaining={ourTimeoutsRemaining} onTakeTimeout={onTakeTimeout} />
+            <TimeoutButtons team="us" remaining={ourTimeoutsRemaining} onTakeTimeout={onTakeTimeout} disabled={readOnly} />
           </div>
-          <button type="button" className="lv-score" onClick={() => onCorrectScore?.("us")} title="Tap to correct score">
+          <button type="button" className="lv-score" onClick={() => onCorrectScore?.("us")} disabled={readOnly} title={readOnly ? undefined : "Tap to correct score"}>
             {state.ourScore}
           </button>
         </div>
@@ -161,14 +170,14 @@ export default function Scoreboard({
           <Crest logoUrl={oppLogoUrl} abbr={oppAbbr} color={effOppColor} />
           <div style={{ minWidth: 0 }}>
             <div className="lv-tname" title={oppName}><span className="lg:hidden">{oppAbbr || oppName}</span><span className="hidden lg:inline">{oppName}</span></div>
-            <TimeoutButtons team="them" remaining={theirTimeoutsRemaining} onTakeTimeout={onTakeTimeout} />
+            <TimeoutButtons team="them" remaining={theirTimeoutsRemaining} onTakeTimeout={onTakeTimeout} disabled={readOnly} />
           </div>
-          <button type="button" className="lv-score" onClick={() => onCorrectScore?.("them")} title="Tap to correct score">
+          <button type="button" className="lv-score" onClick={() => onCorrectScore?.("them")} disabled={readOnly} title={readOnly ? undefined : "Tap to correct score"}>
             {state.theirScore}
           </button>
         </div>
 
-        <button type="button" className="lv-end" onClick={onEndGame} title="End Game">End Game</button>
+        {!readOnly && <button type="button" className="lv-end" onClick={onEndGame} title="End Game">End Game</button>}
       </div>
 
       {locked ? (

@@ -8,7 +8,8 @@ import { RotateCcw, BarChart3 } from "lucide-react";
 import { useScreenTheme } from "@/hooks/useTheme";
 import { GoalpostIcon, SunIcon, MoonIcon, EyeIcon, PowerIcon } from "@/components/icons/BroadcastIcons";
 import "@/screens/liveBroadcast.css";
-import { useProgramContext } from "@/hooks/useProgramContext";
+import { usePermissions, useProgramContext } from "@/hooks/useProgramContext";
+import { canEditGameStats, readOnlyReason } from "@/services/access";
 import { supabase } from "@/lib/supabase";
 import {
   insertPlay,
@@ -355,6 +356,7 @@ export default function GameScreen() {
   const navigate = useNavigate();
   const { gameId } = useParams<{ gameId: string }>();
   const { program, season } = useProgramContext();
+  const perms = usePermissions();
 
   /* ── Game config (from program settings) ── */
   const baseGc = useMemo(() => getGameConfig(program), [program]);
@@ -642,6 +644,16 @@ export default function GameScreen() {
   const mergeGame = useCallback((patch: Record<string, unknown>) => {
     setGame((g: any) => (g ? { ...g, ...patch } : g));
   }, []);
+  /* View only for staff, and for an assistant once the game is final. The
+     database refuses those writes regardless; this keeps the screen from
+     offering them - and from the writes it makes on its own just by being
+     open (the live situation, a missing official copy), which a viewer's
+     device would otherwise queue and retry forever. Handlers read the ref so
+     their dependency lists stay as they were. */
+  const canWrite = canEditGameStats(perms, game?.status);
+  const viewOnlyReason = readOnlyReason(perms, game?.status);
+  const canWriteRef = useRef(canWrite);
+  canWriteRef.current = canWrite;
   const finalGuard = useFinalGuard({
     gameId,
     game,
@@ -649,6 +661,7 @@ export default function GameScreen() {
     config: liveSessionConfig,
     names: finalNames,
     ready: !loading,
+    canWrite,
     onGameChange: mergeGame,
   });
 
@@ -878,6 +891,7 @@ export default function GameScreen() {
      lands — press-box wifi being the usual reason. The saved row takes its
      place, and opponentsForPicker hands that row out under the same id. */
   const addOpponentPlayer = async (player: OpponentPlayerRef) => {
+    if (!canWriteRef.current) return;
     setOppPlayers(prev => prev.some(p => p.id === player.id) ? prev : [...prev, player]);
     if (!game?.opponent_id) return;
     const saved = await opponentPlayerService.create({
@@ -940,10 +954,10 @@ export default function GameScreen() {
   );
 
   useEffect(() => {
-    if (!loading && game && !pregame) {
+    if (!loading && game && !pregame && canWrite) {
       setShowPregame(true);
     }
-  }, [loading, game, pregame]);
+  }, [loading, game, pregame, canWrite]);
 
   useEffect(() => {
     quarterSnapshots.current = {};
@@ -958,7 +972,7 @@ export default function GameScreen() {
      - Q4+: end of game (or move into OT)
      Only fires once per (quarter, "end") key to avoid retriggering on edits. */
   useEffect(() => {
-    if (game?.status === "completed") {
+    if (game?.status === "completed" || !canWrite) {
       setEndOfPeriodPrompt(null);
       return;
     }
@@ -977,7 +991,7 @@ export default function GameScreen() {
     } else {
       setEndOfPeriodPrompt({ kind: "quarter", targetQuarter: quarter + 1 });
     }
-  }, [clock, quarter, loading, plays.length, game?.status]);
+  }, [clock, quarter, loading, plays.length, game?.status, canWrite]);
 
   const toBoardScore = useCallback((score: ScoreSnapshot) => {
     const isHome = game?.is_home ?? true;
@@ -1218,7 +1232,7 @@ export default function GameScreen() {
   }, [buildSituationSnapshot, buildWorksheetRow, gc, pregame, toBoardScore]);
 
   useEffect(() => {
-    if (!gameId || !game || loading) return;
+    if (!gameId || !game || loading || !canWrite) return;
 
     const liveStateKey = [quarter, clock, possession, down, distance, ballOn, goalToGo].join("|");
     const alreadyManaged = hasManagedLiveState(game?.rules_config as Record<string, unknown> | null);
@@ -1250,7 +1264,7 @@ export default function GameScreen() {
     }, LIVE_STATE_PERSIST_DELAY_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [ballOn, clock, distance, down, goalToGo, game, gameId, loading, possession, quarter]);
+  }, [ballOn, clock, distance, down, goalToGo, game, gameId, loading, possession, quarter, canWrite]);
 
   /* ── Quick stats ── */
   const progAbbr = useMemo(
@@ -1351,6 +1365,7 @@ export default function GameScreen() {
   }, [ballEditSide, ballEditYard, possession]);
 
   const openTimeoutModal = useCallback((team: TimeoutTeam) => {
+    if (!canWriteRef.current) return;
     const remaining = team === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
     // A spent tick still opens the sheet, on Official: an official's timeout
     // has to be reachable when both teams are out, late in a half.
@@ -1501,7 +1516,7 @@ export default function GameScreen() {
   }, [applySituation, finalGuard, gameId, gc, liveSessionConfig, persistPlaySituations, pregame]);
 
   const applySituationAdjustment = useCallback(async () => {
-    if (!pendingSituationPlayId) return;
+    if (!pendingSituationPlayId || !canWriteRef.current) return;
 
     const adjustedClock = Math.max(0, Math.min(gc.quarter_length_secs, (adjClockMins * 60) + adjClockSecs));
 
@@ -1534,7 +1549,7 @@ export default function GameScreen() {
   }, [adjBallOn, adjClockMins, adjClockSecs, adjDistance, adjDown, adjPossession, finalGuard, gc.quarter_length_secs, pendingSituationPlayId, plays, recalcScoreAndState]);
 
   const handleSavePregame = useCallback(async (nextPregame: PregameConfig, nextCharting: ChartingPrefs) => {
-    if (!gameId || !game) return;
+    if (!gameId || !game || !canWriteRef.current) return;
 
     setSavingPregame(true);
     const updates = buildPregameGameUpdate(
@@ -1623,6 +1638,7 @@ export default function GameScreen() {
 
   /* ── Handle play type selection from quick actions ── */
   const handlePlayTypeSelect = (pt: PlayTypeDef) => {
+    if (!canWriteRef.current) return;
     if (!pregame) {
       setShowPregame(true);
       return;
@@ -1644,7 +1660,7 @@ export default function GameScreen() {
    *  NOTE: deliberately NOT memoized — a useCallback with narrow deps froze
    *  the first render's game situation (possession/down/spot) into the play. */
   const submitPreSnapPenalty = async (kind: "false_start" | "encroachment") => {
-    if (!gameId || !season || isSubmitting.current) return;
+    if (!gameId || !season || isSubmitting.current || !canWriteRef.current) return;
     const penaltyLabel = kind === "false_start" ? "False Start" : "Encroachment";
     const side: "offense" | "defense" = kind === "false_start" ? "offense" : "defense";
     const penaltyType: PlayTypeDef = {
@@ -1679,7 +1695,7 @@ export default function GameScreen() {
 
   /* ── Handle play submission from modal ── */
   const handlePlaySubmit = async (data: PlaySubmitData) => {
-    if (!gameId || !season || isSubmitting.current) return;
+    if (!gameId || !season || isSubmitting.current || !canWriteRef.current) return;
     isSubmitting.current = true;
     // Declining the official-final check keeps the entry open, typed as it was.
     let keepEntryOpen = false;
@@ -1907,7 +1923,7 @@ export default function GameScreen() {
   };
 
   const recordTimeoutAt = useCallback(async (team: TimeoutCaller, clockSecs: number) => {
-    if (!gameId || !season || isSubmitting.current) return;
+    if (!gameId || !season || isSubmitting.current || !canWriteRef.current) return;
 
     // An official's timeout is charged to nobody, so there is no count to run out.
     const remaining = team === "official" ? Infinity
@@ -2045,7 +2061,7 @@ export default function GameScreen() {
    *  and records a "score_correction" play in the log so the operator can see
    *  (and undo via the standard undo flow) what they changed. */
   const correctScore = useCallback(async (team: TimeoutTeam, delta: number) => {
-    if (!gameId || delta === 0) return;
+    if (!gameId || delta === 0 || !canWriteRef.current) return;
     const nextOur = team === "us" ? Math.max(0, ourScore + delta) : ourScore;
     const nextTheir = team === "them" ? Math.max(0, theirScore + delta) : theirScore;
     const appliedDelta = team === "us" ? nextOur - ourScore : nextTheir - theirScore;
@@ -2163,7 +2179,7 @@ export default function GameScreen() {
   }, [pendingClockCapture?.patGatePossession]);
 
   const handleRecordPostPlayClock = useCallback(async () => {
-    if (!pendingClockCapture || isSubmitting.current) return;
+    if (!pendingClockCapture || isSubmitting.current || !canWriteRef.current) return;
 
     isSubmitting.current = true;
 
@@ -2236,7 +2252,7 @@ export default function GameScreen() {
 
   /* ── Undo ── */
   const handleUndo = async () => {
-    if (plays.length === 0 || !gameId) return;
+    if (plays.length === 0 || !gameId || !canWriteRef.current) return;
     const last = plays[plays.length - 1];
     if (!(await finalGuard.guard(plays.slice(0, -1)))) return;
     const deleted = await deletePlay(last.id, gameId, { optimistic: true });
@@ -2263,6 +2279,7 @@ export default function GameScreen() {
    * been entered.
    */
   const handleSaveEdit = async (playId: string, result: PlaySubmitData) => {
+    if (!canWriteRef.current) return;
     const idx = plays.findIndex(p => p.id === playId);
     if (idx === -1) return;
     const original = plays[idx];
@@ -2425,6 +2442,7 @@ export default function GameScreen() {
      The remaining-timeout counts are derived by counting these plays, so
      correcting the team here corrects the scoreboard for both sides. */
   const handleSaveTimeoutEdit = async (playId: string, edit: TimeoutEdit) => {
+    if (!canWriteRef.current) return;
     const idx = plays.findIndex(p => p.id === playId);
     if (idx === -1) return;
     const original = plays[idx];
@@ -2463,6 +2481,7 @@ export default function GameScreen() {
 
   /* ── Delete play from edit modal ── */
   const handleDeletePlay = async (playId: string) => {
+    if (!canWriteRef.current) return;
     // Not a plain filter: the play after it keeps the spot typed on it.
     const newPlays = withoutPlay(plays, playId, pregame, gc);
     if (!(await finalGuard.guard(newPlays))) return;
@@ -2482,6 +2501,7 @@ export default function GameScreen() {
 
   /* ── PAT gate ── */
   const handlePatGate = (choice: "pat" | "two_pt" | "skip") => {
+    if (!canWriteRef.current) return;
     if (choice === "skip") {
       applySituation(createKickoffSituation(patGatePossession, gc));
       setShowPatGate(false);
@@ -2496,7 +2516,7 @@ export default function GameScreen() {
   };
 
   const changeQuarter = useCallback(async (delta: number) => {
-    if (!gameId || !season || isSubmitting.current) return;
+    if (!gameId || !season || isSubmitting.current || !canWriteRef.current) return;
     const targetQuarter = Math.max(1, Math.min(MAX_QUARTER, quarter + delta));
     if (targetQuarter === quarter) return;
 
@@ -2571,7 +2591,7 @@ export default function GameScreen() {
   /* ── End game ── */
   const [finalizing, setFinalizing] = useState(false);
   const handleEndGame = async () => {
-    if (!gameId) return;
+    if (!gameId || !canWriteRef.current) return;
     setFinalizing(true);
     /* Finalising is now durable either way: false means the server has not
        taken it yet, not that it was lost. Navigating regardless is therefore
@@ -2697,13 +2717,15 @@ export default function GameScreen() {
         <button onClick={toggleLiveTheme} className="lv-tool" title={liveTheme === "dark" ? "Switch to light" : "Switch to dark"} aria-label="Toggle theme">
           {liveTheme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
         </button>
-        <button
-          onClick={() => setHurryUp((h) => !h)}
-          className={`lv-tool ${hurryUp ? "on" : ""}`}
-          title={hurryUp ? "Hurry-up mode ON (skip clock prompt)" : "Hurry-up mode OFF"}
-        >
-          {hurryUp ? "Hurry" : "Reg"}
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => setHurryUp((h) => !h)}
+            className={`lv-tool ${hurryUp ? "on" : ""}`}
+            title={hurryUp ? "Hurry-up mode ON (skip clock prompt)" : "Hurry-up mode OFF"}
+          >
+            {hurryUp ? "Hurry" : "Reg"}
+          </button>
+        )}
         <button onClick={() => setShowLiveStats(true)} className="lv-tool red" title="Live Stats" aria-label="Live stats">
           <BarChart3 className="w-4 h-4" />
         </button>
@@ -2715,18 +2737,29 @@ export default function GameScreen() {
         <button onClick={() => setShowLog(true)} className="lv-tool">
           {plays.length} plays
         </button>
-        <button onClick={() => setShowPregame(true)} className="lv-tool">
-          Pregame
-        </button>
+        {canWrite && (
+          <button onClick={() => setShowPregame(true)} className="lv-tool">
+            Pregame
+          </button>
+        )}
         {/* Phone only; at lg it stays on the scoreboard row. It used to sit at
             the bottom of the Plays pane, which meant it vanished entirely
             while the Play pane was showing - the button rendered at 0x0 and
             was simply unfindable. Amber so it never reads as another neutral
             header action. */}
-        <button onClick={() => setShowEndGame(true)} className="lg:hidden lv-tool red" title="End Game">
-          <PowerIcon size={14} />End
-        </button>
+        {canWrite && (
+          <button onClick={() => setShowEndGame(true)} className="lg:hidden lv-tool red" title="End Game">
+            <PowerIcon size={14} />End
+          </button>
+        )}
       </div>
+
+      {viewOnlyReason && (
+        <div className="shrink-0 mx-3 lg:mx-5 mb-2 px-3 py-2 rounded-lg border border-surface-border bg-surface-card text-xs font-body text-surface-muted" role="status">
+          <span className="font-display font-bold uppercase tracking-wider text-[10px] mr-1.5">View only</span>
+          {viewOnlyReason}
+        </div>
+      )}
 
       {/* A finished game whose plays no longer match its official final. */}
       {finalGuard.openCheck && (
@@ -2735,7 +2768,7 @@ export default function GameScreen() {
           detail={finalGuard.openCheck.detail}
           diff={finalGuard.openCheck.diff}
           names={finalNames}
-          onAccept={() => finalGuard.acceptCurrent(finalGuard.openCheck?.diff ?? null)}
+          onAccept={canWrite ? () => finalGuard.acceptCurrent(finalGuard.openCheck?.diff ?? null) : undefined}
         />
       )}
 
@@ -2758,6 +2791,7 @@ export default function GameScreen() {
              from the plays either side of the insert anyway, which means a
              wrong one is a wrong neighbouring play, not a wrong nudge here. */
           locked={insertContext != null || selectedPlayType != null}
+          readOnly={!canWrite}
           progLogoUrl={progLogoUrl}
           oppLogoUrl={oppLogoUrl}
           oppColor={oppColor}
@@ -2789,7 +2823,7 @@ export default function GameScreen() {
           onPickSpot={selectedPlayType ? draftFieldSpot == null ? undefined : display => {
             const spot = offenseDisplayDirection === "right" ? display : 100 - display;
             setFieldSpotRequest({ ballOn: Math.max(1, Math.min(99, spot)), id: ++fieldPickId.current });
-          } : insertContext ? undefined : display => {
+          } : insertContext || !canWrite ? undefined : display => {
             setBallOn(Math.max(1, Math.min(99, offenseDisplayDirection === "right" ? display : 100 - display)));
           }}
           firstDownPosition={firstDownDisplayPosition}
@@ -2892,7 +2926,7 @@ export default function GameScreen() {
         )}
 
       {/* Play Entry Modal */}
-      {selectedPlayType && (
+      {selectedPlayType && canWrite && (
         <PlayEntryModal
           inlineSimple
           fieldSpotRequest={fieldSpotRequest}
@@ -2927,7 +2961,7 @@ export default function GameScreen() {
       )}
 
         {/* Quick Action Grid */}
-        {!selectedPlayType && <>
+        {!selectedPlayType && canWrite && <>
         <div className="card p-3">
           <QuickActions
             onSelect={handlePlayTypeSelect}
@@ -2969,9 +3003,11 @@ export default function GameScreen() {
             <div className="flex items-center justify-between mb-2">
               <span className="section-title mb-0">Plays ({plays.length})</span>
               <div className="flex items-center gap-3">
-                <button onClick={handleUndo} className="text-[10px] font-display font-bold text-red-400 flex items-center gap-1 uppercase tracking-wider cursor-pointer">
-                  <RotateCcw className="w-3 h-3" /> Undo
-                </button>
+                {canWrite && (
+                  <button onClick={handleUndo} className="text-[10px] font-display font-bold text-red-400 flex items-center gap-1 uppercase tracking-wider cursor-pointer">
+                    <RotateCcw className="w-3 h-3" /> Undo
+                  </button>
+                )}
                 <button onClick={() => setShowLog(true)} className="text-[10px] font-display font-bold text-dragon-primary uppercase tracking-wider cursor-pointer">
                   Full Log
                 </button>
@@ -3005,9 +3041,9 @@ export default function GameScreen() {
                   </button>
                 )}
                 <button
-                  onClick={() => { if (!isTimeout) setEditPlay(play); }}
+                  onClick={() => { if (!isTimeout && canWrite) setEditPlay(play); }}
                   className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 border-l-[3px] border-y border-r border-y-surface-border border-r-surface-border text-left ${
-                    isTimeout ? "" : "active:bg-surface-hover cursor-pointer"
+                    isTimeout || !canWrite ? "" : "active:bg-surface-hover cursor-pointer"
                   } ${
                     isTimeout
                       ? "border-l-amber-500/60 bg-surface-card"
@@ -3088,7 +3124,7 @@ export default function GameScreen() {
 
       {/* ── MODALS ── */}
 
-      {showPregame && (
+      {showPregame && canWrite && (
         <PregameSetupSheet
           initialValue={pregame}
           initialCharting={charting}
@@ -3108,17 +3144,17 @@ export default function GameScreen() {
       {showLog && (
         <PlayLog
           plays={plays}
-          onEdit={p => { if (p.type === "quarter_change") return; setShowLog(false); setEditPlay(p); }}
+          onEdit={canWrite ? p => { if (p.type === "quarter_change") return; setShowLog(false); setEditPlay(p); } : undefined}
           /* Back to the play pane as well: the pending-insert banner and the
              quick actions both live there, and the operator arrives here FROM
              the plays pane, so without this the tap looks like it did nothing
              while the screen is quietly armed to splice the next play. */
-          onInsertAfter={p => { setShowLog(false); setInsertAfterPlayId(p.id); setPhonePane("play"); }}
+          onInsertAfter={canWrite ? p => { setShowLog(false); setInsertAfterPlayId(p.id); setPhonePane("play"); } : undefined}
           /* Close the log first, as Undo does: on a finished game the delete
              asks to confirm the new final, and that sheet must not open
              underneath this one. */
-          onDelete={p => { setShowLog(false); void handleDeletePlay(p.id); }}
-          onUndo={() => { handleUndo(); setShowLog(false); }}
+          onDelete={canWrite ? p => { setShowLog(false); void handleDeletePlay(p.id); } : undefined}
+          onUndo={canWrite ? () => { handleUndo(); setShowLog(false); } : undefined}
           onClose={() => setShowLog(false)}
           pendingPlayIds={pendingPlayIds}
         />
@@ -3251,7 +3287,7 @@ export default function GameScreen() {
       {/* Play Edit */}
       {/* A timeout has no play type, no roles and no spot, so it gets a sheet
           with the only two facts it carries: when, and who. */}
-      {editPlay && editPlay.type === "timeout" && (
+      {editPlay && canWrite && editPlay.type === "timeout" && (
         <TimeoutEditModal
           play={editPlay}
           progName={progName}
@@ -3266,7 +3302,7 @@ export default function GameScreen() {
       {/* Editing IS entering, against the play's own starting situation.
           The same steps in the same order with the same field and the same
           ruler, so a play can be corrected exactly the way it was put in. */}
-      {editPlay && editPlay.type !== "timeout" && (() => {
+      {editPlay && canWrite && editPlay.type !== "timeout" && (() => {
         const editType = findPlayTypeDef(editPlay.type);
         if (!editType) return null;
         return (

@@ -47,6 +47,7 @@ export function useFinalGuard({
   config,
   names,
   ready,
+  canWrite = true,
   onGameChange,
 }: {
   gameId: string | undefined;
@@ -56,6 +57,9 @@ export function useFinalGuard({
   names: TeamNames;
   /** The game and its plays have finished loading. */
   ready: boolean;
+  /** This person may change this game (see access.ts canEditGameStats).
+   *  False: every change is declined and nothing is written on open. */
+  canWrite?: boolean;
   /** Merge what was written into the screen's copy of the games row. */
   onGameChange: (patch: Record<string, unknown>) => void;
 }) {
@@ -69,6 +73,7 @@ export function useFinalGuard({
   /** False means the change was declined: write nothing. */
   const guard = useCallback(async (nextPlays: PlayRecord[], nextConfig?: LiveSessionConfig): Promise<boolean> => {
     approval.current = null;
+    if (!canWrite) return false;
     if (!isFinal || !config) return true;
     const before = official ?? buildFinalRecord(plays, config);
     const after = buildFinalRecord(nextPlays, nextConfig ?? config);
@@ -81,7 +86,7 @@ export function useFinalGuard({
     }
     approval.current = { diff, confirmed: confirm };
     return true;
-  }, [isFinal, config, official, plays, names, statsLocked]);
+  }, [isFinal, config, official, plays, names, statsLocked, canWrite]);
 
   /**
    * After an approved change: the new official copy, the score it describes
@@ -114,13 +119,13 @@ export function useFinalGuard({
 
   /** Make what the plays say now the official final - the open-game banner. */
   const acceptCurrent = useCallback(async (diff: FinalDiff | null) => {
-    if (!gameId || !game || !config) return;
+    if (!gameId || !game || !config || !canWrite) return;
     const record = buildFinalRecord(plays, config);
     const fields = finalFields(game, record, "accepted", diff, true);
     const patch = { ...fields, our_score: record.score.us, opponent_score: record.score.them, status: "completed" as const };
     await saveGameFinal(gameId, patch);
     onGameChange(patch);
-  }, [gameId, game, config, plays, onGameChange]);
+  }, [gameId, game, config, plays, onGameChange, canWrite]);
 
   /* ── Opening a finished game ──
      Compare what the plays say now with the official final. A finished game
@@ -139,11 +144,14 @@ export function useFinalGuard({
     const check = checkFinal({ statsLocked, official, current, saved, names });
     if (check !== "record") { setOpenCheck(check); return; }
     setOpenCheck(null);
+    // Taking the missing official copy is a write. Someone who cannot change
+    // this game leaves it for the next head coach or admin to open it.
+    if (!canWrite) return;
     if (recordedFor.current === gameId) return;
     recordedFor.current = gameId;
     const fields = finalFields(game, current, statsLocked ? "stats_final" : "recorded", null, true);
     void saveGameFinal(gameId, fields).then(() => onGameChange(fields));
-  }, [ready, isFinal, config, game, gameId, plays, prompt, official, statsLocked, names, onGameChange]);
+  }, [ready, isFinal, config, game, gameId, plays, prompt, official, statsLocked, names, onGameChange, canWrite]);
 
   // One stable object, so the screen's callbacks that list it as a dependency
   // are not rebuilt on every render.

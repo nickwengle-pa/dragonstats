@@ -5,7 +5,7 @@ import {
   Users, ChevronDown, ChevronUp, Trash2, Shield, Upload, Image, Loader2,
 } from "lucide-react";
 import { TabBar } from "@/screens/DashboardScreen";
-import { useProgramContext } from "@/hooks/useProgramContext";
+import { usePermissions, useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { readSeasonGames } from "@/services/offlineCache";
 import {
@@ -589,6 +589,8 @@ function AddGameModal({
 export default function ScheduleScreen() {
   const navigate = useNavigate();
   const { program, season } = useProgramContext();
+  // Adding, moving and deleting games and opponents is head coach work.
+  const canEdit = usePermissions().editSchedule;
   const [games, setGames] = useState<GameRow[]>([]);
   const [opponents, setOpponents] = useState<Opponent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -683,14 +685,14 @@ export default function ScheduleScreen() {
       <BroadcastHeader
         title="Schedule"
         subtitle={season ? (season.name ?? `${season.year} ${season.level}`) : undefined}
-        actions={<>
+        actions={canEdit ? <>
           <button type="button" onClick={() => setOppModal({ open: true, editing: null })} className="bc-tool" title="Manage opponents" aria-label="Manage opponents">
             <ShieldIcon size={18} />
           </button>
           <button type="button" onClick={() => setShowAddGame(true)} className="bc-tool hot" title="Add game" aria-label="Add game">
             <PlusIcon size={18} />
           </button>
-        </>}
+        </> : undefined}
       />
 
       {/* Games list */}
@@ -701,8 +703,12 @@ export default function ScheduleScreen() {
           <div className="card p-8 text-center">
             <CalIcon className="w-10 h-10 text-neutral-700 mx-auto mb-3" />
             <p className="text-neutral-500 text-sm font-semibold mb-1">No games scheduled</p>
-            <p className="text-neutral-600 text-xs mb-4">Tap + to add a game. You'll need to add an opponent first.</p>
-            {opponents.length === 0 && (
+            <p className="text-neutral-600 text-xs mb-4">
+              {canEdit
+                ? "Tap + to add a game. You'll need to add an opponent first."
+                : "A head coach or admin adds games here."}
+            </p>
+            {canEdit && opponents.length === 0 && (
               <button onClick={() => setOppModal({ open: true, editing: null })} className="btn-secondary text-sm mx-auto">
                 Add First Opponent
               </button>
@@ -728,13 +734,15 @@ export default function ScheduleScreen() {
                     <span className="text-xs font-bold text-neutral-500">{formatDate(game.game_date)}</span>
                     <div className="flex items-center gap-2">
                       {getStatusBadge(game)}
-                      <button
-                        onClick={e => { e.stopPropagation(); askDeleteGame(game); }}
-                        className="text-neutral-700 hover:text-red-400 transition-colors p-1 -m-1"
-                        title="Delete game"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={e => { e.stopPropagation(); askDeleteGame(game); }}
+                          className="text-neutral-700 hover:text-red-400 transition-colors p-1 -m-1"
+                          title="Delete game"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -819,7 +827,8 @@ export default function ScheduleScreen() {
                 <button
                   key={opp.id}
                   onClick={() => setOppModal({ open: true, editing: opp })}
-                  className="card w-full flex items-center gap-3 p-3 text-left active:bg-surface-hover transition-colors"
+                  disabled={!canEdit}
+                  className="card w-full flex items-center gap-3 p-3 text-left active:bg-surface-hover transition-colors disabled:active:bg-transparent"
                 >
                   {opp.logo_url ? (
                     <img src={opp.logo_url} alt={opp.name} className="w-7 h-7 object-contain rounded-lg shrink-0" />
@@ -841,7 +850,7 @@ export default function ScheduleScreen() {
       </div>
 
       {/* Add Game Modal */}
-      {showAddGame && season && (
+      {canEdit && showAddGame && season && (
         <AddGameModal
           opponents={opponents}
           seasonId={season.id}
@@ -852,7 +861,7 @@ export default function ScheduleScreen() {
       )}
 
       {/* Opponent Modal (add/edit) */}
-      {oppModal.open && program && (
+      {canEdit && oppModal.open && program && (
         <OpponentModal
           existing={oppModal.editing}
           programId={program.id}

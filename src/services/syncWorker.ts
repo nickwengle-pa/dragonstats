@@ -155,9 +155,28 @@ function scheduleRetry() {
  * the client's request timeout, or as a PostgREST error whose message carries
  * the underlying fetch text — so match on the message rather than the shape.
  */
+/* supabase-js hands errors back as plain { message, code } objects, not Error
+   instances, so String(err) on one is "[object Object]". That is what the
+   sync details sheet used to show, and why no message was ever matched here. */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && typeof (err as { message?: unknown }).message === "string") {
+    return (err as { message: string }).message;
+  }
+  return String(err ?? "");
+}
+
+/* The server refused because of the signed-in person's role: an RLS check or
+   one of the role functions (42501). Retrying will never change the answer,
+   so say what it is in words a coach can act on. */
+function isPermissionRefusal(err: unknown): boolean {
+  const code = err && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
+  return code === "42501" || /row-level security|permission denied/i.test(errorMessage(err));
+}
+
 function isNetworkFailure(err: unknown): boolean {
   if (typeof navigator !== "undefined" && !navigator.onLine) return true;
-  const message = (err instanceof Error ? err.message : String(err ?? "")).toLowerCase();
+  const message = errorMessage(err).toLowerCase();
   return (
     message.includes("failed to fetch")
     || message.includes("fetch failed")
@@ -174,7 +193,9 @@ function isNetworkFailure(err: unknown): boolean {
 
 /** Record a failed push and classify it. */
 async function failItem(item: SyncQueueItem, err: unknown): Promise<PushOutcome> {
-  const message = err instanceof Error ? err.message : String(err);
+  const message = isPermissionRefusal(err)
+    ? "Not saved: your role in this program does not allow this change. Ask a head coach or admin."
+    : errorMessage(err);
   _status.lastError = message;
   if (isNetworkFailure(err)) {
     await markRetryable(item.id, message);

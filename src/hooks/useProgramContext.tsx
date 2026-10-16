@@ -5,6 +5,7 @@ import type { Program } from "@/services/programService";
 import { seasonService, type Season } from "@/services/seasonService";
 import { cachedRead, cacheKeys, warmGamedayCache } from "@/services/offlineCache";
 import { completeProgramJoin } from "@/services/completeProgramJoin";
+import { normalizeRole, permissionsFor, type Permissions, type ProgramRole } from "@/services/access";
 
 export interface Branding {
   primaryColor: string;
@@ -26,6 +27,10 @@ interface ProgramContextValue {
    *  latter or an offline coach lands in first-time setup. */
   offline: boolean;
   joinError: string | null;
+  /** The signed-in person's role in `program`. Null while loading, with no
+   *  program, or offline on a device that never cached it - permissionsFor
+   *  treats that last case as able to record, never as able to manage. */
+  role: ProgramRole | null;
   /** Reload program + season from DB */
   refresh: () => Promise<void>;
   /** Set the active season manually */
@@ -51,12 +56,18 @@ export const ProgramContext = createContext<ProgramContextValue>({
   loading: true,
   offline: false,
   joinError: null,
+  role: null,
   refresh: async () => {},
   setSeason: async () => false,
 });
 
 export function useProgramContext() {
   return useContext(ProgramContext);
+}
+
+/** What the signed-in person may do in the current program. See access.ts. */
+export function usePermissions(): Permissions {
+  return permissionsFor(useContext(ProgramContext).role);
 }
 
 /** Keep the previous object reference when a refetch returned identical data.
@@ -85,6 +96,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [role, setRole] = useState<ProgramRole | null>(null);
   const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
   // Once a program has loaded, background refreshes (auth event echoes,
   // manual refresh()) must not flip `loading` back to true — that swaps the
@@ -110,6 +122,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       setProgram(null);
       setSeasonState(null);
       setSeasons([]);
+      setRole(null);
       // Must clear, not leave stale. Signing out while offline would otherwise
       // keep `offline` true with a null program, and the router would answer
       // every route with the no-connection card — including /login, locking
@@ -163,18 +176,39 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     setProgram((prev) => keepIfEqual(prev, prog));
 
     if (prog) {
-      const seasonsRead = await cachedRead<Season[]>(cacheKeys.seasons(prog.id), async () => {
-        const { data, error } = await supabase
-          .from("seasons").select("*")
-          .eq("program_id", prog.id)
-          .order("year", { ascending: false })
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        return data ?? [];
-      });
+      const [seasonsRead, roleRead] = await Promise.all([
+        cachedRead<Season[]>(cacheKeys.seasons(prog.id), async () => {
+          const { data, error } = await supabase
+            .from("seasons").select("*")
+            .eq("program_id", prog.id)
+            .order("year", { ascending: false })
+            .order("created_at", { ascending: false });
+          if (error) throw error;
+          return data ?? [];
+        }),
+        // Cached per user and program so the press box knows who is holding
+        // the iPad without signal. Your own membership row is always readable.
+        cachedRead<string>(cacheKeys.role(user.id, prog.id), async () => {
+          const { data, error } = await supabase
+            .from("program_members").select("role")
+            .eq("program_id", prog.id)
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (error) throw error;
+          return (data?.role as string | undefined) ?? null;
+        }),
+      ]);
       const programSeasons = seasonsRead.value ?? [];
       if (sequence !== refreshSequence.current) return;
-      couldNotReachServer = couldNotReachServer || seasonsRead.offline;
+      couldNotReachServer = couldNotReachServer || seasonsRead.offline || roleRead.offline;
+      const myRole = normalizeRole(roleRead.value);
+      setRole(myRole);
+
+      /* Which season is active is program-wide, and only a head coach or admin
+         may change it. Anyone else who opens the app on a program with no (or
+         two) active seasons gets the right one picked on this device only,
+         rather than a refused write that strands them on Settings. */
+      const mayActivate = !couldNotReachServer && permissionsFor(myRole).editProgram;
 
       const activeSeasons = programSeasons.filter((entry) => entry.is_active);
 
@@ -182,9 +216,9 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
         const canonicalSeason = activeSeasons[0];
         // `activate` is a write. Offline it cannot succeed, and there is no
         // point queueing a tidy-up — just run with the season we have.
-        const updated = couldNotReachServer
-          ? false
-          : await seasonService.activate(prog.id, canonicalSeason.id);
+        const updated = mayActivate
+          ? await seasonService.activate(prog.id, canonicalSeason.id)
+          : false;
         if (updated) {
           applyActiveSeason(programSeasons, canonicalSeason.id);
         } else {
@@ -196,17 +230,18 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
         setSeasonState((prev) => keepIfEqual(prev, activeSeasons[0]));
       } else if (programSeasons.length > 0) {
         const fallbackSeason = programSeasons[0];
-        const updated = couldNotReachServer
-          ? false
-          : await seasonService.activate(prog.id, fallbackSeason.id);
+        const updated = mayActivate
+          ? await seasonService.activate(prog.id, fallbackSeason.id)
+          : false;
         if (updated) {
           applyActiveSeason(programSeasons, fallbackSeason.id);
         } else {
           setSeasons(programSeasons);
           // Offline, leaving this null would strand the user on the settings
           // screen with a perfectly good cached season sitting right there.
+          // The same goes for a role that could not have activated it anyway.
           setSeasonState((prev) =>
-            couldNotReachServer ? keepIfEqual(prev, fallbackSeason) : null,
+            mayActivate ? null : keepIfEqual(prev, fallbackSeason),
           );
         }
       } else {
@@ -216,6 +251,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     } else {
       setSeasons([]);
       setSeasonState(null);
+      setRole(null);
     }
 
     if (sequence !== refreshSequence.current) return;
@@ -244,18 +280,22 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   const setSeason = useCallback(async (nextSeason: Season) => {
     if (!program) return false;
 
-    const updated = await seasonService.activate(program.id, nextSeason.id);
-    if (!updated) return false;
+    // Below head coach this is "let me look at last season", on this device
+    // only. Everyone else's "this season" stays where the head coach put it.
+    if (permissionsFor(role).editProgram) {
+      const updated = await seasonService.activate(program.id, nextSeason.id);
+      if (!updated) return false;
+    }
 
     const nextSeasons = seasons.some((entry) => entry.id === nextSeason.id)
       ? seasons
       : [nextSeason, ...seasons];
     applyActiveSeason(nextSeasons, nextSeason.id);
     return true;
-  }, [applyActiveSeason, program, seasons]);
+  }, [applyActiveSeason, program, seasons, role]);
 
   return (
-    <ProgramContext.Provider value={{ program: changingUser ? null : program, season: changingUser ? null : season, seasons: changingUser ? [] : seasons, branding, loading: loading || authLoading || changingUser, offline, joinError, refresh, setSeason }}>
+    <ProgramContext.Provider value={{ program: changingUser ? null : program, season: changingUser ? null : season, seasons: changingUser ? [] : seasons, branding, loading: loading || authLoading || changingUser, offline, joinError, role: changingUser ? null : role, refresh, setSeason }}>
       {children}
     </ProgramContext.Provider>
   );

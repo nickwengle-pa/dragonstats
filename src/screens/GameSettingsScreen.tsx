@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Shield, Crosshair, Timer, MapPin, RotateCcw } from "lucide-react";
-import { useProgramContext } from "@/hooks/useProgramContext";
+import { usePermissions, useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { getGameConfig, DEFAULT_GAME_CONFIG, type GameConfig } from "@/services/programService";
 
@@ -65,6 +65,9 @@ function ToggleOption({
 export default function GameSettingsScreen() {
   const navigate = useNavigate();
   const { program, refresh } = useProgramContext();
+  // The rules every game is played under are head coach work; everyone else
+  // can read them.
+  const canEdit = usePermissions().editProgram;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -121,12 +124,17 @@ export default function GameSettingsScreen() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Setup</h1>
-        <button onClick={handleReset} className="btn-ghost p-2 text-neutral-500" title="Reset to defaults">
-          <RotateCcw className="w-4 h-4" />
-        </button>
+        {canEdit && (
+          <button onClick={handleReset} className="btn-ghost p-2 text-neutral-500" title="Reset to defaults">
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
-      <div className="flex-1 px-5 space-y-6 overflow-y-auto pb-6">
+      <fieldset disabled={!canEdit} className="flex-1 min-w-0 px-5 space-y-6 overflow-y-auto pb-6">
+        {!canEdit && (
+          <p className="text-xs text-neutral-500">View only. A head coach or admin can change these rules.</p>
+        )}
         {/* ── Tackle Crediting ── */}
         <div>
           <div className="flex items-center gap-2 mb-4">
@@ -245,14 +253,16 @@ export default function GameSettingsScreen() {
             Could not save: {saveError}
           </p>
         )}
-        <button onClick={handleSave} disabled={saving} className="btn-primary w-full">
-          {saved ? "Saved!" : saving ? "Saving..." : "Save Settings"}
-        </button>
+        {canEdit && (
+          <button onClick={handleSave} disabled={saving} className="btn-primary w-full">
+            {saved ? "Saved!" : saving ? "Saving..." : "Save Settings"}
+          </button>
+        )}
 
         <p className="text-xs text-neutral-600 text-center pb-2">
           These settings apply to all new games. Existing games keep their original settings.
         </p>
-      </div>
+      </fieldset>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import {
   Check, AlertTriangle, Loader2, ChevronRight,
 } from "lucide-react";
 import { TabBar } from "@/screens/DashboardScreen";
-import { useProgramContext } from "@/hooks/useProgramContext";
+import { usePermissions, useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
 import { readSeasonRoster } from "@/services/offlineCache";
 import { parseCSVRoster, parseMaxPrepsRoster, type ParsedPlayer } from "@/utils/rosterImport";
@@ -351,6 +351,11 @@ function PlayerFormModal({
 export default function RosterScreen() {
   const navigate = useNavigate();
   const { program, season } = useProgramContext();
+  const perms = usePermissions();
+  const canEdit = perms.editRoster;
+  // Matching a jersey to a player rewrites plays in every game it appears in,
+  // finals included, so it needs the role that can change a final.
+  const canResolve = perms.editFinalGames;
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -528,14 +533,14 @@ export default function RosterScreen() {
         title="Roster"
         subtitle={season ? (season.name ?? `${season.year} ${season.level}`) : undefined}
         chip={`${roster.length} players`}
-        actions={<>
+        actions={canEdit ? <>
           <button type="button" onClick={() => setShowImport(true)} className="bc-tool" title="Import roster" aria-label="Import roster">
             <UploadIcon size={18} />
           </button>
           <button type="button" onClick={() => { setEditingEntry(null); setShowAdd(true); }} className="bc-tool hot" title="Add player" aria-label="Add player">
             <PlusIcon size={18} />
           </button>
-        </>}
+        </> : undefined}
       />
       <div className="pt-6" />
 
@@ -544,6 +549,7 @@ export default function RosterScreen() {
         <div className="px-5 pb-3">
           <button
             onClick={() => setShowPending(true)}
+            disabled={!canResolve}
             className="w-full flex items-center gap-3 p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-left active:bg-amber-500/15 transition-colors"
           >
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
@@ -555,7 +561,9 @@ export default function RosterScreen() {
                 {pending.map((p) => (p.jersey != null ? `#${p.jersey}` : "#?")).join(", ")} recorded without a roster spot
               </div>
             </div>
-            <span className="text-[11px] font-bold text-amber-400 shrink-0">Resolve</span>
+            <span className="text-[11px] font-bold text-amber-400 shrink-0">
+              {canResolve ? "Resolve" : "Head coach resolves"}
+            </span>
           </button>
         </div>
       )}
@@ -568,10 +576,14 @@ export default function RosterScreen() {
           <div className="card p-8 text-center">
             <UserRound className="w-10 h-10 text-neutral-700 mx-auto mb-3" />
             <p className="text-neutral-500 text-sm font-semibold mb-1">No players yet</p>
-            <p className="text-neutral-600 text-xs mb-4">Tap + to add players or import a roster from MaxPreps.</p>
-            <button onClick={() => setShowImport(true)} className="btn-ghost text-sm text-dragon-primary">
-              <Upload className="w-4 h-4 mr-1.5 inline" /> Import Roster
-            </button>
+            {canEdit && (
+              <>
+                <p className="text-neutral-600 text-xs mb-4">Tap + to add players or import a roster from MaxPreps.</p>
+                <button onClick={() => setShowImport(true)} className="btn-ghost text-sm text-dragon-primary">
+                  <Upload className="w-4 h-4 mr-1.5 inline" /> Import Roster
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -603,18 +615,22 @@ export default function RosterScreen() {
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={e => { e.stopPropagation(); setEditingEntry(entry); setShowAdd(true); }}
-                  className="btn-ghost p-1.5 text-neutral-600"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); handleDelete(entry); }}
-                  className="btn-ghost p-1.5 text-neutral-700 hover:text-red-400"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {canEdit && (
+                  <>
+                    <button
+                      onClick={e => { e.stopPropagation(); setEditingEntry(entry); setShowAdd(true); }}
+                      className="btn-ghost p-1.5 text-neutral-600"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDelete(entry); }}
+                      className="btn-ghost p-1.5 text-neutral-700 hover:text-red-400"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
                 <ChevronRight className="w-4 h-4 text-neutral-600 shrink-0" aria-hidden="true" />
               </div>
             ))}
@@ -646,7 +662,7 @@ export default function RosterScreen() {
       )}
 
       {/* Add / Edit Player Modal */}
-      {showAdd && (
+      {canEdit && showAdd && (
         <PlayerFormModal
           editing={editingEntry}
           onClose={() => { setShowAdd(false); setEditingEntry(null); setSaveError(null); }}
@@ -656,7 +672,7 @@ export default function RosterScreen() {
       )}
 
       {/* Import Modal */}
-      {showImport && (
+      {canEdit && showImport && (
         <ImportModal
           failures={importFailures}
           onClose={() => { setShowImport(false); setImportFailures([]); }}
@@ -665,7 +681,7 @@ export default function RosterScreen() {
           importing={importing}
         />
       )}
-      {showPending && season && program && (
+      {canResolve && showPending && season && program && (
         <PendingPlayersSheet
           seasonId={season.id}
           programId={program.id}

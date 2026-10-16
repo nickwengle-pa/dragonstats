@@ -84,6 +84,11 @@ export const seasonService = {
 
     if (!rpcResult.error) return true;
 
+    // The server said no because of the caller's role. The direct updates
+    // below would be refused the same way (silently, as zero rows), so do not
+    // pretend: the caller keeps the season on this device only.
+    if (rpcResult.error.code === "42501") return false;
+
     if (!isMissingRpc(rpcResult.error)) {
       console.error("Error activating season via RPC:", rpcResult.error);
     }

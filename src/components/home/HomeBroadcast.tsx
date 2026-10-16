@@ -63,6 +63,9 @@ export interface HomeData {
   /** Our District 6 class table for the bar up top. Null until a copy has
    *  ever been read; the bar then shows only its links. */
   d6?: D6Standings | null;
+  /** False for a view-only role: the next game's button opens it to watch
+   *  rather than to start it. Absent means true. */
+  canRecord?: boolean;
 }
 
 interface Props {
@@ -280,7 +283,7 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
                   <span><PinIcon size={14} />{next.is_home ? "Home" : "Away"}</span>
                 </div>
                 <div className="bc-cta">
-                  <button type="button" className="bc-btn bc-btn-primary" onClick={() => onNavigate(`/game/${next.id}`)}><PlayIcon size={14} />Start Game</button>
+                  <button type="button" className="bc-btn bc-btn-primary" onClick={() => onNavigate(`/game/${next.id}`)}><PlayIcon size={14} />{data.canRecord === false ? "View Game" : "Start Game"}</button>
                   <button type="button" className="bc-btn bc-btn-secondary" onClick={() => onNavigate("/schedule")}>Schedule</button>
                 </div>
               </section>

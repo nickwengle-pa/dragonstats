@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useProgramContext } from "@/hooks/useProgramContext";
+import { usePermissions, useProgramContext } from "@/hooks/useProgramContext";
 import { useTheme } from "@/hooks/useTheme";
 import { useD6Standings } from "@/hooks/useD6Standings";
 import { OUR_D6_TEAM } from "@/services/d6Rankings";
@@ -66,6 +66,7 @@ function toHomeGame(g: GameRow, toReview: number | null): HomeGame {
 export default function DashboardScreen() {
   const { signOut } = useAuth();
   const { program, season } = useProgramContext();
+  const perms = usePermissions();
   const navigate = useNavigate();
   const [theme, toggleTheme] = useTheme();
   const d6 = useD6Standings(OUR_D6_TEAM, season?.year ?? null);
@@ -144,6 +145,7 @@ export default function DashboardScreen() {
         games,
         loaded,
         d6,
+        canRecord: perms.recordGames,
       }}
       theme={theme}
       onToggleTheme={toggleTheme}

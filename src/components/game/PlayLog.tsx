@@ -32,14 +32,16 @@ const FILTERS: Array<{ id: LogFilter; label: string }> = [
 
 interface Props {
   plays: PlayRecord[];
-  onEdit: (play: PlayRecord) => void;
+  /** Absent: view only, no edit pencil. */
+  onEdit?: (play: PlayRecord) => void;
   /** Record a play that belongs immediately after this one - a snap missed
    *  live and noticed a few downs later. */
   onInsertAfter?: (play: PlayRecord) => void;
   /** Remove one play from anywhere in the game - a snap that never counted,
    *  like a touchdown wiped out by a pre-snap flag. */
   onDelete?: (play: PlayRecord) => void;
-  onUndo: () => void;
+  /** Absent: view only, no Undo. */
+  onUndo?: () => void;
   onClose: () => void;
   /** Play ids that are still in the sync queue (haven't pushed to server yet). */
   pendingPlayIds?: Set<string>;
@@ -142,7 +144,7 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onDelete, onUndo
         <div className="flex items-center justify-between p-4 pb-2 shrink-0">
           <h2 className="text-lg font-display font-extrabold uppercase tracking-[0.1em]">Play Log <span className="text-surface-muted font-semibold text-sm">({plays.length})</span></h2>
           <div className="flex items-center gap-2">
-            {plays.length > 0 && (
+            {plays.length > 0 && onUndo && (
               <button onClick={onUndo} className="text-[10px] font-display font-bold text-red-400 flex items-center gap-1 uppercase tracking-wider cursor-pointer">
                 <RotateCcw className="w-3 h-3" /> Undo
               </button>
@@ -299,9 +301,11 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onDelete, onUndo
                   <div className="flex flex-col items-center gap-0.5 shrink-0">
                     {/* Timeouts are editable too now - the clock and which side
                         called it, which the derived remaining counts depend on. */}
-                    <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer" title="Edit play">
-                      <Pencil className="w-3 h-3" />
-                    </button>
+                    {onEdit && (
+                      <button onClick={() => onEdit(play)} className="btn-ghost p-1 text-surface-muted/40 mt-0.5 cursor-pointer" title="Edit play">
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
                     {/* A missed snap belongs where it happened, not on the end
                         of the list - everything after it is computed from the
                         order. */}

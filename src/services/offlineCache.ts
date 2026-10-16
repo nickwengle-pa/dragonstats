@@ -26,6 +26,7 @@ import { getMeta, setMeta, deleteMeta, isOfflineSupported } from "./offlineDb";
 
 export const cacheKeys = {
   program: (userId: string) => `cache:program:${userId}`,
+  role: (userId: string, programId: string) => `cache:role:${userId}:${programId}`,
   seasons: (programId: string) => `cache:seasons:${programId}`,
   roster: (seasonId: string) => `cache:roster:${seasonId}`,
   schedule: (seasonId: string) => `cache:schedule:${seasonId}`,

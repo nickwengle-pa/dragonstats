@@ -15,10 +15,11 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useProgramContext } from "@/hooks/useProgramContext";
+import { usePermissions, useProgramContext } from "@/hooks/useProgramContext";
 import { TabBar } from "@/screens/DashboardScreen";
 import DangerZone from "@/components/settings/DangerZone";
-import TeamAccess from "@/components/settings/TeamAccess";
+import People from "@/components/settings/People";
+import { ROLE_BLURB, ROLE_LABEL } from "@/services/access";
 import JoinWithCode from "@/components/settings/JoinWithCode";
 import { supabase } from "@/lib/supabase";
 import BroadcastHeader from "@/components/BroadcastHeader";
@@ -161,10 +162,12 @@ function CoachRow({
   coach,
   onUpdate,
   onDelete,
+  canEdit,
 }: {
   coach: Coach;
   onUpdate: (coach: Coach) => void;
   onDelete: (id: string) => void;
+  canEdit: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(coach.name);
@@ -196,12 +199,16 @@ function CoachRow({
             {coach.email ? ` · ${coach.email}` : ""}
           </div>
         </div>
-        <button onClick={() => setEditing(true)} className="btn-ghost p-1.5">
-          <Edit2 className="w-4 h-4" />
-        </button>
-        <button onClick={() => onDelete(coach.id)} className="btn-ghost p-1.5 text-red-500">
-          <Trash2 className="w-4 h-4" />
-        </button>
+        {canEdit && (
+          <>
+            <button onClick={() => setEditing(true)} className="btn-ghost p-1.5">
+              <Edit2 className="w-4 h-4" />
+            </button>
+            <button onClick={() => onDelete(coach.id)} className="btn-ghost p-1.5 text-red-500">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -240,6 +247,10 @@ export default function SettingsScreen({ firstTime = false }: Props) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { program, season, seasons, refresh, setSeason } = useProgramContext();
+  const perms = usePermissions();
+  // Below head coach the program, seasons and staff list are shown, not edited.
+  // First-time setup is creating your own program, so it is always editable.
+  const canEdit = firstTime || perms.editProgram;
   const currentYear = new Date().getFullYear();
 
   const [saving, setSaving] = useState(false);
@@ -446,10 +457,14 @@ export default function SettingsScreen({ firstTime = false }: Props) {
     setSeasonError("");
 
     const updated = await setSeason(targetSeason);
-    await refresh();
+    // Below head coach the switch is this device only; a refresh would put
+    // the program's active season straight back.
+    if (canEdit) await refresh();
 
     if (updated) {
-      setSeasonNotice(`${formatSeasonName(targetSeason)} is now active.`);
+      setSeasonNotice(canEdit
+        ? `${formatSeasonName(targetSeason)} is now active.`
+        : `Showing ${formatSeasonName(targetSeason)} on this device.`);
     } else {
       setSeasonError(`Could not activate ${formatSeasonName(targetSeason)}.`);
     }
@@ -510,6 +525,19 @@ export default function SettingsScreen({ firstTime = false }: Props) {
       )}
 
       <div className="flex-1 px-5 space-y-6 overflow-y-auto pb-6">
+        {program && !firstTime && perms.role && (
+          <div className="card p-3">
+            <div className="text-[11px] font-display font-bold text-surface-muted uppercase tracking-widest">
+              Your access
+            </div>
+            <div className="font-bold text-sm mt-0.5">{ROLE_LABEL[perms.role]}</div>
+            <div className="text-xs text-neutral-500 mt-0.5">{ROLE_BLURB[perms.role]}</div>
+          </div>
+        )}
+
+        {/* A disabled fieldset disables every input and button inside it in
+            one place, logo uploads and color pickers included. */}
+        <fieldset disabled={!canEdit} className="min-w-0 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-4">
             <School className="w-5 h-5 text-dragon-primary" />
@@ -621,6 +649,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
             </div>
           </div>
         )}
+        </fieldset>
 
         {program && (
           <div>
@@ -661,7 +690,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
                         disabled={activatingSeasonId !== null}
                         className="btn-ghost text-xs px-3 py-1.5"
                       >
-                        {activatingSeasonId === entry.id ? "Switching..." : "Set Active"}
+                        {activatingSeasonId === entry.id ? "Switching..." : canEdit ? "Set Active" : "View"}
                       </button>
                     )}
                   </div>
@@ -723,7 +752,7 @@ export default function SettingsScreen({ firstTime = false }: Props) {
                     </button>
                   </div>
                 </div>
-              ) : seasons.length > 0 && (
+              ) : seasons.length > 0 && canEdit && (
                 <button
                   onClick={() => {
                     setShowAddSeason(true);
@@ -758,10 +787,11 @@ export default function SettingsScreen({ firstTime = false }: Props) {
                 coach={coach}
                 onUpdate={(updated) => setCoaches((prev) => prev.map((entry) => entry.id === updated.id ? updated : entry))}
                 onDelete={handleDeleteCoach}
+                canEdit={canEdit}
               />
             ))}
 
-            {addingCoach ? (
+            {!canEdit ? null : addingCoach ? (
               <div className="space-y-2 pt-2">
                 <div className="grid grid-cols-2 gap-2">
                   <input
@@ -808,13 +838,15 @@ export default function SettingsScreen({ firstTime = false }: Props) {
           </div>
         )}
 
-        <button onClick={handleSave} disabled={!name || !abbrev || saving} className="btn-primary w-full">
-          {saved ? "Saved!" : saving ? "Saving..." : firstTime ? "Create Program" : "Save Changes"}
-        </button>
+        {canEdit && (
+          <button onClick={handleSave} disabled={!name || !abbrev || saving} className="btn-primary w-full">
+            {saved ? "Saved!" : saving ? "Saving..." : firstTime ? "Create Program" : "Save Changes"}
+          </button>
+        )}
 
-        {program && !firstTime && <TeamAccess programId={program.id} />}
+        {program && !firstTime && <People programId={program.id} />}
 
-        {program && !firstTime && (
+        {program && !firstTime && perms.dangerZone && (
           <DangerZone
             programId={program.id}
             season={season}

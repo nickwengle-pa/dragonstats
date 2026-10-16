@@ -878,6 +878,25 @@ async function saveGamePatch(
   await refreshSyncStatus();
 
   const goOnline = typeof navigator === "undefined" || navigator.onLine;
+
+  /* A final must not overtake the plays it is the final of. If this device
+     still owes the server plays for the game, push through the drain, which
+     sends them first and this row last. Once the game is final the server
+     refuses an assistant's plays, so a final that landed early would strand
+     every play still in the queue. */
+  if (goOnline && patch.status === "completed") {
+    const { getUnsyncedForGame } = await import("./offlineDb");
+    const owedFirst = (await getUnsyncedForGame(gameId))
+      .some((i) => i.id !== intent.id && i.op !== "game");
+    if (owedFirst) {
+      const { drainQueue } = await import("./syncWorker");
+      await drainQueue(gameId);
+      const left = (await getUnsyncedForGame(gameId)).some((i) => i.id === intent.id);
+      await refreshSyncStatus();
+      return !left;
+    }
+  }
+
   if (goOnline) {
     try {
       const { error } = await updateGamesRow(gameId, patch);

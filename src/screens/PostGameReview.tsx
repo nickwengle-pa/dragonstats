@@ -5,7 +5,8 @@ import { needsNextSpotReview, normalizeBlockedTouchdown } from "@/services/block
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, X, Check, Film, Pencil } from "lucide-react";
-import { useProgramContext } from "@/hooks/useProgramContext";
+import { useProgramContext, usePermissions } from "@/hooks/useProgramContext";
+import { canEditGameStats, readOnlyReason } from "@/services/access";
 import { supabase } from "@/lib/supabase";
 import {
   loadGamePlays,
@@ -304,6 +305,8 @@ function ChartingSheet({
   onSitChange,
   onSaveSituation,
   savingSit,
+  canEditStats,
+  canChart,
 }: {
   play: PlayWithPlayers;
   draft: PlayChartingDraft;
@@ -316,6 +319,10 @@ function ChartingSheet({
   onSitChange: (patch: Partial<SituationDraft>) => void;
   onSaveSituation: () => void;
   savingSit: boolean;
+  /** The play itself: its stats, down and distance (the final lock). */
+  canEditStats: boolean;
+  /** The film-charting fields, which are notes about the play, not stats. */
+  canChart: boolean;
 }) {
   const personnelHint = describePersonnel(draft.personnel);
   const tagsText = (draft.tags ?? []).join(", ");
@@ -348,7 +355,7 @@ function ChartingSheet({
               <div className="text-[10px] font-bold text-surface-muted uppercase tracking-widest">
                 Recorded stats
               </div>
-              <div className="flex items-center gap-1.5">
+              {canEditStats && <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setShowSit((s) => !s)}
                   className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border transition-colors cursor-pointer ${
@@ -367,7 +374,7 @@ function ChartingSheet({
                 >
                   <Pencil className="w-3 h-3" /> Edit
                 </button>
-              </div>
+              </div>}
             </div>
             <div className="grid grid-cols-3 gap-y-2 gap-x-3 text-sm">
               <Field label="Unit" value={unitFor(play)} color={UNIT_COLOR[unitFor(play)]} />
@@ -399,7 +406,7 @@ function ChartingSheet({
             )}
 
             {/* ── Quick Situation editor: down / distance / ball / possession ── */}
-            {showSit && sitDraft && (
+            {canEditStats && showSit && sitDraft && (
               <div className="mt-3 pt-3 border-t border-surface-border space-y-3">
                 <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">
                   Fix down &amp; distance (this play only)
@@ -496,7 +503,7 @@ function ChartingSheet({
           </div>
 
           {/* ── Editable: film-charting detail ── */}
-          <div className="space-y-3">
+          <fieldset disabled={!canChart} className="min-w-0 space-y-3">
             <div className="text-[10px] font-bold text-dragon-primary uppercase tracking-widest">
               Film charting
             </div>
@@ -631,16 +638,18 @@ function ChartingSheet({
                 className="input resize-none py-3"
               />
             </div>
-          </div>
+          </fieldset>
         </div>
 
         {/* Footer */}
         <div className="flex gap-3 p-5 pt-3 shrink-0 border-t border-surface-border">
-          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-          <button onClick={onSave} disabled={saving} className="btn-primary flex-1 gap-2">
-            <Check className="w-4 h-4" />
-            {saving ? "Saving…" : "Save"}
-          </button>
+          <button onClick={onClose} className="btn-secondary flex-1">{canChart ? "Cancel" : "Close"}</button>
+          {canChart && (
+            <button onClick={onSave} disabled={saving} className="btn-primary flex-1 gap-2">
+              <Check className="w-4 h-4" />
+              {saving ? "Saving…" : "Save"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -758,6 +767,12 @@ export default function PostGameReview() {
     [finalConfig],
   );
   const isFinalGame = meta?.status === "completed";
+  /* The final lock. Film review is mostly done on finished games, so for an
+     assistant this screen is mostly read-only: they can still chart film, but
+     the plays, the official copy and the stats-final mark are a head coach's. */
+  const perms = usePermissions();
+  const canWrite = canEditGameStats(perms, meta?.status);
+  const viewOnlyReason = meta ? readOnlyReason(perms, meta.status) : null;
   const official = useMemo(() => readSnapshot(meta?.final_snapshot), [meta?.final_snapshot]);
   const currentFinal = useMemo(
     () => (finalConfig && rawPlays.length > 0 ? buildFinalRecordFromRows(rawPlays, finalConfig, { jerseys: rosterJerseys }) : null),
@@ -777,24 +792,25 @@ export default function PostGameReview() {
   // A finished game with no copy yet whose plays still add up: take one.
   const recordedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (finalCheck !== "record" || !gameId || !meta || !currentFinal || recordedFor.current === gameId) return;
+    if (!canWrite || finalCheck !== "record" || !gameId || !meta || !currentFinal || recordedFor.current === gameId) return;
     recordedFor.current = gameId;
     const fields = finalFields(meta, currentFinal, markedFinal ? "stats_final" : "recorded", null, true);
     void saveGameFinal(gameId, fields).then(() => setMeta((m) => (m ? { ...m, ...fields } : m)));
-  }, [finalCheck, gameId, meta, currentFinal, markedFinal]);
+  }, [canWrite, finalCheck, gameId, meta, currentFinal, markedFinal]);
 
   const acceptFinal = useCallback(async () => {
-    if (!gameId || !meta || !currentFinal || !finalCheck || finalCheck === "record") return;
+    if (!canWrite || !gameId || !meta || !currentFinal || !finalCheck || finalCheck === "record") return;
     const fields = finalFields(meta, currentFinal, "accepted", finalCheck.diff, true);
     const patch = { ...fields, our_score: currentFinal.score.us, opponent_score: currentFinal.score.them, status: "completed" as const };
     await saveGameFinal(gameId, patch);
     setMeta((m) => (m ? { ...m, ...patch } : m));
-  }, [gameId, meta, currentFinal, finalCheck]);
+  }, [canWrite, gameId, meta, currentFinal, finalCheck]);
 
   /** Marking the stats final locks the official copy, after showing what the
    *  plays add up to if that is not the saved final. */
   const toggleStatsFinal = useCallback(async () => {
-    if (!gameId || !meta || savingFinal) return;
+    // Signing off the stats is the head coach's call, live game or not.
+    if (!perms.editFinalGames || !gameId || !meta || savingFinal) return;
     const next = !markedFinal;
     const lockCopy = next && isFinalGame && !!currentFinal;
     if (lockCopy && currentFinal) {
@@ -822,7 +838,7 @@ export default function PostGameReview() {
     // Only move the switch if the write landed - otherwise it reads as saved
     // on a device that never reached the server.
     if (ok) setMarkedFinal(next);
-  }, [gameId, meta, savingFinal, markedFinal, isFinalGame, currentFinal, finalNames, official]);
+  }, [perms.editFinalGames, gameId, meta, savingFinal, markedFinal, isFinalGame, currentFinal, finalNames, official]);
   const [oppPlayers, setOppPlayers] = useState<OpponentPlayerRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -932,7 +948,7 @@ export default function PostGameReview() {
 
   // ── Save the play's situation (down/distance/ball/possession) — one play ──
   const handleSaveSituation = useCallback(async () => {
-    if (!editingPlay || !sitDraft) return;
+    if (!canWrite || !editingPlay || !sitDraft) return;
     setSavingSit(true);
     /* A start typed in here is a hand-set spot, and the replay re-derives
        every spot it is not told about - so say so, or the next rebuild on the
@@ -955,10 +971,10 @@ export default function PostGameReview() {
     const row = refreshed.find((p) => p.id === editingPlay.id) ?? null;
     setEditingPlay(row);
     if (row) setSitDraft(situationFromPlay(row));
-  }, [editingPlay, gameId, sitDraft, load, rechain]);
+  }, [canWrite, editingPlay, gameId, sitDraft, load, rechain]);
 
   const handleSaveCharting = useCallback(async () => {
-    if (!draft) return;
+    if (!perms.chartFilm || !draft) return;
     setSaving(true);
     const saved = await saveCharting(draft);
     setSaving(false);
@@ -969,10 +985,11 @@ export default function PostGameReview() {
     } else {
       setError("Couldn't save charting — check your connection and try again.");
     }
-  }, [draft]);
+  }, [perms.chartFilm, draft]);
 
   // ── Edit the play's recorded stats (writes to `plays`; stats recompute) ──
   const handleSavePlayEdit = useCallback(async (playId: string, result: PlaySubmitData) => {
+    if (!canWrite) return;
     const original = plays.find((p) => p.id === playId);
     const pd = (original?.play_data ?? {}) as Record<string, any>;
     const editTurnover = result.turnover ?? ["int", "fumble"].includes(result.playType.id);
@@ -1077,10 +1094,11 @@ export default function PostGameReview() {
     const row = refreshed.find((p) => p.id === playId) ?? null;
     setEditingPlay(row);
     if (row) setSitDraft(situationFromPlay(row));
-  }, [plays, load, rechain, meta, program]);
+  }, [canWrite, plays, load, rechain, meta, program]);
 
   /* Same two facts as the live screen, written the same way. */
   const handleSaveTimeoutEdit = useCallback(async (playId: string, edit: TimeoutEdit) => {
+    if (!canWrite) return;
     const original = plays.find((p) => p.id === playId);
     const pd = (original?.play_data ?? {}) as Record<string, any>;
     const label = timeoutCallerLabel(edit.team, program?.name ?? "Team", meta?.opponent_name ?? "Opponent");
@@ -1109,9 +1127,10 @@ export default function PostGameReview() {
     }
     setEditRecord(null);
     await load();
-  }, [plays, program, meta, gameId, load]);
+  }, [canWrite, plays, program, meta, gameId, load]);
 
   const handleDeletePlayEdit = useCallback(async (playId: string) => {
+    if (!canWrite) return;
     if (!window.confirm("Delete this play? Game and season stats will update to match.")) return;
     // The list as it stood, deleted play included - see rechainStoredPlays.
     const before = rawPlays;
@@ -1124,7 +1143,7 @@ export default function PostGameReview() {
       return;
     }
     await rechain(before.some((p) => p.id === playId) ? before : await load(), playId);
-  }, [gameId, load, rechain, rawPlays]);
+  }, [canWrite, gameId, load, rechain, rawPlays]);
 
   /* ── Filtering ────────────────────────────────────────────────────────
      A film chart is read looking for something: our defensive snaps, or every
@@ -1285,15 +1304,20 @@ export default function PostGameReview() {
           detail={finalCheck.detail}
           diff={finalCheck.diff}
           names={finalNames}
-          onAccept={acceptFinal}
+          onAccept={canWrite ? acceptFinal : undefined}
         />
+      )}
+      {!loading && viewOnlyReason && (
+        <div className="mx-5 mb-3 rounded-xl border border-surface-border bg-surface-bg px-3 py-2.5 text-[12px] text-surface-muted">
+          {viewOnlyReason}{perms.chartFilm ? " You can still chart film." : ""}
+        </div>
       )}
       {!loading && meta && (
         <div className="px-5 pb-3">
           <button
             onClick={() => { void toggleStatsFinal(); }}
-            disabled={savingFinal}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 transition-colors cursor-pointer ${
+            disabled={savingFinal || !perms.editFinalGames}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 transition-colors ${perms.editFinalGames ? "cursor-pointer" : "cursor-default"} ${
               markedFinal
                 ? "border-emerald-500 bg-emerald-500/10"
                 : "border-surface-border bg-surface-bg"
@@ -1317,7 +1341,9 @@ export default function PostGameReview() {
                   ? "Saving…"
                   : markedFinal
                     ? "Shows as done on the home screen"
-                    : "Tell the staff this game is finished"}
+                    : perms.editFinalGames
+                      ? "Tell the staff this game is finished"
+                      : "A head coach marks the stats final"}
               </span>
             </span>
           </button>
@@ -1556,13 +1582,13 @@ export default function PostGameReview() {
                         </span>
                       </Td>
                       <Td>
-                        <button
+                        {canWrite && <button
                           onClick={(e) => { e.stopPropagation(); setEditRecord(rowToPlayRecord(p, rosterJerseys)); }}
                           className="btn-ghost p-1 text-surface-muted/50 hover:text-dragon-primary cursor-pointer"
                           title="Edit this play"
                         >
                           <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                        </button>}
                       </Td>
                     </tr>
                   );
@@ -1595,13 +1621,15 @@ export default function PostGameReview() {
           onSitChange={(patch) => setSitDraft((d) => (d ? { ...d, ...patch } : d))}
           onSaveSituation={handleSaveSituation}
           savingSit={savingSit}
+          canEditStats={canWrite}
+          canChart={perms.chartFilm}
         />
       )}
 
       {/* A timeout carries two facts and no play type, so it gets its own
           sheet here as well - a timeout charged to the wrong side is exactly
           the kind of thing film review is for. */}
-      {editRecord && editRecord.type === "timeout" && (
+      {canWrite && editRecord && editRecord.type === "timeout" && (
         <TimeoutEditModal
           play={editRecord}
           progName={program?.name ?? "Team"}
@@ -1615,7 +1643,7 @@ export default function PostGameReview() {
 
       {/* Play editor - the same screen that recorded the play, so film review
           corrects a play through the controls it was entered with. */}
-      {editRecord && editRecord.type !== "timeout" && (() => {
+      {canWrite && editRecord && editRecord.type !== "timeout" && (() => {
         const editType = findPlayTypeDef(editRecord.type);
         if (!editType) return null;
         return (
