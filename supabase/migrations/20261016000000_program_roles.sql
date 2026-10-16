@@ -111,12 +111,13 @@ $$;
 -- May the caller change this game's plays and live state? Head coach and up:
 -- always. Assistant: only until the game is final ('completed'). This is the
 -- final lock - once End Game is pressed, only a head coach or admin can change
--- the official result.
+-- the official result. A cancelled game is shut to assistants too: recording
+-- on one would set it live again, undoing a schedule decision.
 CREATE OR REPLACE FUNCTION public.can_edit_game_stats(target_game_id UUID)
 RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT CASE
     WHEN r >= 3 THEN true
-    WHEN r = 2 THEN COALESCE(status, '') <> 'completed'
+    WHEN r = 2 THEN COALESCE(status, '') NOT IN ('completed', 'cancelled')
     ELSE false
   END
   FROM (
@@ -189,6 +190,30 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- The enrol trigger above also fires on UPDATE OF owner_id, so whoever can
+-- edit the programs row could name any account the owner and have it enrolled
+-- as admin - past invite codes, past a removal, and with the power to demote
+-- the real admin. The app never moves ownership, so nobody signed in may; the
+-- SQL editor (no auth.uid()) still can.
+CREATE OR REPLACE FUNCTION public.guard_program_owner()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL AND NEW.owner_id IS DISTINCT FROM OLD.owner_id THEN
+    RAISE EXCEPTION 'The program owner can only be changed by support'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS programs_guard_owner ON programs;
+CREATE TRIGGER programs_guard_owner
+  BEFORE UPDATE OF owner_id ON programs
+  FOR EACH ROW EXECUTE FUNCTION public.guard_program_owner();
 
 -- ----------------------------------------------------------------------------
 -- 3. Policies
@@ -427,7 +452,7 @@ BEGIN
      OR NEW.is_playoff IS DISTINCT FROM OLD.is_playoff
      OR NEW.playoff_round IS DISTINCT FROM OLD.playoff_round
      OR NEW.notes IS DISTINCT FROM OLD.notes
-     OR (NEW.status = 'cancelled' AND OLD.status IS DISTINCT FROM 'cancelled')
+     OR (COALESCE(NEW.status, '') = 'cancelled') <> (COALESCE(OLD.status, '') = 'cancelled')
   THEN
     RAISE EXCEPTION 'Only a head coach or admin can change the schedule'
       USING ERRCODE = '42501';

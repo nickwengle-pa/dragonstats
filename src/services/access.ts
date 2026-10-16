@@ -125,17 +125,19 @@ export function permissionsFor(role: ProgramRole | null | undefined): Permission
 /**
  * May this person change this game's plays, clock and score? The final lock:
  * an assistant can until the game is final ('completed'), a head coach or
- * admin always, staff never.
+ * admin always, staff never. A cancelled game is shut to assistants as well,
+ * since the first play recorded on it would set it live again.
  */
 export function canEditGameStats(perms: Permissions, status: string | null | undefined): boolean {
   if (perms.editFinalGames) return true;
   if (!perms.recordGames) return false;
-  return status !== "completed";
+  return status !== "completed" && status !== "cancelled";
 }
 
 /** Why a game is view-only for this person, in a coach's words. */
 export function readOnlyReason(perms: Permissions, status: string | null | undefined): string | null {
   if (canEditGameStats(perms, status)) return null;
   if (!perms.recordGames) return "View only. Your role can see games but not change them.";
+  if (status === "cancelled") return "This game was cancelled. Only a head coach or admin can reopen it.";
   return "This game is final. Only a head coach or admin can change it.";
 }

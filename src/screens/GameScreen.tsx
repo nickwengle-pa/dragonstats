@@ -397,7 +397,7 @@ export default function GameScreen() {
        The roster is the one that stings: without it every tag on every play
        is a jersey number with no name behind it, which is not a chartable
        game. In a steel press box that is the normal case, not the edge one. */
-    const [gameRead, rosterRead, existingPlays] = await Promise.all([
+    const [gameRead, contextRosterRead, existingPlays] = await Promise.all([
       cachedRead<any>(cacheKeys.game(gameId), async () => {
         const { data, error } = await supabase
           .from("games").select("*, opponent:opponents(*)").eq("id", gameId).single();
@@ -407,6 +407,15 @@ export default function GameScreen() {
       readSeasonRoster<RosterPlayer>(season.id),
       loadGamePlays(gameId),
     ]);
+    /* The roster belongs to the game's season, not to whichever season the
+       app has open. They differ when a program runs two at once (varsity and
+       JV) and a coach below head coach - whose season pick is this device's
+       own - opens a game from the other one. Same program, so a tag on the
+       wrong roster saves without complaint and credits the wrong player. */
+    const gameSeasonId = (gameRead.value as { season_id?: string } | null)?.season_id;
+    const rosterRead = gameSeasonId && gameSeasonId !== season.id
+      ? await readSeasonRoster<RosterPlayer>(gameSeasonId)
+      : contextRosterRead;
 
     // A locally finalized game can still be waiting for the server to sync.
     const pendingGameUpdates = (await getUnsyncedForGame(gameId))

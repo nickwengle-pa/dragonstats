@@ -40,6 +40,7 @@ INSERT INTO games (id, season_id, opponent_id, game_date, status) VALUES
   ('e0000000-0000-4000-8000-000000000001', 'c0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', now(), 'live'),
   ('e0000000-0000-4000-8000-000000000002', 'c0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', now(), 'completed'),
   ('e0000000-0000-4000-8000-000000000003', 'c0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', now(), 'scheduled'),
+  ('e0000000-0000-4000-8000-000000000004', 'c0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', now(), 'cancelled'),
   ('e0000000-0000-4000-8000-000000000009', 'c0000000-0000-4000-8000-000000000009', 'd0000000-0000-4000-8000-000000000009', now(), 'live');
 INSERT INTO players (id, program_id, first_name, last_name) VALUES
   ('f0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001', 'Pat', 'One'),
@@ -89,6 +90,7 @@ INSERT INTO who VALUES
 -- Shorthands used in the statements below:
 --   P1 program b...001   S1 active season c...001   S0 old season c...002
 --   GL live game e...001 GF final game e...002      GS scheduled game e...003
+--   GC cancelled game e...004
 --   G9 another program's live game e...009
 --   PL play in GL 1...001  PF play in GF 1...002   P1 player f...001, spare f...002
 CREATE TEMP TABLE checks (n SERIAL, label TEXT, actor TEXT, stmt TEXT, expected TEXT);
@@ -134,6 +136,9 @@ INSERT INTO checks (label, actor, stmt, expected) VALUES
 ('head coach adds a game', 'head', $q$INSERT INTO games (season_id, opponent_id, game_date) VALUES ('c0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001', now())$q$, 'ok:1'),
 ('head coach deletes a game', 'head', $q$DELETE FROM games WHERE id = 'e0000000-0000-4000-8000-000000000003'$q$, 'ok:1'),
 ('head coach cannot move a game into another program', 'head', $q$UPDATE games SET season_id = 'c0000000-0000-4000-8000-000000000009' WHERE id = 'e0000000-0000-4000-8000-000000000003'$q$, '42501'),
+('assistant cannot un-cancel a game', 'assistant', $q$UPDATE games SET status = 'live' WHERE id = 'e0000000-0000-4000-8000-000000000004'$q$, 'ok:0'),
+('assistant cannot record on a cancelled game', 'assistant', $q$INSERT INTO plays (game_id, sequence, quarter, possession, play_type) VALUES ('e0000000-0000-4000-8000-000000000004', 1, 1, 'us', 'rush')$q$, '42501'),
+('head coach un-cancels a game', 'head', $q$UPDATE games SET status = 'scheduled' WHERE id = 'e0000000-0000-4000-8000-000000000004'$q$, 'ok:1'),
 ('staff cannot update a game', 'staff', $q$UPDATE games SET current_down = 2 WHERE id = 'e0000000-0000-4000-8000-000000000001'$q$, 'ok:0'),
 
 -- Seasons and program settings
@@ -146,6 +151,9 @@ INSERT INTO checks (label, actor, stmt, expected) VALUES
 ('staff cannot flip is_active directly', 'staff', $q$UPDATE seasons SET is_active = false WHERE program_id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:0'),
 ('head coach edits program settings', 'head', $q$UPDATE programs SET name = 'Renamed' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:1'),
 ('assistant cannot edit program settings', 'assistant', $q$UPDATE programs SET game_config = '{}'::jsonb WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:0'),
+('head coach cannot hand the program to someone', 'head', $q$UPDATE programs SET owner_id = 'a0000000-0000-4000-8000-000000000005' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, '42501'),
+('nobody changes the owner from the app, even an admin', 'admin', $q$UPDATE programs SET owner_id = 'a0000000-0000-4000-8000-000000000003' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, '42501'),
+('saving settings with the same owner still works', 'head', $q$UPDATE programs SET name = 'Same', owner_id = 'a0000000-0000-4000-8000-000000000001' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:1'),
 ('head coach cannot delete the program', 'head', $q$DELETE FROM programs WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:0'),
 ('head coach adds a coach to the staff list', 'head', $q$INSERT INTO coaches (season_id, name, role) VALUES ('c0000000-0000-4000-8000-000000000001', 'Coach X', 'assistant')$q$, 'ok:1'),
 ('assistant cannot edit the coaches list', 'assistant', $q$INSERT INTO coaches (season_id, name, role) VALUES ('c0000000-0000-4000-8000-000000000001', 'Coach X', 'assistant')$q$, '42501'),

@@ -77,6 +77,33 @@ function keepIfEqual<T>(prev: T | null, next: T | null): T | null {
   return prev && next && JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 }
 
+/* A season picked on this device by someone who cannot change the program's
+   active season (Settings > Seasons > View). Kept per account and program so
+   it survives a reload, and tied to the active season it was picked against:
+   once the head coach moves the program on, the pick lapses rather than
+   holding this device on an old season. */
+type SeasonPick = { seasonId: string; activeId: string | null };
+const seasonPickKey = (userId: string, programId: string) => `ds-season-pick:${userId}:${programId}`;
+
+function readSeasonPick(userId: string, programId: string): SeasonPick | null {
+  try {
+    const raw = localStorage.getItem(seasonPickKey(userId, programId));
+    const pick = raw ? JSON.parse(raw) : null;
+    return pick && typeof pick.seasonId === "string" ? pick : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSeasonPick(userId: string, programId: string, pick: SeasonPick | null) {
+  try {
+    if (pick) localStorage.setItem(seasonPickKey(userId, programId), JSON.stringify(pick));
+    else localStorage.removeItem(seasonPickKey(userId, programId));
+  } catch {
+    // Private mode or storage blocked: the pick lasts until the next reload.
+  }
+}
+
 function deriveBranding(program: Program | null): Branding {
   if (!program) return DEFAULT_BRANDING;
   return {
@@ -103,6 +130,9 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   // route content for a spinner and unmounts live screens mid-game.
   const hasLoadedRef = useRef(false);
   const refreshSequence = useRef(0);
+  // The program's active season as the server last said, before any pick
+  // made on this device - what a SeasonPick is checked against.
+  const serverActiveIdRef = useRef<string | null>(null);
 
   const applyActiveSeason = useCallback((programSeasons: Season[], activeSeasonId: string | null) => {
     const nextSeasons = programSeasons.map((entry) => ({
@@ -211,8 +241,18 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       const mayActivate = !couldNotReachServer && permissionsFor(myRole).editProgram;
 
       const activeSeasons = programSeasons.filter((entry) => entry.is_active);
+      serverActiveIdRef.current = activeSeasons[0]?.id ?? null;
 
-      if (activeSeasons.length > 1) {
+      const pick = permissionsFor(myRole).editProgram ? null : readSeasonPick(user.id, prog.id);
+      const pickStands = !!pick
+        && pick.activeId === serverActiveIdRef.current
+        && pick.seasonId !== serverActiveIdRef.current
+        && programSeasons.some((entry) => entry.id === pick.seasonId);
+      if (pick && !pickStands) writeSeasonPick(user.id, prog.id, null);
+
+      if (pickStands && pick) {
+        applyActiveSeason(programSeasons, pick.seasonId);
+      } else if (activeSeasons.length > 1) {
         const canonicalSeason = activeSeasons[0];
         // `activate` is a write. Offline it cannot succeed, and there is no
         // point queueing a tidy-up — just run with the season we have.
@@ -285,6 +325,10 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     if (permissionsFor(role).editProgram) {
       const updated = await seasonService.activate(program.id, nextSeason.id);
       if (!updated) return false;
+    } else if (user) {
+      writeSeasonPick(user.id, program.id, nextSeason.id === serverActiveIdRef.current
+        ? null
+        : { seasonId: nextSeason.id, activeId: serverActiveIdRef.current });
     }
 
     const nextSeasons = seasons.some((entry) => entry.id === nextSeason.id)
@@ -292,7 +336,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       : [nextSeason, ...seasons];
     applyActiveSeason(nextSeasons, nextSeason.id);
     return true;
-  }, [applyActiveSeason, program, seasons, role]);
+  }, [applyActiveSeason, program, seasons, role, user]);
 
   return (
     <ProgramContext.Provider value={{ program: changingUser ? null : program, season: changingUser ? null : season, seasons: changingUser ? [] : seasons, branding, loading: loading || authLoading || changingUser, offline, joinError, role: changingUser ? null : role, refresh, setSeason }}>

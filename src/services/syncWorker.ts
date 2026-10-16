@@ -347,10 +347,21 @@ export async function drainQueue(
     // A row the server rejects is no reason to strand every play behind it, so
     // skip past it and keep pushing. It stays queued, and `stuck` surfaces it.
     const skipped = new Set<string>();
+    /* Except the final. Once a game is final the server refuses an
+       assistant's plays, so a final pushed past a play that just failed
+       would turn a retryable play into one that can never land. It waits
+       for the next drain with them; once those plays are given up on (stuck)
+       they stop being tried, and the final goes. */
+    let playSkipped = false;
     while (navigator.onLine) {
       const queue = await getDrainableForGame(gameId, { includeStuck: opts.includeStuck });
       const item = queue.find((i) => !skipped.has(i.id));
       if (!item) break;
+
+      if (playSkipped && item.op === "game" && item.payload?.patch?.status === "completed") {
+        skipped.add(item.id);
+        continue;
+      }
 
       const outcome = await pushItem(item);
       if (outcome === "ok") {
@@ -361,6 +372,7 @@ export async function drainQueue(
         // hammering it just burns battery. Stop; the retry timer picks it up.
         if (outcome === "network") break;
         skipped.add(item.id);
+        if (item.op !== "game") playSkipped = true;
       }
     }
   } finally {

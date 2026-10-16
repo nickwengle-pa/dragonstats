@@ -29,11 +29,18 @@ export function withoutMissingColumn(
 export async function updateGamesRow(
   gameId: string,
   patch: Record<string, unknown>,
-): Promise<{ error: { message?: string } | null }> {
+): Promise<{ error: { code?: string; message?: string } | null }> {
   let current = patch;
   for (let attempt = 0; attempt < OPTIONAL_COLUMNS.size + 1; attempt++) {
     if (Object.keys(current).length === 0) return { error: null };
-    const { error } = await supabase.from("games").update(current).eq("id", gameId);
+    const { data, error } = await supabase.from("games").update(current).eq("id", gameId).select("id");
+    /* Row-level security answers a refused update with zero rows, not an
+       error - say an assistant's queued score patch reaching a game the head
+       coach has since made final. Reported as a refusal, so the queue shows
+       it instead of marking it saved. */
+    if (!error && Array.isArray(data) && data.length === 0) {
+      return { error: { code: "42501", message: "The server did not update this game (it may be final, or your role may not allow it)." } };
+    }
     if (!error) return { error: null };
     const retry = withoutMissingColumn(current, error);
     if (!retry) return { error };

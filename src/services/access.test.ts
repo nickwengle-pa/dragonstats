@@ -33,6 +33,8 @@ for (const status of ["scheduled", "live", "completed"]) {
 assert.equal(canEditGameStats(asst, "live"), true);
 assert.equal(canEditGameStats(asst, null), true);
 assert.equal(canEditGameStats(asst, "completed"), false);
+assert.equal(canEditGameStats(asst, "cancelled"), false);
+assert.equal(canEditGameStats(head, "cancelled"), true);
 
 // Offline on a device that never cached the role: the scorekeeper keeps
 // recording, but nothing that manages the program is offered.
@@ -60,5 +62,6 @@ assert.equal(permissionsFor("assistant"), permissionsFor("assistant"));
 assert.equal(readOnlyReason(head, "completed"), null);
 assert.match(readOnlyReason(asst, "completed") ?? "", /final/);
 assert.match(readOnlyReason(staff, "live") ?? "", /View only/);
+assert.match(readOnlyReason(asst, "cancelled") ?? "", /cancelled/);
 
 console.log("access: all checks passed");
