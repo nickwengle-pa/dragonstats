@@ -212,6 +212,10 @@ export function exportPlayerSeasonCsv(lines: PlayerGameLine[], opts: ExportSeaso
     "Rush Car", "Rush Yds", "Rush TD",
     "Rec", "Rec Yds", "Rec TD",
     "Tackles", "Sacks", "INT (Def)", "FF", "FR",
+    "FG Made", "FG Att", "PAT Made", "PAT Att", "Kickoffs",
+    "Punts", "Punt Yds",
+    "KR", "KR Yds", "PR", "PR Yds",
+    "Points",
   ]);
   for (const line of lines) {
     rows.push([
@@ -233,6 +237,18 @@ export function exportPlayerSeasonCsv(lines: PlayerGameLine[], opts: ExportSeaso
       line.defense?.interceptions ?? "",
       line.defense?.forcedFumbles ?? "",
       line.defense?.fumbleRecoveries ?? "",
+      line.kicking?.fieldGoalMade ?? "",
+      line.kicking?.fieldGoalAttempts ?? "",
+      line.kicking?.extraPointMade ?? "",
+      line.kicking?.extraPointAttempts ?? "",
+      line.kicking?.kickoffs ?? "",
+      line.punting?.punts ?? "",
+      line.punting?.puntYards ?? "",
+      line.returns?.kickReturns ?? "",
+      line.returns?.kickReturnYards ?? "",
+      line.returns?.puntReturns ?? "",
+      line.returns?.puntReturnYards ?? "",
+      line.scoring?.points ?? "",
     ]);
   }
 

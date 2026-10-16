@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Plus, X, Trash2, UserRound, Upload, Edit2,
-  Check, AlertTriangle, Loader2,
+  Check, AlertTriangle, Loader2, ChevronRight,
 } from "lucide-react";
 import { TabBar } from "@/screens/DashboardScreen";
 import { useProgramContext } from "@/hooks/useProgramContext";
@@ -578,8 +578,10 @@ export default function RosterScreen() {
             {roster.map(entry => (
               <div
                 key={entry.id}
-                className="card flex items-center gap-3 p-3 active:bg-surface-hover transition-colors"
+                role="button"
+                className="card flex items-center gap-3 p-3 cursor-pointer hover:bg-surface-hover active:bg-surface-hover transition-colors"
                 onClick={() => navigate(`/player/${entry.player_id}`)}
+                title="View this player's stats"
               >
                 <div
                   className="w-11 h-11 rounded-xl bg-surface-bg flex items-center justify-center font-black text-sm shrink-0"
@@ -613,6 +615,7 @@ export default function RosterScreen() {
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
+                <ChevronRight className="w-4 h-4 text-neutral-600 shrink-0" aria-hidden="true" />
               </div>
             ))}
           </div>
