@@ -66,6 +66,13 @@ function isMissingFunction(error: { code?: string; message?: string } | null): b
   return error.code === "PGRST202" || /could not find the function|schema cache/i.test(error.message ?? "");
 }
 
+/** The server's words, except a dropped connection, which reads as a crash. */
+function friendlyError(message: string): string {
+  return /failed to fetch|network|load failed/i.test(message)
+    ? "Can't reach the server. People and invite codes need a connection."
+    : message;
+}
+
 export default function People({ programId }: Props) {
   const perms = usePermissions();
   const assignable = perms.assignableRoles;
@@ -99,9 +106,10 @@ export default function People({ programId }: Props) {
       return;
     }
     if (membersRes.error) {
-      setError(membersRes.error.message);
+      setError(friendlyError(membersRes.error.message));
       return;
     }
+    setError("");
     setMembers((membersRes.data as Member[] | null) ?? []);
     setCodes((codesRes.data as InviteCode[] | null) ?? []);
   }, [programId]);
@@ -129,7 +137,7 @@ export default function People({ programId }: Props) {
     const { error: err } = await work();
     setBusy(false);
     if (err) {
-      setError(err.message);
+      setError(friendlyError(err.message));
       return false;
     }
     await load();
@@ -164,7 +172,7 @@ export default function People({ programId }: Props) {
     });
     setBusy(false);
     if (rpcErr) {
-      setError(rpcErr.message);
+      setError(friendlyError(rpcErr.message));
       return;
     }
     setNewCode({
