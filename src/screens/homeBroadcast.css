@@ -122,7 +122,10 @@ html[data-theme="dark"] .bc {
 .bc-rec-l { font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .85; }
 .bc-rec-v { font-family: "Chakra Petch", sans-serif; font-size: 20px; line-height: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .bc-hdr-tools { display: flex; align-items: center; gap: 2px; }
-.bc-l5 { display: flex; align-items: center; gap: 2px; margin-right: 4px; }
+/* One box per game this season. Past ten they wrap onto a second row
+   (10 x 13px + 9 x 2px gaps = 148px) instead of pushing the header wider
+   than a phone. */
+.bc-l5 { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 2px; max-width: 148px; margin-right: 4px; }
 .bc-l5 b { font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .14em; color: rgba(255, 255, 255, .5); margin-right: 4px; }
 .bc-l5 i {
   width: 13px; height: 13px; display: flex; align-items: center; justify-content: center;

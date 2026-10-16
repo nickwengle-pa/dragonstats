@@ -166,8 +166,8 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
   const losses = completed.filter(g => g.our_score < g.opponent_score).length;
   const ties = completed.length - wins - losses;
   const record = data.loaded ? `${wins}–${losses}${ties ? `–${ties}` : ""}` : "–";
-  /* Oldest on the left, so it reads like a ticker. */
-  const last5 = completed.slice(0, 5).reverse();
+  /* Every result this season, oldest on the left, so it reads like a ticker. */
+  const results = [...completed].reverse();
 
   /* One game carries the four report buttons. The most recent by default; a
      tap on any other recent game swaps it in, which keeps the phone to one
@@ -206,9 +206,9 @@ export default function HomeBroadcast({ data, theme, onToggleTheme, onNavigate, 
             </a>
           </div>
           <div className="bc-hdr-tools">
-            {last5.length > 0 && (
-              <div className="bc-l5" aria-label={`Last ${last5.length} results`}>
-                {last5.map(g => {
+            {results.length > 0 && (
+              <div className="bc-l5" aria-label={`Season results, ${results.length} games`}>
+                {results.map(g => {
                   const r = g.our_score > g.opponent_score ? "w" : g.our_score < g.opponent_score ? "l" : "t";
                   return <i key={g.id} className={r}>{r.toUpperCase()}</i>;
                 })}
