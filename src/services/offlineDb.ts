@@ -610,6 +610,48 @@ export async function markSyncing(queueId: string): Promise<void> {
   await db.put("sync_queue", item);
 }
 
+/** The part of a queued games patch that a sent patch did not deliver. */
+export function unsentPatch(
+  queued: Record<string, unknown>,
+  sent: Record<string, unknown>,
+): Record<string, unknown> {
+  const left: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(queued)) {
+    if (!(key in sent) || JSON.stringify(sent[key]) !== JSON.stringify(value)) left[key] = value;
+  }
+  return left;
+}
+
+/**
+ * A games-row patch was sent directly and the server took it. Clear what was
+ * sent from its queue entry, in one transaction, and keep anything else.
+ *
+ * The entry is coalesced: a patch written while an earlier one was still
+ * owed - live state landing on a queued End Game, say - comes back as the
+ * merged entry. Deleting that whole entry because the live fields landed
+ * threw away the final, its official copy and its score. A key is cleared
+ * only if its queued value is the one that was sent, so a newer value merged
+ * in mid-request also survives.
+ */
+export async function settleGameUpdate(
+  queueId: string,
+  sent: Record<string, unknown>,
+): Promise<void> {
+  if (!isOfflineSupported()) return;
+  const db = await getDb();
+  const tx = db.transaction("sync_queue", "readwrite");
+  const item = await tx.store.get(queueId);
+  if (item && item.op === "game") {
+    const queued = (item.payload?.patch ?? {}) as Record<string, unknown>;
+    const left = unsentPatch(queued, sent);
+    if (Object.keys(left).length === 0) await tx.store.delete(queueId);
+    else if (Object.keys(left).length < Object.keys(queued).length) {
+      await tx.store.put({ ...item, payload: { patch: left } });
+    }
+  }
+  await tx.done;
+}
+
 /** Successfully synced — remove from queue. */
 export async function markSynced(queueId: string): Promise<void> {
   if (!isOfflineSupported()) return;

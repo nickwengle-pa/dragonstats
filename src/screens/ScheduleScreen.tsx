@@ -290,12 +290,16 @@ function OpponentLogoUpload({
 }
 
 function OpponentModal({
-  existing, programId, onClose, onSaved,
+  existing, programId, onClose, onSaved, canEditOpponent = true,
 }: {
   existing: Opponent | null;
   programId: string;
   onClose: () => void;
   onSaved: () => void;
+  /** False for an assistant: the school's details are schedule work, but
+   *  loading its roster before Friday is press-box prep, and the database
+   *  lets them. */
+  canEditOpponent?: boolean;
 }) {
   const [name, setName] = useState(existing?.name ?? "");
   const [abbrev, setAbbrev] = useState(existing?.abbreviation ?? "");
@@ -350,10 +354,11 @@ function OpponentModal({
     <div className="sheet bg-black/70">
       <div className="sheet-panel max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-5 pb-3 shrink-0">
-          <h2 className="text-lg font-black">{existing ? "Edit Opponent" : savedId ? "New Opponent" : "Add Opponent"}</h2>
+          <h2 className="text-lg font-black">{!canEditOpponent ? "Opponent" : existing ? "Edit Opponent" : savedId ? "New Opponent" : "Add Opponent"}</h2>
           <button onClick={onClose} className="btn-ghost p-1.5"><X className="w-5 h-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-3">
+          <fieldset disabled={!canEditOpponent} className="min-w-0 space-y-3">
           <div>
             <label className="label block mb-1.5">School Name *</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Central High School" className="input" />
@@ -408,11 +413,12 @@ function OpponentModal({
             <label className="label block mb-1.5">Notes</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Conference rival, etc." className="input resize-none" />
           </div>
+          </fieldset>
 
           {/* Opponent roster */}
           {savedId && <OpponentRosterSection opponentId={savedId} startExpanded={!existing} />}
 
-          {!savedId ? (
+          {!canEditOpponent ? null : !savedId ? (
             <button onClick={handleSave} disabled={!name || saving} className="btn-primary w-full mt-2">
               {saving ? "Saving..." : "Save & Add Roster"}
             </button>
@@ -590,7 +596,11 @@ export default function ScheduleScreen() {
   const navigate = useNavigate();
   const { program, season } = useProgramContext();
   // Adding, moving and deleting games and opponents is head coach work.
-  const canEdit = usePermissions().editSchedule;
+  const perms = usePermissions();
+  const canEdit = perms.editSchedule;
+  // Opponent rosters (jerseys and names for the entry modal) are open to
+  // anyone who can record, even though the opponent itself is not.
+  const canOppRoster = perms.editRoster;
   const [games, setGames] = useState<GameRow[]>([]);
   const [opponents, setOpponents] = useState<Opponent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -827,7 +837,7 @@ export default function ScheduleScreen() {
                 <button
                   key={opp.id}
                   onClick={() => setOppModal({ open: true, editing: opp })}
-                  disabled={!canEdit}
+                  disabled={!canEdit && !canOppRoster}
                   className="card w-full flex items-center gap-3 p-3 text-left active:bg-surface-hover transition-colors disabled:active:bg-transparent"
                 >
                   {opp.logo_url ? (
@@ -861,9 +871,10 @@ export default function ScheduleScreen() {
       )}
 
       {/* Opponent Modal (add/edit) */}
-      {canEdit && oppModal.open && program && (
+      {(canEdit || (canOppRoster && oppModal.editing)) && oppModal.open && program && (
         <OpponentModal
           existing={oppModal.editing}
+          canEditOpponent={canEdit}
           programId={program.id}
           onClose={() => setOppModal({ open: false, editing: null })}
           onSaved={loadData}

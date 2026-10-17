@@ -150,7 +150,9 @@ INSERT INTO checks (label, actor, stmt, expected) VALUES
 ('assistant cannot switch the active season', 'assistant', $q$SELECT public.set_active_season('b0000000-0000-4000-8000-000000000001', 'c0000000-0000-4000-8000-000000000002')$q$, '42501'),
 ('staff cannot flip is_active directly', 'staff', $q$UPDATE seasons SET is_active = false WHERE program_id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:0'),
 ('head coach edits program settings', 'head', $q$UPDATE programs SET name = 'Renamed' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:1'),
-('assistant cannot edit program settings', 'assistant', $q$UPDATE programs SET game_config = '{}'::jsonb WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:0'),
+('assistant cannot edit program settings, and is told so', 'assistant', $q$UPDATE programs SET game_config = '{}'::jsonb WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, '42501'),
+('staff cannot edit program settings', 'staff', $q$UPDATE programs SET name = 'Nope' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, '42501'),
+('an outsider cannot touch program settings', 'outsider', $q$UPDATE programs SET name = 'Nope' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:0'),
 ('head coach cannot hand the program to someone', 'head', $q$UPDATE programs SET owner_id = 'a0000000-0000-4000-8000-000000000005' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, '42501'),
 ('nobody changes the owner from the app, even an admin', 'admin', $q$UPDATE programs SET owner_id = 'a0000000-0000-4000-8000-000000000003' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, '42501'),
 ('saving settings with the same owner still works', 'head', $q$UPDATE programs SET name = 'Same', owner_id = 'a0000000-0000-4000-8000-000000000001' WHERE id = 'b0000000-0000-4000-8000-000000000001'$q$, 'ok:1'),
@@ -271,6 +273,16 @@ INSERT INTO results (n, label, actor, expected, got)
 SELECT 1008, 'saving the same owner does not re-enrol a removed creator', 'head', 'ok:0',
   'ok:' || count(*) FROM program_members
   WHERE program_id = 'b0000000-0000-4000-8000-000000000001' AND user_id = 'a0000000-0000-4000-8000-000000000001';
+
+-- Naming a new owner from the SQL editor makes them admin, even when they
+-- had already joined with a lesser code.
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{}', true);
+UPDATE programs SET owner_id = 'a0000000-0000-4000-8000-000000000004' WHERE id = 'b0000000-0000-4000-8000-000000000001';
+INSERT INTO results (n, label, actor, expected, got)
+SELECT 1009, 'a new owner set in the SQL editor becomes admin', 'staff', 'admin',
+  role FROM program_members
+  WHERE program_id = 'b0000000-0000-4000-8000-000000000001' AND user_id = 'a0000000-0000-4000-8000-000000000004';
 
 SELECT n, label, actor, expected, got FROM results WHERE got IS DISTINCT FROM expected ORDER BY n;
 SELECT count(*) AS checks, count(*) FILTER (WHERE got = expected) AS passed FROM results;

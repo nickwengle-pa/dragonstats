@@ -191,11 +191,13 @@ function isNetworkFailure(err: unknown): boolean {
   );
 }
 
+/** What a queue item says once the server refused it on role grounds. */
+export const ROLE_REFUSAL_MESSAGE =
+  "Not saved: your role in this program does not allow this change. Ask a head coach or admin.";
+
 /** Record a failed push and classify it. */
 async function failItem(item: SyncQueueItem, err: unknown): Promise<PushOutcome> {
-  const message = isPermissionRefusal(err)
-    ? "Not saved: your role in this program does not allow this change. Ask a head coach or admin."
-    : errorMessage(err);
+  const message = isPermissionRefusal(err) ? ROLE_REFUSAL_MESSAGE : errorMessage(err);
   _status.lastError = message;
   if (isNetworkFailure(err)) {
     await markRetryable(item.id, message);
@@ -300,8 +302,25 @@ async function pushItem(item: SyncQueueItem): Promise<PushOutcome> {
       const { error: delErr } = await supabase
         .from("play_players").delete().eq("play_id", item.playId);
       if (delErr) return await failItem(item, delErr);
-      const { error } = await supabase.from("plays").delete().eq("id", item.playId);
+      const { data: deleted, error } = await supabase
+        .from("plays").delete().eq("id", item.playId).select("id");
       if (error) return await failItem(item, error);
+      /* Row-level security answers a refused delete with zero rows, not an
+         error - an Undo reaching a game someone else has made final. Zero
+         rows also means the play is already gone, so look before calling it
+         either. A refusal stays queued and shows, where marking it synced
+         would have dropped it while the play stayed in the stats. */
+      if (Array.isArray(deleted) && deleted.length === 0) {
+        const { data: still, error: readErr } = await supabase
+          .from("plays").select("id").eq("id", item.playId).maybeSingle();
+        if (readErr) return await failItem(item, readErr);
+        if (still) {
+          return await failItem(item, {
+            code: "42501",
+            message: "The server did not delete this play (the game may be final, or your role may not allow it).",
+          });
+        }
+      }
       await markSynced(item.id);
       return "ok";
     }
@@ -311,6 +330,11 @@ async function pushItem(item: SyncQueueItem): Promise<PushOutcome> {
   } catch (err) {
     return await failItem(item, err);
   }
+}
+
+/** The games-row entry that carries End Game. */
+function isFinalPatch(item: SyncQueueItem): boolean {
+  return item.op === "game" && item.payload?.patch?.status === "completed";
 }
 
 /**
@@ -348,17 +372,20 @@ export async function drainQueue(
     // skip past it and keep pushing. It stays queued, and `stuck` surfaces it.
     const skipped = new Set<string>();
     /* Except the final. Once a game is final the server refuses an
-       assistant's plays, so a final pushed past a play that just failed
-       would turn a retryable play into one that can never land. It waits
-       for the next drain with them; once those plays are given up on (stuck)
+       assistant's plays, so End Game always goes last, wherever it sits in
+       the queue - a queue written by an older build can have it ahead of
+       plays recorded after it. And it waits for the next drain if a play
+       failed on this one, since pushing it would turn a retryable play into
+       one that can never land; once those plays are given up on (stuck)
        they stop being tried, and the final goes. */
     let playSkipped = false;
     while (navigator.onLine) {
       const queue = await getDrainableForGame(gameId, { includeStuck: opts.includeStuck });
-      const item = queue.find((i) => !skipped.has(i.id));
+      const open = queue.filter((i) => !skipped.has(i.id));
+      const item = open.find((i) => !isFinalPatch(i)) ?? open.find(isFinalPatch);
       if (!item) break;
 
-      if (playSkipped && item.op === "game" && item.payload?.patch?.status === "completed") {
+      if (playSkipped && isFinalPatch(item)) {
         skipped.add(item.id);
         continue;
       }

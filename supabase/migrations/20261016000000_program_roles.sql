@@ -26,11 +26,15 @@
 -- The rules live here, not in the app: the anon key ships in the public JS
 -- bundle, so a hidden button is courtesy and these policies are the control.
 --
--- Old app builds keep working against this. is_program_owner() still answers
--- for admins (the old Team Access card calls it), and create_invite_code()
--- still accepts the legacy 'owner' / 'member' role names.
+-- Old app builds mostly keep working against this: is_program_owner() still
+-- answers for admins (the old Team Access card calls it), and
+-- create_invite_code() still accepts the legacy 'owner' / 'member' role names.
+-- The exception is recording. An old build can send End Game ahead of plays
+-- still in its sync queue, and once the game is final an assistant's plays
+-- are refused. So: deploy the app first, reload it on every device that
+-- records games until its sync badge shows nothing pending, THEN apply this.
 --
--- Safe to re-run.
+-- Safe to re-run (a re-run makes each program's recorded owner admin again).
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -44,6 +48,14 @@ UPDATE program_members SET role = 'admin' WHERE role = 'owner';
 UPDATE program_members SET role = 'assistant' WHERE role = 'member';
 UPDATE program_invite_codes SET role = 'admin' WHERE role = 'owner';
 UPDATE program_invite_codes SET role = 'assistant' WHERE role = 'member';
+
+-- A program set up by hand (created with no owner, owner attached later) can
+-- have its owner stored as a plain 'member', which would leave it with nobody
+-- able to edit the schedule, finals or settings, and no way to fix that from
+-- the app. Whoever programs.owner_id names is the program's admin.
+UPDATE program_members m SET role = 'admin'
+FROM programs p
+WHERE p.id = m.program_id AND p.owner_id = m.user_id AND m.role <> 'admin';
 
 ALTER TABLE program_members
   ADD CONSTRAINT program_members_role_check
@@ -189,7 +201,14 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF new_owner IS NOT NULL THEN
+  IF new_owner IS NOT NULL AND TG_OP = 'UPDATE' THEN
+    -- Only the SQL editor gets here (programs_guard_owner refuses anyone
+    -- signed in), so naming a new owner makes them admin even if they had
+    -- already joined with a lesser code.
+    INSERT INTO program_members (program_id, user_id, role)
+    VALUES (NEW.id, new_owner, 'admin')
+    ON CONFLICT (program_id, user_id) DO UPDATE SET role = 'admin';
+  ELSIF new_owner IS NOT NULL THEN
     INSERT INTO program_members (program_id, user_id, role)
     VALUES (NEW.id, new_owner, 'admin')
     ON CONFLICT (program_id, user_id) DO NOTHING;
@@ -232,8 +251,12 @@ CREATE TRIGGER programs_guard_owner
 -- programs: settings are head coach and up; delete stays admin.
 DROP POLICY IF EXISTS "Members update their programs" ON programs;
 DROP POLICY IF EXISTS "Head coaches update their programs" ON programs;
+-- USING admits every member so a lower role's save is refused out loud
+-- (42501 from WITH CHECK) instead of matching no rows: an old build only
+-- checks for an error, and would otherwise show "Saved!" for game rules that
+-- never changed.
 CREATE POLICY "Head coaches update their programs" ON programs
-  FOR UPDATE USING (public.program_rank(id) >= 3)
+  FOR UPDATE USING (public.is_program_member(id))
   WITH CHECK (public.program_rank(id) >= 3);
 
 -- seasons: create and switch are head coach; delete is the Danger Zone.

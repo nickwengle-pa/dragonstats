@@ -75,6 +75,13 @@ describe("draining a game whose End Game is queued behind its plays", () => {
     expect(queue.find((i) => i.id === "q-final")!.status).toBe("pending");
   });
 
+  it("sends the final last even when an older build queued it ahead of later plays", async () => {
+    const { drainQueue } = await import("./syncWorker");
+    queue.push(play("a", 1), final(2), play("b", 3), play("c", 4));
+    await drainQueue("g");
+    expect(pushed).toEqual(["a", "b", "c", "final"]);
+  });
+
   it("lets the final go once the failing play has been given up on", async () => {
     const { drainQueue } = await import("./syncWorker");
     failPlays = new Set(["a"]);

@@ -694,6 +694,8 @@ interface GameMeta {
   opponent_abbreviation: string | null;
   final_snapshot: unknown;
   final_history: unknown;
+  /** False when the games read failed (offline): status above is a default. */
+  status_known: boolean;
 }
 
 type SituationDraft = {
@@ -771,8 +773,13 @@ export default function PostGameReview() {
      assistant this screen is mostly read-only: they can still chart film, but
      the plays, the official copy and the stats-final mark are a head coach's. */
   const perms = usePermissions();
-  const canWrite = canEditGameStats(perms, meta?.status);
-  const viewOnlyReason = meta ? readOnlyReason(perms, meta.status) : null;
+  /* Offline the games read fails and the status is a guess. A guessed "not
+     final" would let an assistant edit plays that the server then refuses
+     behind the End Game this device already queued, so not knowing reads as
+     final for anyone the final lock applies to. */
+  const knownStatus = meta?.status_known ? meta.status : "completed";
+  const canWrite = canEditGameStats(perms, knownStatus);
+  const viewOnlyReason = meta ? readOnlyReason(perms, knownStatus) : null;
   const official = useMemo(() => readSnapshot(meta?.final_snapshot), [meta?.final_snapshot]);
   const currentFinal = useMemo(
     () => (finalConfig && rawPlays.length > 0 ? buildFinalRecordFromRows(rawPlays, finalConfig, { jerseys: rosterJerseys }) : null),
@@ -897,6 +904,7 @@ export default function PostGameReview() {
         opponent_abbreviation: opp?.abbreviation ?? null,
         final_snapshot: g?.final_snapshot ?? null,
         final_history: g?.final_history ?? [],
+        status_known: Boolean(g),
       });
 
       // Roster + opponent players (needed by the play editor)

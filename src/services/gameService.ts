@@ -408,7 +408,11 @@ export async function deletePlay(
       const { error: ppErr } = await supabase
         .from("play_players").delete().eq("play_id", playId);
       if (!ppErr) {
-        const { error } = await supabase.from("plays").delete().eq("id", playId);
+        const { data: deleted, error } = await supabase
+          .from("plays").delete().eq("id", playId).select("id");
+        // Zero rows is a refusal or an already-gone play; the drain tells
+        // which, so leave the intent for it rather than marking it done.
+        if (!error && Array.isArray(deleted) && deleted.length === 0) return;
         if (!error) {
           await markSynced(intent.id);
           await refreshSyncStatus();
@@ -871,7 +875,7 @@ async function saveGamePatch(
   patch: Record<string, unknown>,
   label: string,
 ): Promise<boolean> {
-  const { enqueueGameUpdate, markSynced } = await import("./offlineDb");
+  const { enqueueGameUpdate, settleGameUpdate } = await import("./offlineDb");
   const { refreshSyncStatus } = await import("./syncWorker");
 
   const intent = await enqueueGameUpdate(gameId, patch);
@@ -901,15 +905,10 @@ async function saveGamePatch(
     try {
       const { error } = await updateGamesRow(gameId, patch);
       if (!error) {
-        /* Only clear the entry if nothing merged into it while the request was
-           in flight. A newer patch arriving mid-request means this one no
-           longer describes what is owed, and dropping it would lose that. */
-        const { getUnsyncedForGame } = await import("./offlineDb");
-        const still = (await getUnsyncedForGame(gameId))
-          .find((i) => i.id === intent.id && i.op === "game");
-        if (still && still.createdAt === intent.createdAt) {
-          await markSynced(intent.id);
-        }
+        /* Clear only what this request carried. The queue entry may also hold
+           an earlier patch still owed (a held End Game), or a newer value
+           merged in while this was in flight; both stay for the drain. */
+        await settleGameUpdate(intent.id, patch);
         await refreshSyncStatus();
         return true;
       }

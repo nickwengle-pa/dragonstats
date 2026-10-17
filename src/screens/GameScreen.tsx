@@ -81,7 +81,7 @@ import SyncBadge from "@/components/game/SyncBadge";
 import { useWakeLock, readKeepAwake, writeKeepAwake } from "@/hooks/useWakeLock";
 import ClockInput from "@/components/game/ClockInput";
 import NumberField from "@/components/game/NumberField";
-import { drainQueue, subscribeSyncStatus } from "@/services/syncWorker";
+import { drainQueue, subscribeSyncStatus, ROLE_REFUSAL_MESSAGE } from "@/services/syncWorker";
 import { getUnsyncedForGame, setMeta } from "@/services/offlineDb";
 import { cachedRead, cacheKeys, readSeasonRoster } from "@/services/offlineCache";
 import {
@@ -418,8 +418,13 @@ export default function GameScreen() {
       : contextRosterRead;
 
     // A locally finalized game can still be waiting for the server to sync.
+    /* Not a patch the server refused on role grounds, though: laying an
+       assistant's refused "live" score patch over a game the head coach has
+       since made final would reopen it on this device, and every play then
+       recorded could never sync. */
     const pendingGameUpdates = (await getUnsyncedForGame(gameId))
       .filter((item) => item.op === "game")
+      .filter((item) => !(item.status === "failed" && item.lastError === ROLE_REFUSAL_MESSAGE))
       .sort((a, b) => a.createdAt - b.createdAt);
     const gameData = gameRead.value && pendingGameUpdates.reduce(
       (value, item) => ({ ...value, ...item.payload?.patch }), gameRead.value,
