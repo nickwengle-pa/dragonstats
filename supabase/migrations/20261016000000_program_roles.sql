@@ -182,6 +182,13 @@ AS $$
 DECLARE
   new_owner UUID := COALESCE(NEW.owner_id, auth.uid());
 BEGIN
+  -- The trigger fires on any UPDATE that names owner_id, including one that
+  -- writes the same value back. That must not re-enrol a creator who has
+  -- since been removed or demoted - only a real change of owner does.
+  IF TG_OP = 'UPDATE' AND NEW.owner_id IS NOT DISTINCT FROM OLD.owner_id THEN
+    RETURN NEW;
+  END IF;
+
   IF new_owner IS NOT NULL THEN
     INSERT INTO program_members (program_id, user_id, role)
     VALUES (NEW.id, new_owner, 'admin')
@@ -417,6 +424,12 @@ CREATE POLICY "Managers manage invite codes" ON program_invite_codes
   FOR ALL USING (public.can_assign_role(program_id, role))
   WITH CHECK (public.can_assign_role(program_id, role));
 
+-- Codes are minted by create_invite_code and only ever revoked from the app.
+-- A direct write could set created_at in the future, and a code dated after
+-- its holder's removal lets them straight back in (see redeem_invite_code).
+REVOKE INSERT, UPDATE ON program_invite_codes FROM anon, authenticated;
+GRANT UPDATE (revoked) ON program_invite_codes TO authenticated;
+
 -- ----------------------------------------------------------------------------
 -- 4. What an assistant may change on a game row
 -- ----------------------------------------------------------------------------
@@ -436,6 +449,13 @@ BEGIN
   -- does not apply to them, and neither does this.
   IF auth.uid() IS NULL THEN
     RETURN NEW;
+  END IF;
+
+  -- Moving a game into another program is a delete here and an insert there,
+  -- and an assistant on the far side could not add a game. Nobody needs it.
+  IF NEW.season_id IS DISTINCT FROM OLD.season_id
+     AND public.season_program(NEW.season_id) IS DISTINCT FROM public.season_program(OLD.season_id) THEN
+    RAISE EXCEPTION 'A game cannot be moved to another program' USING ERRCODE = '42501';
   END IF;
 
   IF public.program_rank(public.season_program(OLD.season_id)) >= 3 THEN
@@ -466,6 +486,36 @@ DROP TRIGGER IF EXISTS games_guard_assistant_update ON games;
 CREATE TRIGGER games_guard_assistant_update
   BEFORE UPDATE ON games
   FOR EACH ROW EXECUTE FUNCTION public.guard_assistant_game_update();
+
+-- 3b. Players, seasons and opponents stay in their program. For someone in
+-- two programs, moving a player out is a delete (head coach work) that the
+-- update policies, checked on each side alone, would allow an assistant; a
+-- season moved out takes its games with it, which is the Danger Zone.
+CREATE OR REPLACE FUNCTION public.guard_program_move()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL AND NEW.program_id IS DISTINCT FROM OLD.program_id THEN
+    RAISE EXCEPTION 'This cannot be moved to another program' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS players_guard_program_move ON players;
+CREATE TRIGGER players_guard_program_move
+  BEFORE UPDATE OF program_id ON players
+  FOR EACH ROW EXECUTE FUNCTION public.guard_program_move();
+DROP TRIGGER IF EXISTS seasons_guard_program_move ON seasons;
+CREATE TRIGGER seasons_guard_program_move
+  BEFORE UPDATE OF program_id ON seasons
+  FOR EACH ROW EXECUTE FUNCTION public.guard_program_move();
+DROP TRIGGER IF EXISTS opponents_guard_program_move ON opponents;
+CREATE TRIGGER opponents_guard_program_move
+  BEFORE UPDATE OF program_id ON opponents
+  FOR EACH ROW EXECUTE FUNCTION public.guard_program_move();
 
 -- ----------------------------------------------------------------------------
 -- 5. The active season switch
@@ -610,9 +660,16 @@ BEGIN
     AND (max_uses IS NULL OR uses < max_uses)
   FOR UPDATE;
 
+  -- Queue behind any remove_member running for this program, so a removal
+  -- committing this instant is seen by the check below rather than undone by
+  -- the DELETE at the end.
+  IF FOUND THEN
+    PERFORM pg_advisory_xact_lock(hashtext('program_members:' || invite.program_id::text));
+  END IF;
+
   -- One message for every failure mode on purpose, removal included: someone
   -- who was removed learns nothing from trying their old code.
-  IF NOT FOUND OR EXISTS (
+  IF invite.code IS NULL OR EXISTS (
     SELECT 1 FROM program_member_removals r
     WHERE r.program_id = invite.program_id
       AND r.user_id = auth.uid()
@@ -702,6 +759,10 @@ BEGIN
     RAISE EXCEPTION 'You cannot change your own role' USING ERRCODE = '42501';
   END IF;
 
+  -- One membership change per program at a time: two admins demoting each
+  -- other at once would otherwise each see the other as the admin who stays.
+  PERFORM pg_advisory_xact_lock(hashtext('program_members:' || target_program_id::text));
+
   SELECT m.role INTO current_role_name
   FROM program_members m
   WHERE m.program_id = target_program_id AND m.user_id = target_user_id
@@ -751,6 +812,8 @@ BEGIN
   IF target_user_id = auth.uid() THEN
     RAISE EXCEPTION 'You cannot remove yourself' USING ERRCODE = '42501';
   END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtext('program_members:' || target_program_id::text));
 
   SELECT m.role INTO current_role_name
   FROM program_members m

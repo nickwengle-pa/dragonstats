@@ -188,6 +188,9 @@ INSERT INTO checks (label, actor, stmt, expected) VALUES
 ('assistant sees no codes', 'assistant', $q$SELECT 1 FROM program_invite_codes$q$, 'ok:0'),
 ('head coach cannot revoke the admin code', 'head', $q$UPDATE program_invite_codes SET revoked = true WHERE code = 'TESTADMN'$q$, 'ok:0'),
 ('head coach revokes an assistant code', 'head', $q$UPDATE program_invite_codes SET revoked = true WHERE code = 'TESTASST'$q$, 'ok:1'),
+('head coach cannot write a code row directly', 'head', $q$INSERT INTO program_invite_codes (code, program_id, role, created_at) VALUES ('PLANTED1', 'b0000000-0000-4000-8000-000000000001', 'assistant', now() + interval '50 years')$q$, '42501'),
+('head coach cannot re-date a code', 'head', $q$UPDATE program_invite_codes SET created_at = now() + interval '50 years' WHERE code = 'TESTASST'$q$, '42501'),
+('admin cannot write a code row directly either', 'admin', $q$INSERT INTO program_invite_codes (code, program_id, role) VALUES ('PLANTED2', 'b0000000-0000-4000-8000-000000000001', 'admin')$q$, '42501'),
 ('head coach cannot upgrade a code to admin', 'head', $q$UPDATE program_invite_codes SET role = 'admin' WHERE code = 'TESTASST'$q$, '42501'),
 
 -- People
@@ -236,6 +239,38 @@ RESET ROLE;
 INSERT INTO results (n, label, actor, expected, got)
 SELECT 1002, 'a fresh invite after removal lets them back in', 'assistant', 'ok:1',
   pg_temp.attempt('a0000000-0000-4000-8000-000000000003', format('SELECT public.redeem_invite_code(%L)', :'fresh_code'));
+
+-- ------------------------------------------ nothing changes program
+-- Someone in two programs: the other program's admin is also a head coach
+-- here. Each side's update policy alone would let them move rows across,
+-- which is a delete on this side.
+INSERT INTO program_members (program_id, user_id, role) VALUES
+  ('b0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000006', 'head_coach');
+INSERT INTO results (n, label, actor, expected, got) VALUES
+  (1003, 'a game cannot be moved to another program', 'other_admin', '42501',
+    pg_temp.attempt('a0000000-0000-4000-8000-000000000006', $q$UPDATE games SET season_id = 'c0000000-0000-4000-8000-000000000009' WHERE id = 'e0000000-0000-4000-8000-000000000002'$q$)),
+  (1004, 'a season cannot be moved to another program', 'other_admin', '42501',
+    pg_temp.attempt('a0000000-0000-4000-8000-000000000006', $q$UPDATE seasons SET program_id = 'b0000000-0000-4000-8000-000000000002', year = 2031 WHERE id = 'c0000000-0000-4000-8000-000000000002'$q$)),
+  (1005, 'a player cannot be moved to another program', 'other_admin', '42501',
+    pg_temp.attempt('a0000000-0000-4000-8000-000000000006', $q$UPDATE players SET program_id = 'b0000000-0000-4000-8000-000000000002' WHERE id = 'f0000000-0000-4000-8000-000000000002'$q$)),
+  (1006, 'an opponent cannot be moved to another program', 'other_admin', '42501',
+    pg_temp.attempt('a0000000-0000-4000-8000-000000000006', $q$UPDATE opponents SET program_id = 'b0000000-0000-4000-8000-000000000002' WHERE id = 'd0000000-0000-4000-8000-000000000001'$q$)),
+  (1007, 'a game still moves between seasons of one program', 'other_admin', 'ok:1',
+    pg_temp.attempt('a0000000-0000-4000-8000-000000000006', $q$UPDATE games SET season_id = 'c0000000-0000-4000-8000-000000000002' WHERE id = 'e0000000-0000-4000-8000-000000000003'$q$));
+
+-- ------------------------------------- the creator stays removed
+-- Writing the same owner_id back fires the enrol trigger; it must not put a
+-- removed creator back in as admin.
+DELETE FROM program_members
+WHERE program_id = 'b0000000-0000-4000-8000-000000000001' AND user_id = 'a0000000-0000-4000-8000-000000000001';
+SELECT set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+UPDATE programs SET owner_id = owner_id WHERE id = 'b0000000-0000-4000-8000-000000000001';
+RESET ROLE;
+INSERT INTO results (n, label, actor, expected, got)
+SELECT 1008, 'saving the same owner does not re-enrol a removed creator', 'head', 'ok:0',
+  'ok:' || count(*) FROM program_members
+  WHERE program_id = 'b0000000-0000-4000-8000-000000000001' AND user_id = 'a0000000-0000-4000-8000-000000000001';
 
 SELECT n, label, actor, expected, got FROM results WHERE got IS DISTINCT FROM expected ORDER BY n;
 SELECT count(*) AS checks, count(*) FILTER (WHERE got = expected) AS passed FROM results;
