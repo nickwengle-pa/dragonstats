@@ -5,7 +5,7 @@ import type { Season } from "@/services/seasonService";
 import { normalizeRole } from "@/services/access";
 
 /* A development-only stage for the four tab screens, mounted from main.tsx at
-   /screens-preview?screen=schedule|roster|stats|program. It renders the real
+   /screens-preview?screen=schedule|roster|stats|program|changes. It renders the real
    screen with no program context, so nothing loads — the point is to see the
    header and the Broadcast palette on the real markup in both themes without
    standing up auth. `?theme=dark` is honoured the same way as /home-preview,
@@ -22,6 +22,7 @@ const SCREENS = {
   roster: lazy(() => import("./RosterScreen")),
   stats: lazy(() => import("./SeasonStatsScreen")),
   program: lazy(() => import("./SettingsScreen")),
+  changes: lazy(() => import("./ChangeLogScreen")),
 };
 
 const PROGRAM: Program = {

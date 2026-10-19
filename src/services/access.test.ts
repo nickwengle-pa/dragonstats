@@ -42,6 +42,12 @@ assert.equal(canEditGameStats(unknown, "live"), true);
 assert.equal(unknown.managePeople, false);
 assert.equal(unknown.dangerZone, false);
 assert.equal(unknown.editProgram, false);
+assert.equal(unknown.seeChangeLog, false);
+
+// The Change Log is for the people who run the program.
+assert.equal(admin.seeChangeLog, true);
+assert.equal(head.seeChangeLog, true);
+assert.equal(asst.seeChangeLog, false);
 
 // Who may hand out which role. A head coach can't make an admin.
 assert.deepEqual([...admin.assignableRoles], ["admin", "head_coach", "assistant", "staff"]);
