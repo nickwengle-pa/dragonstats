@@ -4,7 +4,7 @@ import { ArrowLeft, History } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { usePermissions, useProgramContext } from "@/hooks/useProgramContext";
 import {
-  actorLabel, changeLines, changeTitle, gameLabel, isAfterGame, type ChangeRow,
+  actorLabel, changeLines, changeTitle, gameIdOf, gameLabel, isAfterGame, isEmptyEdit, type ChangeRow,
 } from "@/services/changeLog";
 
 /**
@@ -82,14 +82,18 @@ export default function ChangeLogScreen() {
 
   const games = useMemo(() => {
     const seen = new Map<string, string>();
-    for (const r of rows) if (r.game_id && !seen.has(r.game_id)) seen.set(r.game_id, gameLabel(r.game_info));
+    for (const r of rows) {
+      const id = gameIdOf(r);
+      if (id && !seen.has(id)) seen.set(id, gameLabel(r.game_info));
+    }
     return [...seen.entries()];
   }, [rows]);
 
   const people = useMemo(() => [...new Set(rows.map(actorLabel))].sort(), [rows]);
 
   const shown = rows.filter((r) =>
-    (!game || r.game_id === game)
+    !isEmptyEdit(r)
+    && (!game || gameIdOf(r) === game)
     && (phase === "all" || isAfterGame(r))
     && (!person || actorLabel(r) === person));
 

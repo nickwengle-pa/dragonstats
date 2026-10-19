@@ -41,6 +41,9 @@ export interface PlayView {
   turnover?: boolean;
   penalty?: boolean;
   desc?: string;
+  /** Where the play started. Compared only when it was set by hand. */
+  at?: { poss?: string; down?: number; dist?: number; ball?: number };
+  hand_start?: boolean;
   pd?: Record<string, unknown>;
   credits?: ViewCredit[];
 }
@@ -59,7 +62,7 @@ export interface ChangeRow {
   id: number;
   program_id: string;
   game_id: string | null;
-  game_info: { opponent?: string | null; date?: string | null; is_home?: boolean | null } | null;
+  game_info: { id?: string | null; opponent?: string | null; date?: string | null; is_home?: boolean | null } | null;
   play_id: string | null;
   play_number: number | null;
   action: ChangeAction;
@@ -67,7 +70,7 @@ export interface ChangeRow {
   actor_id: string | null;
   actor_email: string | null;
   actor_name: string | null;
-  before: (PlayView & Score & { plays?: number }) | null;
+  before: (PlayView & Score & { plays?: number; game_id?: string }) | null;
   after: (PlayView & Score & { entry?: HistoryEntry | null }) | null;
   created_at: string;
 }
@@ -151,10 +154,10 @@ const ROLE_LABEL: Record<string, string> = {
 export const roleLabel = (role: string): string => ROLE_LABEL[role] ?? words(role);
 
 function personName(jersey: unknown, name: unknown, suffix = ""): string {
-  const parts = [
-    typeof jersey === "number" || (typeof jersey === "string" && jersey) ? `#${jersey}` : "",
-    typeof name === "string" ? name.trim() : "",
-  ].filter(Boolean);
+  const number = typeof jersey === "number" || (typeof jersey === "string" && jersey) ? `#${jersey}` : "";
+  // A quick-added opponent is stored with its jersey as its name.
+  const text = typeof name === "string" && name.trim() !== number ? name.trim() : "";
+  const parts = [number, text].filter(Boolean);
   return (parts.join(" ") || "Unknown") + suffix;
 }
 
@@ -171,8 +174,9 @@ export function playersByRole(view: PlayView | null | undefined): Map<string, st
   for (const c of view?.credits ?? []) add(c.role, personName(c.jersey, c.name, shared(c.credit)));
   const pd = view?.pd ?? {};
   const list = (key: string) => (Array.isArray(pd[key]) ? (pd[key] as Array<Record<string, unknown>>) : []);
-  for (const t of list("opp_tagged")) add(t.role, personName(t.jersey_number, t.name, ` (opponent)${shared(t.credit)}`));
-  for (const t of list("pending_tagged")) add(t.role, personName(t.jersey_number, "", ` (not on roster)${shared(t.credit)}`));
+  // The log stores these tags trimmed to role, credit, jersey and name.
+  for (const t of list("opp_tagged")) add(t.role, personName(t.jersey ?? t.jersey_number, t.name, ` (opponent)${shared(t.credit)}`));
+  for (const t of list("pending_tagged")) add(t.role, personName(t.jersey ?? t.jersey_number, "", ` (not on roster)${shared(t.credit)}`));
   for (const t of list("team_tagged")) add(t.role, `TEAM${shared(t.credit)}`);
   for (const names of out.values()) names.sort();
   return out;
@@ -194,6 +198,7 @@ function plain(v: unknown): string {
    listed by role instead, so they are left out here. */
 const PD_FIELDS: Array<[string, string]> = [
   ["result", "Result"],
+  ["is_first_down", "First down"],
   ["kick_outcome", "Kick result"],
   ["is_touchback", "Touchback"],
   ["penalty_type", "Penalty"],
@@ -219,6 +224,35 @@ const PD_FIELDS: Array<[string, string]> = [
   ["timeout_team", "Timeout"],
 ];
 
+/* The play type names the play-entry buttons use (PLAY_TYPES in
+   components/game/types.ts; this file imports nothing from the app). */
+const PLAY_TYPE_LABEL: Record<string, string> = {
+  rush: "Run", scramble: "Scramble", kneel: "Kneel", bad_snap: "Bad Snap", fumble: "Fumble",
+  safety: "Safety", pass_comp: "Complete", pass_inc: "Incomplete", throwaway: "Throw Away",
+  drop: "Drop", sack: "Sack", int: "INT", spike: "Spike", pat: "PAT Kick", two_pt: "2PT",
+  fg: "Field Goal", kickoff: "Kickoff", onside_kick: "Onside", punt: "Punt",
+  fair_catch: "Fair Catch", blocked_kick: "Blocked", penalty_only: "Penalty",
+  false_start: "False Start", encroachment: "Encroachment", timeout: "Timeout",
+  quarter_change: "Quarter change", score_correction: "Score correction",
+};
+
+export const playTypeLabel = (type: unknown): string =>
+  typeof type === "string" && type ? PLAY_TYPE_LABEL[type] ?? words(type) : "-";
+
+const ORDINAL = ["", "1st", "2nd", "3rd", "4th"];
+
+/** "1st & 10, our ball on our 30" - ball is yards from the offense's goal. */
+function startLabel(at: PlayView["at"]): string {
+  if (!at) return "-";
+  const down = at.down != null ? `${ORDINAL[at.down] ?? `${at.down}th`} & ${at.dist ?? "?"}` : "";
+  const whose = at.poss === "them" ? "their" : "our";
+  const other = at.poss === "them" ? "our" : "their";
+  const spot = at.ball == null ? ""
+    : at.ball === 50 ? "on the 50"
+    : at.ball < 50 ? `on ${whose} ${at.ball}` : `on ${other} ${100 - at.ball}`;
+  return [down, spot ? `${whose} ball ${spot}` : ""].filter(Boolean).join(", ") || "-";
+}
+
 /**
  * The lines that differ between two versions of a play. The description is
  * not a line: it is shown whole above them.
@@ -229,7 +263,8 @@ export function playChanges(before: PlayView | null | undefined, after: PlayView
   const b = before ?? {};
   const a = after ?? {};
 
-  push("Play", plain(b.type), plain(a.type));
+  push("Play", playTypeLabel(b.type), playTypeLabel(a.type));
+  if (a.hand_start) push("Start (set by hand)", startLabel(b.at), startLabel(a.at));
   push("Quarter", b.q != null ? `Q${b.q}` : "-", a.q != null ? `Q${a.q}` : "-");
   push("Yards", plain(b.yards ?? 0), plain(a.yards ?? 0));
   push("Touchdown", yesNo(b.td), yesNo(a.td));
@@ -258,11 +293,40 @@ export function finalChanges(row: ChangeRow): ChangeLine[] {
   return lines;
 }
 
+/** Who a deleted or added play credited, and what it was. */
+function playSummary(view: PlayView | null | undefined, gone: boolean): ChangeLine[] {
+  if (!view) return [];
+  const line = (label: string, value: string): ChangeLine =>
+    gone ? { label, before: value, after: "-" } : { label, before: "-", after: value };
+  const lines = [line("Play", playTypeLabel(view.type))];
+  if (view.yards) lines.push(line("Yards", String(view.yards)));
+  if (view.td) lines.push(line("Touchdown", "Yes"));
+  if (view.turnover) lines.push(line("Turnover", "Yes"));
+  const people = playersByRole(view);
+  for (const role of [...people.keys()].sort((x, y) => roleLabel(x).localeCompare(roleLabel(y)))) {
+    lines.push(line(roleLabel(role), (people.get(role) ?? []).join(", ")));
+  }
+  return lines;
+}
+
 /** Lines for any entry; empty when the title says it all. */
 export function changeLines(row: ChangeRow): ChangeLine[] {
   if (row.action === "play_edited") return playChanges(row.before, row.after);
+  if (row.action === "play_deleted") return playSummary(row.before, true);
+  if (row.action === "play_added") return playSummary(row.after, false);
   if (row.action === "final_changed" || row.action === "stats_final") return finalChanges(row);
   return [];
+}
+
+/** The game an entry belongs to, also once the game itself is deleted. */
+export function gameIdOf(row: Pick<ChangeRow, "game_id" | "game_info" | "before">): string | null {
+  return row.game_id ?? row.game_info?.id ?? row.before?.game_id ?? null;
+}
+
+/** An edit whose every difference is one the log does not show a coach. */
+export function isEmptyEdit(row: ChangeRow): boolean {
+  return row.action === "play_edited" && changeLines(row).length === 0
+    && (row.before?.desc ?? "") === (row.after?.desc ?? "");
 }
 
 /** "vs Rival, Oct 17" from what the log kept about the game. */
