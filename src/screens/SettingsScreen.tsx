@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
+  ChevronRight,
   Check,
   Edit2,
+  History,
   Image,
   Palette,
   Plus,
@@ -845,6 +847,22 @@ export default function SettingsScreen({ firstTime = false }: Props) {
         )}
 
         {program && !firstTime && <People programId={program.id} />}
+
+        {program && !firstTime && perms.seeChangeLog && (
+          <button
+            onClick={() => navigate("/changes")}
+            className="card p-4 w-full flex items-center gap-3 text-left cursor-pointer active:bg-surface-hover"
+          >
+            <History className="w-5 h-5 text-dragon-primary shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-display font-extrabold uppercase tracking-[0.14em]">Change Log</div>
+              <div className="text-[11px] text-surface-muted/70 font-body mt-0.5">
+                Who started, ended and changed each game, and what a changed play used to be.
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-surface-muted shrink-0" />
+          </button>
+        )}
 
         {program && !firstTime && perms.dangerZone && (
           <DangerZone

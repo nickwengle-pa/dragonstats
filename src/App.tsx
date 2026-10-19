@@ -46,6 +46,7 @@ const SettingsScreen = lazyWithReload(() => import("@/screens/SettingsScreen"));
 const SeasonStatsScreen = lazyWithReload(() => import("@/screens/SeasonStatsScreen"));
 const SeasonReportScreen = lazyWithReload(() => import("@/screens/SeasonReportScreen"));
 const GameSettingsScreen = lazyWithReload(() => import("@/screens/GameSettingsScreen"));
+const ChangeLogScreen = lazyWithReload(() => import("@/screens/ChangeLogScreen"));
 const BoxScoreScreen = lazyWithReload(() => import("@/screens/BoxScoreScreen"));
 const GameReportScreen = lazyWithReload(() => import("@/screens/GameReportScreen"));
 const DriveChartScreen = lazyWithReload(() => import("@/screens/DriveChartScreen"));
@@ -180,6 +181,7 @@ function AppRoutes() {
         <Route path="/season-stats" element={<ProtectedRoute><SeasonStatsScreen /></ProtectedRoute>} />
         <Route path="/season-report" element={<ProtectedRoute><SeasonReportScreen /></ProtectedRoute>} />
         <Route path="/game-settings" element={<ProtectedRoute><GameSettingsScreen /></ProtectedRoute>} />
+        <Route path="/changes" element={<ProtectedRoute><ChangeLogScreen /></ProtectedRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

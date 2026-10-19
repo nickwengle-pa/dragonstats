@@ -77,6 +77,8 @@ export interface Permissions {
   managePeople: boolean;
   /** Settings' Danger Zone: deleting seasons and bulk purges. */
   dangerZone: boolean;
+  /** The Change Log: who started, ended and changed each game. */
+  seeChangeLog: boolean;
   /** Film Chart charting fields (formation, personnel, notes). */
   chartFilm: boolean;
   /** Roles this person may hand out or take away. */
@@ -87,22 +89,22 @@ export interface Permissions {
    dependency gets the same reference on every render. */
 const ADMIN: Permissions = {
   role: "admin", recordGames: true, editFinalGames: true, editRoster: true,
-  editSchedule: true, editProgram: true, managePeople: true, dangerZone: true, chartFilm: true,
+  editSchedule: true, editProgram: true, managePeople: true, dangerZone: true, seeChangeLog: true, chartFilm: true,
   assignableRoles: ["admin", "head_coach", "assistant", "staff"],
 };
 const HEAD_COACH: Permissions = {
   role: "head_coach", recordGames: true, editFinalGames: true, editRoster: true,
-  editSchedule: true, editProgram: true, managePeople: true, dangerZone: false, chartFilm: true,
+  editSchedule: true, editProgram: true, managePeople: true, dangerZone: false, seeChangeLog: true, chartFilm: true,
   assignableRoles: ["assistant", "staff"],
 };
 const ASSISTANT: Permissions = {
   role: "assistant", recordGames: true, editFinalGames: false, editRoster: true,
-  editSchedule: false, editProgram: false, managePeople: false, dangerZone: false, chartFilm: true,
+  editSchedule: false, editProgram: false, managePeople: false, dangerZone: false, seeChangeLog: false, chartFilm: true,
   assignableRoles: [],
 };
 const STAFF: Permissions = {
   role: "staff", recordGames: false, editFinalGames: false, editRoster: false,
-  editSchedule: false, editProgram: false, managePeople: false, dangerZone: false, chartFilm: false,
+  editSchedule: false, editProgram: false, managePeople: false, dangerZone: false, seeChangeLog: false, chartFilm: false,
   assignableRoles: [],
 };
 /* Role not known: offline on the first launch of this build, before the role
@@ -154,6 +156,7 @@ export const ROLE_ACCESS: readonly RoleAccessRow[] = [
       return who.charAt(0).toUpperCase() + who.slice(1);
     },
   },
+  { label: "See who changed what (Change Log)", cell: (p) => p.seeChangeLog },
   { label: "Danger Zone: delete seasons and data", cell: (p) => p.dangerZone },
 ];
 
