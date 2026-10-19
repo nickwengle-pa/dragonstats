@@ -8,7 +8,7 @@
  * open: an old 'member' row and a role this device never cached both record.
  */
 import assert from "node:assert/strict";
-import { normalizeRole, permissionsFor, canEditGameStats, readOnlyReason } from "./access.ts";
+import { normalizeRole, permissionsFor, canEditGameStats, readOnlyReason, ROLE_ACCESS, type ProgramRole } from "./access.ts";
 
 // Rows written before the migration ran still map to a role.
 assert.equal(normalizeRole("owner"), "admin");
@@ -55,6 +55,22 @@ for (const [key, value] of Object.entries(staff)) {
   if (key === "role" || key === "assignableRoles") continue;
   assert.equal(value, false, `staff.${key}`);
 }
+
+// The admin's role chart on the People card says what the screens enforce.
+const chart = (role: ProgramRole) =>
+  Object.fromEntries(ROLE_ACCESS.map((row) => [row.label, row.cell(permissionsFor(role))]));
+assert.ok(Object.values(chart("admin")).every((cell) => cell === true));
+assert.equal(chart("head_coach")["Change a game once it's final"], true);
+assert.equal(chart("head_coach")["Invite, change and remove people"], "Assistants and staff");
+assert.equal(chart("head_coach")["Danger Zone: delete seasons and data"], false);
+assert.equal(chart("assistant")["Record games and fix plays"], "Until final");
+assert.equal(chart("assistant")["Change a game once it's final"], false);
+assert.equal(chart("assistant")["Film charting"], true);
+assert.equal(chart("assistant")["Schedule, seasons and program settings"], false);
+assert.deepEqual(
+  Object.entries(chart("staff")).filter(([, cell]) => cell !== false).map(([label]) => label),
+  ["See all games, reports and stats"],
+);
 
 // Same role, same object - screens list these as effect dependencies.
 assert.equal(permissionsFor("assistant"), permissionsFor("assistant"));

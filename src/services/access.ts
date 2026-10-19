@@ -122,6 +122,41 @@ export function permissionsFor(role: ProgramRole | null | undefined): Permission
   return role ? BY_ROLE[role] : UNKNOWN;
 }
 
+const ROLE_PLURAL: Record<ProgramRole, string> = {
+  admin: "admins",
+  head_coach: "head coaches",
+  assistant: "assistants",
+  staff: "staff",
+};
+
+/** One line of the role chart an admin sees on the People card. A cell is
+ *  true (yes), false (no) or a few words for a partial yes. */
+export interface RoleAccessRow {
+  label: string;
+  cell: (perms: Permissions) => boolean | string;
+}
+
+/* Read off the permission objects above rather than written out, so the chart
+   cannot say a role may do something the screens then hide from it. */
+export const ROLE_ACCESS: readonly RoleAccessRow[] = [
+  { label: "See all games, reports and stats", cell: () => true },
+  { label: "Record games and fix plays", cell: (p) => p.editFinalGames || (p.recordGames && "Until final") },
+  { label: "Change a game once it's final", cell: (p) => p.editFinalGames },
+  { label: "Film charting", cell: (p) => p.chartFilm },
+  { label: "Add and edit players", cell: (p) => p.editRoster },
+  { label: "Schedule, seasons and program settings", cell: (p) => p.editSchedule && p.editProgram },
+  {
+    label: "Invite, change and remove people",
+    cell: (p) => {
+      if (!p.managePeople) return false;
+      if (p.assignableRoles.length === ROLES.length) return true;
+      const who = p.assignableRoles.map((r) => ROLE_PLURAL[r]).join(" and ");
+      return who.charAt(0).toUpperCase() + who.slice(1);
+    },
+  },
+  { label: "Danger Zone: delete seasons and data", cell: (p) => p.dangerZone },
+];
+
 /**
  * May this person change this game's plays, clock and score? The final lock:
  * an assistant can until the game is final ('completed'), a head coach or

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Ban, Check, Copy, Plus, UserMinus, Users } from "lucide-react";
+import { Ban, Check, ChevronDown, Copy, Plus, ShieldCheck, UserMinus, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { usePermissions } from "@/hooks/useProgramContext";
 import { ROLE_BLURB, ROLE_LABEL, normalizeRole, type ProgramRole } from "@/services/access";
+import RoleChart from "./RoleChart";
 import TeamAccess from "./TeamAccess";
 
 /**
@@ -85,6 +86,7 @@ export default function People({ programId }: Props) {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [showChart, setShowChart] = useState(false);
 
   const [inviting, setInviting] = useState(false);
   const [inviteName, setInviteName] = useState("");
@@ -223,6 +225,26 @@ export default function People({ programId }: Props) {
           {perms.role === "head_coach" && " You can manage assistants and staff."}
         </p>
       </div>
+
+      {/* Admin only. Everyone else sees their own role under Your access. */}
+      {perms.role === "admin" && (
+        <div>
+          <button
+            onClick={() => setShowChart((open) => !open)}
+            aria-expanded={showChart}
+            className="btn-ghost text-xs flex items-center gap-1.5"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            What each role can do
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showChart ? "rotate-180" : ""}`} />
+          </button>
+          {showChart && (
+            <div className="mt-2 rounded-[4px] border border-surface-border bg-black/20 px-2.5 py-2">
+              <RoleChart />
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-xs text-red-400 font-body">{error}</p>}
 
