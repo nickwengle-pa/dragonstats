@@ -7,7 +7,10 @@
 -- (updated_at, and refreshed_at in UTC without a zone) each time the app
 -- renews its token, which it does about hourly while a screen is open, so the
 -- newest stamp across a member's sessions is the best "last used" the server
--- has. A sign-out deletes the session, so the last sign-in still counts.
+-- has. The app signs out globally, which deletes every session the member
+-- has, so a signed-out member has no "last used" at all. Falling back to the
+-- last sign-in there would read as weeks of no use for someone who used the
+-- app daily and then signed out; the card shows only "last in" instead.
 --
 -- Adding a column changes the function's return type, which CREATE OR REPLACE
 -- cannot do, hence the drop. Older builds read the rows by name and ignore
@@ -49,11 +52,9 @@ BEGIN
     m.role,
     m.created_at,
     u.last_sign_in_at,
-    GREATEST(u.last_sign_in_at, (
-      SELECT max(GREATEST(s.updated_at, s.refreshed_at AT TIME ZONE 'UTC'))
-      FROM auth.sessions s
-      WHERE s.user_id = m.user_id
-    )),
+    (SELECT max(GREATEST(s.updated_at, s.refreshed_at AT TIME ZONE 'UTC'))
+       FROM auth.sessions s
+      WHERE s.user_id = m.user_id),
     m.user_id = auth.uid()
   FROM program_members m
   JOIN auth.users u ON u.id = m.user_id

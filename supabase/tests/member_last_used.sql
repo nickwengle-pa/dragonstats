@@ -25,7 +25,7 @@ INSERT INTO program_members (program_id, user_id, role) VALUES
 -- admin: two devices; the newer renewal wins.
 -- head: renewal stamped only in refreshed_at, which has no zone and is UTC.
 -- asst: a session never renewed since sign-in.
--- staff and never: no session (signed out, or never signed in).
+-- staff and never: no session (signed out, or never signed in), so no last used.
 INSERT INTO auth.sessions (id, user_id, created_at, updated_at, refreshed_at) VALUES
   ('51000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', '2026-10-01 12:00+00', '2026-10-15 09:00+00', '2026-10-15 09:00'),
   ('51000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000001', '2026-10-01 12:00+00', '2026-10-19 21:30+00', '2026-10-19 21:30'),
@@ -59,8 +59,8 @@ $$;
 
 -- ------------------------------------------------------------------ checks
 INSERT INTO results VALUES
-  (1, 'last used is the newest renewal, else the last sign-in, which stays as it was',
-    'admin@test=10-19 21:30/10-01 asst@test=10-03 12:00/10-03 head@test=10-18 23:45/10-02 never@test=-/- staff@test=10-04 12:00/10-04',
+  (1, 'last used is the newest renewal, none without a session, and last in stays as it was',
+    'admin@test=10-19 21:30/10-01 asst@test=10-03 12:00/10-03 head@test=10-18 23:45/10-02 never@test=-/- staff@test=-/10-04',
     pg_temp.listed('a1000000-0000-4000-8000-000000000002')),
   (2, 'an assistant still cannot list people', '42501',
     pg_temp.listed('a1000000-0000-4000-8000-000000000003'));
