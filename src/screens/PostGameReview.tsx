@@ -1235,8 +1235,12 @@ export default function PostGameReview() {
 
   const visiblePlays = useMemo(() => {
     const q = playerQuery.trim().toLowerCase();
-    /* A bare number means a jersey, and a jersey matches at a word boundary:
-       typing 2 should not return every 12, 20 and 42 on the sheet. */
+    /* A number search is a "contains" match on purpose: typing 2 brings up
+       2, 12, 20, 22, 42 and so on, so a coach can find a jersey from any digit
+       he remembers. It also catches TEAM placeholders (stored as #100) on 1 or 0.
+       `numeric` below never fires - the pattern has no backslash - and that is
+       what keeps this a contains match. Changing it to /^\d+$/ would switch the
+       search to exact-jersey matching. */
     const numeric = /^d+$/.test(q);
     const jerseyRe = numeric ? new RegExp(`(^|[^0-9])${q}([^0-9]|$)`) : null;
 
