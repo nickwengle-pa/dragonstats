@@ -27,6 +27,8 @@ interface Member {
   role: string;
   joined_at: string;
   last_sign_in_at: string | null;
+  /** Newest session renewal; missing until the database has the column. */
+  last_used_at?: string | null;
   is_me: boolean;
 }
 
@@ -59,6 +61,23 @@ function expiryLabel(code: InviteCode): string {
 function shortDate(iso: string | null): string {
   if (!iso) return "never";
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+/**
+ * "today", "yesterday" or a date. The server only stamps a session when the
+ * app renews its token, about hourly, so a clock time would claim more than
+ * it knows.
+ */
+function usedLabel(iso: string): string {
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const used = new Date(iso);
+  const daysAgo = Math.round((day(new Date()) - day(used)) / 86_400_000);
+  if (daysAgo <= 0) return "today";
+  if (daysAgo === 1) return "yesterday";
+  return used.toLocaleDateString(undefined, {
+    month: "short", day: "numeric",
+    year: used.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+  });
 }
 
 /** A missing function means the roles migration is not on this database yet. */
@@ -261,9 +280,11 @@ export default function People({ programId }: Props) {
                     {name}
                     {m.is_me && <span className="text-[10px] text-surface-muted/70 ml-1.5">(you)</span>}
                   </div>
-                  <div className="text-[10px] text-surface-muted/70 font-body truncate">
+                  {/* Wraps rather than truncates, so a phone still shows the last-used end. */}
+                  <div className="text-[10px] text-surface-muted/70 font-body break-words">
                     {m.display_name && m.email ? `${m.email} · ` : ""}
                     joined {shortDate(m.joined_at)} · last in {shortDate(m.last_sign_in_at)}
+                    {m.last_used_at && ` · last used ${usedLabel(m.last_used_at)}`}
                   </div>
                 </div>
                 {manageable ? (
