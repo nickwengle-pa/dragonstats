@@ -22,6 +22,7 @@ import {
 import {
   getPenaltyDefaultSide,
   getPenaltyEngineCode,
+  taggedCountsInStats,
   type PenaltySide,
   type TaggedPlayer,
   type PlayRecord,
@@ -360,6 +361,9 @@ function toEnginePlay(
   driveNumber: number,
   betweenSeries = false,
 ): Play | null {
+  // Every reader below goes through play.tagged; a TEAM tackle the operator
+  // did not pick is no tackle here too (teamTagCounts).
+  play = { ...play, tagged: play.tagged.filter(taggedCountsInStats) };
   const context = buildPlayContext(stateBefore, scoreBefore, config, driveNumber);
   // Share audited conversions with saved-game reports, using the live situation.
   if (isExplicitNoPlay(play)

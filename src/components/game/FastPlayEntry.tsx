@@ -86,13 +86,13 @@ export default function FastPlayEntry(p: Props) {
   const [saveError, setSaveError] = useState("");
   const [spotTouched, setSpotTouched] = useState(p.spotConfirmed || incomplete || p.isTD || p.yards !== 0);
   const missingRole = ours ? p.playType.roles.find(r => r !== "target" && !p.tagged.some(t => t.role === r)) : undefined;
-  const missingTackle = showTacklers && !ours && !p.noTackle && p.tacklers.length === 0;
   const endSpot = p.isTD ? 100 : p.situation.ballOn + p.yards;
   const [spotRaw, setSpotRaw] = useState(String(endSpot <= 50 ? endSpot : 100 - endSpot));
   const validSpot = incomplete || p.isTD || (spotRaw.trim() !== "" && Number(spotRaw) >= 1 && Number(spotRaw) <= 50);
   const missingGoalChoice = p.goalChoiceRequired && p.nextGoalToGo === undefined;
-  const ready = !missingRole && !missingTackle && !missingGoalChoice && spotTouched && validSpot;
-  const requiredMessage = missingGoalChoice ? "Select 1st & 10 or 1st & G." : !validSpot ? "Enter a yard line from 1 to 50, or choose Touchdown." : missingRole ? `Choose ${labels[missingRole]} or identify on film later.` : !spotTouched ? "Set the ending spot, or tap No gain." : "Choose a tackler, Identify on film later, or No tackle.";
+  // No tackle check: a tackle left blank is no tackle (a sack goes to TEAM).
+  const ready = !missingRole && !missingGoalChoice && spotTouched && validSpot;
+  const requiredMessage = missingGoalChoice ? "Select 1st & 10 or 1st & G." : !validSpot ? "Enter a yard line from 1 to 50, or choose Touchdown." : missingRole ? `Choose ${labels[missingRole]} or identify on film later.` : "Set the ending spot, or tap No gain.";
   const firstDown = !incomplete && p.yards >= p.situation.distance;
   const nextDistance = firstDown ? Math.min(10, 100 - endSpot) : p.situation.distance - (incomplete ? 0 : p.yards);
   const next = carryGoalToGo({ possession: p.situation.possession, ballOn: endSpot, distance: nextDistance,
@@ -115,7 +115,7 @@ export default function FastPlayEntry(p: Props) {
     if (incomplete && who("defender").length) parts.push(`pass breakup by ${who("defender").join(", ")}`);
     if (showTacklers) {
       if (p.tacklers.length) parts.push(`${sack ? "sacked" : "tackled"} by ${p.tacklers.map(tacklerLabel).join(", ")}`);
-      else if (p.noTackle) parts.push("no tackle");
+      else if (p.noTackle || !sack) parts.push("no tackle");
     }
     if (p.badSnap && p.onToggleBadSnap) parts.unshift("Bad snap");
     return parts.join(" · ");

@@ -170,6 +170,26 @@ export function teamTagConfirmed(
   return playData?.team_tackle_confirmed === true && (tag.role === "tackler" || tag.role === "sacker");
 }
 
+/**
+ * Whether a stored TEAM tag is a stat. A TEAM tackle counts only when the
+ * operator picked "Team". A blank tackler is no tackle (Nick, Oct 24): it used
+ * to save as the film-later TEAM tag, which put a TEAM tackle on every kickoff
+ * and punt nobody named a tackler for. "Identify on film later" credits nobody
+ * either until a name goes in. Every other TEAM role still counts, sacks
+ * included, so a sack nobody named stays on the team's Sacks By line.
+ */
+export function teamTagCounts(
+  tag: { role?: unknown; confirmed?: unknown },
+  playData: Record<string, unknown> | null | undefined,
+): boolean {
+  return tag.role !== "tackler" || teamTagConfirmed(tag, playData);
+}
+
+/** teamTagCounts for a tag on a PlayRecord, where TEAM rides with the rest. */
+export function taggedCountsInStats(tag: Pick<TaggedPlayer, "isTeam" | "role" | "teamCreditConfirmed">): boolean {
+  return !tag.isTeam || tag.role !== "tackler" || tag.teamCreditConfirmed === true;
+}
+
 export const TEAM_PLAYER_ID = "our_team";
 /** Jersey the TEAM placeholder wears on a stat sheet. 100 is the convention
  *  the printed reports coaches already read use for a team-credited stop, so
