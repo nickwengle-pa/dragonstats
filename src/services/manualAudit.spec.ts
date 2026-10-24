@@ -74,6 +74,8 @@ describe("NFHS manual audit — corrected regressions", () => {
     expect(s.receiving.receiver1.yards).toBe(16);
     expect(s.homeTeamStats.firstDowns).toBe(0);
     expect(s.homeTeamStats.thirdDownConversions ?? 0).toBe(0);
+    // The down is replayed, so this snap is not a 3rd-down attempt.
+    expect(s.homeTeamStats.thirdDownAttempts).toBe(0);
     expect(s.homeTeamStats.penaltyYards).toBe(15);
   });
   it("A05c: holding a step past the line keeps those yards even with the down replayed", () => {
@@ -83,6 +85,24 @@ describe("NFHS manual audit — corrected regressions", () => {
         next_down: 4, next_distance: 10, next_yard_line: 24, next_possession: "us" } }));
     expect(s.rushing.rusher0.yards).toBe(2);
     expect(s.rushing.rusher0.carries).toBe(1);
+    expect(s.homeTeamStats.fourthDownAttempts).toBe(0);
+  });
+  it("A05f: a 15-yard flag between a try and the kickoff is no first down by penalty", () => {
+    // Portage play 61: their unsportsmanlike after our PAT, enforced on our kickoff.
+    const s = run(
+      row({ play_type: "pat", yard_line: 97, distance: 3, play_data: { result: "Good" }, play_players: tags("kicker") }),
+      row({ id: "p2", sequence: 2, play_type: "penalty_only", is_penalty: true, play_players: [],
+        play_data: { penalty_type: "Unsportsmanlike", penalty_yards: 15, play_category: "defense", penalty_enforcement: "accepted",
+          next_down: 1, next_distance: 10, next_yard_line: 55, next_possession: "us" } }),
+    );
+    expect(s.homeTeamStats.firstDownsPenalty).toBe(0);
+    expect(s.awayTeamStats.penaltyYards).toBe(15);
+  });
+  it("control: the same flag during a series is still a first down by penalty", () => {
+    const s = run(row({ play_type: "penalty_only", is_penalty: true, play_players: [],
+      play_data: { penalty_type: "Unsportsmanlike", penalty_yards: 15, play_category: "defense", penalty_enforcement: "accepted",
+        next_down: 1, next_distance: 10, next_yard_line: 55, next_possession: "us" } }));
+    expect(s.homeTeamStats.firstDownsPenalty).toBe(1);
   });
   it("A05d: a gain past the foul that still renews the series keeps its first down", () => {
     const s = run(row({ down: 1, distance: 10, yard_line: 30, yards_gained: 40, is_penalty: true,
