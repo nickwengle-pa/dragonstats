@@ -157,10 +157,11 @@ describe("NFHS manual audit — corrected regressions", () => {
       play_data: { is_touchback: true, kick_outcome: "touchback", kicked_to_yard: 5, return_to_ball_on: 95 } }));
     expect(s.punting.punter0.puntYards).toBe(65);
   });
-  it("A14: loose-ball yardage through opponent recovery belongs to the original runner", () => {
+  it("A14: a runner who loses the ball gets yards only to where he lost it", () => {
+    // Nick's call (Oct 24): the loose ball's roll to the recovery is nobody's.
     const s = run(row({ yard_line: 50, yards_gained: 5, is_turnover: true,
       play_players: tags("rusher", "fumble_recovery"), play_data: { fumble_recovered_at: 60, fumble_return_yards: 0 } }));
-    expect(s.rushing.rusher0.yards).toBe(10);
+    expect(s.rushing.rusher0.yards).toBe(5);
   });
   it("A15: safety rushing loss belongs to the tagged ball carrier", () => {
     const s = run(row({ play_type: "safety", yard_line: 3, yards_gained: -3, play_players: tags("rusher", "tackler") }));

@@ -67,16 +67,17 @@ describe("touchdown kick return yardage", () => {
 });
 describe("turnover player credits in live and postgame reports", () => {
   for (const type of ["rush", "pass_comp"]) {
-    it(`${type}: NFHS credits 17 yards through recovery and 16 recovery return yards`, () => {
+    // Yards stop where he lost the ball (Nick, Oct 24); the roll to the 41 is nobody's.
+    it(`${type}: credits the 11 yards to the fumble and 16 recovery return yards`, () => {
       const tags = [{ id: "qb1", role: "passer" }, { id: "wr1", role: type === "rush" ? "rusher" : "receiver" }, { id: "lb1", role: "fumble_recovery" }];
       const live = livesummary([appPlay({ id: "forward-fumble", type, ballOn: 24, yards: 11, possession: "us", turnover: true, fumbleRecoveredAt: 41, fumbleReturnYards: 16, tagged: tags })]);
       const post = postgameSummary([dbPlay({ id: "forward-fumble", play_type: type, yard_line: 24, yards_gained: 11, possession: "us", is_turnover: true, play_data: { fumble_recovered_at: 41, fumble_return_yards: 16 }, credits: tags })]);
       for (const summary of [live, post]) {
         expect(summary?.defense.lb1).toMatchObject({ fumbleRecoveries: 1, fumbleRecoveryYards: 16, fumbleRecoveryTouchdowns: 0 });
-        if (type === "rush") expect(summary?.rushing.wr1).toMatchObject({ carries: 1, yards: 17 });
+        if (type === "rush") expect(summary?.rushing.wr1).toMatchObject({ carries: 1, yards: 11 });
         else {
-          expect(summary?.passing.qb1).toMatchObject({ attempts: 1, completions: 1, yards: 17, interceptions: 0 });
-          expect(summary?.receiving.wr1).toMatchObject({ receptions: 1, yards: 17 });
+          expect(summary?.passing.qb1).toMatchObject({ attempts: 1, completions: 1, yards: 11, interceptions: 0 });
+          expect(summary?.receiving.wr1).toMatchObject({ receptions: 1, yards: 11 });
         }
       }
     });
