@@ -3343,7 +3343,7 @@ export default function PlayEntryModal({
                   ? <><strong>Touchdown</strong> · {fumbleReturnYards} return yards</>
                   : <>Return ended at <strong>{formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</strong> · {fumbleReturnYards} return yards</>}</p>
                 {!fumbleRecoveredByUs && ["rush", "pass_comp"].includes(playType.id)
-                  ? <p className="text-xs text-slate-300">Credited {playType.id === "pass_comp" ? "passing / receiving" : "rushing"} yards: <strong>{yards}</strong>, to where he lost the ball. Return yards start at recovery.</p>
+                  ? <p className="text-xs text-slate-300">NFHS credited {playType.id === "pass_comp" ? "passing / receiving" : "rushing"} yards: <strong>{fumbleRecoveredAtBallOn - gameState.ballOn}</strong>. Includes the loose ball's travel to recovery. Return yards start at recovery.</p>
                   : <p className="text-xs text-slate-300">Return yards start where the loose ball was recovered.</p>}
               </div>
 

@@ -437,10 +437,15 @@ export function convertPlay(
   const pd = play.play_data as Record<string, any>;
   // No series to renew: out of reach, so no flag's yardage reads as a first down.
   if (betweenSeries && ["penalty", "penalty_only"].includes(play.play_type)) context = { ...context, distance: 100 };
-  /* A lost fumble credits the ball carrier only to where he lost the ball,
-     which is what yards_gained holds (Nick, Oct 24). The loose ball's travel
-     to the recovery used to be added on, so Clawson's 18-yard catch fumbled
-     forward to the Portage 47 printed as 23. */
+  // A loose ball remains part of the original advance up to recovery, before any recovery return.
+  // The stat manual credits the fumbler "to the point of recovery ... regardless of which team
+  // recovers". It was cut to the fumble spot for a morning (Oct 24); Nick put it back to the book.
+  // Read through readFumbleSpots: a stored 0 is a leftover, not the goal line.
+  const recoveredAt = readFumbleSpots(pd).fumbleRecoveredAt;
+  if (play.is_turnover && ["rush", "pass_comp", "sack", "fum_rec"].includes(play.play_type)
+      && recoveredAt != null) {
+    play = { ...play, yards_gained: recoveredAt - (play.yard_line ?? 0) };
+  }
   const penalties = buildPenalties(play, ctx);
   const gainToFoulSpot = Boolean(penalties?.length) && keepsGainToFoulSpot(play);
   if (penalties?.length && pd?.penalty_play_counts === false && pd.penalty_enforcement !== "declined" && !gainToFoulSpot) {
