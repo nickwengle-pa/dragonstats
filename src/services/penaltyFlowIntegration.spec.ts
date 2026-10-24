@@ -45,8 +45,10 @@ const group = (summary: GameSummary, name: string, id: string): Record<string, n
   ((summary as unknown as Record<string, Record<string, Record<string, number>>>)[name] ?? {})[id] ?? {};
 
 describe("recorded penalty rulings", () => {
+  /* Holding past the line opens with "Play counts" off: the down is replayed,
+     and the run still counts up to the foul spot through the stats rule. */
   for (const [penalty, spot, enforcement, expected] of [
-    ["Holding-OFF", 45, "accepted", true],
+    ["Holding-OFF", 45, "accepted", false],
     ["Holding-OFF", 35, "accepted", false],
     ["Custom foul", null, "accepted", false],
     ["Custom foul", null, "declined", true],

@@ -1,4 +1,4 @@
-import { nullifiedStats, preservesAdvance } from "./statAuditRules";
+import { keepsGainToFoulSpot, nullifiedStats, preservesAdvance } from "./statAuditRules";
 /**
  * Transforms dragonstats PlayWithPlayers records into football-stats-engine Play objects.
  *
@@ -358,7 +358,10 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
     isAutoFirstDown: grantsAutoFirstDown(penaltyType, penCategory),
     // The operator said the play counts: the engine must not wipe it.
     preservesPlayStats: pd?.penalty_play_counts === true || preservesAdvance(pd ?? {}, play.yard_line ?? 0),
-    ...(typeof pd?.penalty_play_counts === "boolean" ? { nullifiesPlayStats: !pd.penalty_play_counts } : {}),
+    // false is "the down is replayed"; the gain up to a foul past the line
+    // still stands, so it must not tell the engine to wipe the play.
+    ...(typeof pd?.penalty_play_counts === "boolean" && !keepsGainToFoulSpot(play)
+      ? { nullifiesPlayStats: !pd.penalty_play_counts } : {}),
   }];
 }
 
@@ -421,14 +424,20 @@ export function convertPlay(
     play = { ...play, yards_gained: recoveredAt - (play.yard_line ?? 0) };
   }
   const penalties = buildPenalties(play, ctx);
-  if (penalties?.length && pd?.penalty_play_counts === false && pd.penalty_enforcement !== "declined") {
+  const gainToFoulSpot = Boolean(penalties?.length) && keepsGainToFoulSpot(play);
+  if (penalties?.length && pd?.penalty_play_counts === false && pd.penalty_enforcement !== "declined" && !gainToFoulSpot) {
     return { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } satisfies PenaltyPlay & { context: PlayContext };
   }
-  // Holding beyond the line keeps the run up to the foul. A play the operator
-  // said counts keeps all of it.
-  if (penalties?.length && pd?.penalty_play_counts !== true && preservesAdvance(pd ?? {}, play.yard_line ?? 0)
-      && ["rush", "pass_comp"].includes(play.play_type)) {
+  // An offensive foul past the line keeps the gain up to the foul. A play the
+  // operator said counts keeps all of it.
+  if (gainToFoulSpot) {
     play = { ...play, yards_gained: Math.min(play.yards_gained, pd.foul_spot_ball_on - (play.yard_line ?? 0)) };
+    /* The engine credits a first down whenever the gain reaches the distance,
+       but this down is replayed: 16 yards to the foul on 3rd & 6 is still 3rd
+       down after the walk-off. Only a series the enforcement actually renewed
+       earns one, so otherwise the gain is kept just short of the chains. */
+    const renewed = Number(pd.next_down) === 1 && pd.next_possession === play.possession;
+    if (!renewed && play.yards_gained >= context.distance) context = { ...context, distance: play.yards_gained + 1 };
   }
   const isOurOffense = play.possession === "us";
 
@@ -438,7 +447,7 @@ export function convertPlay(
   }
   // The penalty replaces the play: roughing or running into the punter, or
   // the operator saying so. The flag still counts; nothing from the snap does.
-  if (isWipedByPenaltyRow(play)) {
+  if (isWipedByPenaltyRow(play) && !gainToFoulSpot) {
     return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } as Play : null;
   }
 

@@ -2196,7 +2196,7 @@ export default function PlayEntryModal({
 
   const playEffect = penaltyPlayEffect({
     playTypeId: playType.id, penalty, side: penaltyCategory, enforcement: penaltyEnforcement,
-    override: playCountsOverride, foulSpotBallOn, ballOn: gameState.ballOn,
+    override: playCountsOverride, foulSpotBallOn, ballOn: gameState.ballOn, enforcementFrom: penaltyEnforcementFrom,
   });
 
   /** Whether this pass shows "set the spot myself": an accepted flag on a
@@ -2381,9 +2381,14 @@ export default function PlayEntryModal({
     setFlagYardsRaw(String(PENALTY_DEFAULT_YARDS[label] ?? 5));
     setPenaltyEnforcementFrom(PENALTY_RULES[label]?.enforcementFrom ?? "auto");
     setPenaltyDownOutcome(null);
-    setPenaltyPlayCounts(!isPenaltyOnly && penaltyPlayEffect({ playTypeId: playType.id, penalty: label,
+    /* "partial" - a spot foul past the line - keeps the gain to the foul in
+       the stats, but the down is replayed, so the play does not "count" here:
+       counting it would advance the down. */
+    const effect = penaltyPlayEffect({ playTypeId: playType.id, penalty: label,
       side: defaultFlagSide(label), enforcement: penaltyEnforcement, override: null,
-      foulSpotBallOn: isSpotFoul(label) ? playEndBallOn : gameState.ballOn, ballOn: gameState.ballOn }) !== "wiped");
+      foulSpotBallOn: isSpotFoul(label) ? playEndBallOn : gameState.ballOn, ballOn: gameState.ballOn,
+      enforcementFrom: PENALTY_RULES[label]?.enforcementFrom ?? "auto" });
+    setPenaltyPlayCounts(!isPenaltyOnly && effect !== "wiped" && effect !== "partial");
     setPlayCountsOverride(null);
     setOverrideSpot(false);
     /* Prefill the spot, because almost every foul has an obvious one and
