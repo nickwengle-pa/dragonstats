@@ -62,6 +62,42 @@ describe("NFHS manual audit — corrected regressions", () => {
       play_data: { penalty_type: "Holding-OFF", penalty_yards: 10, play_category: "offense", penalty_enforcement: "accepted", foul_spot_ball_on: 68 } }));
     expect(s.homeTeamStats.rushingYards).toBe(18);
   });
+  it("A05b: a block in the back past the line keeps the catch up to the foul, with the down replayed", () => {
+    // Portage, Oct 23: 3rd & 6 at the POR 41, 26-yard catch, crackback at the POR 25, 3rd & 5 at the POR 40.
+    const s = run(row({ play_type: "pass_comp", down: 3, distance: 6, yard_line: 59, yards_gained: 26, is_penalty: true,
+      play_players: tags("passer", "receiver"),
+      play_data: { penalty_type: "Crackback", penalty_yards: 15, play_category: "offense", penalty_enforcement: "accepted",
+        penalty_enforcement_from: "spot_of_foul", foul_spot_ball_on: 75, penalty_play_counts: false,
+        next_down: 3, next_distance: 5, next_yard_line: 60, next_possession: "us" } }));
+    expect(s.passing.passer0.completions).toBe(1);
+    expect(s.passing.passer0.yards).toBe(16);
+    expect(s.receiving.receiver1.yards).toBe(16);
+    expect(s.homeTeamStats.firstDowns).toBe(0);
+    expect(s.homeTeamStats.thirdDownConversions ?? 0).toBe(0);
+    expect(s.homeTeamStats.penaltyYards).toBe(15);
+  });
+  it("A05c: holding a step past the line keeps those yards even with the down replayed", () => {
+    const s = run(row({ down: 4, distance: 2, yard_line: 32, yards_gained: 20, is_penalty: true,
+      play_data: { penalty_type: "Holding-OFF", penalty_yards: 10, play_category: "offense", penalty_enforcement: "accepted",
+        penalty_enforcement_from: "spot_of_foul", foul_spot_ball_on: 34, penalty_play_counts: false,
+        next_down: 4, next_distance: 10, next_yard_line: 24, next_possession: "us" } }));
+    expect(s.rushing.rusher0.yards).toBe(2);
+    expect(s.rushing.rusher0.carries).toBe(1);
+  });
+  it("A05d: a gain past the foul that still renews the series keeps its first down", () => {
+    const s = run(row({ down: 1, distance: 10, yard_line: 30, yards_gained: 40, is_penalty: true,
+      play_data: { penalty_type: "Holding-OFF", penalty_yards: 10, play_category: "offense", penalty_enforcement: "accepted",
+        penalty_enforcement_from: "spot_of_foul", foul_spot_ball_on: 55, penalty_play_counts: false,
+        next_down: 1, next_distance: 10, next_yard_line: 45, next_possession: "us" } }));
+    expect(s.rushing.rusher0.yards).toBe(25);
+    expect(s.homeTeamStats.firstDowns).toBe(1);
+  });
+  it("A05e: a foul at the line still wipes the play", () => {
+    const s = run(row({ yard_line: 40, yards_gained: 12, is_penalty: true,
+      play_data: { penalty_type: "Holding-OFF", penalty_yards: 10, play_category: "offense", penalty_enforcement: "accepted",
+        penalty_enforcement_from: "previous_spot", foul_spot_ball_on: 40, penalty_play_counts: false } }));
+    expect(s.rushing.rusher0?.yards ?? 0).toBe(0);
+  });
   it("A06: a nullified play must not give the defender a tackle", () => {
     const s = run(row({ yards_gained: -2, is_penalty: true, play_players: tags("rusher", "tackler"),
       play_data: { penalty_type: "Holding-OFF", penalty_yards: 10, play_category: "offense", penalty_enforcement: "accepted" } }));

@@ -1,17 +1,44 @@
 import { lookupPenalty } from "football-stats-engine";
-import { getPenaltyEngineCode, isWipedByPenaltyRow } from "@/components/game/types";
+import { getPenaltyEngineCode, isSpotFoul, isWipedByPenaltyRow } from "@/components/game/types";
 
-/** A recorded foul beyond the line can preserve the legal advance before enforcement. */
+/** The plays whose gain can stand up to a foul spot past the line. */
+const GAIN_TO_FOUL_SPOT_TYPES = new Set(["rush", "pass_comp"]);
+
+/**
+ * An offensive foul past the line, marked off from where it happened: the gain
+ * up to the foul spot is a real gain (NFHS/NCAA stat rules), even though the
+ * down is replayed.
+ *
+ * It used to cover offensive holding only, and only on a row with no
+ * play-counts flag - but the play-entry modal writes penalty_play_counts=false
+ * on every flag that replays the down, so a block in the back behind a 26-yard
+ * catch (Portage, Oct 23) dropped the whole catch from the passer and the
+ * receiver. false means "the down does not count", which is true here too; it
+ * does not mean the yards before the foul never happened. Only true - the whole
+ * play stands - turns this off.
+ *
+ * "auto" counts only for the fouls whose automatic enforcement is the foul spot
+ * (holding beyond the line, and the spot fouls), because anything else with
+ * "auto" kept the line of scrimmage as its prefilled foul spot.
+ */
 export function preservesAdvance(pd: Record<string, any>, ballOn: number): boolean {
-  if (["declined", "offset"].includes(pd.penalty_enforcement) || pd.penalty_play_counts === false) return false;
-  if (pd.penalty_enforcement_from && !["auto", "spot_of_foul"].includes(pd.penalty_enforcement_from)) return false;
-  return pd.play_category === "offense" && pd.penalty_type === "Holding-OFF"
-    && typeof pd.foul_spot_ball_on === "number" && pd.foul_spot_ball_on > ballOn;
+  if (["declined", "offset"].includes(pd.penalty_enforcement) || pd.penalty_play_counts === true) return false;
+  if (pd.play_category !== "offense" || typeof pd.foul_spot_ball_on !== "number" || pd.foul_spot_ball_on <= ballOn) return false;
+  const from = pd.penalty_enforcement_from ?? "auto";
+  if (from === "spot_of_foul") return true;
+  return from === "auto" && (pd.penalty_type === "Holding-OFF" || isSpotFoul(pd.penalty_type));
+}
+
+/** preservesAdvance for a stored row, limited to the play types it applies to. */
+export function keepsGainToFoulSpot(play: { play_type?: string; is_penalty: boolean; play_data: any; yard_line: number | null }): boolean {
+  return play.is_penalty && GAIN_TO_FOUL_SPOT_TYPES.has(play.play_type ?? "")
+    && preservesAdvance(play.play_data ?? {}, play.yard_line ?? 0);
 }
 
 export function nullifiedStats(play: { play_type?: string; is_penalty: boolean; play_data: any; yard_line: number | null }): boolean {
   const pd = play.play_data ?? {};
   if (!play.is_penalty || pd.penalty_enforcement === "declined") return false;
+  if (keepsGainToFoulSpot(play)) return false;
   // The operator's call on the field outranks the rulebook guess below.
   if (typeof pd.penalty_play_counts === "boolean") return !pd.penalty_play_counts;
   if (pd.penalty_enforcement === "offset") return false;
@@ -20,6 +47,11 @@ export function nullifiedStats(play: { play_type?: string; is_penalty: boolean; 
   return lookupPenalty(getPenaltyEngineCode(pd.penalty_type) ?? pd.penalty_type)?.replayDown ?? true;
 }
 
+/**
+ * Whether the edit modal should open with "Play counts" on. A foul whose gain
+ * stands only up to the foul spot opens with it off: the down is replayed, and
+ * "Play counts" on would advance it.
+ */
 export function penaltyPlayCountsForEdit(play: {
   type?: string;
   penalty: string | null;
@@ -30,16 +62,13 @@ export function penaltyPlayCountsForEdit(play: {
   ballOn: number;
 }): boolean {
   if (!play.penalty) return false;
-  return !nullifiedStats({
-    play_type: play.type,
-    is_penalty: true,
-    yard_line: play.ballOn,
-    play_data: {
-      penalty_type: play.penalty,
-      play_category: play.penaltyCategory,
-      penalty_enforcement: play.penaltyEnforcement,
-      foul_spot_ball_on: play.foulSpotBallOn,
-      penalty_enforcement_from: play.penaltyEnforcementFrom,
-    },
-  });
+  const pd = {
+    penalty_type: play.penalty,
+    play_category: play.penaltyCategory,
+    penalty_enforcement: play.penaltyEnforcement,
+    foul_spot_ball_on: play.foulSpotBallOn,
+    penalty_enforcement_from: play.penaltyEnforcementFrom,
+  };
+  if (preservesAdvance(pd, play.ballOn)) return false;
+  return !nullifiedStats({ play_type: play.type, is_penalty: true, yard_line: play.ballOn, play_data: pd });
 }

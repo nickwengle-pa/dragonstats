@@ -29,7 +29,8 @@ export type PlayEffect =
   | "wiped"
   /** Accepted, and the play stands with the yards added on. */
   | "stands"
-  /** Accepted holding beyond the line: the run counts up to the foul. */
+  /** Accepted offensive foul past the line: the gain counts up to the foul,
+   *  and the down is replayed. */
   | "partial"
   | "declined"
   | "offset";
@@ -43,13 +44,16 @@ export function penaltyPlayEffect(i: {
   override: boolean | null;
   foulSpotBallOn: number | null;
   ballOn: number;
+  /** play_data.penalty_enforcement_from; "auto" when not set. */
+  enforcementFrom?: string;
 }): PlayEffect {
   if (!i.penalty) return "stands";
   if (i.enforcement === "declined") return "declined";
   if (i.enforcement === "offset") return "offset";
   if (penaltyWipesPlay(i.playTypeId, i.penalty, i.side, i.enforcement, i.override)) return "wiped";
   if (i.override === true || !RUN_OR_PASS.has(i.playTypeId)) return "stands";
-  if (preservesAdvance({ play_category: i.side, penalty_type: i.penalty, foul_spot_ball_on: i.foulSpotBallOn }, i.ballOn)) {
+  if (preservesAdvance({ play_category: i.side, penalty_type: i.penalty, foul_spot_ball_on: i.foulSpotBallOn,
+    penalty_enforcement_from: i.enforcementFrom }, i.ballOn)) {
     return "partial";
   }
   const def = lookupPenalty(getPenaltyEngineCode(i.penalty) ?? i.penalty.toLowerCase().replace(/\s+/g, "_"));
