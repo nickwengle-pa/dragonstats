@@ -111,6 +111,59 @@
   .lv-locked { padding: 0 18px 14px; font-size: 14px; }
 }
 
+/* ── Record Timeout sheet (TimeoutSheet.tsx) ── */
+.to-sheet { display: flex; flex-direction: column; padding: 0; max-height: 92dvh; overflow: hidden; }
+.to-head { position: relative; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 18px 13px; background: var(--bc-bug); color: #fff; }
+.to-head::after { content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 4px; background: var(--bc-red); clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.to-head h2 { font-family: "Chakra Petch", sans-serif; font-size: 15px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.to-head span { font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--bc-amber); }
+.to-body { display: flex; flex-direction: column; gap: 10px; padding: 18px 18px 14px; overflow-y: auto; min-height: 0; }
+.to-cap { font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--bc-mute); }
+.to-cap:not(:first-child) { margin-top: 6px; }
+.to-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.to-team { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-height: 136px; padding: 14px 14px 12px; text-align: left; background: var(--bc-surface-2); border: 2px solid var(--bc-line); border-top: 5px solid var(--to-team); color: var(--bc-ink); cursor: pointer; transition: background-color 150ms, border-color 150ms; }
+.to-team[data-on] { border-color: var(--to-team); background: color-mix(in srgb, var(--to-team) 16%, var(--bc-surface)); }
+.to-team:disabled { opacity: .4; cursor: default; }
+.to-crest { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; text-transform: uppercase; object-fit: contain; }
+.to-name { font-family: "Chakra Petch", sans-serif; font-size: 16px; font-weight: 700; line-height: 1.15; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.to-left { margin-top: auto; display: flex; align-items: center; gap: 8px; font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--bc-mute); }
+.to-ticks { display: flex; gap: 3px; }
+.to-ticks i { width: 14px; height: 5px; background: var(--bc-amber); }
+.to-ticks i[data-used] { background: var(--bc-line); }
+.to-team .ck, .to-official .ck { width: 22px; height: 22px; padding: 3px; border-radius: 50%; flex-shrink: 0; }
+.to-team .ck { position: absolute; top: 10px; right: 10px; background: var(--to-team); color: #fff; }
+.to-official { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; text-align: left; background: var(--bc-surface-2); border: 2px solid var(--bc-line); color: var(--bc-ink); cursor: pointer; }
+.to-official > svg:first-child { width: 20px; height: 20px; flex-shrink: 0; color: var(--bc-mute); }
+.to-official .t { flex: 1; min-width: 0; font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.to-official small { display: block; margin-top: 2px; font-family: "Manrope", sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--bc-mute); }
+.to-official[data-on] { border-color: var(--bc-amber); background: color-mix(in srgb, var(--bc-amber) 14%, var(--bc-surface)); }
+.to-official[data-on] > svg:first-child { color: var(--bc-amber-text); }
+.to-official .ck { background: var(--bc-amber); color: #0b0d10; }
+.to-foot { display: flex; gap: 10px; padding: 12px 18px 18px; border-top: 1px solid var(--bc-line); }
+.to-cancel { height: 50px; padding: 0 16px; background: none; border: 1px solid var(--bc-line); color: var(--bc-mute); font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.to-record { flex: 1; height: 50px; padding: 0 18px 0 14px; border: 0; background: color-mix(in srgb, var(--to-team, var(--bc-red)) 85%, #000); color: #fff; clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%); font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.to-record:disabled { background: var(--bc-line); color: var(--bc-mute); cursor: default; }
+@media (min-width: 768px) {
+  .bc .sheet-panel.to-sheet { max-width: 500px; }
+  .to-name { font-size: 18px; }
+}
+/* A 768px-tall iPad in landscape: tighten so the whole pad shows without
+   scrolling the sheet. */
+@media (max-height: 800px) {
+  .to-body { gap: 8px; padding-top: 14px; }
+  .to-team { min-height: 0; gap: 8px; padding: 10px 12px; }
+  .to-crest { width: 32px; height: 32px; font-size: 11px; }
+  .to-official { padding: 8px 14px; }
+  .to-sheet .clock-display { padding-top: 2px; padding-bottom: 2px; }
+  .to-sheet .clock-key { min-height: 42px; }
+}
+
+/* The clock pad (ClockInput) on the game screen: its slate keys stayed dark
+   in a day-game sheet, and the light palette inked their digits dark too. */
+.bc .clock-display { background: var(--bc-bug); color: #fff; border: 0; border-radius: 0; font-family: "Chakra Petch", sans-serif; }
+.bc .clock-key { background: var(--bc-surface-2); color: var(--bc-ink); border: 1px solid var(--bc-line); border-radius: 0; font-family: "Chakra Petch", sans-serif; }
+.bc .clock-key:active { background: var(--bc-line); }
+
 /* ── header tools (GameScreen) ── */
 .lv-hdr { display: flex; align-items: center; gap: 4px; padding: 10px 12px 8px; }
 .lv-hdr h1 { font-family: "Chakra Petch", sans-serif; font-size: 15px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--bc-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
