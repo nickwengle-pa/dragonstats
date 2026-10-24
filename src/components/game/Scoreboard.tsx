@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pause, SkipForward } from "lucide-react";
 import { readableAccent } from "@/utils/teamColor";
 import { canChooseGoalToGo, distanceLabel as formatDistance, isGoalToGo } from "@/services/goalToGo";
 import { fmtClock, quarterLabel, type GameState } from "./types";
@@ -49,6 +49,14 @@ function downLabel(down: number) {
   return `${down}${down === 1 ? "st" : down === 2 ? "nd" : down === 3 ? "rd" : "th"}`;
 }
 
+/** "PL 34" style, the same rule as the ball label GameScreen passes in. */
+function yardLabel(ballOn: number, possession: "us" | "them", progAbbr: string, oppAbbr: string) {
+  if (ballOn === 50) return "50";
+  const offense = possession === "us" ? progAbbr : oppAbbr;
+  const defense = possession === "us" ? oppAbbr : progAbbr;
+  return ballOn < 50 ? `${offense} ${ballOn}` : `${defense} ${100 - ballOn}`;
+}
+
 function TimeoutButtons({
   team,
   remaining,
@@ -92,10 +100,11 @@ function Crest({ logoUrl, abbr, color }: { logoUrl?: string | null; abbr: string
  * strip — down, to go, ball on — as segmented control and steppers. Every
  * handler is the same as before; only the drawing changed.
  *
- * The strip labels and the ±5 nudges appear from lg up. On a phone the three
- * cells share one 36px row (down segments, to-go stepper, ball-on stepper),
- * which is what fits beside the field without pushing the play buttons off
- * the bottom.
+ * From iPad width (768px) each control gets a caption above it and the strip
+ * ends in the readout ("1st & 10 at PL 34"); the ±5 nudges join at lg. On a
+ * phone the three cells share one 36px row (down segments, to-go stepper,
+ * ball-on stepper), which is what fits beside the field without pushing the
+ * play buttons off the bottom.
  */
 export default function Scoreboard({
   state,
@@ -136,6 +145,9 @@ export default function Scoreboard({
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
   const distanceLabel = formatDistance(state);
   const readoutDistance = isGoalToGo(state) ? "Goal" : distanceLabel;
+  /* The line to gain, as the yellow line on TV would put it. */
+  const gainOn = state.ballOn + state.distance;
+  const lineToGain = isGoalToGo(state) || gainOn >= 100 ? "Goal line" : yardLabel(gainOn, state.possession, progAbbr, oppAbbr);
   const chooseAtTen = canChooseGoalToGo(state) && onSetGoalToGo;
 
   return (
@@ -152,7 +164,16 @@ export default function Scoreboard({
           </button>
         </div>
 
+        {/* The clock module. On an iPad it carries two keys as wings, one
+            either side of the clock they act on: Timeout opens the sheet with
+            no team picked, End Qtr does what the › chevron does (Undo takes
+            it back). A phone keeps the chevrons only; at 390px the keys push
+            the team names off the bug. */}
         <div className="lv-center">
+          {!readOnly && onCallTimeout && <button type="button" className="lv-key to" onClick={onCallTimeout} title="Record a timeout">
+            <Pause aria-hidden="true" /><span>Timeout</span>
+          </button>}
+          <div className="lv-clockstack">
           <div className="lv-qtr">
             <button type="button" onClick={onPreviousQuarter} disabled={locked || !canPreviousQuarter} title="Previous quarter" aria-label="Previous quarter">
               <ChevronLeft className="w-3.5 h-3.5" />
@@ -161,8 +182,6 @@ export default function Scoreboard({
             <button type="button" onClick={onNextQuarter} disabled={locked || !canNextQuarter} title="Next quarter" aria-label="Next quarter">
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
-            {!readOnly && onCallTimeout && <button type="button" className="lv-endq-chip to" onClick={onCallTimeout}>Timeout</button>}
-            {!readOnly && <button type="button" className="lv-endq-chip" onClick={onNextQuarter} disabled={locked || !canNextQuarter} aria-label={`End the ${quarterLabel(state.quarter)} quarter`}>End Qtr</button>}
           </div>
           <button type="button" className="lv-clock" onClick={onEditClock} disabled={locked} title="Edit clock">
             {fmtClock(state.clock)}
@@ -170,6 +189,10 @@ export default function Scoreboard({
           <button type="button" className="lv-poss" onClick={onFlipPossession} disabled={locked} title="Tap to flip possession (manual correction)">
             {possessionLabel}
           </button>
+          </div>
+          {!readOnly && <button type="button" className="lv-key q" onClick={onNextQuarter} disabled={locked || !canNextQuarter} title={`End the ${quarterLabel(state.quarter)} quarter`}>
+            <SkipForward aria-hidden="true" /><span>End {quarterLabel(state.quarter)}</span>
+          </button>}
         </div>
 
         <div className={`lv-team r ${state.possession === "them" ? "poss" : ""}`}>
@@ -183,15 +206,7 @@ export default function Scoreboard({
           </button>
         </div>
 
-        {!readOnly && <div className="lv-ends">
-          {onCallTimeout && <button type="button" className="lv-endq to" onClick={onCallTimeout} title="Record a timeout">Timeout</button>}
-          {/* A dedicated target for the quarter: the chevrons stay, but they
-              are 22px and miss under a thumb. Undo takes the change back. */}
-          <button type="button" className="lv-endq" onClick={onNextQuarter} disabled={locked || !canNextQuarter} title={`End the ${quarterLabel(state.quarter)} quarter`}>
-            End {quarterLabel(state.quarter)}{state.quarter <= 4 ? " Qtr" : ""}
-          </button>
-          <button type="button" className="lv-end" onClick={onEndGame} title="End Game">End Game</button>
-        </div>}
+        {!readOnly && <button type="button" className="lv-end" onClick={onEndGame} title="End Game">End Game</button>}
       </div>
 
       {locked ? (
@@ -201,48 +216,57 @@ export default function Scoreboard({
         </div>
       ) : (
         <div className="lv-sit">
-          <div className="lv-cell">
+          <div className="lv-fld">
             <span className="lab">Down</span>
-            <div className="lv-seg">
-              {[1, 2, 3, 4].map((down) => (
-                <button key={down} type="button" onClick={() => onSetDown(down)} className={state.down === down ? "on" : ""}>
-                  {downLabel(down)}
-                </button>
-              ))}
+            <div className="lv-cell">
+              <div className="lv-seg">
+                {[1, 2, 3, 4].map((down) => (
+                  <button key={down} type="button" onClick={() => onSetDown(down)} className={state.down === down ? "on" : ""}>
+                    {downLabel(down)}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="lv-cell">
+          <div className="lv-fld">
             <span className="lab">To go</span>
-            {chooseAtTen ? <div className="lv-seg" role="group" aria-label="First down at the 10">
-              <button type="button" title="First and 10" aria-label="First and 10" aria-pressed={!isGoalToGo(state)} className={!isGoalToGo(state) ? "on" : ""} onClick={() => onSetGoalToGo?.(false)}>10</button>
-              <button type="button" title="First and goal" aria-label="First and goal" aria-pressed={isGoalToGo(state)} className={isGoalToGo(state) ? "on" : ""} onClick={() => onSetGoalToGo?.(true)}>G</button>
-            </div> : <div className="lv-step">
-              <button type="button" onClick={() => onAdjustDistance(-1)} title="Decrease distance">−</button>
-              {/* Amber, not chrome: on a phone this stepper is how the spot is
-                  actually set, so it stays at full strength. */}
-              <span className="v amber">{distanceLabel}</span>
-              <button type="button" onClick={() => onAdjustDistance(1)} title="Increase distance">+</button>
-            </div>}
-          </div>
-
-          <div className="lv-cell spot">
-            <span className="lab">Ball on</span>
-            <div className="lv-step">
-              <button type="button" className="wide" onClick={() => onAdjustBall(-5)} title="Move ball back 5 yards">−5</button>
-              <button type="button" onClick={() => onAdjustBall(-1)} title="Move ball back 1 yard">−</button>
-              <button type="button" className="v" onClick={onEditBall} title="Set ball spot">{ballLabel}</button>
-              <button type="button" onClick={() => onAdjustBall(1)} title="Move ball forward 1 yard">+</button>
-              <button type="button" className="wide" onClick={() => onAdjustBall(5)} title="Move ball forward 5 yards">+5</button>
+            <div className="lv-cell">
+              {chooseAtTen ? <div className="lv-seg" role="group" aria-label="First down at the 10">
+                <button type="button" title="First and 10" aria-label="First and 10" aria-pressed={!isGoalToGo(state)} className={!isGoalToGo(state) ? "on" : ""} onClick={() => onSetGoalToGo?.(false)}>10</button>
+                <button type="button" title="First and goal" aria-label="First and goal" aria-pressed={isGoalToGo(state)} className={isGoalToGo(state) ? "on" : ""} onClick={() => onSetGoalToGo?.(true)}>G</button>
+              </div> : <div className="lv-step">
+                <button type="button" onClick={() => onAdjustDistance(-1)} title="Decrease distance">−</button>
+                {/* Amber, not chrome: on a phone this stepper is how the spot is
+                    actually set, so it stays at full strength. */}
+                <span className="v amber">{distanceLabel}</span>
+                <button type="button" onClick={() => onAdjustDistance(1)} title="Increase distance">+</button>
+              </div>}
             </div>
           </div>
 
-          {/* The readout the controls add up to, in the words a press box
-              says it: "3rd & 4 at PL 34". */}
-          <div className="lv-sum" aria-live="polite" aria-label={`${possessionLabel}, ${downLabel(state.down)} and ${readoutDistance} at ${ballLabel}`}>
-            <div className="big">
-              <span>{downLabel(state.down)} <em>&amp;</em> {readoutDistance}</span>{" "}
-              <span className="at"><em>at</em> {ballLabel}</span>
+          <div className="lv-fld spot">
+            <span className="lab">Ball on</span>
+            <div className="lv-cell">
+              <div className="lv-step">
+                <button type="button" className="wide" onClick={() => onAdjustBall(-5)} title="Move ball back 5 yards">−5</button>
+                <button type="button" onClick={() => onAdjustBall(-1)} title="Move ball back 1 yard">−</button>
+                <button type="button" className="v" onClick={onEditBall} title="Set ball spot">{ballLabel}</button>
+                <button type="button" onClick={() => onAdjustBall(1)} title="Move ball forward 1 yard">+</button>
+                <button type="button" className="wide" onClick={() => onAdjustBall(5)} title="Move ball forward 5 yards">+5</button>
+              </div>
+            </div>
+          </div>
+
+          {/* What the controls add up to, the way the press box says it:
+              "3rd & 4 at PL 34", under a caption naming who has the ball. */}
+          <div className="lv-fld sum">
+            <span className="lab">{possessionLabel}</span>
+            <div className="lv-sum" aria-live="polite" aria-label={`${possessionLabel}, ${downLabel(state.down)} and ${readoutDistance} at ${ballLabel}`}>
+              <span className="dd">{downLabel(state.down)} <em>&amp;</em> {readoutDistance}</span>
+              <span className="at">at</span>
+              <span className="spot">{ballLabel}</span>
+              <span className="gain">To gain <b>{lineToGain}</b></span>
             </div>
           </div>
         </div>

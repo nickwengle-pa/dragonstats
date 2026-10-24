@@ -25,7 +25,8 @@
 .lv-tos button:disabled, .lv-tos button[data-used] { background: rgba(255, 255, 255, .2); }
 .lv-tos button:disabled { cursor: default; }
 .lv-score { font-family: "Chakra Petch", sans-serif; font-size: 34px; line-height: 34px; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; background: none; border: 0; padding: 0; color: #fff; }
-.lv-center { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0 12px; border-left: 1px solid rgba(255, 255, 255, .12); border-right: 1px solid rgba(255, 255, 255, .12); }
+.lv-center { display: flex; align-items: center; justify-content: center; padding: 0 12px; border-left: 1px solid rgba(255, 255, 255, .12); border-right: 1px solid rgba(255, 255, 255, .12); }
+.lv-clockstack { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .lv-qtr { display: flex; align-items: center; gap: 4px; }
 .lv-qtr span { font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .2em; color: var(--bc-amber); min-width: 46px; text-align: center; }
 .lv-qtr button { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, .6); background: none; border: 0; padding: 0; cursor: pointer; }
@@ -35,22 +36,16 @@
 .lv-poss { font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; background: none; border: 0; padding: 2px 6px; cursor: pointer; color: var(--bc-amber); }
 .lv-poss:disabled { cursor: default; }
 .lv-end { display: none; }
-/* End Qtr: a chip beside the chevrons on an iPad held upright, a full button
-   beside End Game from lg up. Same handler as the › chevron. A phone keeps
-   only the chevrons: at 390px the chip squeezed the team names off the bug. */
-.lv-ends { display: none; }
-.lv-qtr .lv-endq-chip { display: none; }
-@media (min-width: 768px) { .lv-qtr .lv-endq-chip { display: flex; } }
-.lv-qtr .lv-endq-chip { width: auto; margin-left: 2px; height: 28px; padding: 0 10px; border: 1px solid var(--bc-amber); background: rgba(245, 158, 11, .12); color: var(--bc-amber); font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
-.lv-qtr .lv-endq-chip:disabled { opacity: .3; cursor: default; }
-/* Timeout is white, End Qtr amber, so the two never read as the same button. */
-.lv-qtr .lv-endq-chip.to, .lv-endq.to { border-color: rgba(255, 255, 255, .55); background: rgba(255, 255, 255, .08); color: #fff; }
+/* The clock's wings: Timeout on the left, End Qtr on the right, tapered
+   toward the clock like the tabs on a broadcast clock. Hidden on a phone. */
+.lv-key { display: none; }
 
-/* situation strip: one row of three cells + the summary bug */
-.lv-sit { display: flex; gap: 6px; padding: 0 10px 10px; }
-.lv-cell { display: flex; align-items: stretch; background: var(--bc-surface); border: 1px solid var(--bc-line); min-width: 0; flex: 0 0 auto; }
-.lv-cell.spot { flex: 1 1 0; min-width: 0; }
-.lv-cell .lab { display: none; align-items: center; padding: 0 10px; background: var(--bc-bug); color: #fff; font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+/* situation strip: three captioned controls + the readout */
+.lv-sit { display: flex; align-items: flex-end; gap: 6px; padding: 0 10px 10px; }
+.lv-fld { display: flex; flex-direction: column; min-width: 0; flex: 0 0 auto; }
+.lv-fld.spot { flex: 1 1 0; }
+.lv-fld .lab, .lv-fld.sum { display: none; }
+.lv-cell { display: flex; align-items: stretch; background: var(--bc-surface); border: 1px solid var(--bc-line); min-width: 0; }
 .lv-seg { display: flex; flex: 1; }
 .lv-seg button { flex: 1; min-width: 30px; height: 36px; display: flex; align-items: center; justify-content: center; font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--bc-mute); background: none; border: 0; border-right: 1px solid var(--bc-line); padding: 0; cursor: pointer; }
 .lv-seg button:last-child { border-right: 0; }
@@ -60,19 +55,34 @@
 .lv-step .v { flex: 1; min-width: 0; height: 36px; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: center; font-family: "Chakra Petch", sans-serif; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--bc-ink); border-left: 1px solid var(--bc-line); border-right: 1px solid var(--bc-line); background: none; padding: 0 4px; cursor: pointer; white-space: nowrap; }
 .lv-step .v.amber { color: var(--bc-amber-text); }
 .lv-step .wide { display: none; }
-.lv-sum { display: none; }
-/* iPad: the readout at the end of the strip, "1st & 10 at PL 34". Upright
-   it gets one line; at lg the labelled controls crowd it onto two until the
-   screen is wide enough again. */
-@media (min-width: 768px) {
-  .lv-cell.spot { flex: 0 0 auto; }
-  .lv-cell.spot .lv-step .v { width: 96px; flex: 0 0 auto; }
-  .lv-sum { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; padding: 0 12px; background: var(--bc-bug); color: #fff; }
-  .lv-sum .big { display: flex; gap: .35em; font-family: "Chakra Petch", sans-serif; font-size: 20px; line-height: 1.05; font-weight: 700; letter-spacing: .03em; white-space: nowrap; }
-  .lv-sum .big em { font-style: normal; color: var(--bc-amber); }
-}
 .lv-locked { padding: 0 10px 10px; display: flex; justify-content: space-between; gap: 10px; font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--bc-ink); }
 .lv-locked span { color: var(--bc-mute); font-weight: 600; }
+
+/* iPad, either way up. Each control gets its caption above it instead of a
+   black tab beside it, the controls hug their content, and the readout takes
+   the rest of the row: "1st & 10 at PL 34", like the down marker on TV. */
+@media (min-width: 768px) {
+  .lv-key { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 66px; height: 52px; flex-shrink: 0; padding: 0; border: 0; font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; cursor: pointer; transition: background-color 150ms; }
+  .lv-key svg { width: 16px; height: 16px; }
+  .lv-key.to { margin-right: 12px; background: rgba(255, 255, 255, .09); color: #fff; clip-path: polygon(0 0, 100% 0, 100% 100%, 8px 100%); }
+  .lv-key.q { margin-left: 12px; background: rgba(245, 158, 11, .18); color: var(--bc-amber); clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+  .lv-key.to:active { background: rgba(255, 255, 255, .2); }
+  .lv-key.q:active { background: rgba(245, 158, 11, .32); }
+  .lv-key:disabled { opacity: .3; cursor: default; }
+
+  .lv-sit { gap: 8px; }
+  .lv-fld .lab { display: block; margin: 0 0 4px 1px; font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .18em; line-height: 11px; text-transform: uppercase; color: rgba(255, 255, 255, .5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lv-fld.spot { flex: 0 0 auto; }
+  .lv-fld.spot .lv-step .v { width: 96px; flex: 0 0 auto; }
+  .lv-fld.sum { display: flex; flex: 1 1 auto; }
+  .lv-fld.sum .lab { color: var(--bc-amber); }
+  .lv-sum { display: flex; align-items: baseline; gap: .45em; height: 38px; padding: 0 14px; line-height: 38px; background: rgba(255, 255, 255, .07); border-left: 4px solid var(--bc-amber); color: #fff; font-family: "Chakra Petch", sans-serif; font-weight: 700; white-space: nowrap; overflow: hidden; }
+  .lv-sum .dd, .lv-sum .spot { font-size: 20px; letter-spacing: .03em; }
+  .lv-sum .dd em { font-style: normal; color: var(--bc-amber); }
+  .lv-sum .at { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--bc-amber); }
+  .lv-sum .gain { margin-left: auto; padding-left: 12px; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: rgba(255, 255, 255, .5); }
+  .lv-sum .gain b { margin-left: 4px; font-size: 13px; letter-spacing: .04em; color: rgba(255, 255, 255, .85); }
+}
 
 @media (min-width: 1024px) {
   .lv-bug-row { padding: 12px 18px; gap: 14px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
@@ -80,38 +90,25 @@
   .lv-team.poss .lv-crest::after { top: 16px; }
   .lv-tname { font-size: 13px; }
   .lv-score { font-size: 44px; line-height: 44px; }
-  .lv-center { padding: 0 22px; }
+  .lv-center { padding: 0 16px; }
   .lv-clock { font-size: 38px; line-height: 38px; }
-  .lv-ends { display: flex; align-items: center; gap: 12px; }
-  .lv-qtr .lv-endq-chip { display: none; }
-  .lv-endq { height: 36px; padding: 0 14px; border: 2px solid var(--bc-amber); background: rgba(245, 158, 11, .12); color: var(--bc-amber); font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
-  .lv-endq:disabled { opacity: .3; cursor: default; }
+  .lv-key { width: 78px; height: 62px; font-size: 10px; gap: 6px; }
+  .lv-key svg { width: 18px; height: 18px; }
+  .lv-key.to { margin-right: 18px; }
+  .lv-key.q { margin-left: 18px; }
   .lv-end { display: flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px; background: var(--bc-red); color: #fff; clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; border: 0; cursor: pointer; }
   .lv-sit { gap: 10px; padding: 0 18px 14px; }
-  .lv-cell .lab { display: flex; }
-  .lv-seg button { min-width: 50px; height: 42px; font-size: 13px; }
-  .lv-step button { width: 40px; height: 42px; }
-  .lv-step .v { height: 42px; font-size: 18px; min-width: 60px; }
+  .lv-seg button { min-width: 46px; height: 42px; font-size: 13px; }
+  .lv-step button { width: 38px; height: 42px; }
+  .lv-step .v { height: 42px; font-size: 18px; min-width: 52px; }
+  .lv-fld.spot .lv-step .v { width: 108px; }
   .lv-step .wide { display: flex; font-size: 12px; }
-  /* The controls hug their content and the readout takes the rest, so the
-     ball-on value no longer floats in a 500px box on a landscape iPad. */
-  .lv-cell.spot { flex: 0 0 auto; }
-  .lv-cell.spot .lv-step .v { width: 104px; min-width: 0; flex: 0 0 auto; }
-  .lv-sit { gap: 8px; }
-  .lv-sit .lv-seg button { min-width: 44px; }
-  .lv-sit .lv-step button { width: 36px; }
-  .lv-sit .lv-step .v { width: auto; }
-  .lv-cell .lab { padding: 0 8px; }
-  .lv-sum { flex: 1 1 auto; min-width: 0; padding: 0 16px; }
-  .lv-sum .big { flex-direction: column; gap: 0; font-size: 22px; }
-  .lv-sum .big .at { font-size: 15px; letter-spacing: .06em; }
+  .lv-sum { height: 44px; line-height: 44px; padding: 0 18px; }
+  .lv-sum .dd, .lv-sum .spot { font-size: 26px; }
+  .lv-sum .at { font-size: 12px; }
+  .lv-sum .gain { font-size: 10px; }
+  .lv-sum .gain b { font-size: 15px; }
   .lv-locked { padding: 0 18px 14px; font-size: 14px; }
-}
-
-/* Wide landscape: the readout fits on one line. */
-@media (min-width: 1280px) {
-  .lv-sum .big { flex-direction: row; gap: .35em; font-size: 24px; }
-  .lv-sum .big .at { font-size: inherit; letter-spacing: inherit; }
 }
 
 /* ── header tools (GameScreen) ── */
