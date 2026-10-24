@@ -43,7 +43,7 @@ import { grantsAutoFirstDown, penaltyWipesPlay } from "@/components/game/types";
 import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
 import { applyLostMuffs, lostMuffFumble } from "./lostMuffs";
 import { scoringEventsForPlay } from "./scoringLedger";
-import { convertPlay } from "./playTransformer";
+import { convertPlay, endsSeriesForKick } from "./playTransformer";
 import type { PlayWithPlayers } from "./gameService";
 
 export interface LiveSessionConfig {
@@ -358,6 +358,7 @@ function toEnginePlay(
   scoreBefore: LiveSessionScore,
   config: LiveSessionConfig,
   driveNumber: number,
+  betweenSeries = false,
 ): Play | null {
   const context = buildPlayContext(stateBefore, scoreBefore, config, driveNumber);
   // Share audited conversions with saved-game reports, using the live situation.
@@ -385,7 +386,7 @@ function toEnginePlay(
       homeTeamName: config.isHome ? config.programName : config.opponentName,
       awayTeamName: config.isHome ? config.opponentName : config.programName,
       programTeamId: config.programTeamId,
-    });
+    }, betweenSeries);
   }
   const penalties = buildPenalties(play, config);
   // The penalty replaces the play (roughing the kicker, or the operator's
@@ -774,6 +775,8 @@ export function replayLiveGame(
   // drive comes back as #0. Possession at the snap is what delimits a drive.
   let driveNumber = 0;
   let lastDrivePossession: "us" | "them" | null = null;
+  // Mirrors transformPlays: a flag between a score and the kickoff renews no series.
+  let betweenSeries = false;
 
   for (const play of plays) {
     const beforeState = getBeforeStateForPlay(play, score);
@@ -791,7 +794,10 @@ export function replayLiveGame(
     // Same rule as rebuildPlaySituations: only a stated or enforced spot is
     // taken as read; a cached one is worked out again.
     const afterSituation = getAuthoritativeNextSituation(play) ?? advanceSituationAfterPlay(play, beforeSituation, config.gameConfig);
-    const enginePlay = toEnginePlay(play, beforeState, score, config, driveNumber);
+    const enginePlay = toEnginePlay(play, beforeState, score, config, driveNumber, betweenSeries);
+    if (!["penalty", "penalty_only", "timeout", "quarter_change"].includes(play.type)) {
+      betweenSeries = endsSeriesForKick(play.type, play.result ?? play.playData?.result);
+    }
     let events: GameEvent[] = [];
 
     if (enginePlay) {

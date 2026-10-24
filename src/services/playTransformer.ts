@@ -71,6 +71,7 @@ export function transformPlays(
   // red-zone trips at one per game (the engine dedupes those by drive number).
   let driveNumber = 0;
   let lastPossTeamId: string | null = null;
+  let betweenSeries = false;
 
   for (const play of plays) {
     if (play.play_type === "quarter_change") continue;
@@ -81,9 +82,13 @@ export function transformPlays(
     }
     const playContext = buildContext(play, ctx, possTeamId, homeScore, awayScore, driveNumber);
 
-    const enginePlay = convertPlay(play, playContext, ctx);
+    const enginePlay = convertPlay(play, playContext, ctx, betweenSeries);
     if (enginePlay) {
       result.push(enginePlay);
+    }
+    // Flags and timeouts in the gap leave it open until the kickoff.
+    if (!["penalty", "penalty_only", "timeout"].includes(play.play_type)) {
+      betweenSeries = endsSeriesForKick(play.play_type, (play.play_data as Record<string, unknown> | null)?.result);
     }
 
     // Advance running score AFTER building context (context reflects score at time of snap)
@@ -410,12 +415,27 @@ function scoreForPlay(play: PlayWithPlayers): number {
 // Play conversion — route each play_type to the correct engine type
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether the snap after this play is a kickoff rather than a down: a try, a
+ * made field goal or a safety ends the series. A dead-ball flag logged in that
+ * gap is still on the row's stale 1st & 10, and the engine scored a 15-yard
+ * one as a first down by penalty (Portage play 61, Northern Cambria play 33).
+ */
+export function endsSeriesForKick(playType: string | null | undefined, result: unknown): boolean {
+  return playType === "pat" || playType === "two_pt" || playType === "safety"
+    || (playType === "fg" && String(result ?? "") === "Good");
+}
+
 export function convertPlay(
   play: PlayWithPlayers,
   context: PlayContext,
   ctx: TransformContext,
+  /** The previous snap ended the series (see endsSeriesForKick). */
+  betweenSeries = false,
 ): Play | null {
   const pd = play.play_data as Record<string, any>;
+  // No series to renew: out of reach, so no flag's yardage reads as a first down.
+  if (betweenSeries && ["penalty", "penalty_only"].includes(play.play_type)) context = { ...context, distance: 100 };
   // A loose ball remains part of the original advance up to recovery, before any recovery return.
   // Read through readFumbleSpots: a stored 0 is a leftover, not the goal line.
   const recoveredAt = readFumbleSpots(pd).fumbleRecoveredAt;
@@ -438,6 +458,10 @@ export function convertPlay(
        earns one, so otherwise the gain is kept just short of the chains. */
     const renewed = Number(pd.next_down) === 1 && pd.next_possession === play.possession;
     if (!renewed && play.yards_gained >= context.distance) context = { ...context, distance: play.yards_gained + 1 };
+    /* For the same reason it is not an attempt at that down: the down is
+       played again, and counting both snaps read a 3rd down converted on the
+       replay as 1 for 2. The engine counts attempts off context.down alone. */
+    if (!renewed && context.down >= Down.Third) context = { ...context, down: Down.Second };
   }
   const isOurOffense = play.possession === "us";
 
