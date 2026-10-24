@@ -35,6 +35,19 @@ export function keepsGainToFoulSpot(play: { play_type?: string; is_penalty: bool
     && preservesAdvance(play.play_data ?? {}, play.yard_line ?? 0);
 }
 
+/**
+ * The play with its yards cut off at the foul spot when only the gain up to
+ * the foul counts. Everything that sums yards off stored rows goes through
+ * this, or it disagrees with the engine: the Game Report's rushing Gain read
+ * the whole 20-yard run behind a holding call that stats as +2, and printed
+ * the difference as a 29-yard Loss.
+ */
+export function withStatYards<T extends { play_type?: string; is_penalty: boolean; play_data: any; yard_line: number | null; yards_gained: number }>(play: T): T {
+  if (!keepsGainToFoulSpot(play)) return play;
+  const toFoul = play.play_data.foul_spot_ball_on - (play.yard_line ?? 0);
+  return play.yards_gained > toFoul ? { ...play, yards_gained: toFoul } : play;
+}
+
 export function nullifiedStats(play: { play_type?: string; is_penalty: boolean; play_data: any; yard_line: number | null }): boolean {
   const pd = play.play_data ?? {};
   if (!play.is_penalty || pd.penalty_enforcement === "declined") return false;
