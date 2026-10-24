@@ -13,6 +13,8 @@ import ClockInput from "@/components/game/ClockInput";
 import { countPlayerUsage } from "@/components/game/playerUsage";
 import { OffensivePlayBadge, PlayTacklers } from "@/components/game/PlayRowDetails";
 import QuickActions from "@/components/game/QuickActions";
+import TimeoutSheet from "@/components/game/TimeoutSheet";
+import type { TimeoutCaller } from "@/components/game/TimeoutEditModal";
 import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
 import { PLAY_TYPES, type GameState, type RosterPlayer, type TaggedPlayer, type PlayTypeDef } from "@/components/game/types";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
@@ -39,6 +41,8 @@ interface PracticePlay { data: PlaySubmitData; before: GameState; remembered: Re
 export default function FlowPreview() {
   const [situation, setSituation] = useState(initial);
   const [clockDraft, setClockDraft] = useState<number | null>(null);
+  const [timeoutCaller, setTimeoutCaller] = useState<TimeoutCaller | null | undefined>(undefined);
+  const [timeoutsLeft, setTimeoutsLeft] = useState({ us: 3, them: 2 });
   const [playType, setPlayType] = useState<PlayTypeDef | null>(null);
   const [formations, setFormations] = useState(false);
   const [practiceKickoff, setPracticeKickoff] = useState(false);
@@ -94,7 +98,7 @@ export default function FlowPreview() {
         onPreviousQuarter={()=>setSituation(prev=>({...prev,quarter:Math.max(1,prev.quarter-1)}))} onNextQuarter={()=>setSituation(prev=>({...prev,quarter:prev.quarter+1}))} canPreviousQuarter={situation.quarter>1} canNextQuarter={situation.quarter<4}
         onEditClock={()=>setClockDraft(situation.clock)} onEndGame={()=>{}} onSetDown={down=>setSituation(prev=>({...prev,down}))} onAdjustDistance={delta=>setSituation(prev=>({...prev,distance:Math.max(1,prev.distance+delta)}))}
         onSetGoalToGo={goalToGo=>setSituation(prev=>({...prev,goalToGo,distance:10}))}
-        onAdjustBall={delta=>setSituation(prev=>({...prev,goalToGo:undefined,ballOn:Math.max(1,Math.min(99,prev.ballOn+delta))}))} onEditBall={()=>{}} ourTimeoutsRemaining={3} theirTimeoutsRemaining={3} onTakeTimeout={()=>{}} onCallTimeout={()=>{}} onFlipPossession={flipPossession} />
+        onAdjustBall={delta=>setSituation(prev=>({...prev,goalToGo:undefined,ballOn:Math.max(1,Math.min(99,prev.ballOn+delta))}))} onEditBall={()=>{}} ourTimeoutsRemaining={timeoutsLeft.us} theirTimeoutsRemaining={timeoutsLeft.them} onTakeTimeout={team=>setTimeoutCaller(timeoutsLeft[team]>0?team:"official")} onCallTimeout={()=>setTimeoutCaller(null)} onFlipPossession={flipPossession} />
       <div className="live-field-block">
         <FieldVisualizer compact tilted={tilted} ballOn={shownSpot} ballPosition={right?shownSpot:100-shownSpot}
           firstDownPosition={right?situation.ballOn+situation.distance:100-situation.ballOn-situation.distance} possession={situation.possession}
@@ -117,6 +121,18 @@ export default function FlowPreview() {
         {[...plays].reverse().map((play,i)=><div key={plays.length-i} className="border-b border-surface-border py-3"><div className="font-bold">{plays.length-i}. {play.data.description}</div><OffensivePlayBadge play={{type:play.data.playType.id,possession:play.before.possession,tagged:play.data.tagged}} /><div className="text-[10px] text-slate-400">{play.before.down}{play.before.down === 1 ? "st" : play.before.down === 2 ? "nd" : play.before.down === 3 ? "rd" : "th"}&{play.before.distance} · {play.before.ballOn === 50 ? "50" : `${(play.before.ballOn < 50) === (play.before.possession === "us") ? "DRG" : "VIS"} ${play.before.ballOn < 50 ? play.before.ballOn : 100-play.before.ballOn}`}</div><PlayTacklers play={{type:play.data.playType.id,possession:play.before.possession,tagged:play.data.tagged}} /><div className="text-sm text-slate-400">{play.data.tagged.map(t=>`${t.role}: ${t.teamCreditConfirmed?"Team":t.isTeam||t.player_id==="opp_team"?"Identify on film later":t.name}${t.credit!=null?` (${t.credit===1?"solo":"assist"})`:""}`).join(" · ")}</div></div>)}
       </section>
     </div>
+    {timeoutCaller !== undefined && <TimeoutSheet
+      us={{ name: "Dragons", abbr: "DRG", color: "#164e63", remaining: timeoutsLeft.us }}
+      them={{ name: "Visitors", abbr: "VIS", color: "#854d0e", remaining: timeoutsLeft.them }}
+      quarter={situation.quarter} caller={timeoutCaller} onCaller={setTimeoutCaller}
+      seconds={situation.clock} maxSeconds={DEFAULT_GAME_CONFIG.quarter_length_secs}
+      onSeconds={clock => setSituation(prev => ({ ...prev, clock }))}
+      onRecord={() => {
+        const caller = timeoutCaller;
+        if (caller === "us" || caller === "them") setTimeoutsLeft(prev => ({ ...prev, [caller]: Math.max(0, prev[caller] - 1) }));
+        setTimeoutCaller(undefined);
+      }}
+      onCancel={() => setTimeoutCaller(undefined)} />}
     {clockDraft != null && <div className="sheet bg-black/80" role="dialog" aria-modal="true" aria-label="Set Clock">
       <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
         <h2 className="text-sm font-black text-center">Set Clock</h2>

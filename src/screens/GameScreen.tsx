@@ -71,6 +71,7 @@ import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import { resolveEditedNextSituation } from "@/components/game/editNextSituation";
 import TimeoutEditModal, { timeoutCallerLabel, type TimeoutCaller, type TimeoutEdit } from "@/components/game/TimeoutEditModal";
+import TimeoutSheet from "@/components/game/TimeoutSheet";
 import PlayLog from "@/components/game/PlayLog";
 import QuarterChangeRow from "@/components/game/QuarterChangeRow";
 import { createQuarterChange, quarterChangeBefore } from "@/services/quarterChange";
@@ -3434,49 +3435,21 @@ export default function GameScreen() {
       )}
 
       {showTimeoutModal && (
-        <div className="sheet bg-black/80">
-          <div className="sheet-panel p-6 space-y-3 max-w-xs mx-auto">
-            <h2 className="text-sm font-black text-center">Record Timeout</h2>
-            {/* Official: injury, measurement, equipment. Stops the clock,
-                charged to neither team. A team with none left can't be picked. */}
-            <div className="grid grid-cols-3 gap-1.5">
-              {(["us", "them", "official"] as const).map(side => {
-                const left = side === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
-                const out = side !== "official" && left <= 0;
-                return (
-                  <button key={side} type="button" disabled={out} aria-pressed={timeoutTeam === side}
-                    onClick={() => setTimeoutTeam(side)}
-                    className={`py-2 rounded-xl text-xs font-black border-2 truncate disabled:opacity-30 ${
-                      timeoutTeam === side
-                        ? "border-amber-500 bg-amber-500/15 text-amber-400"
-                        : "border-surface-border bg-surface-bg text-neutral-500"
-                    }`}>
-                    <span className="block truncate">{timeoutCallerLabel(side, progName, oppName)}</span>
-                    <span className="block text-[10px] font-bold opacity-80">{side === "official" ? "not charged" : `${left} left`}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="text-xs text-neutral-500 text-center">
-              {timeoutTeam === null
-                ? "Who called it?"
-                : timeoutTeam === "official"
-                ? `Official timeout in ${quarterLabel(quarter)} · not charged`
-                : `${timeoutTeam === "us" ? progName : oppName} timeout in ${quarterLabel(quarter)}`}
-            </div>
-            <ClockInput
-              seconds={timeoutMins * 60 + timeoutSecs}
-              maxSeconds={gc.quarter_length_secs}
-              autoFocus
-              onChange={(total) => {
-                setTimeoutMins(Math.floor(total / 60));
-                setTimeoutSecs(total % 60);
-              }}
-            />
-            <button onClick={handleRecordTimeout} disabled={!timeoutTeam} className="btn-primary w-full text-sm disabled:opacity-40">Record Timeout</button>
-            <button onClick={() => setShowTimeoutModal(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
-          </div>
-        </div>
+        <TimeoutSheet
+          us={{ name: progName, abbr: progAbbr, color: primaryColor, logoUrl: progLogoUrl, remaining: timeoutState.ourRemaining }}
+          them={{ name: oppName, abbr: oppAbbr, color: oppColor, logoUrl: oppLogoUrl, remaining: timeoutState.theirRemaining }}
+          quarter={quarter}
+          caller={timeoutTeam}
+          onCaller={setTimeoutTeam}
+          seconds={timeoutMins * 60 + timeoutSecs}
+          maxSeconds={gc.quarter_length_secs}
+          onSeconds={(total) => {
+            setTimeoutMins(Math.floor(total / 60));
+            setTimeoutSecs(total % 60);
+          }}
+          onRecord={handleRecordTimeout}
+          onCancel={() => setShowTimeoutModal(false)}
+        />
       )}
 
       {showBallEditor && (

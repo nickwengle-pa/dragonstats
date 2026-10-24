@@ -77,7 +77,7 @@ export default function ClockInput({ seconds, onChange, maxSeconds, autoFocus }:
       }}>
       <button ref={displayRef} type="button" aria-label="Clock time, tap to replace"
         onClick={() => { setDigits(null); setMessage(""); }}
-        className="w-full rounded-xl border border-slate-500 bg-slate-950 py-2 text-4xl font-black text-white tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
+        className="clock-display w-full rounded-xl border border-slate-500 bg-slate-950 py-2 text-center text-4xl font-black text-white tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
         {formatClockValue(seconds)}
       </button>
       <p className="text-center text-xs text-slate-400" aria-live="polite">
@@ -87,7 +87,7 @@ export default function ClockInput({ seconds, onChange, maxSeconds, autoFocus }:
         {["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "backspace"].map(key => (
           <button key={key} type="button" onClick={() => press(key)}
             aria-label={key === "backspace" ? "Delete last digit" : key === "clear" ? "Clear clock" : key}
-            className={`min-h-12 rounded-xl border border-slate-600 bg-slate-800 text-white active:bg-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${key.length > 1 ? "text-sm font-bold" : "text-2xl font-black"}`}>
+            className={`clock-key min-h-12 rounded-xl border border-slate-600 bg-slate-800 text-center text-white active:bg-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${key.length > 1 ? "text-sm font-bold" : "text-2xl font-black"}`}>
             {key === "backspace" ? "⌫" : key === "clear" ? "Clear" : key}
           </button>
         ))}
