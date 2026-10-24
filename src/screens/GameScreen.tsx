@@ -722,7 +722,7 @@ export default function GameScreen() {
   const [postPlayClockSecs, setPostPlayClockSecs] = useState(0);
   const [pendingClockCapture, setPendingClockCapture] = useState<PendingClockCapture | null>(null);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
-  const [timeoutTeam, setTimeoutTeam] = useState<TimeoutCaller>("us");
+  const [timeoutTeam, setTimeoutTeam] = useState<TimeoutCaller | null>("us");
   const [timeoutMins, setTimeoutMins] = useState(12);
   const [timeoutSecs, setTimeoutSecs] = useState(0);
   const [showBallEditor, setShowBallEditor] = useState(false);
@@ -1378,12 +1378,14 @@ export default function GameScreen() {
     setShowBallEditor(false);
   }, [ballEditSide, ballEditYard, possession]);
 
-  const openTimeoutModal = useCallback((team: TimeoutTeam) => {
+  const openTimeoutModal = useCallback((team: TimeoutTeam | null) => {
     if (!canWriteRef.current) return;
     const remaining = team === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
     // A spent tick still opens the sheet, on Official: an official's timeout
-    // has to be reachable when both teams are out, late in a half.
-    setTimeoutTeam(remaining > 0 ? team : "official");
+    // has to be reachable when both teams are out, late in a half. The
+    // Timeout button passes no team: the operator picks who called it, so a
+    // mis-tap on the scorebug can't charge the wrong side.
+    setTimeoutTeam(team === null ? null : remaining > 0 ? team : "official");
     setTimeoutMins(Math.floor(clock / 60));
     setTimeoutSecs(clock % 60);
     setShowTimeoutModal(true);
@@ -2067,6 +2069,7 @@ export default function GameScreen() {
    *  in the live-entry path — operators can still edit the play via PlayEdit
    *  if the clock was wrong. */
   const handleRecordTimeout = useCallback(async () => {
+    if (!timeoutTeam) return;
     const secs = (timeoutMins * 60) + timeoutSecs;
     await recordTimeoutAt(timeoutTeam, secs);
   }, [recordTimeoutAt, timeoutTeam, timeoutMins, timeoutSecs]);
@@ -2823,6 +2826,7 @@ export default function GameScreen() {
           ourTimeoutsRemaining={timeoutState.ourRemaining}
           theirTimeoutsRemaining={timeoutState.theirRemaining}
           onTakeTimeout={openTimeoutModal}
+          onCallTimeout={() => openTimeoutModal(null)}
           onCorrectScore={(team) => setScoreCorrectTeam(team)}
           onFlipPossession={flipPossession}
         />
@@ -3437,8 +3441,8 @@ export default function GameScreen() {
                 charged to neither team. A team with none left can't be picked. */}
             <div className="grid grid-cols-3 gap-1.5">
               {(["us", "them", "official"] as const).map(side => {
-                const out = side !== "official"
-                  && (side === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining) <= 0;
+                const left = side === "us" ? timeoutState.ourRemaining : timeoutState.theirRemaining;
+                const out = side !== "official" && left <= 0;
                 return (
                   <button key={side} type="button" disabled={out} aria-pressed={timeoutTeam === side}
                     onClick={() => setTimeoutTeam(side)}
@@ -3447,13 +3451,16 @@ export default function GameScreen() {
                         ? "border-amber-500 bg-amber-500/15 text-amber-400"
                         : "border-surface-border bg-surface-bg text-neutral-500"
                     }`}>
-                    {timeoutCallerLabel(side, progName, oppName)}
+                    <span className="block truncate">{timeoutCallerLabel(side, progName, oppName)}</span>
+                    <span className="block text-[10px] font-bold opacity-80">{side === "official" ? "not charged" : `${left} left`}</span>
                   </button>
                 );
               })}
             </div>
             <div className="text-xs text-neutral-500 text-center">
-              {timeoutTeam === "official"
+              {timeoutTeam === null
+                ? "Who called it?"
+                : timeoutTeam === "official"
                 ? `Official timeout in ${quarterLabel(quarter)} · not charged`
                 : `${timeoutTeam === "us" ? progName : oppName} timeout in ${quarterLabel(quarter)}`}
             </div>
@@ -3466,7 +3473,7 @@ export default function GameScreen() {
                 setTimeoutSecs(total % 60);
               }}
             />
-            <button onClick={handleRecordTimeout} className="btn-primary w-full text-sm">Record Timeout</button>
+            <button onClick={handleRecordTimeout} disabled={!timeoutTeam} className="btn-primary w-full text-sm disabled:opacity-40">Record Timeout</button>
             <button onClick={() => setShowTimeoutModal(false)} className="w-full text-xs text-neutral-500 font-bold py-1">Cancel</button>
           </div>
         </div>

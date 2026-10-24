@@ -29,6 +29,8 @@ interface Props {
   ourTimeoutsRemaining: number;
   theirTimeoutsRemaining: number;
   onTakeTimeout: (team: "us" | "them") => void;
+  /** The labelled Timeout button: opens the sheet with no team picked. */
+  onCallTimeout?: () => void;
   onCorrectScore?: (team: "us" | "them") => void;
   /** Manual possession correction — tapping the possession chip flips it. */
   onFlipPossession?: () => void;
@@ -120,6 +122,7 @@ export default function Scoreboard({
   ourTimeoutsRemaining,
   theirTimeoutsRemaining,
   onTakeTimeout,
+  onCallTimeout,
   onCorrectScore,
   onFlipPossession,
   locked: lockedProp = false,
@@ -132,6 +135,7 @@ export default function Scoreboard({
   const effPrimaryColor = readableAccent(primaryColor);
   const possessionLabel = state.possession === "us" ? `${progAbbr} BALL` : `${oppAbbr} BALL`;
   const distanceLabel = formatDistance(state);
+  const readoutDistance = isGoalToGo(state) ? "Goal" : distanceLabel;
   const chooseAtTen = canChooseGoalToGo(state) && onSetGoalToGo;
 
   return (
@@ -157,6 +161,8 @@ export default function Scoreboard({
             <button type="button" onClick={onNextQuarter} disabled={locked || !canNextQuarter} title="Next quarter" aria-label="Next quarter">
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
+            {!readOnly && onCallTimeout && <button type="button" className="lv-endq-chip to" onClick={onCallTimeout}>Timeout</button>}
+            {!readOnly && <button type="button" className="lv-endq-chip" onClick={onNextQuarter} disabled={locked || !canNextQuarter} aria-label={`End the ${quarterLabel(state.quarter)} quarter`}>End Qtr</button>}
           </div>
           <button type="button" className="lv-clock" onClick={onEditClock} disabled={locked} title="Edit clock">
             {fmtClock(state.clock)}
@@ -177,7 +183,15 @@ export default function Scoreboard({
           </button>
         </div>
 
-        {!readOnly && <button type="button" className="lv-end" onClick={onEndGame} title="End Game">End Game</button>}
+        {!readOnly && <div className="lv-ends">
+          {onCallTimeout && <button type="button" className="lv-endq to" onClick={onCallTimeout} title="Record a timeout">Timeout</button>}
+          {/* A dedicated target for the quarter: the chevrons stay, but they
+              are 22px and miss under a thumb. Undo takes the change back. */}
+          <button type="button" className="lv-endq" onClick={onNextQuarter} disabled={locked || !canNextQuarter} title={`End the ${quarterLabel(state.quarter)} quarter`}>
+            End {quarterLabel(state.quarter)}{state.quarter <= 4 ? " Qtr" : ""}
+          </button>
+          <button type="button" className="lv-end" onClick={onEndGame} title="End Game">End Game</button>
+        </div>}
       </div>
 
       {locked ? (
@@ -223,10 +237,12 @@ export default function Scoreboard({
             </div>
           </div>
 
-          <div className="lv-sum">
-            <div>
-              <div className="sm">{possessionLabel}</div>
-              <div className="big">{downLabel(state.down)} <em>&amp;</em> {distanceLabel}</div>
+          {/* The readout the controls add up to, in the words a press box
+              says it: "3rd & 4 at PL 34". */}
+          <div className="lv-sum" aria-live="polite" aria-label={`${possessionLabel}, ${downLabel(state.down)} and ${readoutDistance} at ${ballLabel}`}>
+            <div className="big">
+              <span>{downLabel(state.down)} <em>&amp;</em> {readoutDistance}</span>{" "}
+              <span className="at"><em>at</em> {ballLabel}</span>
             </div>
           </div>
         </div>
