@@ -134,7 +134,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
       <button type="button" aria-label={`Open ${label} list`} onClick={() => { setOpen(true); input.current?.focus(); }}><ChevronDown size={18} /></button>
     </div>
     {open && createPortal(<div ref={popup} className={`player-picker-popup${accentColor ? " player-picker-team" : ""}`} style={{ ...position, ...teamStyle }}>
-      <div className="player-picker-heading"><strong>{label} · {team}</strong><button type="button" onClick={() => { close(); input.current?.blur(); }}>Done</button></div>
+      <div className="player-picker-heading"><strong>{label} · {team}</strong>{!multiple && <button type="button" onClick={() => { close(); input.current?.blur(); }}>Done</button>}</div>
       <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => choose(null)}><Film size={16} /> Identify on film later</button>
       {onSelectTeam && <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => { onSelectTeam(); if (!multiple) { close(); input.current?.blur(); } }}>Team{selected.some(player => player.teamCreditConfirmed) && <Check size={17} />}</button>}
       <div id={`${id}-list`} role="listbox" aria-label={`${label} players`} aria-multiselectable={multiple || undefined}>
@@ -158,6 +158,12 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
       <div className="player-picker-keypad">
         <Keypad value={query} onChange={next => { setQuery(next); setActive(0); }} inputRef={input} />
       </div>
+      {/* A multi-pick list stays open after each tap, so its way out has to be
+          where the thumb already is. A small Done in the heading got lost at
+          the top of a tall list on the iPad. */}
+      {multiple && <button type="button" className="player-picker-done" onMouseDown={e => e.preventDefault()} onClick={() => { close(); input.current?.blur(); }}>
+        <Check size={18} />Done{selected.length > 0 && <span>{selected.length} picked</span>}
+      </button>}
     </div>, document.body)}
   </div>;
 }

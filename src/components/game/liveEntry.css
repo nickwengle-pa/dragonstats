@@ -55,6 +55,8 @@
 /* Amber = not a confirmed pick, as everywhere in entry: a number with no player behind it yet. */
 .player-picker-popup .player-add { color:#fcd34d; background:rgba(245,158,11,.08); outline:1px dashed rgba(245,158,11,.6); outline-offset:-3px; }
 .player-picker-keypad { flex-shrink:0; padding:0 8px 8px; border-top:1px solid #475569; }
+.player-picker-done { flex-shrink:0; display:flex; align-items:center; justify-content:center; gap:8px; margin:0 8px 8px; min-height:52px; border-radius:8px; background:color-mix(in srgb, var(--picker-accent, #dc2626) 80%, #000); color:#fff; font-size:16px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.player-picker-done span { font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:none; opacity:.85; }
 .offense-selection { --selection-accent:var(--fast-accent); display:flex; flex-direction:column; gap:12px; }
 .defense-selection { --selection-accent:var(--defense-accent); }
 .offense-selection, .defense-selection { padding:12px; border:1px solid var(--selection-accent); border-left-width:4px; border-radius:8px; background:color-mix(in srgb, var(--selection-accent) 12%, var(--bc-surface, #101722)); }
