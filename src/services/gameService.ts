@@ -8,7 +8,7 @@ import {
   storedRowTurnover,
   type PregameConfig,
 } from "./gameFlow";
-import { TEAM_PLAYER_ID, tidyStoredDescription } from "@/components/game/types";
+import { TEAM_PLAYER_ID, teamTagCounts, tidyStoredDescription } from "@/components/game/types";
 import { DEFAULT_GAME_CONFIG, type GameConfig } from "./programService";
 import { mergeQueuedPlays } from "./mergeQueuedPlays";
 import { cacheKeys, invalidateCache } from "./offlineCache";
@@ -1204,7 +1204,7 @@ export function calcDefenseStats(
     const teamTacklerTags = ((Array.isArray(play.play_data?.team_tagged)
       ? play.play_data.team_tagged
       : []) as Array<{ role?: string; credit?: number | null }>)
-      .filter(t => t.role === "tackler")
+      .filter(t => t.role === "tackler" && teamTagCounts(t, play.play_data))
       .map(t => ({ player_id: TEAM_PLAYER_ID, role: "tackler", credit: t.credit ?? null }));
     const allTacklerTags = [
       ...play.play_players.filter(p => p.role === "tackler"),

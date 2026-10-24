@@ -19,11 +19,12 @@ import assert from "node:assert/strict";
 const TEAM_PLAYER_ID = "our_team";
 
 type Join = { player_id: string; role: string; credit?: number | null };
-type Loose = { id?: string; role?: string; credit?: number | null };
+type Loose = { id?: string; role?: string; credit?: number | null; confirmed?: boolean };
 type Play = {
   play_players: Join[];
   play_data?: {
     team_tagged?: Loose[];
+    team_tackle_confirmed?: boolean;
     opp_tagged?: Loose[];
     pending_tagged?: Loose[];
   };
@@ -37,8 +38,9 @@ function allTagsForRole(play: Play, role: string) {
     ...play.play_players
       .filter(pp => pp.role === role)
       .map(pp => ({ id: pp.player_id, credit: pp.credit ?? null })),
+    // A TEAM tackle counts only when the operator picked "Team" (teamTagCounts).
     ...loose("team_tagged")
-      .filter(t => t.role === role)
+      .filter(t => t.role === role && (t.role !== "tackler" || t.confirmed === true || pd?.team_tackle_confirmed === true))
       .map(() => ({ id: TEAM_PLAYER_ID, credit: null as number | null })),
     ...loose("opp_tagged")
       .filter(t => t.role === role && t.id)
@@ -69,9 +71,17 @@ console.log("looseTags");
 test("the reported gap: a TEAM tackle reaches the engine", () => {
   const play: Play = {
     play_players: [],
-    play_data: { team_tagged: [{ role: "tackler", credit: 1 }] },
+    play_data: { team_tagged: [{ role: "tackler", credit: 1, confirmed: true }] },
   };
   assert.deepEqual(allTagsForRole(play, "tackler"), [{ id: TEAM_PLAYER_ID, credit: null }]);
+});
+
+test("a TEAM tackle nobody picked is no tackle", () => {
+  const play: Play = {
+    play_players: [],
+    play_data: { team_tagged: [{ role: "tackler", credit: 1 }] },
+  };
+  assert.deepEqual(allTagsForRole(play, "tackler"), []);
 });
 
 test("a TEAM receiver counts too, not just tackles", () => {
@@ -101,7 +111,7 @@ test("an unrostered jersey keeps its own id, not TEAM's", () => {
 test("rostered and loose tags on one play all come back", () => {
   const play: Play = {
     play_players: [{ player_id: "a", role: "tackler", credit: 0.5 }],
-    play_data: { team_tagged: [{ role: "tackler", credit: 0.5 }] },
+    play_data: { team_tagged: [{ role: "tackler", credit: 0.5 }], team_tackle_confirmed: true },
   };
   assert.deepEqual(allTagsForRole(play, "tackler").map(t => t.id), ["a", TEAM_PLAYER_ID]);
 });

@@ -939,9 +939,8 @@ export default function PlayEntryModal({
    * would either nag on every sideline run or push a TEAM tackle that never
    * happened into the tackle counts.
    *
-   * Deliberately not persisted. Blank already means no tackle, and TEAM means
-   * a tackle nobody identified — between them film review can read the play.
-   * This only says the blank was on purpose.
+   * Blank already means no tackle (a sack aside, see teamDefaultTackle), so
+   * this only says the blank was on purpose.
    */
   const [noTackle, setNoTackle] = useState((editing ?? initialDraft)?.playData?.no_tackle === true);
   /* The snap was bad, whatever happened after it. The Bad Snap play type is
@@ -1441,8 +1440,13 @@ export default function PlayEntryModal({
     onsideRecoveredByKicker,
     blockedRecoveredByKicking,
   });
-  /* A tackle left blank is TEAM too, unless the operator said there was none. */
-  const teamDefaultTackle = steps.includes("defense") && tacklersAreOurs && shownTacklers.length === 0 && !noTackle;
+  /* A tackle left blank is no tackle, on a kick or any other play (Nick, Oct
+     24) - it used to be TEAM, which put a TEAM tackle on every return nobody
+     named a tackler for. "Tackle by TEAM" is the way to give TEAM one. A sack
+     left blank is still TEAM's: the sack happened, and the team's Sacks By
+     line is the sum of its sackers. */
+  const teamDefaultTackle = playType.id === "sack" && steps.includes("defense") && tacklersAreOurs
+    && shownTacklers.length === 0 && !noTackle;
 
   /** Set when Next is held back to ask about blank roles; null the rest of the time. */
   const [skipWarning, setSkipWarning] = useState<string[] | null>(null);

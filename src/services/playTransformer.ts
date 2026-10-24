@@ -13,7 +13,7 @@ import {
   grantsAutoFirstDown,
   type PenaltySide,
 } from "@/components/game/types";
-import { TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
+import { TEAM_PLAYER_ID, isWipedByPenaltyRow, teamTagCounts } from "@/components/game/types";
 import type { PlayWithPlayers } from "./gameService";
 import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
 import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
@@ -303,8 +303,9 @@ function allTagsForRole(
     // Our side's "somebody did this, I could not see who".
     // Its credit is kept: TEAM can share a tackle (0.5), and a null here
     // scored that share as a solo - one play, 1.5 tackles.
+    // A TEAM tackle the operator did not pick is no tackle (teamTagCounts).
     ...loose("team_tagged")
-      .filter((t) => t.role === role)
+      .filter((t) => t.role === role && teamTagCounts(t, pd))
       .map((t) => ({ id: TEAM_PLAYER_ID, credit: t.credit ?? null })),
     ...loose("opp_tagged")
       .filter((t) => t.role === role && t.id)
