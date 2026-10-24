@@ -160,9 +160,10 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
       </div>
       {/* A multi-pick list stays open after each tap, so its way out has to be
           where the thumb already is. A small Done in the heading got lost at
-          the top of a tall list on the iPad. */}
+          the top of a tall list on the iPad. It names who is picked, since
+          the field above shows the search while the list is open. */}
       {multiple && <button type="button" className="player-picker-done" onMouseDown={e => e.preventDefault()} onClick={() => { close(); input.current?.blur(); }}>
-        <Check size={18} />Done{selected.length > 0 && <span>{selected.length} picked</span>}
+        <Check size={18} /><strong>Done</strong>{selected.length > 0 && <span>{value}</span>}
       </button>}
     </div>, document.body)}
   </div>;
