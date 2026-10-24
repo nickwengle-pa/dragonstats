@@ -44,7 +44,7 @@ export default function FlowPreview() {
   const [practiceKickoff, setPracticeKickoff] = useState(false);
   const [plays, setPlays] = useState<PracticePlay[]>([]);
   const [remembered, setRemembered] = useState<Record<string, TaggedPlayer>>({ "passer:us": qb });
-  const spot = (ballOn: number) => `${ballOn <= 50 ? (situation.possession === "us" ? "Dragons" : "Visitors") : (situation.possession === "us" ? "Visitors" : "Dragons")} ${ballOn <= 50 ? ballOn : 100 - ballOn}`;
+  const spot = (ballOn: number) => `${ballOn <= 50 ? (situation.possession === "us" ? "DRG" : "VIS") : (situation.possession === "us" ? "VIS" : "DRG")} ${ballOn <= 50 ? ballOn : 100 - ballOn}`;
   const record = (data: PlaySubmitData) => {
     setPracticeKickoff(false);
     setPlays(prev => [...prev, { data, before: situation, remembered, practiceKickoff }]);
@@ -94,7 +94,7 @@ export default function FlowPreview() {
         onPreviousQuarter={()=>setSituation(prev=>({...prev,quarter:Math.max(1,prev.quarter-1)}))} onNextQuarter={()=>setSituation(prev=>({...prev,quarter:prev.quarter+1}))} canPreviousQuarter={situation.quarter>1} canNextQuarter={situation.quarter<4}
         onEditClock={()=>setClockDraft(situation.clock)} onEndGame={()=>{}} onSetDown={down=>setSituation(prev=>({...prev,down}))} onAdjustDistance={delta=>setSituation(prev=>({...prev,distance:Math.max(1,prev.distance+delta)}))}
         onSetGoalToGo={goalToGo=>setSituation(prev=>({...prev,goalToGo,distance:10}))}
-        onAdjustBall={delta=>setSituation(prev=>({...prev,goalToGo:undefined,ballOn:Math.max(1,Math.min(99,prev.ballOn+delta))}))} onEditBall={()=>{}} ourTimeoutsRemaining={3} theirTimeoutsRemaining={3} onTakeTimeout={()=>{}} onFlipPossession={flipPossession} />
+        onAdjustBall={delta=>setSituation(prev=>({...prev,goalToGo:undefined,ballOn:Math.max(1,Math.min(99,prev.ballOn+delta))}))} onEditBall={()=>{}} ourTimeoutsRemaining={3} theirTimeoutsRemaining={3} onTakeTimeout={()=>{}} onCallTimeout={()=>{}} onFlipPossession={flipPossession} />
       <div className="live-field-block">
         <FieldVisualizer compact tilted={tilted} ballOn={shownSpot} ballPosition={right?shownSpot:100-shownSpot}
           firstDownPosition={right?situation.ballOn+situation.distance:100-situation.ballOn-situation.distance} possession={situation.possession}
