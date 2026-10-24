@@ -1,4 +1,4 @@
-import { keepsGainToFoulSpot, nullifiedStats, preservesAdvance } from "./statAuditRules";
+import { keepsGainToFoulSpot, nullifiedStats, preservesAdvance, withStatYards } from "./statAuditRules";
 /**
  * Transforms dragonstats PlayWithPlayers records into football-stats-engine Play objects.
  *
@@ -431,7 +431,7 @@ export function convertPlay(
   // An offensive foul past the line keeps the gain up to the foul. A play the
   // operator said counts keeps all of it.
   if (gainToFoulSpot) {
-    play = { ...play, yards_gained: Math.min(play.yards_gained, pd.foul_spot_ball_on - (play.yard_line ?? 0)) };
+    play = withStatYards(play);
     /* The engine credits a first down whenever the gain reaches the distance,
        but this down is replayed: 16 yards to the foul on 3rd & 6 is still 3rd
        down after the walk-off. Only a series the enforcement actually renewed

@@ -33,7 +33,7 @@ import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { firstPlayerByRole } from "./playTransformer";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, countBadSnaps, isWipedByPenaltyRow } from "@/components/game/types";
 import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
-import { nullifiedStats } from "./statAuditRules";
+import { nullifiedStats, withStatYards } from "./statAuditRules";
 import { readFumbleSpots } from "./fumbleSpots";
 import { inPeriod, type StatPeriod } from "./statPeriod";
 
@@ -399,7 +399,8 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const { bundle, program, opponent } = input;
   const fgSnapAdd = input.fgSnapAdd ?? 17;
   const { summary, plays: recordedPlays, roster } = bundle;
-  const plays = recordedPlays.filter(play => !nullifiedStats(play));
+  // Yards as the stats count them, so the sums off these rows match the engine.
+  const plays = recordedPlays.filter(play => !nullifiedStats(play)).map(withStatYards);
 
   const jerseys = new Map<string, number | null>();
   const names = new Map<string, string>();
