@@ -1,5 +1,10 @@
 import { lookupPenalty } from "football-stats-engine";
 import { getPenaltyEngineCode, isSpotFoul, isWipedByPenaltyRow } from "@/components/game/types";
+import { receiverFoulSpot } from "./kickSpots";
+import { readFumbleSpots } from "./fumbleSpots";
+
+/** Kicks a return-team foul leaves standing. See receiverFoulSpot. */
+const KICK_TYPES = new Set(["punt", "kickoff", "onside_kick", "fair_catch"]);
 
 /** The plays whose gain can stand up to a foul spot past the line. */
 const GAIN_TO_FOUL_SPOT_TYPES = new Set(["rush", "pass_comp"]);
@@ -43,9 +48,28 @@ export function keepsGainToFoulSpot(play: { play_type?: string; is_penalty: bool
  * the difference as a 29-yard Loss.
  */
 export function withStatYards<T extends { play_type?: string; is_penalty: boolean; play_data: any; yard_line: number | null; yards_gained: number }>(play: T): T {
+  play = withFumbleYards(play);
   if (!keepsGainToFoulSpot(play)) return play;
   const toFoul = play.play_data.foul_spot_ball_on - (play.yard_line ?? 0);
   return play.yards_gained > toFoul ? { ...play, yards_gained: toFoul } : play;
+}
+
+/**
+ * A fumbled run or catch credits the ball carrier to the RECOVERY spot,
+ * whichever team recovers: the stat manual credits the fumbler "to the point
+ * of recovery ... regardless of which team recovers". It was cut to the fumble
+ * spot for a morning (Oct 24) and Nick put it back to the book.
+ *
+ * It used to apply to lost fumbles only, so a run the offense fell on kept the
+ * yards to where the ball came loose: Lotson ran 11 at United Valley, fumbled
+ * backward and was recovered 4 yards back at the PL 52, and stat as +11.
+ * Read through readFumbleSpots: a stored 0 is a leftover, not the goal line.
+ */
+export function withFumbleYards<T extends { play_type?: string; play_data: any; yard_line: number | null; yards_gained: number }>(play: T): T {
+  const recoveredAt = readFumbleSpots(play.play_data).fumbleRecoveredAt;
+  if (recoveredAt == null || !["rush", "pass_comp", "sack", "fum_rec"].includes(play.play_type ?? "")) return play;
+  const yards = recoveredAt - (play.yard_line ?? 0);
+  return yards === play.yards_gained ? play : { ...play, yards_gained: yards };
 }
 
 export function nullifiedStats(play: { play_type?: string; is_penalty: boolean; play_data: any; yard_line: number | null }): boolean {
@@ -56,6 +80,8 @@ export function nullifiedStats(play: { play_type?: string; is_penalty: boolean; 
   if (typeof pd.penalty_play_counts === "boolean") return !pd.penalty_play_counts;
   if (pd.penalty_enforcement === "offset") return false;
   if (isWipedByPenaltyRow({ play_type: play.play_type ?? "", is_penalty: play.is_penalty, play_data: pd })) return true;
+  // The return team fouled during the return: the kick happened and counts.
+  if (KICK_TYPES.has(play.play_type ?? "") && receiverFoulSpot(pd) != null) return false;
   if (!pd.penalty_type || preservesAdvance(pd, play.yard_line ?? 0)) return false;
   return lookupPenalty(getPenaltyEngineCode(pd.penalty_type) ?? pd.penalty_type)?.replayDown ?? true;
 }

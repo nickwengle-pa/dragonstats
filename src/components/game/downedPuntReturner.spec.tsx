@@ -37,7 +37,7 @@ async function recordTheirPunt(outcome: string): Promise<PlaySubmitData | null> 
       roster={roster}
       opponentPlayers={opp}
       progName="Us" oppName="Them"
-      lastPlayerByRole={{ "returner:us": lastReturner }}
+      lastPlayerByRole={{ "returner:us:punt": lastReturner }}
       onSubmit={(d) => { out = d; }}
       onClose={() => {}}
     />,
