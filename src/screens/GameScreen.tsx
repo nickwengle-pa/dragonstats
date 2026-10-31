@@ -2449,7 +2449,8 @@ export default function GameScreen() {
     }
 
     setEditPlay(null);
-    setSavedNotice(`Play ${original.sequence ?? idx + 1} saved`);
+    // The number the play log shows: position in the list, not sequence.
+    setSavedNotice(`Play ${idx + 1} saved`);
     await recalcScoreAndState(newPlays);
 
     // A hand-set spot the edit replaced gets confirmed again, as on entry.

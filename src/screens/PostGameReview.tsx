@@ -869,11 +869,11 @@ export default function PostGameReview() {
      back into view once its sheets close. */
   const [lastPlayId, setLastPlayId] = useState<string | null>(null);
   const scrollToLast = useRef(false);
-  const loadedOnce = useRef(false);
+  const loadedFor = useRef<string | null>(null);
 
   const load = useCallback(async (): Promise<PlayWithPlayers[]> => {
     if (!gameId) return [];
-    if (!loadedOnce.current) setLoading(true);
+    if (loadedFor.current !== gameId) setLoading(true);
     setError(null);
     try {
       const [rawPlays, chart, gRes] = await Promise.all([
@@ -936,7 +936,7 @@ export default function PostGameReview() {
       console.error(e);
       return [];
     } finally {
-      loadedOnce.current = true;
+      loadedFor.current = gameId;
       setLoading(false);
     }
   }, [gameId]);
@@ -958,7 +958,9 @@ export default function PostGameReview() {
     return load();
   }, [meta, program, gameId, load]);
 
-  const sheetOpen = editingPlay != null || editRecord != null;
+  // What is actually on screen: saving an edit sets editingPlay without a
+  // charting draft, which draws nothing.
+  const sheetOpen = (editingPlay != null && draft != null) || editRecord != null;
   useEffect(() => {
     if (sheetOpen) { scrollToLast.current = true; return; }
     if (!scrollToLast.current || !lastPlayId || loading) return;
@@ -1580,10 +1582,11 @@ export default function PostGameReview() {
                       key={p.id}
                       data-play-id={p.id}
                       onClick={() => openCharting(p)}
-                      className={`border-b border-surface-border/40 cursor-pointer hover:bg-surface-cardHover active:bg-surface-cardHover scroll-mt-24 ${
-                        p.id === lastPlayId ? "bg-amber-500/15 outline outline-2 -outline-offset-2 outline-amber-400/70" : ""}`}
+                      className={`border-b border-surface-border/40 cursor-pointer hover:bg-surface-cardHover active:bg-surface-cardHover ${
+                        p.id === lastPlayId ? "bg-sky-500/15" : ""}`}
                     >
-                      <Td>
+                      {/* A bar, not an outline: Safari paints no outline on a table row. */}
+                      <Td className={p.id === lastPlayId ? "border-l-4 border-l-sky-400" : ""}>
                         <span
                           className={`inline-block w-2 h-2 rounded-full ${charted ? "bg-emerald-500" : "bg-surface-border"}`}
                           title={charted ? "Charted" : "Not charted"}
