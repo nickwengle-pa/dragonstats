@@ -96,7 +96,7 @@ export default function FlowPreview() {
     <div className="live-pinned shrink-0 px-3 lg:px-5 pb-2 space-y-2">
       <Scoreboard state={situation} progName="Dragons" oppName="Visitors" progAbbr="DRG" oppAbbr="VIS" primaryColor="#164e63" oppColor="#854d0e" ballLabel={spot(situation.ballOn)} locked={!!playType}
         onPreviousQuarter={()=>setSituation(prev=>({...prev,quarter:Math.max(1,prev.quarter-1)}))} onNextQuarter={()=>setSituation(prev=>({...prev,quarter:prev.quarter+1}))} canPreviousQuarter={situation.quarter>1} canNextQuarter={situation.quarter<4}
-        onEditClock={()=>setClockDraft(situation.clock)} onEndGame={()=>{}} onSetDown={down=>setSituation(prev=>({...prev,down}))} onAdjustDistance={delta=>setSituation(prev=>({...prev,distance:Math.max(1,prev.distance+delta)}))}
+        onEditClock={()=>setClockDraft(situation.clock)} onSetDown={down=>setSituation(prev=>({...prev,down}))} onAdjustDistance={delta=>setSituation(prev=>({...prev,distance:Math.max(1,prev.distance+delta)}))}
         onSetGoalToGo={goalToGo=>setSituation(prev=>({...prev,goalToGo,distance:10}))}
         onAdjustBall={delta=>setSituation(prev=>({...prev,goalToGo:undefined,ballOn:Math.max(1,Math.min(99,prev.ballOn+delta))}))} onEditBall={()=>{}} ourTimeoutsRemaining={timeoutsLeft.us} theirTimeoutsRemaining={timeoutsLeft.them} onTakeTimeout={team=>setTimeoutCaller(timeoutsLeft[team]>0?team:"official")} onCallTimeout={()=>setTimeoutCaller(null)} onFlipPossession={flipPossession} />
       <div className="live-field-block">

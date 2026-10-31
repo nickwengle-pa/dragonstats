@@ -12,8 +12,21 @@
 .lv-bug { background: var(--bc-bug); color: #fff; position: relative; box-shadow: var(--bc-shadow-bug); }
 .lv-bug::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 5px; background: var(--bc-red); clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
 .lv-bug-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 8px 10px; }
-.lv-team { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.lv-team.r { flex-direction: row-reverse; text-align: right; }
+/* Each team hugs the clock, so the bug reads as one centred unit rather than
+   two names pinned to the far edges. No side padding on a phone: its team
+   fills the whole cell already and every pixel goes to the name. */
+.lv-team { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; justify-self: end; align-self: stretch; transition: background 250ms, box-shadow 250ms; }
+.lv-team.r { flex-direction: row-reverse; text-align: right; justify-self: start; }
+/* Who has the ball: that side glows in its own colour, strongest at the
+   score beside the clock and fading out toward the edge, with a lit base
+   line; the other side's name steps back. Alongside the amber arrow and
+   the "PL BALL" under the clock, not instead of them. */
+.lv-team.l.poss { background: linear-gradient(90deg, color-mix(in srgb, var(--team) 6%, transparent), color-mix(in srgb, var(--team) 34%, transparent)); }
+.lv-team.r.poss { background: linear-gradient(270deg, color-mix(in srgb, var(--team) 6%, transparent), color-mix(in srgb, var(--team) 34%, transparent)); }
+.lv-team.poss { box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--team) 85%, transparent), 0 0 22px -6px color-mix(in srgb, var(--team) 70%, transparent); }
+.lv-team.poss .lv-score { text-shadow: 0 0 12px color-mix(in srgb, var(--team) 95%, transparent), 0 0 30px color-mix(in srgb, var(--team) 60%, transparent); }
+.lv-team.poss .lv-tname { color: #fff; text-shadow: 0 0 10px color-mix(in srgb, var(--team) 80%, transparent); }
+.lv-team:not(.poss) .lv-tname { color: rgba(255, 255, 255, .55); }
 .lv-crest { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; font-family: "Chakra Petch", sans-serif; font-weight: 700; font-size: 11px; text-transform: uppercase; position: relative; object-fit: contain; }
 .lv-team.poss .lv-crest::after { content: ""; position: absolute; top: 12px; border: 6px solid transparent; }
 .lv-team.l.poss .lv-crest::after { right: -12px; border-left: 7px solid var(--bc-amber); }
@@ -35,7 +48,6 @@
 .lv-clock:disabled { cursor: default; }
 .lv-poss { font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; background: none; border: 0; padding: 2px 6px; cursor: pointer; color: var(--bc-amber); }
 .lv-poss:disabled { cursor: default; }
-.lv-end { display: none; }
 /* The clock's wings: Timeout on the left, End Qtr on the right, tapered
    toward the clock like the tabs on a broadcast clock. Hidden on a phone. */
 .lv-key { display: none; }
@@ -69,6 +81,7 @@
   .lv-key.to:active { background: rgba(255, 255, 255, .2); }
   .lv-key.q:active { background: rgba(245, 158, 11, .32); }
   .lv-key:disabled { opacity: .3; cursor: default; }
+  .lv-team { padding: 0 10px; }
 
   .lv-sit { gap: 8px; }
   .lv-fld .lab { display: block; margin: 0 0 4px 1px; font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .18em; line-height: 11px; text-transform: uppercase; color: rgba(255, 255, 255, .5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -76,7 +89,9 @@
   .lv-fld.spot .lv-step .v { width: 96px; flex: 0 0 auto; }
   .lv-fld.sum { display: flex; flex: 1 1 auto; }
   .lv-fld.sum .lab { color: var(--bc-amber); }
-  .lv-sum { display: flex; align-items: baseline; gap: .45em; height: 38px; padding: 0 14px; line-height: 38px; background: rgba(255, 255, 255, .07); border-left: 4px solid var(--bc-amber); color: #fff; font-family: "Chakra Petch", sans-serif; font-weight: 700; white-space: nowrap; overflow: hidden; }
+  /* Wraps into a clipped second line, so when "To gain" has no room (a
+     13-inch iPad upright) it drops out whole instead of being cut to "DI". */
+  .lv-sum { display: flex; flex-wrap: wrap; align-content: flex-start; align-items: baseline; gap: .45em; height: 38px; padding: 0 14px; line-height: 38px; background: rgba(255, 255, 255, .07); border-left: 4px solid var(--bc-amber); color: #fff; font-family: "Chakra Petch", sans-serif; font-weight: 700; white-space: nowrap; overflow: hidden; }
   .lv-sum .dd, .lv-sum .spot { font-size: 20px; letter-spacing: .03em; }
   .lv-sum .dd em { font-style: normal; color: var(--bc-amber); }
   .lv-sum .at { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--bc-amber); }
@@ -85,7 +100,8 @@
 }
 
 @media (min-width: 1024px) {
-  .lv-bug-row { padding: 12px 18px; gap: 14px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+  .lv-bug-row { padding: 12px 18px; gap: 14px; }
+  .lv-team { padding: 0 16px; }
   .lv-crest { width: 44px; height: 44px; font-size: 13px; }
   .lv-team.poss .lv-crest::after { top: 16px; }
   .lv-tname { font-size: 13px; }
@@ -96,8 +112,11 @@
   .lv-key svg { width: 18px; height: 18px; }
   .lv-key.to { margin-right: 18px; }
   .lv-key.q { margin-left: 18px; }
-  .lv-end { display: flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px; background: var(--bc-red); color: #fff; clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; border: 0; cursor: pointer; }
-  .lv-sit { gap: 10px; padding: 0 18px 14px; }
+  /* Centred under the clock too. The readout has a set width rather than
+     its text's, so the controls never shift as "1st & 10" becomes
+     "3rd & Goal". */
+  .lv-sit { gap: 10px; padding: 0 18px 14px; justify-content: center; }
+  .lv-fld.sum { flex: 0 1 480px; }
   .lv-seg button { min-width: 46px; height: 42px; font-size: 13px; }
   .lv-step button { width: 38px; height: 42px; }
   .lv-step .v { height: 42px; font-size: 18px; min-width: 52px; }

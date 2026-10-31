@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Pause, SkipForward } from "lucide-react";
 import { readableAccent } from "@/utils/teamColor";
 import { canChooseGoalToGo, distanceLabel as formatDistance, isGoalToGo } from "@/services/goalToGo";
@@ -20,7 +21,6 @@ interface Props {
   canPreviousQuarter: boolean;
   canNextQuarter: boolean;
   onEditClock: () => void;
-  onEndGame: () => void;
   onSetDown: (down: number) => void;
   onAdjustDistance: (delta: number) => void;
   onSetGoalToGo?: (goalToGo: boolean) => void;
@@ -40,8 +40,8 @@ interface Props {
    *  legible; only the controls stand down. */
   locked?: boolean;
   /** View only: this person may not change this game (staff, or an assistant
-   *  on a final game). Everything `locked` does, plus timeouts, score taps
-   *  and End Game stand down. */
+   *  on a final game). Everything `locked` does, plus timeouts and score taps
+   *  stand down. */
   readOnly?: boolean;
 }
 
@@ -96,9 +96,10 @@ function Crest({ logoUrl, abbr, color }: { logoUrl?: string | null; abbr: string
 
 /**
  * The scorebug. Crests, timeouts and possession on either side, the clock in
- * the middle, End Game on the right at tablet width; under it the situation
- * strip — down, to go, ball on — as segmented control and steppers. Every
- * handler is the same as before; only the drawing changed.
+ * the middle; under it the situation strip — down, to go, ball on — as
+ * segmented control and steppers. End Game is in the screen's top bar at
+ * every width: on the iPad it used to close this row and pulled the clock
+ * off centre.
  *
  * From iPad width (768px) each control gets a caption above it and the strip
  * ends in the readout ("1st & 10 at PL 34"); the ±5 nudges join at lg. On a
@@ -122,7 +123,6 @@ export default function Scoreboard({
   canPreviousQuarter,
   canNextQuarter,
   onEditClock,
-  onEndGame,
   onSetDown,
   onAdjustDistance,
   onSetGoalToGo,
@@ -153,7 +153,9 @@ export default function Scoreboard({
   return (
     <div className="lv-bug">
       <div className="lv-bug-row">
-        <div className={`lv-team l ${state.possession === "us" ? "poss" : ""}`}>
+        {/* --team feeds the possession glow: the side with the ball lights up
+            in its own colour behind its name and score. */}
+        <div className={`lv-team l ${state.possession === "us" ? "poss" : ""}`} style={{ "--team": effPrimaryColor } as CSSProperties}>
           <Crest logoUrl={progLogoUrl} abbr={progAbbr} color={effPrimaryColor} />
           <div style={{ minWidth: 0 }}>
             <div className="lv-tname" title={progName}><span className="lg:hidden">{progAbbr || progName}</span><span className="hidden lg:inline">{progName}</span></div>
@@ -195,7 +197,7 @@ export default function Scoreboard({
           </button>}
         </div>
 
-        <div className={`lv-team r ${state.possession === "them" ? "poss" : ""}`}>
+        <div className={`lv-team r ${state.possession === "them" ? "poss" : ""}`} style={{ "--team": effOppColor } as CSSProperties}>
           <Crest logoUrl={oppLogoUrl} abbr={oppAbbr} color={effOppColor} />
           <div style={{ minWidth: 0 }}>
             <div className="lv-tname" title={oppName}><span className="lg:hidden">{oppAbbr || oppName}</span><span className="hidden lg:inline">{oppName}</span></div>
@@ -205,8 +207,6 @@ export default function Scoreboard({
             {state.theirScore}
           </button>
         </div>
-
-        {!readOnly && <button type="button" className="lv-end" onClick={onEndGame} title="End Game">End Game</button>}
       </div>
 
       {locked ? (

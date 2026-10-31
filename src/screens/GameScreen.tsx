@@ -2760,14 +2760,15 @@ export default function GameScreen() {
             Pregame
           </button>
         )}
-        {/* Phone only; at lg it stays on the scoreboard row. It used to sit at
-            the bottom of the Plays pane, which meant it vanished entirely
-            while the Play pane was showing - the button rendered at 0x0 and
-            was simply unfindable. Amber so it never reads as another neutral
-            header action. */}
+        {/* Every width. On the iPad it used to close the scoreboard row, which
+            pulled the clock off centre and cost both team names their room.
+            Before that it sat at the bottom of the Plays pane, which meant it
+            vanished entirely while the Play pane was showing - the button
+            rendered at 0x0 and was simply unfindable. Red so it never reads
+            as another neutral header action. */}
         {canWrite && (
-          <button onClick={() => setShowEndGame(true)} className="lg:hidden lv-tool red" title="End Game">
-            <PowerIcon size={14} />End
+          <button onClick={() => setShowEndGame(true)} className="lv-tool red" title="End Game">
+            <PowerIcon size={14} />End<span className="hidden lg:inline"> Game</span>
           </button>
         )}
       </div>
@@ -2818,7 +2819,6 @@ export default function GameScreen() {
           canPreviousQuarter={quarter > 1}
           canNextQuarter={quarter < MAX_QUARTER}
           onEditClock={() => { setClockMins(Math.floor(clock / 60)); setClockSecs(clock % 60); setShowClockEditor(true); }}
-          onEndGame={() => setShowEndGame(true)}
           onSetDown={setDown}
           onAdjustDistance={adjustDistance}
           onSetGoalToGo={goal => { setGoalToGo(goal); setDistance(10); }}
