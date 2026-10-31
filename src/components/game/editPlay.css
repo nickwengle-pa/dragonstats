@@ -1,0 +1,163 @@
+/* ── Edit play (EditPlayLayout) ─────────────────────────────────────────────
+   The summary-first editor. Broadcast language - a black bug with the red
+   slash, hard corners, Chakra Petch on air and Manrope for the small print -
+   in the dark palette always: the steps it hosts were drawn for a dark panel,
+   and the Film Chart behind it is dark whatever the app theme says.
+
+   Phone: one column, the summary or a pane. iPad (>= 1024px): both. */
+
+.ep-panel {
+  --ep-bug: #07090c;
+  --ep-stage: #12161b;
+  --ep-surface: #1a1f26;
+  --ep-surface-2: #222830;
+  --ep-ink: #f2f3f5;
+  --ep-mute: #9aa3ad;
+  --ep-line: #2c333d;
+  --ep-red: #d7141a;
+  --ep-red-text: #ff5a60;
+  --ep-amber-text: #fbbf24;
+  --ep-sky: #38bdf8;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 28rem;
+  height: 94dvh;
+  overflow: hidden;
+  background: var(--ep-stage);
+  color: var(--ep-ink);
+  font-family: "Manrope", system-ui, sans-serif;
+  border: 1px solid var(--ep-line);
+  border-bottom: 0;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+@media (min-width: 768px) {
+  .ep-panel { max-width: 42rem; height: min(94dvh, 1100px); border-bottom: 1px solid var(--ep-line); }
+}
+@media (min-width: 1024px) {
+  .ep-panel { max-width: none; width: min(1180px, 96vw); height: min(900px, 94dvh); }
+}
+
+/* header: the black bar with the red slash under it */
+.ep-head { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--ep-bug); flex-shrink: 0; }
+.ep-head::after { content: ""; position: absolute; left: 0; bottom: -4px; width: 46%; height: 4px; background: var(--ep-red); clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.ep-icon { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 1px solid var(--ep-line); background: none; color: var(--ep-mute); cursor: pointer; }
+.ep-icon:active { background: var(--ep-surface-2); }
+.ep-title { flex: 1; min-width: 0; padding-left: 2px; }
+.ep-title h2 { font-family: "Chakra Petch", sans-serif; font-size: 18px; line-height: 22px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-pill { display: inline-block; margin-left: 8px; padding: 1px 6px; font-size: 10px; line-height: 14px; letter-spacing: .16em; vertical-align: 3px; color: var(--ep-sky); border: 1px solid color-mix(in srgb, var(--ep-sky) 55%, transparent); }
+.ep-title p { margin-top: 1px; font-size: 12px; color: var(--ep-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-nav { display: flex; gap: 6px; flex-shrink: 0; }
+.ep-nav button { height: 44px; min-width: 56px; padding: 0 8px; display: flex; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--ep-line); background: none; color: var(--ep-ink); font-family: "Chakra Petch", sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; }
+.ep-nav button:disabled { opacity: .3; cursor: default; }
+
+.ep-body { flex: 1; min-height: 0; display: flex; }
+.ep-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.ep-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 14px 18px; }
+
+/* One column at a time below the iPad width. */
+@media (max-width: 1023.98px) {
+  .ep-panel[data-pane="open"] .ep-sum { display: none; }
+  .ep-panel[data-pane="closed"] .ep-pane { display: none; }
+  .ep-panel[data-pane="open"] .ep-close-wide { display: none; }
+}
+@media (min-width: 1024px) {
+  .ep-sum { flex: 0 0 456px; border-right: 1px solid var(--ep-line); }
+  .ep-back { display: none; }
+}
+
+/* the play, as a scorebug */
+.ep-bug { position: relative; background: var(--ep-bug); border-left: 5px solid var(--team, var(--ep-red)); padding: 10px 14px 12px; margin-bottom: 18px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45); }
+.ep-bug::after { content: ""; position: absolute; left: -5px; right: 0; bottom: -5px; height: 5px; background: var(--ep-red); clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+.ep-sit { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-family: "Chakra Petch", sans-serif; font-weight: 700; text-transform: uppercase; }
+.ep-sit .dd { font-size: 24px; line-height: 28px; letter-spacing: .02em; color: #fff; }
+.ep-sit .at { font-size: 14px; letter-spacing: .08em; color: var(--ep-mute); }
+.ep-sit .q { margin-left: auto; font-size: 12px; letter-spacing: .14em; color: var(--ep-mute); }
+.ep-desc-row { display: flex; align-items: flex-end; gap: 10px; }
+.ep-desc { flex: 1; min-width: 0; margin-top: 4px; font-size: 15px; line-height: 1.35; font-weight: 600; color: #fff; }
+.ep-bug-act { flex-shrink: 0; min-height: 36px; padding: 0 10px; background: none; border: 1px solid color-mix(in srgb, var(--ep-sky) 55%, transparent); color: var(--ep-sky); font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.ep-bug-act[aria-pressed="true"] { background: color-mix(in srgb, var(--ep-sky) 18%, transparent); }
+
+/* sections and rows */
+.ep-sec { margin-top: 16px; }
+.ep-sec-h { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 6px; font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--ep-mute); }
+.ep-sec-h i { font-style: normal; letter-spacing: .06em; color: #5f6873; }
+.ep-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; margin-bottom: 4px; padding: 8px 10px 8px 12px; text-align: left; background: var(--ep-surface); border: 1px solid var(--ep-line); color: var(--ep-ink); }
+button.ep-row { cursor: pointer; }
+button.ep-row:active { background: var(--ep-surface-2); }
+.ep-row[aria-current="true"] { background: color-mix(in srgb, var(--ep-red) 12%, var(--ep-surface)); border-color: color-mix(in srgb, var(--ep-red) 60%, var(--ep-line)); box-shadow: inset 3px 0 0 var(--ep-red); }
+.ep-row.ep-ro { opacity: .8; }
+.ep-k { flex: 0 0 92px; font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ep-mute); }
+.ep-k i { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--ep-sky); vertical-align: 1px; }
+.ep-v { flex: 1; min-width: 0; font-size: 16px; line-height: 1.3; font-weight: 700; overflow-wrap: anywhere; }
+.ep-v small { display: block; margin-top: 1px; font-size: 12.5px; font-weight: 500; color: var(--ep-mute); }
+.ep-v.amber { color: var(--ep-amber-text); }
+.ep-v.dim { color: var(--ep-mute); font-weight: 600; }
+.ep-v.warn { color: var(--ep-red-text); }
+.ep-v.warn small { color: color-mix(in srgb, var(--ep-red-text) 75%, var(--ep-mute)); }
+.ep-side { display: inline-block; margin-right: 6px; padding: 0 5px; font-family: "Chakra Petch", sans-serif; font-size: 10px; line-height: 16px; font-weight: 700; letter-spacing: .08em; vertical-align: 2px; color: var(--side); border: 1px solid color-mix(in srgb, var(--side) 70%, transparent); }
+.ep-chev { flex-shrink: 0; color: #5f6873; }
+.ep-inline { flex-shrink: 0; display: flex; gap: 4px; }
+.ep-inline button { min-width: 44px; height: 40px; padding: 0 10px; border: 1px solid var(--ep-line); background: var(--ep-bug); color: var(--ep-mute); font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.ep-inline button[aria-pressed="true"] { background: #fff; color: #0b0d10; border-color: #fff; }
+
+.ep-adds { display: flex; gap: 6px; flex-wrap: wrap; }
+.ep-add { flex: 1 1 0; min-width: 96px; min-height: 46px; padding: 0 10px; border: 1px dashed var(--ep-line); background: none; color: var(--ep-mute); font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.ep-add[aria-pressed="true"] { border-style: solid; border-color: #fff; color: #fff; background: var(--ep-surface-2); }
+
+/* the summary's footer: delete and save */
+.ep-foot { flex-shrink: 0; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); background: var(--ep-bug); border-top: 1px solid var(--ep-line); }
+.ep-blocker { margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--ep-red-text); }
+.ep-foot-row { display: flex; gap: 8px; }
+.ep-del { width: 52px; height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid color-mix(in srgb, var(--ep-red) 55%, var(--ep-line)); color: var(--ep-red-text); cursor: pointer; }
+.ep-del:disabled { opacity: .4; cursor: default; }
+.ep-save, .ep-save2 { height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; font-family: "Chakra Petch", sans-serif; font-size: 16px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.ep-save { flex: 1; min-width: 0; padding: 0 22px 0 14px; background: var(--ep-red); color: #fff; clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+.ep-save small { font-family: "Manrope", sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; opacity: .85; }
+.ep-save2 { flex: 0 0 auto; padding: 0 16px; background: none; border: 1px solid #4a525d; color: var(--ep-ink); }
+.ep-save:disabled, .ep-save2:disabled { cursor: default; }
+.ep-save:disabled { background: var(--ep-line); color: var(--ep-mute); }
+.ep-save[aria-busy="true"] { background: color-mix(in srgb, var(--ep-red) 55%, #000); color: #fff; }
+.ep-save2:disabled { opacity: .5; }
+.ep-save2.ep-wide { flex: 1; }
+
+/* the pane: the step that changes one line */
+.ep-pane { background: var(--ep-stage); }
+.ep-pane-h { flex-shrink: 0; padding: 16px 16px 10px; border-bottom: 1px solid var(--ep-line); }
+.ep-pane-h h3 { font-family: "Chakra Petch", sans-serif; font-size: 22px; line-height: 26px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
+.ep-pane-h p { margin-top: 2px; font-size: 13px; color: var(--ep-mute); }
+.ep-pane-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px 18px; }
+.ep-pane-body > * + * { margin-top: 16px; }
+.ep-pane-foot { flex-shrink: 0; display: flex; justify-content: flex-end; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); background: var(--ep-bug); border-top: 1px solid var(--ep-line); }
+.ep-done { width: 100%; height: 52px; background: #fff; color: #0b0d10; border: 0; font-family: "Chakra Petch", sans-serif; font-size: 16px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; cursor: pointer; clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+@media (min-width: 1024px) { .ep-done { width: 200px; } }
+.ep-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 32px; text-align: center; color: var(--ep-mute); font-size: 14px; }
+.ep-empty .big { font-family: "Chakra Petch", sans-serif; font-size: 18px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ep-ink); }
+
+/* the goal-to-go question and other must-answer notes on the summary */
+.ep-note { margin-bottom: 12px; padding: 10px 12px; background: var(--ep-surface); border: 1px solid var(--ep-line); }
+.ep-note.warn { border-color: color-mix(in srgb, var(--ep-red) 60%, var(--ep-line)); }
+.ep-note.info { font-size: 13px; color: var(--ep-mute); }
+.ep-note.info strong { color: var(--ep-ink); }
+
+/* Film charting panes: tap-to-pick chips with a box for anything else. */
+.ep-lab { margin: 0 0 8px; font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--ep-mute); }
+.ep-lab small { margin-left: 8px; font-family: "Manrope", sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #6f7883; }
+.ep-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ep-chip { min-width: 48px; min-height: 44px; padding: 0 14px; background: var(--ep-surface); border: 1px solid var(--ep-line); color: var(--ep-ink); font-size: 15px; font-weight: 700; cursor: pointer; }
+.ep-chip:active { background: var(--ep-surface-2); }
+.ep-chip[aria-pressed="true"] { background: #fff; border-color: #fff; color: #0b0d10; }
+.ep-chip.add { border-style: dashed; color: var(--ep-mute); }
+.ep-field, .ep-area { display: block; width: 100%; margin-top: 8px; padding: 0 12px; min-height: 46px; background: var(--ep-bug); border: 1px solid var(--ep-line); color: var(--ep-ink); font-family: "Manrope", sans-serif; font-size: 16px; font-weight: 600; }
+.ep-field::placeholder, .ep-area::placeholder { color: #5f6873; font-weight: 500; }
+.ep-field:focus, .ep-area:focus { outline: none; border-color: var(--ep-sky); }
+.ep-area { padding: 10px 12px; min-height: 160px; resize: vertical; line-height: 1.4; }
+.ep-inline-row { display: flex; gap: 8px; align-items: stretch; }
+.ep-inline-row .ep-field { flex: 1; min-width: 0; }
+.ep-go { flex-shrink: 0; min-height: 46px; margin-top: 8px; padding: 0 16px; background: var(--ep-surface-2); border: 1px solid #4a525d; color: var(--ep-ink); font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.ep-go:disabled { opacity: .45; cursor: default; }
+.ep-go.primary { background: var(--ep-red); border-color: var(--ep-red); color: #fff; }
+.ep-go.primary:disabled { background: var(--ep-line); border-color: var(--ep-line); color: var(--ep-mute); opacity: 1; }
+.ep-hint { margin-top: 6px; font-size: 12.5px; color: var(--ep-mute); }
+.ep-hint.warn { color: var(--ep-amber-text); }

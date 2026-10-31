@@ -708,6 +708,19 @@ export default function GameScreen() {
   const lastEndPromptKey = useRef<string | null>(null);
   const [scoreCorrectTeam, setScoreCorrectTeam] = useState<TimeoutTeam | null>(null);
   const [editPlay, setEditPlay] = useState<PlayRecord | null>(null);
+  /* An edit opened from the Full Log goes back to the log, scrolled to and
+     marked on that play, the way the Film Chart does - fixing several plays
+     used to mean reopening the log and scrolling for the next one each time. */
+  const logReturn = useRef<string | null>(null);
+  const [logHighlight, setLogHighlight] = useState<string | null>(null);
+  const returnToLog = () => {
+    const id = logReturn.current;
+    logReturn.current = null;
+    if (!id) return;
+    setLogHighlight(id);
+    setShowLog(true);
+  };
+  useEffect(() => { if (!showLog) setLogHighlight(null); }, [showLog]);
   /* A short "Play 23 saved" after an edit closes, so the sheet vanishing is
      not the only sign the save went through. */
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
@@ -2454,6 +2467,7 @@ export default function GameScreen() {
     await recalcScoreAndState(newPlays);
 
     // A hand-set spot the edit replaced gets confirmed again, as on entry.
+    let confirming = false;
     if (updatedPlay.penalty || updatedPlay.type === "blocked_kick" || (handSpotDropped && !updatedPlay.isTouchdown)) {
       const rebuilt = rebuildPlaySituations(newPlays, pregame, gc);
       const rebuiltPlay = rebuilt.plays[idx];
@@ -2464,8 +2478,11 @@ export default function GameScreen() {
           distance: rebuiltPlay.distance,
           ballOn: rebuiltPlay.ballOn,
         });
+        confirming = true;
       }
     }
+    // Not over the spot sheet: that question comes first, and the log can wait.
+    if (confirming) logReturn.current = null; else returnToLog();
   };
 
   /* ── Edit a timeout: when it was called, and by whom ──────────────────
@@ -2507,11 +2524,14 @@ export default function GameScreen() {
     };
     setEditPlay(null);
     await recalcScoreAndState(newPlays);
+    returnToLog();
   };
 
   /* ── Delete play from edit modal ── */
   const handleDeletePlay = async (playId: string) => {
     if (!canWriteRef.current) return;
+    // The play is gone, and a finished game may ask to confirm its new final.
+    logReturn.current = null;
     // Not a plain filter: the play after it keeps the spot typed on it.
     const newPlays = withoutPlay(plays, playId, pregame, gc);
     if (!(await finalGuard.guard(newPlays))) return;
@@ -3175,7 +3195,8 @@ export default function GameScreen() {
       {showLog && (
         <PlayLog
           plays={plays}
-          onEdit={canWrite ? p => { if (p.type === "quarter_change") return; setShowLog(false); setEditPlay(p); } : undefined}
+          onEdit={canWrite ? p => { if (p.type === "quarter_change") return; logReturn.current = p.id; setShowLog(false); setEditPlay(p); } : undefined}
+          highlightId={logHighlight}
           /* Back to the play pane as well: the pending-insert banner and the
              quick actions both live there, and the operator arrives here FROM
              the plays pane, so without this the tap looks like it did nothing
@@ -3326,7 +3347,7 @@ export default function GameScreen() {
           quarterLengthSecs={gc.quarter_length_secs}
           onSave={(edit) => { void handleSaveTimeoutEdit(editPlay.id, edit); }}
           onDelete={() => { void handleDeletePlay(editPlay.id); }}
-          onClose={() => setEditPlay(null)}
+          onClose={() => { setEditPlay(null); returnToLog(); }}
         />
       )}
 
@@ -3341,6 +3362,7 @@ export default function GameScreen() {
             key={editPlay.id}
             playType={editType}
             editing={editPlay}
+            playNumber={plays.findIndex(p => p.id === editPlay.id) + 1 || undefined}
             gameState={{
               quarter: editPlay.quarter,
               clock: editPlay.clock,
@@ -3382,7 +3404,7 @@ export default function GameScreen() {
             trackTacklers
             onSubmit={(data) => handleSaveEdit(editPlay.id, data)}
             onDelete={() => { void handleDeletePlay(editPlay.id); }}
-            onClose={() => setEditPlay(null)}
+            onClose={() => { setEditPlay(null); returnToLog(); }}
             onAddOpponentPlayer={addOpponentPlayer}
           />
         );

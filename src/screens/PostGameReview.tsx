@@ -43,6 +43,7 @@ import {
 } from "@/services/chartingService";
 import PlayEntryModal, { type PlaySubmitData } from "@/components/game/PlayEntryModal";
 import { resolveEditedNextSituation } from "@/components/game/editNextSituation";
+import { chartingChanged, collectFilmSeen, type FilmStart } from "@/components/game/FilmChartingFields";
 import { formatClockValue } from "@/components/game/ClockInput";
 import NumberField from "@/components/game/NumberField";
 import TimeoutEditModal, { timeoutCallerLabel, type TimeoutEdit } from "@/components/game/TimeoutEditModal";
@@ -862,6 +863,17 @@ export default function PostGameReview() {
   // Play-data editor (reuses the live play entry modal)
   const [editRecord, setEditRecord] = useState<PlayRecord | null>(null);
 
+  /* The play editor with the play's film charting on the same screen. It
+     replaced a charting sheet of free-text boxes with its own Save that
+     opened the stats editor on top of itself with another - two screens and
+     two saves to fix one play. The old sheet stays for the rows this editor
+     cannot open: timeouts and play types it does not know. */
+  const [filmOpen, setFilmOpen] = useState(false);
+  // The charting as the play opened, for what changed.
+  const [savedDraft, setSavedDraft] = useState<PlayChartingDraft | null>(null);
+  // Bumped when Change start saves, which has to reopen the play on its new start.
+  const [filmEpoch, setFilmEpoch] = useState(0);
+
   /* The play last opened from the table. Every save reloads the game, and the
      reload used to swap the table for "Loading…", which threw the page back to
      the top - so after an edit you had to hunt for the play you were on. The
@@ -1018,8 +1030,8 @@ export default function PostGameReview() {
   }, [perms.chartFilm, draft]);
 
   // ── Edit the play's recorded stats (writes to `plays`; stats recompute) ──
-  const handleSavePlayEdit = useCallback(async (playId: string, result: PlaySubmitData) => {
-    if (!canWrite) return;
+  const writePlayEdit = useCallback(async (playId: string, result: PlaySubmitData): Promise<boolean> => {
+    if (!canWrite) return false;
     const original = plays.find((p) => p.id === playId);
     const pd = (original?.play_data ?? {}) as Record<string, any>;
     const editTurnover = result.turnover ?? ["int", "fumble"].includes(result.playType.id);
@@ -1114,17 +1126,9 @@ export default function PostGameReview() {
       gameId,
     );
 
-    if (!ok) {
-      setError("Couldn't save the play edit — check your connection and try again.");
-      return;
-    }
-
-    setEditRecord(null);
-    const refreshed = await rechain(await load());
-    const row = refreshed.find((p) => p.id === playId) ?? null;
-    setEditingPlay(row);
-    if (row) setSitDraft(situationFromPlay(row));
-  }, [canWrite, plays, load, rechain, meta, program]);
+    // The editor says so itself when this fails, and stays up to try again.
+    return ok;
+  }, [canWrite, plays, meta, program, gameId]);
 
   /* Same two facts as the live screen, written the same way. */
   const handleSaveTimeoutEdit = useCallback(async (playId: string, edit: TimeoutEdit) => {
@@ -1159,15 +1163,16 @@ export default function PostGameReview() {
     await load();
   }, [canWrite, plays, program, meta, gameId, load]);
 
+  /* Both editors ask before calling this - it used to ask a second time. */
   const handleDeletePlayEdit = useCallback(async (playId: string) => {
     if (!canWrite) return;
-    if (!window.confirm("Delete this play? Game and season stats will update to match.")) return;
     // The list as it stood, deleted play included - see rechainStoredPlays.
     const before = rawPlays;
     const deleted = await deletePlay(playId, gameId);
     setEditRecord(null);
     setEditingPlay(null);
     setDraft(null);
+    setFilmOpen(false);
     if (!deleted) {
       await load();
       return;
@@ -1287,6 +1292,84 @@ export default function PostGameReview() {
     () => plays.filter((p) => hasChartingDetail(charting[p.id])).length,
     [plays, charting],
   );
+
+  /* ── The play editor with film charting ── */
+  const filmSeen = useMemo(() => collectFilmSeen(Object.values(charting), plays), [charting, plays]);
+  const editableInFilm = (p: PlayWithPlayers) =>
+    p.play_type !== "timeout" && p.play_type !== "quarter_change" && !!findPlayTypeDef(p.play_type);
+  // Previous and next follow the table as filtered, so Offense + a name steps
+  // through that player's offensive snaps.
+  const filmPlays = useMemo(() => visiblePlays.filter(editableInFilm), [visiblePlays]);
+  const filmNeighbors = (id: string) => {
+    const i = filmPlays.findIndex((p) => p.id === id);
+    return { prev: i > 0 ? filmPlays[i - 1] : null, next: i >= 0 && i < filmPlays.length - 1 ? filmPlays[i + 1] : null };
+  };
+
+  const openPlay = useCallback((p: PlayWithPlayers) => {
+    if (!editableInFilm(p)) { setFilmOpen(false); openCharting(p); return; }
+    const d = emptyDraft(p, gameId!, charting[p.id]);
+    setLastPlayId(p.id);
+    setEditingPlay(p);
+    setDraft(d);
+    setSavedDraft(d);
+    setSitDraft(null);
+    setEditRecord(rowToPlayRecord(p, rosterJerseys));
+    setFilmOpen(true);
+  }, [openCharting, gameId, charting, rosterJerseys]);
+
+  const closeFilm = useCallback(() => {
+    setFilmOpen(false);
+    setEditingPlay(null);
+    setDraft(null);
+    setSavedDraft(null);
+    setEditRecord(null);
+  }, []);
+
+  /* One Save: the play when it changed, then its charting, then close or
+     open the next play. Resolving false keeps the editor up with an error. */
+  const saveFilm = useCallback(async (stats: PlaySubmitData | null, then: "close" | "next"): Promise<boolean> => {
+    const row = editingPlay;
+    if (!row || !draft) return false;
+    const nextId = then === "next" ? filmNeighbors(row.id).next?.id ?? null : null;
+    let fresh: PlayWithPlayers[] | null = null;
+    if (stats && canWrite) {
+      if (!(await writePlayEdit(row.id, stats))) return false;
+      fresh = await rechain(await load());
+    }
+    if (perms.chartFilm && savedDraft && chartingChanged(draft, savedDraft)) {
+      const saved = await saveCharting(draft);
+      if (!saved) return false;
+      setCharting((prev) => ({ ...prev, [saved.play_id]: saved }));
+      setSavedDraft(draft);
+    }
+    const nextRow = nextId ? (fresh ?? plays).find((p) => p.id === nextId) ?? null : null;
+    if (nextRow) openPlay(nextRow); else closeFilm();
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingPlay, draft, savedDraft, canWrite, perms.chartFilm, writePlayEdit, rechain, load, plays, openPlay, closeFilm, filmPlays]);
+
+  /* Change start: a hand-set start, saved on its own like the old Down & Dist
+     box, because every spot on the play is measured from it - the editor
+     reopens on the new start rather than mixing it with figures from the old. */
+  const saveStart = useCallback(async (next: FilmStart): Promise<boolean> => {
+    const row = editingPlay;
+    if (!canWrite || !row) return false;
+    const ok = await updatePlaySituation(row.id, {
+      possession: next.possession,
+      down: next.down,
+      distance: next.distance,
+      yard_line: next.yard_line,
+    }, { ...(row.play_data ?? {}), start_override: true }, { gameId });
+    if (!ok) return false;
+    const fresh = await rechain(await load());
+    const updated = fresh.find((p) => p.id === row.id);
+    if (updated) {
+      setEditingPlay(updated);
+      setEditRecord(rowToPlayRecord(updated, rosterJerseys));
+      setFilmEpoch((e) => e + 1);
+    }
+    return true;
+  }, [editingPlay, canWrite, gameId, rechain, load, rosterJerseys]);
 
   const handleExport = useCallback(() => {
     if (plays.length === 0) return;
@@ -1508,7 +1591,7 @@ export default function PostGameReview() {
             </span>
             <span className="text-surface-border">·</span>
             <span className="text-emerald-400">{chartedCount} charted</span>
-            <span className="ml-auto text-surface-muted/70">Tap a row to chart</span>
+            <span className="ml-auto text-surface-muted/70">{canWrite ? "Tap a play to edit or chart it" : "Tap a play to chart it"}</span>
           </div>
         </div>
       )}
@@ -1581,7 +1664,7 @@ export default function PostGameReview() {
                     <tr
                       key={p.id}
                       data-play-id={p.id}
-                      onClick={() => openCharting(p)}
+                      onClick={() => openPlay(p)}
                       className={`border-b border-surface-border/40 cursor-pointer hover:bg-surface-cardHover active:bg-surface-cardHover ${
                         p.id === lastPlayId ? "bg-sky-500/15" : ""}`}
                     >
@@ -1620,7 +1703,12 @@ export default function PostGameReview() {
                       </Td>
                       <Td>
                         {canWrite && <button
-                          onClick={(e) => { e.stopPropagation(); setLastPlayId(p.id); setEditRecord(rowToPlayRecord(p, rosterJerseys)); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // A timeout has its own sheet; anything else opens the play.
+                            if (p.play_type === "timeout") { setLastPlayId(p.id); setEditRecord(rowToPlayRecord(p, rosterJerseys)); }
+                            else openPlay(p);
+                          }}
                           className="btn-ghost p-1 text-surface-muted/50 hover:text-dragon-primary cursor-pointer"
                           title="Edit this play"
                         >
@@ -1644,8 +1732,8 @@ export default function PostGameReview() {
         {DEFENSIVE_FORMATIONS.map((f) => <option key={f} value={f} />)}
       </datalist>
 
-      {/* Charting sheet */}
-      {editingPlay && draft && (
+      {/* Charting sheet - timeouts and play types the editor cannot open */}
+      {!filmOpen && editingPlay && draft && (
         <ChartingSheet
           play={editingPlay}
           draft={draft}
@@ -1679,15 +1767,18 @@ export default function PostGameReview() {
       )}
 
       {/* Play editor - the same screen that recorded the play, so film review
-          corrects a play through the controls it was entered with. */}
-      {canWrite && editRecord && editRecord.type !== "timeout" && (() => {
+          corrects a play through the controls it was entered with - with the
+          play's film charting on it, and one Save for both. */}
+      {filmOpen && editingPlay && draft && savedDraft && editRecord && editRecord.type !== "timeout" && (() => {
         const editType = findPlayTypeDef(editRecord.type);
         if (!editType) return null;
+        const around = filmNeighbors(editingPlay.id);
         return (
           <PlayEntryModal
-            key={editRecord.id}
+            key={`${editRecord.id}:${filmEpoch}`}
             playType={editType}
             editing={editRecord}
+            playNumber={editRecord.sequence}
             gameState={{
               quarter: editRecord.quarter,
               clock: editRecord.clock,
@@ -1704,9 +1795,25 @@ export default function PostGameReview() {
             oppName={meta?.opponent_name ?? "Opponent"}
             trackFormations
             trackTacklers
-            onSubmit={(data) => handleSavePlayEdit(editRecord.id, data)}
-            onDelete={() => { void handleDeletePlayEdit(editRecord.id); }}
-            onClose={() => setEditRecord(null)}
+            onSubmit={async (data) => { await saveFilm(data, "close"); }}
+            onDelete={canWrite ? () => { void handleDeletePlayEdit(editRecord.id); } : undefined}
+            onClose={closeFilm}
+            film={{
+              draft,
+              saved: savedDraft,
+              onChange: (patch) => setDraft((d) => (d ? { ...d, ...patch } : d)),
+              canChart: perms.chartFilm,
+              canEditStats: canWrite,
+              lockNote: canWrite ? null : viewOnlyReason,
+              seen: filmSeen,
+              start: canWrite ? { value: situationFromPlay(editingPlay), save: saveStart } : null,
+              nav: {
+                prev: around.prev ? { label: String(around.prev.sequence), go: () => openPlay(around.prev!) } : null,
+                next: around.next ? { label: String(around.next.sequence), go: () => openPlay(around.next!) } : null,
+              },
+              hasNext: around.next != null,
+              onSave: saveFilm,
+            }}
           />
         );
       })()}

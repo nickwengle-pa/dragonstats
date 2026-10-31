@@ -40,7 +40,9 @@ import {
   buildDescription,
 } from "./types";
 import { buildEditSeed } from "./playEntrySeed";
-import ClockInput from "./ClockInput";
+import ClockInput, { formatClockValue } from "./ClockInput";
+import EditPlayLayout, { type EditNav, type EditRow, type EditSection, type EditSide, type EditToggle } from "./EditPlayLayout";
+import { filmPane, filmSection, isFilmPane, type FilmEdit, type FilmPane } from "./FilmChartingFields";
 import { readableAccent } from "@/utils/teamColor";
 import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
@@ -126,6 +128,11 @@ interface Props {
   onReturnToSimple?: (data: PlaySubmitData) => void;
   /** Remove the play being edited. Absent when entering. */
   onDelete?: () => void;
+  /** The number the log shows for the play being edited, for the title. */
+  playNumber?: number;
+  /** The Film Chart: the play's charting on the same screen, one Save for
+   *  both, Save & next and the plays either side. See FilmChartingFields. */
+  film?: FilmEdit | null;
 }
 
 export type PenaltyEnforcement = "accepted" | "declined" | "offset";
@@ -668,6 +675,7 @@ export default function PlayEntryModal({
   progLogoUrl, oppLogoUrl, ourEndZoneSide = "left", offenseDirection = "right",
   trackFormations = true, trackTacklers = true,
   onSubmit, onClose, onAddOpponentPlayer, editing = null, onDelete, initialDraft, startDetailed = false, onReturnToSimple, submitLabel, inlineSimple = false, fieldSpotRequest, onFieldPreview,
+  playNumber, film = null,
 }: Props) {
   /* The recorded play, read back into the state that produced it. Built once:
      every state initialiser below reads it during the first render, and it must
@@ -1401,6 +1409,8 @@ export default function PlayEntryModal({
      It now reads "Saving…" from the first touch, and ignores further taps
      until the save settles; a failed save leaves the sheet open as before. */
   const [saving, setSaving] = useState(false);
+  const [savingNext, setSavingNext] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const savingRef = useRef(false);
   const saveFromButton = async () => {
     if (savingRef.current) return;
@@ -1408,26 +1418,45 @@ export default function PlayEntryModal({
     setSaving(true);
     try { await handleSubmit(); } finally { savingRef.current = false; setSaving(false); }
   };
-  const currentStep = steps[stepIdx] ?? "review";
+  /* Editing opens on a summary of the whole play rather than at step 1 of N:
+     every line opens the one step that changes it, and Done comes straight
+     back. editPane names that step - by name, not index, because the step
+     list grows and shrinks as the play changes (a flag, a fumble, a TD). */
+  const summaryMode = isEditing;
+  const [editPane, setEditPane] = useState<Step | "clock" | FilmPane | null>(null);
+  const paneStep: Step | null = summaryMode && editPane && editPane !== "clock" && !isFilmPane(editPane) && steps.includes(editPane) ? editPane : null;
+  const currentStep: Step = summaryMode ? (paneStep ?? "review") : (steps[stepIdx] ?? "review");
+  /* The summary's baseline for "what changed" follows the play until the
+     operator first touches something, so the seeding effects that settle on
+     mount never count as an edit. */
+  const touchedRef = useRef(false);
+  const baselineRef = useRef<{ rows: Record<string, string>; preview: string } | null>(null);
+  const openPane = (pane: Step | "clock" | FilmPane) => { touchedRef.current = true; setEditPane(pane); };
+  const closePane = () => setEditPane(null);
+  // A pane whose step left the flow (the flag removed, the TD that dropped
+  // the tackle) has nothing to show.
+  useEffect(() => {
+    if (summaryMode && editPane && editPane !== "clock" && !isFilmPane(editPane) && !steps.includes(editPane)) setEditPane(null);
+  });
 
-  const canGoNext = (): boolean => {
-    if (currentStep === "review" && goalChoiceRequired && nextGoalToGo === undefined) return false;
+  const stepReady = (step: Step): boolean => {
+    if (step === "review" && goalChoiceRequired && nextGoalToGo === undefined) return false;
     // A PAT kick is good or it isn't, and that answer is the whole play. Left
     // blank it recorded a try that neither scored nor missed, so the result is
     // required before leaving the step that asks it, and again before saving.
     // (Blocked switches the play type, so a block is never held up here.)
-    if (playType.id === "pat" && !result && (currentStep === "yards" || currentStep === "review")) {
+    if (playType.id === "pat" && !result && (step === "yards" || step === "review")) {
       return false;
     }
     // A penalty-only play with no flag chosen is meaningless — this is the one
     // step worth hard-blocking on, since there's nothing else to record.
-    if (currentStep === "penalty") {
+    if (step === "penalty") {
       // trim(), because a custom flag starts as an empty string and a name
       // of spaces would otherwise sail through and record an unnamed foul.
       return !!penalty?.trim() && !!penaltyCategory && (penaltyEnforcement !== "accepted"
         || flagYardsRaw.trim() !== "" && Number.isFinite(Number(flagYardsRaw)) && (enforcement != null || overrideSpot) && (!scoringPenaltyRuling || overrideSpot));
     }
-    if (currentStep === "review" && penalty) {
+    if (step === "review" && penalty) {
       return !!penalty?.trim() && !!penaltyCategory && (penaltyEnforcement !== "accepted"
         || flagYardsRaw.trim() !== "" && Number.isFinite(Number(flagYardsRaw)) && (enforcement != null || overrideSpot) && (!scoringPenaltyRuling || overrideSpot));
     }
@@ -1438,8 +1467,25 @@ export default function PlayEntryModal({
     return true;
   };
 
-  const goNext = () => { if (stepIdx < steps.length - 1 && canGoNext()) setStepIdx(s => s + 1); };
-  const goBack = () => { if (stepIdx > 0) setStepIdx(s => s - 1); };
+  const canGoNext = (): boolean => stepReady(currentStep);
+
+  /* On the summary there is no next step: whatever would have moved on goes
+     back to the play instead, which is where the next change is chosen. */
+  const goNext = () => {
+    if (summaryMode) { closePane(); return; }
+    if (stepIdx < steps.length - 1 && canGoNext()) setStepIdx(s => s + 1);
+  };
+  const goBack = () => {
+    if (summaryMode) { closePane(); return; }
+    if (stepIdx > 0) setStepIdx(s => s - 1);
+  };
+  /** After a pick: the next role, or the next step - or, editing, back to
+   *  the play, so changing the receiver is one tap to open and one to pick. */
+  const advanceRole = () => {
+    if (summaryMode) { closePane(); return; }
+    if (currentRoleIdx < roles.length - 1) setCurrentRoleIdx(i => i + 1);
+    else goNext();
+  };
 
   /**
    * Roles nobody has named. These record as TEAM - ours as well as theirs,
@@ -1561,11 +1607,7 @@ export default function PlayEntryModal({
       next.delete(role);
       return next;
     });
-    if (currentRoleIdx < roles.length - 1) {
-      setCurrentRoleIdx(i => i + 1);
-    } else {
-      goNext();
-    }
+    advanceRole();
   };
 
   /** Tag an unrostered jersey for the current role. Same rhythm as picking a
@@ -1589,11 +1631,7 @@ export default function PlayEntryModal({
       next.delete(role);
       return next;
     });
-    if (currentRoleIdx < roles.length - 1) {
-      setCurrentRoleIdx(i => i + 1);
-    } else {
-      goNext();
-    }
+    advanceRole();
   };
 
   /** TEAM as the QB or runner, chosen rather than left to film review.
@@ -1608,8 +1646,7 @@ export default function PlayEntryModal({
       next.delete(role);
       return next;
     });
-    if (currentRoleIdx < roles.length - 1) setCurrentRoleIdx(i => i + 1);
-    else goNext();
+    advanceRole();
   };
 
   const handleOpponentSelect = (p: OpponentPlayerRef) => {
@@ -1631,11 +1668,7 @@ export default function PlayEntryModal({
       next.delete(role);
       return next;
     });
-    if (currentRoleIdx < roles.length - 1) {
-      setCurrentRoleIdx(i => i + 1);
-    } else {
-      goNext();
-    }
+    advanceRole();
   };
 
   /**
@@ -2417,6 +2450,7 @@ export default function PlayEntryModal({
 
   /** Open the flag's own step, adding it to the flow if it is not there yet. */
   const openPenaltyStep = () => {
+    if (summaryMode) { setShowPenalties(true); openPane("penalty"); return; }
     const alreadyThere = steps.indexOf("penalty");
     if (alreadyThere >= 0) { setStepIdx(alreadyThere); return; }
     setShowPenalties(true);
@@ -2854,6 +2888,2097 @@ export default function PlayEntryModal({
   };
   const detailHeading = detailHeadings[currentStep];
 
+  /* Every step's controls, drawn once and shown either inside the wizard
+     (entry) or inside a pane of the edit summary. */
+  const stepBody = (
+    <>
+
+      {/* ── STEP: Players ── */}
+      {currentStep === "players" && (
+        <>
+          {playType.id === "two_pt" && (
+            <div>
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Conversion Type</div>
+              <div className="grid grid-cols-2 gap-2">
+                {(["pass", "run"] as const).map((style) => (
+                  <button
+                    key={style}
+                    onClick={() => {
+                      setTwoPointStyle(style);
+                      setTagged([]);
+                      setCurrentRoleIdx(0);
+                    }}
+                    className={`py-2.5 rounded-xl text-sm font-black border-2 capitalize transition-all duration-200 ${
+                      twoPointStyle === style
+                        ? "border-dragon-primary bg-dragon-primary/15 text-dragon-primary"
+                        : "border-surface-border bg-surface-bg text-slate-500"
+                    }`}
+                  >
+                    {style}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Blocked kick recovery.
+              Above the role chips on purpose: it decides which roster the
+              `recoverer` role picks from, so it has to be answered BEFORE
+              that pick. It lived on the yards step first, which comes
+              after — you chose a recoverer from the defending team's
+              roster and only then got asked who recovered, with no way to
+              reach your own players. */}
+          {playType.id === "blocked_kick" && (
+            <div className="mb-1">
+              <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => changeBlockedRecoveredBy(false)}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                    !blockedRecoveredByKicking ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>
+                  {gameState.possession === "us" ? oppName : progName}
+                </button>
+                <button onClick={() => changeBlockedRecoveredBy(true)}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                    blockedRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>
+                  {gameState.possession === "us" ? progName : oppName} (kicking team)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Fumble as a modifier, on the PLAYERS step because that is
+              where the roles it adds are collected. It sat on the yards
+              step first, which runs after this one, so turning it on
+              appended forced_fumble and fumble_recovery to a step already
+              behind you and nobody was ever asked who forced it or who
+              came up with it. Next walks the new roles from here. */}
+          {canHaveFumble && !summaryMode && (
+            <button
+              onClick={() => setHasFumble(f => !f)}
+              className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer mb-1 ${
+                hasFumble
+                  ? "border-orange-500 bg-orange-500/20 text-orange-400"
+                  : "border-dashed border-surface-border bg-surface-bg text-slate-500"
+              }`}
+            >
+              {hasFumble ? "Fumble on this play" : "+ Fumble"}
+            </button>
+          )}
+
+          {/* Role tabs — amber = carried over from the last play, green = picked here */}
+          <div className="flex gap-1.5 flex-wrap">
+            {roles.map((role, i) => {
+              const tp = tagged.find(t => t.role === role);
+              // Amber = not a confirmed pick, whether that's a carry-over
+              // from the last play or an unrostered jersey.
+              const unconfirmed = carriedRoles.has(role) || !!tp?.isPending;
+              return (
+                <button key={role} onClick={() => setCurrentRoleIdx(i)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all duration-200 cursor-pointer ${
+                    currentRoleIdx === i
+                      ? "text-white"
+                      : tp
+                        ? unconfirmed
+                          ? "bg-amber-500/15 text-amber-400 border border-amber-500/40"
+                          : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                        // Grey-on-dark read as "just another chip" at a
+                        // glance. Dashed says unfilled the way the rest of
+                        // the modal uses dashed for "not a real pick yet".
+                        : "bg-surface-bg text-slate-500 border border-dashed border-slate-600"
+                  }`}
+                  style={currentRoleIdx === i ? { backgroundColor: activeTeamColor } : undefined}>
+                  {/* Fall back to the name when there's no jersey, rather
+                      than rendering "#null". */}
+                  {role}{tp ? `: ${tp.jersey_number != null ? `#${tp.jersey_number}` : tp.name}${tp.isPending ? "?" : ""}` : ": —"}
+                </button>
+              );
+            })}
+          </div>
+
+          {carriedRoles.size > 0 && (
+            <div className="flex items-center justify-between gap-2 text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
+              <span className="text-amber-400/90">
+                Carried from last play:{" "}
+                <span className="font-bold">
+                  {roles
+                    .filter(r => carriedRoles.has(r))
+                    .map(r => {
+                      const tp = tagged.find(t => t.role === r);
+                      return `${r} #${tp?.jersey_number ?? "?"}${tp?.isPending ? "?" : ""}`;
+                    })
+                    .join(", ")}
+                </span>
+                {carriedRoles.has(currentRole) && (
+                  <span className="text-amber-400/60"> — Next to keep, or tap another</span>
+                )}
+              </span>
+              <button
+                onClick={() => {
+                  setTagged(prev => prev.filter(t => !carriedRoles.has(t.role)));
+                  setCarriedRoles(new Set());
+                  setCurrentRoleIdx(0);
+                }}
+                className="text-amber-400 font-bold shrink-0 underline"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          {/* Whose players am I looking at? Team color + logo answers it
+              without reading, which matters when the rosters look alike. */}
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+            style={{
+              borderColor: `${activeTeamAccent}66`,
+              background: `linear-gradient(90deg, ${activeTeamAccent}22, transparent)`,
+            }}
+          >
+            {activeTeamLogo ? (
+              <img src={activeTeamLogo} alt="" className="w-6 h-6 object-contain rounded" />
+            ) : (
+              <span
+                className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-black text-white"
+                style={{ backgroundColor: activeTeamColor }}
+              >
+                {activeTeamTag}
+              </span>
+            )}
+            <span className="text-sm font-display font-black uppercase tracking-wide" style={{ color: activeTeamAccent }}>
+              {activeTeamName}
+            </span>
+            <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              {currentRole}
+            </span>
+          </div>
+
+          {/* Their side is recorded as TEAM unless a number was caught, so
+              say so here instead of leaving it to happen at submit. */}
+          {teamDefaultRoles.includes(currentRole) && (
+            <div className="px-3 py-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-[11px] text-amber-400/80">
+              Records as <span className="font-black">TEAM</span> unless you pick someone.
+            </div>
+          )}
+
+          {/* Show opponent or our roster. The fumble roles get the
+              compact picker the recovery step uses, not a roster grid. */}
+          {["forced_fumble", "fumble_recovery", "recovery_tackler"].includes(currentRole) ? (
+            fumbleRolePicker(currentRole, showOpponentRoster, playerStepNames[currentRole] ?? currentRole, showOpponentRoster ? oppAccent : progAccent)
+          ) : showOpponentRoster ? (
+            <OpponentPlayerGrid
+              players={[...localOppPlayers].sort((a, b) => playerUseCount(playerUsage, currentRole, b.id, true) - playerUseCount(playerUsage, currentRole, a.id, true))}
+              label={`Select ${currentRole} — ${oppName}`}
+              onSelect={handleOpponentSelect}
+              selectedId={tagged.find(t => t.role === currentRole)?.id ?? null}
+              search={searches[currentRole] ?? ""}
+              onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
+              onQuickAdd={handleQuickAddOpponent}
+              accentColor={oppAccent}
+            />
+          ) : (
+            <>
+            {(currentRole === "rusher" || currentRole === "passer") && (
+              <button
+                onClick={handleTeamSelect}
+                aria-pressed={tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed)}
+                className={`w-full mb-2 py-2 rounded-xl border text-xs font-bold uppercase tracking-wide ${
+                  tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed)
+                    ? "border-amber-400 bg-amber-500/25 text-amber-300"
+                    : "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                }`}
+              >
+                {tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed) ? "✓ " : ""}
+                {currentRole === "passer" ? "QB" : "Runner"}: TEAM
+              </button>
+            )}
+            <PlayerGrid
+              roster={[...roster].sort((a, b) => playerUseCount(playerUsage, currentRole, b.player_id) - playerUseCount(playerUsage, currentRole, a.player_id))}
+              label={`Select ${currentRole} — ${progName}`}
+              onSelect={handlePlayerSelect}
+              selectedId={tagged.find(t => t.role === currentRole)?.player_id ?? null}
+              search={searches[currentRole] ?? ""}
+              onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
+              accentColor={progAccent}
+              onSelectPending={handlePendingSelect}
+              selectedPendingId={tagged.find(t => t.role === currentRole && t.isPending)?.player_id ?? null}
+              selectionIsCarried={carriedRoles.has(currentRole)}
+            />
+            </>
+          )}
+        </>
+      )}
+
+      {/* ── KICK STEP: Kicker / Punter ── */}
+      {currentStep === "kick_kicker" && (
+        <>
+          {carriedRoles.has(kickerRole) && (
+            <div className="mb-2 px-3 py-2 rounded-xl border border-dashed border-amber-500/50 bg-amber-500/10 text-[11px] text-amber-400/90">
+              Carried from the last kick - Next keeps him, tap anyone to change.
+            </div>
+          )}
+          {isTheirBall ? (
+            <OpponentPlayerGrid
+              players={localOppPlayers}
+              label={`Select ${kickerRole} (opponent)`}
+              onSelect={handleKickerSelectOpp}
+              selectedId={tagged.find(t => t.role === kickerRole)?.id ?? null}
+              search={kickerSearch}
+              onSearch={setKickerSearch}
+              onQuickAdd={handleQuickAddOpponent}
+              accentColor={oppAccent}
+            />
+          ) : (
+            <PlayerGrid
+              roster={roster}
+              label={`Select ${kickerRole}`}
+              onSelect={handleKickerSelect}
+              selectedId={tagged.find(t => t.role === kickerRole)?.player_id ?? null}
+              search={kickerSearch}
+              onSearch={setKickerSearch}
+              accentColor={progAccent}
+              selectionIsCarried={carriedRoles.has(kickerRole)}
+            />
+          )}
+        </>
+      )}
+
+      {/* ── KICK STEP: Kick Location ── */}
+      {currentStep === "kick_location" && (
+        <>
+          {isTheirBall && !showOppKicker && (
+            <button
+              onClick={() => { setShowOppKicker(true); setStepIdx(0); if (summaryMode) openPane("kick_kicker"); }}
+              className="w-full mb-1 px-3 py-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-[11px] font-bold text-amber-400/80 flex items-center justify-between"
+            >
+              <span className="uppercase tracking-wide">
+                {kickerRole}: <span className="font-black">TEAM</span>
+              </span>
+              <span className="underline">Name him</span>
+            </button>
+          )}
+          {/* Same spot-picking as the run/pass yards step: tap the field
+              or drag the ruler. It's also the only control here that can
+              place the ball on EITHER side of the 50 — the "caught at" box
+              takes a receiving-team yard line by definition, so a punt
+              that never reached midfield can't be expressed in it. */}
+          <div className="mb-3">
+            <FieldVisualizer
+              compact
+              ballOn={kickLandingBallOn}
+              ballPosition={toFieldDisplay(kickLandingBallOn)}
+              firstDownPosition={toFieldDisplay(gameState.ballOn)}
+              possession={gameState.possession}
+              ourEndZoneSide={ourEndZoneSide}
+              primaryColor={progColor}
+              oppColor={oppColor}
+              progName={progName}
+              oppName={oppName}
+              progAbbr={progTag}
+              oppAbbr={oppTag}
+              progLogoUrl={progLogoUrl}
+              oppLogoUrl={oppLogoUrl}
+              onPickSpot={(displayPosition) => setKickedToYardFromBallOn(toFieldDisplay(displayPosition))}
+            />
+            <div className="text-[10px] text-slate-600 text-center mt-1">
+              Tap the field where it came down · kicked from {yardLabel(gameState.ballOn)}
+            </div>
+          </div>
+
+          <YardReel
+            value={kickLandingBallOn}
+            onChange={setKickedToYardFromBallOn}
+            offenseDirection={offenseDirection}
+            accentColor="#a78bfa"
+            formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+          />
+
+          <div className="mt-3">
+            {/* Type whichever number you actually caught — each derives the other. */}
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-1">Caught at (yd line)</span>
+                <input
+                  type="number" inputMode="numeric" min={0} max={50}
+                  placeholder="e.g. 5"
+                  value={kickedToRaw}
+                  onChange={e => {
+                    setKickedToRaw(e.target.value);
+                    setKickDistanceRaw("");
+                    const n = parseInt(e.target.value, 10);
+                    if (!isNaN(n)) setKickedToYard(Math.max(0, Math.min(50, n)));
+                  }}
+                  className="input w-full text-center text-sm font-black"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-1">
+                  Or {(playType.id === "kickoff" || playType.id === "onside_kick") ? "kick" : "punt"} distance
+                </span>
+                <input
+                  type="number" inputMode="numeric" min={0} max={100}
+                  placeholder="e.g. 42"
+                  value={kickDistanceRaw}
+                  onChange={e => {
+                    setKickDistanceRaw(e.target.value);
+                    setKickedToRaw("");
+                    const n = parseInt(e.target.value, 10);
+                    if (!isNaN(n)) setKickedToYardFromDistance(Math.max(0, Math.min(100, n)));
+                  }}
+                  className="input w-full text-center text-sm font-black"
+                />
+              </div>
+            </div>
+            <div className="text-xs text-slate-500 mt-2">
+              {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{kickDistance} yards</span>
+              {" "}({kickStartLabel} → {landingLabel})
+            </div>
+          </div>
+
+          <div>
+            <label className="label block mb-1.5">What happened to it?</label>
+            <div className="grid grid-cols-2 gap-2">
+              {kickOutcomes.map((outcome, i) => (
+                <button
+                  key={outcome.value}
+                  onClick={() => setKickOutcome(outcome.value)}
+                  className={`py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                    kickOutcomes.length % 2 === 1 && i === kickOutcomes.length - 1 ? "col-span-2" : ""
+                  } ${
+                    kickOutcome === outcome.value
+                      ? outcome.value === "touchback"
+                        ? "border-sky-500 bg-sky-500/20 text-sky-400"
+                        : "border-purple-500 bg-purple-500/20 text-purple-400"
+                      : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}
+                >
+                  {outcome.label}
+                </button>
+              ))}
+            </div>
+            {isKickoffOutOfBounds && (
+              <div className="mt-2 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+                <div className="text-xs font-bold text-amber-300">Penalty: Kickoff Out of Bounds</div>
+                {/* The receiving team's call (NFHS 6-1-9). The two spots
+                    measured from where it went out use the landing spot
+                    above. */}
+                <div className="grid grid-cols-2 gap-2">
+                  {KICKOFF_OUT_OF_BOUNDS_CHOICES.map(choice => <button key={choice} type="button"
+                    aria-pressed={outOfBoundsChoice === choice} onClick={() => setOutOfBoundsChoice(choice)}
+                    className={`min-h-11 rounded-lg border px-2 text-xs font-bold ${outOfBoundsChoice === choice ? "border-amber-300 bg-amber-500/20 text-white" : "border-slate-600 text-slate-300"}`}>
+                    {KICKOFF_OUT_OF_BOUNDS_LABELS[choice]}
+                  </button>)}
+                </div>
+                <p className="text-xs text-slate-300">{outOfBoundsSummary}. Went out at {landingLabel}.</p>
+              </div>
+            )}
+            {/* Same escape as the FG/PAT result step. A punt that never
+                got away isn't one of these outcomes at all — it's a
+                different play — and it has to BE a blocked_kick before it
+                is written, so next_situation_source lands on
+                "pending_review" instead of the engine computing a spot and
+                possession off a kick that never happened. */}
+            <button
+              onClick={() => {
+                const blocked = PLAY_TYPES.find(pt => pt.id === "blocked_kick");
+                if (!blocked) return;
+                // fair_catch is a punt that was fair caught, so a block on
+                // it is a blocked punt — not a blocked kickoff.
+                setBlockedKickType(
+                  ["punt", "fair_catch"].includes(playType.id) ? "punt" : "kickoff",
+                );
+                setPlayTypeOverride(blocked);
+                // A blocked kick has no returner, but the sticky one from
+                // the last kick is already tagged and would be saved and
+                // credited as a 0-yard return.
+                setTagged(prev => prev.filter(t => t.role !== "returner"));
+                setCarriedRoles(prev => { const next = new Set(prev); next.delete("returner"); return next; });
+                // Roles change to kicker/blocker/recoverer, so restart. The
+                // kicker or punter already tagged keeps his tag.
+                setCurrentRoleIdx(0);
+                setStepIdx(0);
+                if (summaryMode) openPane("players");
+              }}
+              className="mt-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-dashed border-red-500/50 bg-red-500/10 text-red-400"
+            >
+              Blocked
+            </button>
+          </div>
+
+          <div className="text-xs text-slate-500 text-center">
+            {kickOutcome === "returned" && "You'll pick the returner and where they got to."}
+            {kickOutcome === "fair_catch" && `Ball spotted at ${landingLabel}. No return yards — you'll still tag who signaled.`}
+            {isMuffed && "You'll pick who muffed it, which team and player recovered, and where."}
+            {isReturnFumble && "You'll pick who fumbled it, which team and player recovered, and where."}
+            {kickOutcome === "downed" && `Downed by the kicking team. Ball spotted at ${landingLabel}.`}
+            {kickOutcome === "out_of_bounds" && !isKickoffOutOfBounds && `Out of bounds at ${landingLabel}. No return.`}
+            {kickOutcome === "touchback" && "Receiving team will start at their own 20 yard line."}
+          </div>
+
+          {/* Every play can carry a live-ball foul, so every play has to
+              have somewhere to put one. The standalone Penalty play type
+              is for dead-ball fouls - a flag between snaps, where there is
+              no play to attach it to.
+
+              This step is the one every kick reaches, whatever the outcome,
+              so it covers the kicks that never get a return step at all:
+              a fair catch, a touchback, one downed or out of bounds.
+              Roughing the kicker and holding on the return are not rare.
+              A returned kick sees the control again on the return step,
+              where a block in the back actually happens - same flag, two
+              places to reach it, and the button reads back whatever is
+              already set. */}
+          <button onClick={openPenaltyStep}
+            className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
+              penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
+            }`}>
+            <Flag className="w-3 h-3 inline mr-1" />
+            {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
+          </button>
+        </>
+      )}
+
+      {/* ── KICK STEP: Returner ── */}
+      {currentStep === "kick_returner" && (
+        <>
+          <div className="text-xs text-slate-400 mb-1">
+            {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicked" : "Punted"} to {landingLabel} ({kickDistance} yds). Select the {playType.id === "onside_kick" ? "recoverer" : "returner"}.
+          </div>
+
+          {/* Onside: who came up with it — drives possession */}
+          {playType.id === "onside_kick" && (
+            <div className="mb-3">
+              <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setOnsideRecoveredByKicker(false)}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                    !onsideRecoveredByKicker ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>
+                  {isTheirBall ? progName : oppName} (receivers)
+                </button>
+                <button onClick={() => setOnsideRecoveredByKicker(true)}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                    onsideRecoveredByKicker ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>
+                  {isTheirBall ? oppName : progName} (kickers)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(playType.id === "onside_kick" && onsideRecoveredByKicker ? !isTheirBall : isTheirBall) ? (
+            <PlayerGrid
+              roster={roster}
+              label={`Select ${playType.id === "onside_kick" ? "recoverer" : "returner"} (${progName})`}
+              onSelect={handleReturnerSelect}
+              selectedId={tagged.find(t => t.role === "returner")?.player_id ?? null}
+              search={returnerSearch}
+              onSearch={setReturnerSearch}
+              accentColor={progAccent}
+              selectionIsCarried={carriedRoles.has("returner")}
+            />
+          ) : (
+            <OpponentPlayerGrid
+              players={localOppPlayers}
+              label={`Select ${playType.id === "onside_kick" ? "recoverer" : "returner"} (${oppName})`}
+              onSelect={handleReturnerSelectOpp}
+              selectedId={tagged.find(t => t.role === "returner")?.id ?? null}
+              search={returnerSearch}
+              onSearch={setReturnerSearch}
+              onQuickAdd={handleQuickAddOpponent}
+              accentColor={oppAccent}
+            />
+          )}
+        </>
+      )}
+
+      {/* -- FUMBLE STEP: recovery, return, and who stopped it -- */}
+      {currentStep === "fumble_return" && (
+        <>
+          <div className="text-xs text-slate-400 mb-1">
+            {fumbleRecoveredByUs
+              ? `${isTheirBall ? oppName : progName} kept it.`
+              : `${isTheirBall ? progName : oppName} recovered it.`}
+            {" "}Who came up with it, how far he carried it, and who stopped him.
+          </div>
+          <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 text-sm space-y-1" aria-live="polite">
+            <p>Ball carrier fumbled at <strong>{formatFieldSpot(fumbleSpotBallOn, gameState.possession)}</strong> · {yards} yards before the fumble</p>
+            <p>Recovered at <strong>{formatFieldSpot(fumbleRecoveredAtBallOn, gameState.possession)}</strong></p>
+            <p>{fumbleReturnScores
+              ? <><strong>Touchdown</strong> · {fumbleReturnYards} return yards</>
+              : <>Return ended at <strong>{formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</strong> · {fumbleReturnYards} return yards</>}</p>
+            {["rush", "pass_comp"].includes(playType.id)
+              ? <p className="text-xs text-slate-300">NFHS credited {playType.id === "pass_comp" ? "passing / receiving" : "rushing"} yards: <strong>{fumbleRecoveredAtBallOn - gameState.ballOn}</strong>. Includes the loose ball's travel to recovery. Return yards start at recovery.</p>
+              : <p className="text-xs text-slate-300">Return yards start where the loose ball was recovered.</p>}
+          </div>
+
+          <div className="mt-3 fumble-pickers">
+            <label className="label block mb-1">1. Who came up with it</label>
+            {fumbleRolePicker("fumble_recovery", recoveryUsesOpponentRoster, "Recovered by",
+              recoveryUsesOpponentRoster ? oppAccent : fumbleRecoveredByUs ? offenseAccent : defenseAccent)}
+            {!tagged.some(t => t.role === "fumble_recovery" && !t.isTeam && t.player_id !== OPP_TEAM_PLAYER.id) && (
+              <p className="text-[11px] text-amber-400/80 mt-1">Left blank, it records as {recoveryUsesOpponentRoster ? oppName : progName} TEAM.</p>
+            )}
+          </div>
+
+          <div className="mt-3">
+            <label className="label block mb-1">2. Loose ball recovered at</label>
+            <div className="text-xs text-slate-400 mb-1">
+              Set where the recovering player gained possession. Starts at the fumble spot{" "}
+              ({formatFieldSpot(fumbleSpotBallOn, gameState.possession)}); move it if the ball bounced forward or backward.
+            </div>
+            <YardReel
+              value={fumbleRecoveredAtBallOn}
+              onChange={moveFumbleRecovery}
+              offenseDirection={offenseDirection}
+              accentColor="#f59e0b"
+              formatSpot={(b) => formatFieldSpot(b, gameState.possession)}
+            />
+          </div>
+
+          {/* Same spot picking the yards step uses, because a recovery
+              return is a spot on the field like any other. */}
+          <div className="mt-3">
+            <label className="label block mb-2">3. Return ended at</label>
+            {/* First, because it is the whole answer when it applies: one
+                tap, and the field and ruler below follow it to the goal. */}
+            <div className="mb-2">{fumbleTdButton}</div>
+            <FieldVisualizer
+              compact
+              ballOn={fumbleReturnBallOn}
+              ballPosition={toFieldDisplay(fumbleReturnBallOn)}
+              firstDownPosition={toFieldDisplay(fumbleRecoveredAtBallOn)}
+              possession={gameState.possession}
+              ourEndZoneSide={ourEndZoneSide}
+              primaryColor={progColor}
+              oppColor={oppColor}
+              progName={progName}
+              oppName={oppName}
+              progAbbr={progTag}
+              oppAbbr={oppTag}
+              progLogoUrl={progLogoUrl}
+              oppLogoUrl={oppLogoUrl}
+              onPickSpot={(displayPosition) => setFumbleReturnFromBallOn(toFieldDisplay(displayPosition))}
+            />
+            <div className="text-[10px] text-slate-600 text-center mt-1">
+              Tap the field, drag the ruler, or type the yards
+            </div>
+          </div>
+
+          <YardReel
+            value={fumbleReturnBallOn}
+            onChange={setFumbleReturnFromBallOn}
+            offenseDirection={offenseDirection}
+            advancing={fumbleRecoveredByUs ? "offense" : "returner"}
+            accentColor="#fb923c"
+            formatSpot={(b) => formatFieldSpot(b, gameState.possession)}
+          />
+
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[10px] text-slate-500">Return yards:</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              placeholder="0"
+              value={fumbleReturnRaw}
+              onChange={e => setFumbleReturnRaw(e.target.value)}
+              className="input w-24 text-center text-sm font-black"
+            />
+            <span className="text-xs text-slate-400">from the recovery spot to the end of the return</span>
+          </div>
+
+          {!fumbleReturnScores && <div className="mt-3">
+            <label className="label block mb-1">4. Who stopped him</label>
+            {/* The other side from the recoverer: whoever brought the return down. */}
+            {fumbleRolePicker("recovery_tackler", !recoveryUsesOpponentRoster, "Stopped by", recoveryUsesOpponentRoster ? progAccent : oppAccent)}
+          </div>}
+        </>
+      )}
+
+      {/* ── KICK STEP: Return To Yard Line ── */}
+      {currentStep === "kick_return_yards" && (
+        <>
+          {/* A muff is decided by who fell on it: the receivers keep a
+              live ball they can still run back, the kickers keep the ball
+              where they recovered it. */}
+          {isLooseKick && (
+            <div className="space-y-2">
+              <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">{isMuffed ? "Muff" : "Fumble"} recovered by</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => changeKickRecoveredBy(false)}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                    !muffRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>
+                  {receivingTeamLabel} (receivers)
+                </button>
+                <button onClick={() => changeKickRecoveredBy(true)}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                    muffRecoveredByKicking ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>
+                  {fieldTeamLabel(kickingFieldSide)} (kickers)
+                </button>
+              </div>
+              {/* Who fell on it. Left blank, it records as TEAM. */}
+              {fumbleRolePicker("fumble_recovery", kickRecoveryUsesOpponentRoster, "Recovered by",
+                kickRecoveryUsesOpponentRoster ? oppAccent : muffRecoveredByKicking ? offenseAccent : defenseAccent)}
+            </div>
+          )}
+          <div>
+            <label className="label block mb-2">{muffLostToKickers || isReturnFumble ? "Recovered At (Yard Line)" : "Returned To (Yard Line)"}</label>
+
+            {/* Tap the field where he was brought down, or drag the ruler.
+                Every other spot in this modal is picked this way; the
+                return was the one place still asking for a yard line to be
+                stepped to a button at a time. The ghost marker sits on the
+                catch, so the return is visible as a distance. */}
+            <div className="mb-3">
+              <FieldVisualizer
+                compact
+                ballOn={returnSpotBallOn}
+                ballPosition={toFieldDisplay(returnSpotBallOn)}
+                firstDownPosition={toFieldDisplay(kickLandingBallOn)}
+                possession={gameState.possession}
+                ourEndZoneSide={ourEndZoneSide}
+                primaryColor={progColor}
+                oppColor={oppColor}
+                progName={progName}
+                oppName={oppName}
+                progAbbr={progTag}
+                oppAbbr={oppTag}
+                progLogoUrl={progLogoUrl}
+                oppLogoUrl={oppLogoUrl}
+                onPickSpot={(displayPosition) => {
+                  if (isTD) setIsTD(false);
+                  setReturnSpotFromBallOn(toFieldDisplay(displayPosition));
+                }}
+              />
+              <div className="text-[10px] text-slate-600 text-center mt-1">
+                {isTD
+                  ? "Returned for a score - tap the field if he was stopped short"
+                  : isLooseKick
+                    ? `Tap the field where the ball was recovered - kick landed at ${landingLabel}`
+                    : `Tap the field where he was brought down - caught at ${landingLabel}`}
+              </div>
+            </div>
+
+            <YardReel
+              value={returnSpotBallOn}
+              onChange={(ballOn) => {
+                if (isTD) setIsTD(false);
+                setReturnSpotFromBallOn(ballOn);
+              }}
+              offenseDirection={offenseDirection}
+              advancing="returner"
+              accentColor={defenseAccent}
+              formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+            />
+
+            <div className="h-3" />
+
+            {/* Side selector */}
+            <div className="flex gap-1.5 mb-3">
+              {fieldSideOrder.map((side) => (
+                <button
+                  key={side}
+                  onClick={() => setReturnToTeam(side)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                    returnToTeam === side
+                        ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                        : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}
+                >
+                  {fieldTeamLabel(side)}
+                </button>
+              ))}
+            </div>
+
+            {/* Yard line stepper */}
+            <div className="flex items-center gap-1.5">
+              {[-10, -5, -1].map(n => (
+                <button key={n} onClick={() => adjustFieldTeamYardLine(returnToYardLine, n, returnToTeam, setReturnToYardLine, setReturnToTeam)}
+                  className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
+              ))}
+              <div className="w-16 h-10 shrink-0 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-emerald-400">
+                {returnToYardLine}
+              </div>
+              {[1, 5, 10].map(n => (
+                <button key={n} onClick={() => adjustFieldTeamYardLine(returnToYardLine, n, returnToTeam, setReturnToYardLine, setReturnToTeam)}
+                  className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
+              ))}
+            </div>
+            {/* Same idea as the kick spot: enter the yard line you saw, or
+                the return yardage — whichever you're sure of. */}
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-1">Returned to (yd line)</span>
+                <input
+                  type="number" inputMode="numeric" min={1} max={50}
+                  placeholder="e.g. 30"
+                  value={returnToRaw}
+                  onChange={e => {
+                    setReturnToRaw(e.target.value);
+                    setReturnYardsRaw("");
+                    const n = parseInt(e.target.value, 10);
+                    if (!isNaN(n)) setReturnToYardLine(Math.max(1, Math.min(50, n)));
+                  }}
+                  className="input w-full text-center text-sm font-black"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-1">Or return yards</span>
+                <input
+                  type="number" inputMode="numeric" min={0} max={100}
+                  placeholder="e.g. 18"
+                  value={returnYardsRaw}
+                  onChange={e => {
+                    setReturnYardsRaw(e.target.value);
+                    setReturnToRaw("");
+                    const n = parseInt(e.target.value, 10);
+                    if (!isNaN(n)) setReturnSpotFromYards(Math.max(0, Math.min(100, n)));
+                  }}
+                  className="input w-full text-center text-sm font-black"
+                />
+              </div>
+            </div>
+            <div className="text-xs text-slate-500 mt-3">
+              {(() => {
+                if (isTD) return `Caught at ${landingLabel} → Touchdown (${100 - Math.max(0, kickedToYard)} yds)`;
+                const sideLabel = fieldTeamTag(returnToTeam);
+                const isReceiverSide = returnToTeam === receivingFieldSide;
+                const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
+                const retYds = receiverYard - kickedToYard;
+                if (muffLostToKickers) return (
+                  <>{isMuffed ? "Muffed" : "Caught"} at {landingLabel}{isReturnFumble ? ", fumbled" : ""} → kicking team ball at <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span>, 1st down{isReturnFumble ? ` (${retYds > 0 ? "+" : ""}${retYds} return yds)` : ""}</>
+                );
+                if (isReturnFumble) return (
+                  <>Caught at {landingLabel}, fumbled, recovered by the receivers at <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
+                );
+                return (
+                  <>{isMuffed ? "Muffed" : "Caught"} at {landingLabel} → returned to <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* How the return ended, one tap each. Fair Catch drops the
+              return step (the step list shrinks under it and this index
+              becomes the next step); Muffed and Fumble keep it and ask who
+              fell on it. A kicking team that recovers one cannot score on
+              it here. */}
+          <div className="grid grid-cols-4 gap-2">
+            <button onClick={() => { setIsTD(false); setKickOutcome("fair_catch"); }}
+              className="py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer border-surface-border bg-surface-bg text-slate-500">
+              Fair Catch
+            </button>
+            <button onClick={() => { setIsTD(false); setKickOutcome(isMuffed ? "returned" : "muffed"); }}
+              className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                isMuffed ? "border-purple-500 bg-purple-500/20 text-purple-400" : "border-surface-border bg-surface-bg text-slate-500"
+              }`}>Muffed</button>
+            <button onClick={() => { setIsTD(false); setKickOutcome(isReturnFumble ? "returned" : "fumbled"); }}
+              className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                isReturnFumble ? "border-orange-500 bg-orange-500/20 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
+              }`}>Fumble</button>
+            <button onClick={() => setIsTD(t => !t)} disabled={muffLostToKickers}
+              className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
+              }`}>Return TD</button>
+          </div>
+
+          {/* A kick play could not carry a flag at all: the penalty picker
+              lives on the yards step, and the kick flow skips that step
+              entirely - kicker, location, returner, return, review. So a
+              block in the back on a thirty-yard return had nowhere to go.
+
+              It belongs here rather than on its own step because the
+              return is where the foul happened, and because the yardage
+              does not have to be worked out now: recording any flag pops
+              the Adjust Next Situation sheet after the play, which is
+              where a spot foul gets marked off. Record the return as it
+              happened, name the foul, then put the ball where the
+              officials put it. */}
+          <button onClick={openPenaltyStep}
+            className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
+              penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
+            }`}>
+            <Flag className="w-3 h-3 inline mr-1" />
+            {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
+          </button>
+          {penalty && (
+            <div className="text-[10px] text-slate-600 text-center">
+              You'll place the ball after the play - a spot foul is marked
+              from where it happened, not from the end of the return.
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── KICK STEP: Tacklers (optional) ── */}
+
+      {/* ── STEP: Yards / Result ── */}
+      {currentStep === "yards" && (
+        <>
+          {playType.id === "pass_inc" && <PassDefenderPicker
+            accentColor={defenseAccent}
+            team={isTheirBall ? progName : oppName}
+            players={isTheirBall
+              ? roster.map(p => ({ id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number, name: `${p.player.first_name} ${p.player.last_name}`, role: "defender" }))
+              : localOppPlayers.map(p => opponentTag(p, "defender"))}
+            onAddJersey={isTheirBall ? undefined : jersey => opponentTag(addOpponentJersey(jersey), "defender")}
+            selected={tagged.filter(t => t.role === "defender")}
+            onSelect={player => setTagged(prev => [...prev.filter(t => t.role !== "defender"), player ? { ...player, role: "defender" } : isTheirBall ? makeTeamTag("defender") : { id: OPP_TEAM_PLAYER.id, player_id: OPP_TEAM_PLAYER.id, jersey_number: null, name: "TEAM", role: "defender", isOpponent: true }])}
+            onClear={() => setTagged(prev => prev.filter(t => t.role !== "defender"))} />}
+          {/* Down and distance while the yardage is being chosen. Picking
+              yards is the one step where what's NEEDED matters as much as
+              what happened, and the operator was having to remember it
+              from the screen before. Goal-to-go says "Goal" rather than a
+              distance, same as the scoreboard. */}
+          <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-surface-border bg-black/20">
+            <span className="text-sm font-display font-black text-amber-400 tabular-nums">
+              {ordinalDown(gameState.down)}
+              {" & "}
+              {distanceLabel(gameState)}
+            </span>
+            <span className="text-[11px] font-bold text-slate-500 tabular-nums">
+              Ball on {yardLabel(gameState.ballOn)}
+              {gameState.ballOn + gameState.distance < 100 && (
+                <> · 1st at {yardLabel(gameState.ballOn + gameState.distance)}</>
+              )}
+            </span>
+          </div>
+
+          {playType.id === "blocked_kick" && (
+            <div>
+              <label className="label block mb-1.5">Blocked Kick Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                {BLOCKED_KICK_TYPES.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setBlockedKickType(option.value)}
+                    className={`py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 ${
+                      blockedKickType === option.value
+                        ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
+                        : "border-surface-border bg-surface-bg text-slate-500"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {needsYards && (
+            <div>
+              {isInterception ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="label block mb-2">Intercepted At</label>
+                    <div className="flex gap-1.5 mb-3">
+                      {fieldSideOrder.map((side) => (
+                        <button
+                          key={side}
+                          onClick={() => setIntCaughtTeam(side)}
+                          className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                            intCaughtTeam === side
+                              ? "border-red-500 bg-red-500/20 text-red-400"
+                              : "border-surface-border bg-surface-bg text-slate-500"
+                          }`}
+                        >
+                          {fieldTeamLabel(side)}
+                        </button>
+                      ))}
+                    </div>
+                    <YardReel
+                      value={toOffensePerspectiveBallOn(intCaughtTeam, intCaughtYardLine)}
+                      onChange={(ballOn) => {
+                        const spot = toFieldSpot(ballOn);
+                        setIntCaughtTeam(spot.side);
+                        setIntCaughtYardLine(spot.yardLine);
+                      }}
+                      offenseDirection={offenseDirection}
+                      accentColor={defenseAccent}
+                      formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label block mb-2">Returned To</label>
+                    {!isTD && (
+                      <div className="flex gap-1.5 mb-3">
+                        {fieldSideOrder.map((side) => (
+                          <button
+                            key={side}
+                            onClick={() => setIntReturnTeam(side)}
+                            className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
+                              intReturnTeam === side
+                                ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                                : "border-surface-border bg-surface-bg text-slate-500"
+                            }`}
+                          >
+                            {fieldTeamLabel(side)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {isTD ? (
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-bold text-amber-300">
+                        {fieldTeamTag(gameState.possession === "us" ? "program" : "opponent")} EZ
+                      </div>
+                    ) : (
+                      <YardReel
+                        value={toOffensePerspectiveBallOn(intReturnTeam, intReturnYardLine)}
+                        onChange={(ballOn) => {
+                          const spot = toFieldSpot(ballOn);
+                          setIntReturnTeam(spot.side);
+                          setIntReturnYardLine(spot.yardLine);
+                        }}
+                        offenseDirection={offenseDirection}
+                        advancing="returner"
+                        accentColor={defenseAccent}
+                        formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                      />
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-500 space-y-1">
+                    <div>
+                      INT at <span className="font-bold text-slate-300">{fieldTeamTag(intCaughtTeam)} {intCaughtYardLine}</span>
+                    </div>
+                    <div>
+                      Return to <span className="font-bold text-slate-300">{interceptionReturnLabel}</span>
+                      {" "}(<span className={interceptionReturnYards > 0 ? "text-emerald-400" : interceptionReturnYards < 0 ? "text-red-400" : ""}>
+                        {interceptionReturnYards > 0 ? "+" : ""}{interceptionReturnYards} yds
+                      </span>)
+                    </div>
+                    <div>
+                      Net from LOS: <span className={interceptionNetYards > 0 ? "text-emerald-400 font-bold" : interceptionNetYards < 0 ? "text-red-400 font-bold" : "font-bold text-slate-300"}>
+                        {interceptionNetYards > 0 ? "+" : ""}
+                        {interceptionNetYards} yds
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <label className="label block mb-2">{canHaveFumble && hasFumble ? "Ball carrier fumbled at" : "Ball Spotted At"}</label>
+                  {canHaveFumble && hasFumble && <p className="text-sm text-orange-300 mb-3">Count only the carrier's gain before losing the ball here. On the next step, set where the loose ball was recovered and where the return ended.</p>}
+
+                  {/* Tap the field to drop the ball where you saw it. The
+                      orientation matches the main screen so the mental map
+                      carries over; the LOS ghost shows where it started. */}
+                  <div className="mb-3">
+                    <FieldVisualizer
+                      compact
+                      ballOn={resultBallOn}
+                      ballPosition={toFieldDisplay(resultBallOn)}
+                      firstDownPosition={toFieldDisplay(
+                        Math.min(gameState.ballOn + gameState.distance, 100),
+                      )}
+                      possession={gameState.possession}
+                      ourEndZoneSide={ourEndZoneSide}
+                      primaryColor={progColor}
+                      oppColor={oppColor}
+                      progName={progName}
+                      oppName={oppName}
+                      progAbbr={progTag}
+                      oppAbbr={oppTag}
+                      progLogoUrl={progLogoUrl}
+                      oppLogoUrl={oppLogoUrl}
+                      onPickSpot={(displayPosition) => {
+                        // Tapping a spot means it wasn't a score after all.
+                        // Without this the field is inert while TD is on and
+                        // reads as broken.
+                        if (isTD) setIsTD(false);
+                        handleFieldPick(displayPosition);
+                      }}
+                    />
+                    <div className="text-[10px] text-slate-600 text-center mt-1">
+                      {isTD
+                        ? <>Scored · tap the field if it was stopped short</>
+                        : <>Tap the field to set the spot · started at {yardLabel(gameState.ballOn)}</>}
+                    </div>
+                  </div>
+
+                  {/* A touchdown has no spot to pick — the ball is in the end
+                      zone, and submit already scores it as 100 - ballOn (or
+                      -ballOn on a turnover return). Leaving the picker live
+                      showed a yard line that contradicted the TD toggle and
+                      invited the operator to "fix" a number that was never
+                      used. Same treatment the interception return already
+                      gets. */}
+                  {isTD ? (
+                    <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 flex items-center justify-between">
+                      <span className="text-sm font-black text-amber-300">
+                        {fieldTeamTag(
+                          (["int", "fumble"].includes(playType.id) || (playType.id === "blocked_kick" && !blockedRecoveredByKicking))
+                            ? (gameState.possession === "us" ? "program" : "opponent")
+                            : (gameState.possession === "us" ? "opponent" : "program"),
+                        )} EZ
+                      </span>
+                      <span className="text-[11px] font-bold text-amber-400/80 tabular-nums">
+                        {playType.id === "blocked_kick"
+                          ? blockedTouchdownNetYards(gameState.ballOn, blockedRecoveredByKicking)
+                          : ["int", "fumble"].includes(playType.id)
+                          ? -gameState.ballOn
+                          : 100 - gameState.ballOn} yds · touchdown
+                      </span>
+                    </div>
+                  ) : (
+                  <>
+                  <div className="flex gap-1.5 mb-3">
+                    {spotSideOrder.map(side => (
+                    <button
+                      key={side}
+                      onClick={() => setResultSide(side)}
+                        className="flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer border-surface-border bg-surface-bg text-slate-500"
+                        style={resultSide === side
+                          ? {
+                              borderColor: offenseAccent,
+                              backgroundColor: `${offenseAccent}33`,
+                              color: offenseAccent,
+                            }
+                          : undefined}
+                    >
+                        {perspectiveSideLabel(side)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <YardReel
+                    value={resultBallOn}
+                    onChange={applySpotBallOn}
+                    offenseDirection={offenseDirection}
+                    accentColor={offenseAccent}
+                    formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                    /* Only where the offense keeps the ball and the chains
+                       are the question. A pick or a lost fumble ends the
+                       series, so a first-down call on it is noise. */
+                    firstDownBallOn={
+                      ["int", "blocked_kick"].includes(playType.id)
+                        || (isFumblePlay && !fumbleRecoveredByUs)
+                        ? null
+                        : gameState.ballOn + gameState.distance
+                    }
+                  />
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-[10px] text-slate-500">Or type:</span>
+                    <input
+                      type="number" inputMode="numeric" min={1} max={50}
+                      placeholder="e.g. 35"
+                      value={resultYardRaw}
+                      onChange={e => {
+                        setResultYardRaw(e.target.value);
+                        const n = parseInt(e.target.value, 10);
+                        if (!isNaN(n)) setResultYardLine(Math.max(1, Math.min(50, n)));
+                      }}
+                      className="input w-20 text-center text-sm font-black"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    {/* On a blocked kick the number that matters is what
+                        the recoverer did with it, so say so rather than
+                        leaving a bare "Yards" to be guessed at. */}
+                    <span className="text-[10px] text-slate-500">
+                      {playType.id === "blocked_kick" ? "Net field yards:" : "Yards:"}
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="+7 or -2"
+                      value={totalYardsRaw}
+                      onChange={e => {
+                        const nextValue = e.target.value;
+                        setTotalYardsRaw(nextValue);
+                        const parsed = parseInt(nextValue, 10);
+                        if (!isNaN(parsed)) {
+                          setResultFromTotalYards(parsed);
+                        }
+                      }}
+                      onBlur={() => setTotalYardsRaw(String(yards))}
+                      className="input w-24 text-center text-sm font-black"
+                    />
+                  </div>
+
+                  <div className="text-xs text-slate-500 mt-3">
+                    {yardLabel(gameState.ballOn)} → <span className="font-bold text-slate-300">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
+                    {" "}(<span className={yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : ""}>{yards > 0 ? "+" : ""}{yards} yds</span>)
+                  </div>
+                  </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {needsResult && (
+            <div>
+              <label className="label block mb-1.5">
+                Result
+                {playType.id === "pat" && !result && <span className="text-amber-400"> · pick one to continue</span>}
+              </label>
+              <div className="flex gap-2">
+                {/* Returned is a 2-point try's defensive return. A kicked PAT
+                    has none worth offering, so it shows only on a PAT that
+                    was already saved with it, to keep an edit honest. */}
+                {(playType.id === "two_pt" || result === "Returned"
+                  ? (["Good", "No Good", "Returned"] as const)
+                  : (["Good", "No Good"] as const)
+                ).map(r => (
+                  <button key={r} onClick={() => setResult(prev => prev === r ? "" : r)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                      result === r
+                        ? r === "Good" ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                          : r === "Returned" ? "border-orange-500 bg-orange-500/20 text-orange-400"
+                          : "border-red-500 bg-red-500/20 text-red-400"
+                        : "border-surface-border bg-surface-bg text-slate-500"
+                    }`}>{r}</button>
+                ))}
+              </div>
+              {/* A block is discovered after you've already committed to
+                  the kick, so it has to be reachable from here rather than
+                  only as its own play type on the ST tab. This switches the
+                  flow outright — the play must BE a blocked_kick by the
+                  time it's written, or next_situation_source computes a
+                  possession and spot the engine can't know. */}
+              {["fg", "pat"].includes(playType.id) && (
+                <button
+                  onClick={() => {
+                    const blocked = PLAY_TYPES.find(pt => pt.id === "blocked_kick");
+                    if (!blocked) return;
+                    setBlockedKickType(playType.id === "pat" ? "extra_point" : "field_goal");
+                    setResult("");
+                    setPlayTypeOverride(blocked);
+                    // Roles change (kicker, blocker, recoverer), so restart
+                    // the flow. The kicker already tagged keeps his tag.
+                    setCurrentRoleIdx(0);
+                    setStepIdx(0);
+                    if (summaryMode) openPane("players");
+                  }}
+                  className="mt-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-dashed border-red-500/50 bg-red-500/10 text-red-400"
+                >
+                  Blocked
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* TD / First Down toggles. Not on a play where the ball hit
+              the ground - an incompletion scores nothing and moves no
+              chains, and offering the toggles invites a mis-tap that the
+              engine would then have to be argued out of. */}
+          {!needsResult && !isDeadBall && (
+            <div className={`grid gap-2 ${isFumblePlay ? "grid-cols-1" : "grid-cols-2"}`}>
+              {/* Not on a fumble. Here it silently meant "the RECOVERY was
+                  returned for a score", under a heading about where the
+                  carrier lost it - so it read as the carrier scoring. A
+                  fumble's touchdown is "Returned for a touchdown", next to
+                  the return it describes. */}
+              {!isFumblePlay && <button onClick={() => setIsTD(t => !t)}
+                className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                  isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
+                }`}>TD</button>}
+              <button onClick={() => setIsFirstDown(f => !f)}
+                className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                  isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-slate-500"
+                }`}>1st Down</button>
+            </div>
+          )}
+
+          {/* Fumble recovery — drives possession */}
+          {isFumblePlay && (
+            <div>
+              <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => {
+                  if (fumbleRecoveredByUs) setTagged(prev => prev.filter(t => !["fumble_recovery", "recovery_tackler"].includes(t.role)));
+                  setFumbleRecoveredByUs(false);
+                }}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                    !fumbleRecoveredByUs ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>
+                  {gameState.possession === "us" ? oppName : progName} (turnover)
+                </button>
+                <button onClick={() => {
+                  if (!fumbleRecoveredByUs) setTagged(prev => prev.filter(t => !["fumble_recovery", "recovery_tackler"].includes(t.role)));
+                  setFumbleRecoveredByUs(true);
+                }}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
+                    fumbleRecoveredByUs ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>
+                  {gameState.possession === "us" ? progName : oppName} (kept)
+                </button>
+              </div>
+              {/* How far the recoverer carried it. Separate from the play's
+                  own yardage: a sack is -7 to the QB whether or not the
+                  recovery was returned 20 yards afterwards. */}
+              {canHaveFumble && hasFumble ? <p className="text-xs text-slate-400 mt-2">Next: set the recovery spot and the end of the return.</p> : <div className="flex items-center gap-2 mt-2">
+                <span className="text-[10px] text-slate-500">Return yards:</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={fumbleReturnRaw}
+                  onChange={e => setFumbleReturnRaw(e.target.value)}
+                  className="input w-24 text-center text-sm font-black"
+                />
+                <span className="text-[10px] text-slate-600">by the recoverer</span>
+              </div>}
+              {!(canHaveFumble && hasFumble) && fumbleTdButton}
+            </div>
+          )}
+
+          {/* Penalty */}
+          <button onClick={openPenaltyStep}
+            className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
+              penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
+            }`}>
+            <Flag className="w-3 h-3 inline mr-1" />
+            {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
+          </button>
+
+        </>
+      )}
+
+      {/* Penalty decisions share one resulting situation for entry and review. */}
+      {currentStep === "penalty" && <>
+        {penaltyPicker}
+        {penalty?.trim() && <section className="space-y-3 border-t border-surface-border pt-4" aria-label="Penalty result">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <span className="block text-xs font-semibold text-slate-400">{overrideSpot && penaltyEnforcement === "accepted" ? "Spotted at" : scoringPenaltyRuling ? "Next spot" : "Enforced to"}</span>
+              <span className="block text-lg font-bold text-emerald-400">{penaltyPreview ? formatFieldSpot(penaltyPreview.ballOn, gameState.possession) : "Ending spot missing"}</span>
+            </div>
+            {penaltyEnforcement === "accepted" && <span className="shrink-0 text-xs text-slate-400">{actualPenaltyYards} {scoringPenaltyRuling ? "penalty yards" : "yards marked off"}</span>}
+            {/* Was an unlabelled pin icon, which nobody found. */}
+            {penaltyEnforcement === "accepted" && <button type="button" aria-pressed={overrideSpot}
+              onClick={() => { if (overrideSpot) setOverrideSpot(false); else openSpotEditor(); }}
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold ${overrideSpot ? "border-amber-500 text-amber-300" : "border-surface-border text-slate-300"}`}>
+              {overrideSpot ? <><RotateCcw size={15} /> Use rules</> : <><MapPin size={15} /> Adjust</>}
+            </button>}
+          </div>
+          {scoringPenaltyRuling && <p role="status" className="text-sm text-amber-300">{overrideSpot ? "Scoring play kept. Next spot set by hand." : "Scoring play kept. Confirm the next spot."}</p>}
+          {penaltyPreview && <>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-300">
+              <span>{penaltyNextPossession === "us" ? progName : oppName} ball</span>
+              <span>{penaltyPreview.down} &amp; {penaltyDistanceLabel}</span>
+            </div>
+            <FieldVisualizer compact ballOn={penaltyPreview.ballOn} ballPosition={toFieldDisplay(penaltyPreview.ballOn)}
+              firstDownPosition={toFieldDisplay(penaltyPreview.ballOn + (penaltyNextPossession === gameState.possession ? penaltyPreview.distance : -penaltyPreview.distance))}
+              possession={penaltyNextPossession} ourEndZoneSide={ourEndZoneSide} primaryColor={progColor}
+              oppColor={oppColor} progName={progName} oppName={oppName} progAbbr={progAbbr ?? "OUR"} oppAbbr={oppAbbr ?? "OPP"}
+              progLogoUrl={progLogoUrl} oppLogoUrl={oppLogoUrl}
+              onPickSpot={penaltyEnforcement === "accepted" ? displayPosition => adjustPenaltySpot(toFieldDisplay(displayPosition)) : undefined} />
+            {/* Kept mounted with other words once the spot is moved: dropping
+                it shifted the ruler up under the finger on the first nudge. */}
+            {penaltyEnforcement === "accepted" && enforcement && !scoringPenaltyRuling && <div className="text-xs text-slate-400">
+              {overrideSpot ? "Spotted by hand" : <>{enforcement.from}{enforcement.actualYards < flagYards ? " · Half the distance" : ""}</>}
+            </div>}
+            {/* The yardage on the book is not always where the ball ends up.
+                Same spot controls as a run or a return: tap the field or
+                drag the ruler to where the officials put it. */}
+            {penaltyEnforcement === "accepted" && <YardReel value={penaltyPreview.ballOn} onChange={adjustPenaltySpot}
+              offenseDirection={offenseDirection} advancing={penaltyNextPossession === gameState.possession ? "offense" : "returner"}
+              accentColor="#34d399" formatSpot={value => formatFieldSpot(value, gameState.possession)} />}
+          </>}
+          {overrideSpot && penaltyEnforcement === "accepted" && <>
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Next possession">
+              {(["us", "them"] as const).map(possession => <button key={possession} type="button" aria-pressed={spotNextPossession === possession}
+                onClick={() => setSpotNextPossession(possession)}
+                className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${spotNextPossession === possession ? "border-amber-500 text-amber-300" : "border-surface-border text-slate-400"}`}>{possession === "us" ? progName : oppName}</button>)}
+            </div>
+            {manualSpotEditor}
+          </>}
+        </section>}
+        {!isPenaltyOnly && <button type="button" onClick={() => { clearPenalty(); setShowPenalties(false); setStepIdx(index => Math.max(0, index - 1)); }}
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-surface-border text-sm font-semibold text-slate-400">
+          <X size={16} /> Remove penalty
+        </button>}
+      </>}
+
+      {/* ── STEP: Formations ── */}
+      {currentStep === "formations" && (
+        <>
+          <div>
+            <label className="label block mb-1.5">Hash Mark</label>
+            <div className="flex gap-2">
+              {(["left", "middle", "right"] as const).map(h => (
+                <button key={h} onClick={() => setHashMark(prev => prev === h ? null : h)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
+                    hashMark === h ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>{h}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="label block mb-1.5">Play Direction</label>
+            <div className="flex gap-2">
+              {(["left", "right"] as const).map(d => (
+                <button key={d} onClick={() => setPlayDirection(prev => prev === d ? null : d)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
+                    playDirection === d ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>{d}</button>
+              ))}
+            </div>
+            <div className="text-[10px] text-slate-600 mt-1">
+              Offense left and right, the way the play was called.
+            </div>
+          </div>
+          <div>
+            <label className="label block mb-1.5">Wristband Call</label>
+            <input
+              type="text"
+              inputMode="text"
+              autoCapitalize="characters"
+              placeholder="e.g. R42"
+              value={wristbandCall}
+              onChange={e => setWristbandCall(e.target.value.toUpperCase())}
+              className="input w-full text-center text-base font-black tracking-widest"
+            />
+          </div>
+          <div>
+            <label className="label block mb-1.5">Offensive Formation</label>
+            <div className="flex flex-wrap gap-1.5">
+              {OFFENSIVE_FORMATIONS.map(f => (
+                <button key={f} onClick={() => setOffFormation(prev => prev === f ? null : f)}
+                  className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-all duration-200 cursor-pointer ${
+                    offFormation === f ? "border-blue-500 bg-blue-500/15 text-blue-400" : "border-surface-border text-slate-500"
+                  }`}>{f}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="label block mb-1.5">Defensive Formation</label>
+            <div className="flex flex-wrap gap-1.5">
+              {DEFENSIVE_FORMATIONS.map(f => (
+                <button key={f} onClick={() => setDefFormation(prev => prev === f ? null : f)}
+                  className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-all duration-200 cursor-pointer ${
+                    defFormation === f ? "border-red-500 bg-red-500/15 text-red-400" : "border-surface-border text-slate-500"
+                  }`}>{f}</button>
+              ))}
+            </div>
+          </div>
+          <div className="text-[10px] text-slate-600 text-center">
+            Formations are optional — skip if not tracking.
+          </div>
+        </>
+      )}
+
+      {/* ── STEP: Defense (tacklers) ── */}
+      {currentStep === "defense" && (
+        <>
+          <div className="text-xs text-slate-400 mb-1">
+            Select up to 3 {playType.id === "sack" ? "sackers" : "tacklers"} from {tacklersAreOurs ? progName : oppName}.
+            {" "}1 player = {playType.id === "sack" ? "full sack (1.0)" : "solo (1.0)"}, 2+ = {playType.id === "sack" ? "split (0.5 each)" : "assist (0.5 each)"}.
+          </div>
+          {/* Three outcomes, all one tap: name them, owe it to TEAM, or say
+              no tackle happened. Only the last two are here — naming is the
+              grid below. */}
+          {tacklersAreOurs && (tacklers.length === 0 || tacklers.every(t => !t.isTeam || t.teamCreditConfirmed)) && (
+            <div className="flex gap-2 mb-2">
+              {/* A toggle, not a replace: TEAM can take the whole tackle or
+                  share one with the players picked below (half each). */}
+              <button
+                onClick={() => { toggleTeamTackler(); setSkipWarning(null); }}
+                aria-pressed={tacklers.some(t => t.isTeam && t.teamCreditConfirmed)}
+                className={`flex-1 py-2 rounded-xl border text-xs font-bold uppercase tracking-wide ${
+                  tacklers.some(t => t.isTeam && t.teamCreditConfirmed)
+                    ? "border-amber-400 bg-amber-500/25 text-amber-300"
+                    : "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                }`}
+              >
+                {tacklers.some(t => t.isTeam && t.teamCreditConfirmed) ? "✓ " : tacklers.length > 0 ? "+ " : ""}
+                {playType.id === "sack" ? "Sack by TEAM" : "Tackle by TEAM"}
+              </button>
+              {tacklers.length === 0 && <button onClick={() => { setNoTackle(false); setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1 }]); setSkipWarning(null); }}
+                className="flex-1 py-2 rounded-xl border border-surface-border text-slate-300 text-xs font-bold">Identify on film later</button>}
+              {/* A sack always had somebody get there — "no tackle" is only
+                  an answer for a runner who went out of bounds, scored, or
+                  fell down. */}
+              {playType.id !== "sack" && tacklers.length === 0 && (
+                <button
+                  onClick={() => { setNoTackle(true); setSkipWarning(null); goNext(); }}
+                  className="flex-1 py-2 rounded-xl border border-surface-border bg-surface-bg text-slate-400 text-xs font-bold uppercase tracking-wide"
+                >
+                  No tackle
+                </button>
+              )}
+            </div>
+          )}
+          {tacklers.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-2">
+              {tacklers.map(t => (
+                <span key={t.id} className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${
+                  t.isTeam
+                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/40"
+                    : t.isOpponent ? "bg-orange-900/30 text-orange-400" : "bg-red-900/30 text-red-400"
+                }`}>
+                  {t.isOpponent && <span className="text-[9px]">{oppTag}</span>}
+                  {/* A TEAM tag has no jersey and no surname — the generic
+                      chip would render "#null undefined". */}
+                  {t.isTeam
+                    ? (t.teamCreditConfirmed ? "TEAM" : "Film later")
+                    : `#${t.jersey_number ?? "?"} ${t.name.split(" ")[1] ?? t.name}`}
+                  <span className="text-[10px] opacity-60">({t.credit})</span>
+                  <button onClick={() => setTacklers(prev => {
+                    const next = prev.filter(x => x.id !== t.id);
+                    if (next.length === 1) return next.map(x => ({ ...x, credit: 1 }));
+                    return next;
+                  })} className="ml-0.5 opacity-60"><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          {tacklersAreOurs ? (
+            <PlayerGrid
+              roster={roster}
+              label={`Select ${playType.id === "sack" ? "sacker" : "tackler"}(s) from ${progName}`}
+              onSelect={p => handleAddTackler(p)}
+              selectedId={null}
+              search={tacklerSearch}
+              onSearch={setTacklerSearch}
+              addedIds={new Set(tacklers.map(t => t.player_id))}
+            />
+          ) : (
+            <OpponentPlayerGrid
+              players={localOppPlayers}
+              label={`Select ${oppName} tackler(s)`}
+              onSelect={p => handleAddOpponentTackler(p)}
+              selectedId={null}
+              search={tacklerSearch}
+              onSearch={setTacklerSearch}
+              onQuickAdd={handleQuickAddOpponent}
+              addedIds={new Set(tacklers.map(t => t.id))}
+            />
+          )}
+          <div className="text-[10px] text-slate-600 text-center mt-2">
+            Optional — skip if not tracking tacklers on this play.
+          </div>
+        </>
+      )}
+
+      {/* ── STEP: Review ── */}
+      {currentStep === "review" && (
+        <div className="space-y-3">
+          <div className="text-sm font-bold text-slate-300">
+            {isEditing ? "Review Changes" : "Review Play"}
+          </div>
+          {goalChoiceRequired && <GoalToGoChoice value={nextGoalToGo} onChange={setNextGoalToGo} />}
+          {canFlagBadSnap(playType.id) && playType.id !== "bad_snap" && (
+            <button type="button" aria-pressed={badSnap} onClick={() => setBadSnap(value => !value)}
+              className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 py-2 text-sm font-bold ${
+                badSnap ? "border-orange-500 bg-orange-500/15 text-orange-300" : "border-surface-border bg-surface-bg text-slate-400"
+              }`}>
+              <span>Bad snap</span>
+              <span className="text-xs">{badSnap ? "Yes · shows BS in the log" : "No"}</span>
+            </button>
+          )}
+          {isKickoffOutOfBounds &&<div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
+            <strong>Penalty: Kickoff Out of Bounds</strong>
+            <div className="mt-1">{outOfBoundsSummary}</div>
+          </div>}
+
+          {/* Scoreboard time at the snap. Pre-filled from the running
+              clock, so entering a play live costs nothing; correcting one
+              charted from film no longer means leaving the play. */}
+          <div className="card p-3">
+            <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1.5">
+              Clock at snap
+            </div>
+            <ClockInput
+              seconds={clockSecs}
+              onChange={setClockSecs}
+              maxSeconds={gameConfig.quarter_length_secs}
+            />
+          </div>
+          <div className="card p-3 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Type</span>
+              <span className="font-bold">{playType.label}</span>
+            </div>
+            {/* A loose kick's recoverer has its own Recovered By line below. */}
+            {shownTagged.filter(t => !(isKickPlay && t.role === "fumble_recovery")).map(t => (
+              <div key={t.role} className="flex justify-between">
+                <span className="text-slate-500 capitalize">{t.role.replace(/_/g, " ")}</span>
+                <span className="font-bold">
+                  {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>}
+                  {/* A TEAM tag has no jersey and no name of its own; the
+                      generic line rendered it as "#null TEAM". */}
+                  {t.isTeam || t.player_id === OPP_TEAM_PLAYER.id
+                    ? "TEAM"
+                    : `#${t.jersey_number ?? "?"} ${t.name}`}
+                </span>
+              </div>
+            ))}
+            {/* What is about to be filled in for us, before it happens
+                rather than in the play log afterwards. */}
+            {[...teamDefaultRoles, ...(teamDefaultTackle ? [defensiveCreditRole] : [])].map(role => (
+              <div key={`team-${role}`} className="flex justify-between">
+                <span className="text-slate-500 capitalize">{role.replace(/_/g, " ")}</span>
+                <span className="font-bold text-amber-400/80">
+                  {teamDefaultIsOpponent(role) && role !== defensiveCreditRole
+                    ? <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>
+                    : <span className="text-[10px] mr-1">{progTag}</span>}TEAM
+                </span>
+              </div>
+            ))}
+            {needsYards && (
+              <>
+                {isInterception ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Intercepted At</span>
+                      <span className="font-bold">{fieldTeamTag(intCaughtTeam)} {intCaughtYardLine}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Returned To</span>
+                      <span className="font-bold">{interceptionReturnLabel}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Return Yards</span>
+                      <span className={`font-bold ${interceptionReturnYards > 0 ? "text-emerald-400" : interceptionReturnYards < 0 ? "text-red-400" : ""}`}>
+                        {interceptionReturnYards > 0 ? `+${interceptionReturnYards}` : interceptionReturnYards}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Net Yards</span>
+                      <span className={`font-bold ${interceptionNetYards > 0 ? "text-emerald-400" : interceptionNetYards < 0 ? "text-red-400" : ""}`}>
+                        {interceptionNetYards > 0 ? `+${interceptionNetYards}` : interceptionNetYards}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {!isTD && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Spotted At</span>
+                        <span className="font-bold">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
+                      </div>
+                    )}
+                    {(() => {
+                      const displayYards = playType.id === "blocked_kick" && isTD
+                        ? blockedTouchdownNetYards(gameState.ballOn, blockedRecoveredByKicking)
+                        : isTD && !isFumblePlay
+                        ? (["int", "fumble"].includes(playType.id) ? -gameState.ballOn : 100 - gameState.ballOn)
+                        : yards;
+                      return (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Yards</span>
+                          <span className={`font-bold ${displayYards > 0 ? "text-emerald-400" : displayYards < 0 ? "text-red-400" : ""}`}>
+                            {displayYards > 0 ? `+${displayYards}` : displayYards}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </>
+            )}
+            {isKickPlay && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Kick Distance</span>
+                  <span className="font-bold text-purple-400">{kickDistance} yds</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Landed At</span>
+                  <span className="font-bold">{isTouchback ? "Touchback" : landingLabel}</span>
+                </div>
+                {!isTouchback && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Outcome</span>
+                    <span className="font-bold text-purple-400">
+                      {KICK_OUTCOMES.find(o => o.value === kickOutcome)?.label}
+                    </span>
+                  </div>
+                )}
+                {isLooseKick && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Recovered By</span>
+                    <span className="font-bold">
+                      {muffRecoveredByKicking ? `${fieldTeamLabel(kickingFieldSide)} (kickers)` : `${receivingTeamLabel} (receivers)`}
+                      {(() => {
+                        const r = tagged.find(t => t.role === "fumble_recovery");
+                        return r ? ` · ${r.jersey_number != null ? `#${r.jersey_number} ` : ""}${r.name}` : "";
+                      })()}
+                    </span>
+                  </div>
+                )}
+                {hasReturnSpot && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">{muffLostToKickers || isReturnFumble ? "Recovered At" : "Returned To"}</span>
+                    <span className="font-bold text-emerald-400">
+                      {(() => {
+                        if (isTD) return `Touchdown (${100 - Math.max(0, kickedToYard)} yds)`;
+                        const sideLabel = fieldTeamTag(returnToTeam);
+                        const isReceiverSide = returnToTeam === receivingFieldSide;
+                        const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
+                        const retYds = receiverYard - kickedToYard;
+                        return `${sideLabel} ${returnToYardLine} (${retYds > 0 ? "+" : ""}${retYds} yds)`;
+                      })()}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+            {isFumblePlay && (
+              <div className="space-y-2 border-t border-orange-500/30 pt-3">
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-500">Fumble</span>
+                  <span className="font-bold text-orange-400">{fumbleRecoveredByUs ? "Possession kept" : "Turnover"}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-500">Recovered At</span>
+                  <span className="font-bold">{formatFieldSpot(fumbleRecoveredAtBallOn, gameState.possession)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-500">Return / Final Spot</span>
+                  <span className="font-bold">{fumbleReturnYards} yds / {formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</span>
+                </div>
+              </div>
+            )}
+            {needsResult && result && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">Result</span>
+                <span className={`font-bold ${result === "Good" ? "text-emerald-400" : "text-red-400"}`}>{result}</span>
+              </div>
+            )}
+            {(isTD || isFirstDown) && (!penalty || penaltyEnforcement === "declined" || penaltyEnforcement === "accepted" && penaltyPlayCounts) && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">Flags</span>
+                <span className="font-bold">
+                  {[isTD && "TD", isFirstDown && "1st Down"].filter(Boolean).join(", ")}
+                </span>
+              </div>
+            )}
+            {penalty && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Penalty</span>
+                  <span className="font-bold text-orange-400">
+                    {penaltyDisplayName(penalty)}
+                    {penaltyEnforcement === "accepted" ? ` (${actualPenaltyYards} yds)` : ""}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Flag On</span>
+                  <span className={`font-bold ${penaltyCategory ? "text-orange-400" : "text-red-400"}`}>
+                    {penaltyCategory
+                      ? `${flagTeamName(penaltyCategory)} (${flagRoleWord(penaltyCategory)})`
+                      : "Pick which team"}
+                  </span>
+                </div>
+                {penaltyEnforcement !== "accepted" && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Enforcement</span>
+                    <span className="font-bold capitalize text-slate-300">{penaltyEnforcement}</span>
+                  </div>
+                )}
+                {foulSpotBallOn != null && (penaltyEnforcementFrom === "spot_of_foul" || penaltyEnforcementFrom === "auto" && isSpotFoul(penalty)) && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Spot of Foul</span>
+                    <span className="font-bold text-orange-400">
+                      {formatFieldSpot(foulSpotBallOn, gameState.possession)}
+                      {isSpotFoul(penalty) && (
+                        <span className="text-[10px] text-amber-400/80"> · spot foul</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                {!isPenaltyOnly && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Play Counts</span>
+                    <span className="font-bold">{penaltyEnforcement === "declined" || penaltyEnforcement === "accepted" && penaltyPlayCounts ? "Yes" : "No"}</span>
+                  </div>
+                )}
+                {penaltyPreview ? (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">
+                      Next Spot{penaltyPreview.source === "operator" ? " (yours)" : ""}
+                    </span>
+                    <span className={`font-bold text-right ${penaltyPreview.source === "operator" ? "text-amber-400" : "text-emerald-400"}`}>
+                      {formatFieldSpot(penaltyPreview.ballOn, gameState.possession)}
+                      {" · "}
+                      {penaltyPreview.down}
+                      {" & "}
+                      {penaltyDistanceLabel}
+                      {penaltyPreview.from && (
+                        <span className="block text-[9px] font-normal text-slate-500">
+                          {penaltyPreview.from}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-slate-500">Next Spot</span>
+                    <span className="text-[10px] font-bold text-amber-400/90 text-right leading-tight">
+                      Set after the play<br />
+                      <span className="text-slate-500 font-normal">
+                        depends on the foul spot
+                      </span>
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+            {offFormation && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">OFF</span>
+                <span className="font-bold">{offFormation}</span>
+              </div>
+            )}
+            {defFormation && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">DEF</span>
+                <span className="font-bold">{defFormation}</span>
+              </div>
+            )}
+            {shownTacklers.length > 0 && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tacklers</span>
+                <span className="font-bold">
+                  {/* A TEAM tackle has no jersey and no name of its own,
+                      and a tag rebuilt from the database may have no
+                      number either. Bare interpolation printed "#null"
+                      for both - which is what an edited play showed for
+                      every tackler on it. */}
+                  {shownTacklers.map(t => (
+                    t.isTeam || t.player_id === OPP_TEAM_PLAYER.id
+                      ? "TEAM"
+                      : t.jersey_number != null
+                        ? `#${t.jersey_number}`
+                        : (t.name?.trim().split(/s+/).slice(-1)[0] || "?")
+                  )).join(", ")}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (summaryMode) {
+    /* What a save would write right now, built by the same code that writes
+       it. Feeds the description on the summary and the change count. */
+    let preview: PlaySubmitData | null = null;
+    handleSubmit(data => { preview = data; });
+    if (!preview) handleSubmit(data => { preview = data; }, true);
+    const shown = preview as PlaySubmitData | null;
+
+    const ordinal = (n: number) => ["1st", "2nd", "3rd", "4th"][n - 1] ?? `${n}th`;
+    const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+    const cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+    const sideOf = (opponent: boolean): EditSide => opponent ? { tag: oppTag, color: oppAccent } : { tag: progTag, color: progAccent };
+    const isTeamPick = (t: TaggedPlayer) => !!t.isTeam || t.player_id === OPP_TEAM_PLAYER.id;
+    const playerText = (t: TaggedPlayer) => isTeamPick(t)
+      ? "TEAM"
+      : t.jersey_number != null ? `#${t.jersey_number}${t.isPending || !t.name ? "" : ` ${t.name}`}` : (t.name || "?");
+    const SHORT_ROLE: Record<string, string> = {
+      passer: "Passer", rusher: "Runner", receiver: "Receiver", target: "Target", interceptor: "Picked by",
+      forced_fumble: "Forced by", fumble_recovery: "Recovered", recoverer: "Recovered", blocker: "Blocked by",
+      tackler: "Tackler", sacker: "Sacker", kicker: "Kicker", punter: "Punter", returner: "Returner", defender: "Defender",
+    };
+    /** One player line. Amber where the modal shows amber: a pick that is not
+     *  confirmed - a jersey off the roster, TEAM to identify on film. */
+    const playerRow = (role: string, open: () => void, active: boolean, label = SHORT_ROLE[role] ?? cap(role.replace(/_/g, " "))): EditRow => {
+      const t = shownTagged.find(x => x.role === role);
+      const base = { id: `role:${role}`, label, onOpen: open, active };
+      if (t) {
+        const filmLater = !!t.isTeam && !t.isOpponent && !t.teamCreditConfirmed;
+        const text = playerText(t);
+        return {
+          ...base, value: text, text, side: sideOf(!!t.isOpponent),
+          sub: t.isPending ? "Not on the roster" : filmLater ? "Identify on film later" : undefined,
+          tone: t.isPending || filmLater || carriedRoles.has(role) ? "amber" : undefined,
+        };
+      }
+      const opponent = teamDefaultIsOpponent(role);
+      if (role === "interceptor") return { ...base, value: "?", text: "INT by ?", sub: "Blank · reads INT by ?", tone: "amber", side: sideOf(opponent) };
+      if (teamDefaultRoles.includes(role)) {
+        // Their kicker records as TEAM by design; ours left blank is a gap.
+        const theirs = opponent && (role === "kicker" || role === "punter");
+        return { ...base, value: "TEAM", text: "TEAM", side: sideOf(opponent), sub: theirs ? undefined : "Blank · records as TEAM", tone: theirs ? undefined : "amber" };
+      }
+      return { ...base, value: "None", text: "None", tone: "dim" };
+    };
+
+    const who: EditRow[] = [];
+    const outcome: EditRow[] = [];
+    const charting: EditRow[] = [];
+
+    if (steps.includes("players")) {
+      if (playType.id === "two_pt") {
+        const style = twoPointStyle === "run" ? "Run" : "Pass";
+        who.push({ id: "two_pt_style", label: "Try", value: style, text: style, onOpen: () => { setCurrentRoleIdx(0); openPane("players"); } });
+      }
+      roles.forEach((role, i) => who.push(playerRow(role, () => { setCurrentRoleIdx(i); openPane("players"); }, paneStep === "players" && currentRoleIdx === i)));
+    }
+    if (isKickPlay) {
+      who.push(playerRow(kickerRole, () => { if (!steps.includes("kick_kicker")) setShowOppKicker(true); openPane("kick_kicker"); }, paneStep === "kick_kicker"));
+      if (steps.includes("kick_returner")) {
+        who.push(playerRow("returner", () => openPane("kick_returner"), paneStep === "kick_returner",
+          playType.id === "onside_kick" ? "Recovered" : isLooseKick ? "Muffed by" : "Returner"));
+      }
+      if (isLooseKick) {
+        const recovered = playerRow("fumble_recovery", () => openPane("kick_return_yards"), false, "Recovered");
+        who.push({ ...recovered, id: "kick_recovery", sub: `${muffRecoveredByKicking ? `${fieldTeamLabel(kickingFieldSide)} (kickers)` : `${receivingTeamLabel} (receivers)`}${recovered.sub ? ` · ${recovered.sub}` : ""}` });
+      }
+    }
+    if (steps.includes("defense")) {
+      const solo = shownTacklers.filter(t => (t.credit ?? 1) === 1).length;
+      const assists = shownTacklers.length - solo;
+      const label = playType.id === "sack" ? "Sacker" : "Tackler";
+      const base = { id: "defense", label: shownTacklers.length > 1 ? `${label}s` : label, onOpen: () => openPane("defense"), active: paneStep === "defense", side: sideOf(!tacklersAreOurs) };
+      if (shownTacklers.length > 0) {
+        const text = shownTacklers.map(t => (isTeamPick(t) ? "TEAM" : t.jersey_number != null ? `#${t.jersey_number}` : t.name)).join(" · ");
+        who.push({ ...base, value: text, text, sub: [solo && `${solo} solo`, assists && `${assists} ${assists === 1 ? "assist" : "assists"}`].filter(Boolean).join(" · "),
+          tone: shownTacklers.some(t => t.isPending || (t.isTeam && !t.isOpponent && !t.teamCreditConfirmed)) ? "amber" : undefined });
+      } else if (teamDefaultTackle) {
+        who.push({ ...base, value: "TEAM", text: "TEAM", sub: "Blank sack · records as TEAM", tone: "amber" });
+      } else {
+        who.push({ ...base, value: noTackle ? "No tackle" : "None", text: noTackle ? "No tackle" : "None", sub: noTackle ? undefined : "Blank · no tackle credited", tone: "dim" });
+      }
+    }
+
+    if (steps.includes("yards")) {
+      const open = () => openPane("yards");
+      const active = paneStep === "yards";
+      const spot = `${perspectiveSideTag(resultSide)} ${resultYardLine}`;
+      let row: EditRow;
+      if (needsResult) {
+        const text = result || "Not set";
+        row = { id: "yards", label: "Result", value: text, text, tone: result ? undefined : playType.id === "pat" ? "warn" : "dim", onOpen: open, active };
+      } else if (isDeadBall) {
+        row = { id: "yards", label: "Result", value: playType.label, text: playType.label, sub: "No gain", onOpen: open, active };
+      } else if (isInterception) {
+        const text = `Picked at ${fieldTeamTag(intCaughtTeam)} ${intCaughtYardLine}`;
+        row = { id: "yards", label: "Result", value: text, text, sub: isTD ? "Returned for a TD" : `Returned to ${interceptionReturnLabel} (${signed(interceptionReturnYards)})`, onOpen: open, active };
+      } else if (isFumblePlay) {
+        const text = `${spot} · ${signed(yards)}`;
+        row = { id: "yards", label: "Fumbled at", value: text, text, sub: "Where he lost the ball", onOpen: open, active };
+      } else if (shown?.isTouchdown) {
+        row = { id: "yards", label: "Result", value: "Touchdown", text: `Touchdown ${shown.yards}`, sub: `${signed(shown.yards)} yards`, onOpen: open, active };
+      } else if (playType.id === "safety") {
+        row = { id: "yards", label: "Result", value: "Safety", text: "Safety", onOpen: open, active };
+      } else {
+        const gain = shown ? shown.yards : yards;
+        const text = `${spot} ${signed(gain)}`;
+        row = { id: "yards", label: "Spot", text: `${text}${shown?.isFirstDown ? " 1st" : ""}`, onOpen: open, active,
+          value: <>{spot} <span className={gain > 0 ? "text-emerald-400" : gain < 0 ? "text-red-400" : ""}>{signed(gain)}</span></>,
+          sub: shown?.isFirstDown ? "1st down" : undefined };
+      }
+      outcome.push(row);
+    }
+    if (steps.includes("kick_location")) {
+      const outcomeLabel = KICK_OUTCOMES.find(o => o.value === kickOutcome)?.label ?? "";
+      const text = isTouchback ? "Touchback" : `To ${landingLabel}`;
+      outcome.push({ id: "kick_location", label: "Kick", value: text, text: `${text} ${kickDistance} ${outcomeLabel}`,
+        sub: [`${kickDistance} yds`, !isTouchback && outcomeLabel, isKickoffOutOfBounds && outOfBoundsSummary].filter(Boolean).join(" · "),
+        onOpen: () => openPane("kick_location"), active: paneStep === "kick_location" });
+    }
+    if (steps.includes("kick_return_yards")) {
+      const isReceiverSide = returnToTeam === receivingFieldSide;
+      const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
+      const retYds = receiverYard - kickedToYard;
+      const text = isTD ? "Touchdown" : `${fieldTeamTag(returnToTeam)} ${returnToYardLine}`;
+      outcome.push({ id: "kick_return_yards", label: isLooseKick ? "Recovered at" : "Return", value: text, text: `${text} ${retYds}`,
+        sub: isLooseKick && muffLostToKickers ? "Kickers keep it" : `${signed(retYds)} yds`,
+        onOpen: () => openPane("kick_return_yards"), active: paneStep === "kick_return_yards" });
+    }
+    if (steps.includes("fumble_return")) {
+      const recoverer = tagged.find(t => t.role === "fumble_recovery");
+      const text = `${fumbleRecoveredByUs === (gameState.possession === "us") ? progName : oppName} ball${recoverer ? ` · ${playerText(recoverer)}` : ""}`;
+      outcome.push({ id: "fumble_return", label: "Recovery", value: text, text,
+        sub: `${fumbleRecoveredByUs ? "Kept" : "Lost"} at ${formatFieldSpot(fumbleRecoveredAtBallOn, gameState.possession)}${fumbleReturnYards ? ` · returned ${fumbleReturnYards}` : ""}`,
+        tone: recoverer?.isPending ? "amber" : undefined,
+        onOpen: () => openPane("fumble_return"), active: paneStep === "fumble_return" });
+    }
+    if (steps.includes("penalty")) {
+      const ready = stepReady("penalty");
+      const named = penalty?.trim() ? penaltyDisplayName(penalty) : "";
+      const text = named
+        ? `${named}${penaltyEnforcement === "accepted" ? ` · ${actualPenaltyYards} yds` : ` · ${penaltyEnforcement}`}`
+        : "Pick the foul";
+      const next = penaltyPreview ? `next ${penaltyPreview.down} & ${penaltyDistanceLabel} at ${formatFieldSpot(penaltyPreview.ballOn, gameState.possession)}` : "";
+      outcome.push({ id: "penalty", label: "Flag", value: text, text: `${text} ${penaltyCategory ?? ""} ${next}`,
+        sub: !named ? "Needs the foul, the team and the yards" : penaltyCategory ? [`On ${flagTeamName(penaltyCategory)}`, next].filter(Boolean).join(" · ") : "Pick which team",
+        tone: ready ? undefined : "warn", onOpen: () => openPane("penalty"), active: paneStep === "penalty" });
+    }
+    const clockText = formatClockValue(clockSecs);
+    outcome.push({ id: "clock", label: "Clock", value: clockText, text: clockText, sub: "At the snap", onOpen: () => openPane("clock"), active: editPane === "clock" });
+
+    if (steps.includes("formations")) {
+      charting.push({ id: "hash", label: "Hash", value: "", text: hashMark ?? "",
+        inline: (["left", "middle", "right"] as const).map(h => (
+          <button key={h} type="button" aria-pressed={hashMark === h} aria-label={`${cap(h)} hash`}
+            onClick={() => { touchedRef.current = true; setHashMark(prev => prev === h ? null : h); }}>{h.charAt(0)}</button>
+        )) });
+      const parts = [offFormation, defFormation && `vs ${defFormation}`, playDirection && `Went ${playDirection}`, wristbandCall.trim() && `Call ${wristbandCall.trim()}`].filter(Boolean) as string[];
+      const text = parts.join(" · ");
+      charting.push({ id: "formations", label: "Formation", value: text || "Not charted", text, tone: text ? undefined : "dim",
+        onOpen: () => openPane("formations"), active: paneStep === "formations" });
+    }
+
+    /* On the Film Chart the hash and formation are film charting, kept with
+       the rest of it below, so the play's own copies are not offered twice. */
+    const sections: EditSection[] = [
+      { id: "who", title: "Who", rows: who },
+      { id: "result", title: "Result", rows: outcome },
+      ...(film ? [] : [{ id: "charting", title: "Charting", note: "optional", rows: charting }]),
+    ];
+
+    const toggles: EditToggle[] = [];
+    if (!isPenaltyOnly && !steps.includes("penalty")) toggles.push({ id: "flag", label: "+ Flag", onClick: openPenaltyStep });
+    if (canHaveFumble) {
+      toggles.push({ id: "fumble", label: hasFumble ? "Fumble ✓" : "+ Fumble", on: hasFumble, onClick: () => {
+        touchedRef.current = true;
+        if (hasFumble) { setHasFumble(false); return; }
+        setHasFumble(true);
+        setIsTD(false);
+        openPane("yards");
+      } });
+    }
+    if (canFlagBadSnap(playType.id) && playType.id !== "bad_snap") {
+      toggles.push({ id: "bad_snap", label: badSnap ? "Bad snap ✓" : "+ Bad snap", on: badSnap, onClick: () => { touchedRef.current = true; setBadSnap(v => !v); } });
+    }
+
+    // What changed since the editor opened, line by line.
+    const rowTexts: Record<string, string> = {};
+    for (const section of sections) for (const row of section.rows) rowTexts[row.id] = row.text;
+    for (const t of toggles) rowTexts[`toggle:${t.id}`] = String(!!t.on);
+    rowTexts.goal = String(nextGoalToGo);
+    const previewKey = JSON.stringify(shown);
+    if (!touchedRef.current || !baselineRef.current) baselineRef.current = { rows: rowTexts, preview: previewKey };
+    const baseline = baselineRef.current;
+    const changedIds = new Set(Object.keys({ ...rowTexts, ...baseline.rows }).filter(id => rowTexts[id] !== baseline.rows[id]));
+    for (const section of sections) for (const row of section.rows) row.changed = changedIds.has(row.id);
+    /* Whether a save has a play edit to write. The Film Chart writes the play
+       only when it changed: re-saving an untouched play just to chart it would
+       re-chain the game for nothing. */
+    const statsChanged = changedIds.size > 0 || previewKey !== baseline.preview;
+
+    /* Stats a coach may not change (the final lock) read as the same lines
+       with nothing to tap; the charting below stays live for them. */
+    const statsEditable = !film || film.canEditStats;
+    if (!statsEditable) {
+      for (const section of sections) for (const row of section.rows) { row.onOpen = undefined; row.inline = undefined; }
+      toggles.length = 0;
+    }
+    const filmPart = film ? filmSection(film, openPane, isFilmPane(editPane) ? editPane : null) : null;
+    const changeCount = (statsEditable ? changedIds.size : 0) + (filmPart?.changes ?? 0);
+
+    const saveBlocker = goalChoiceRequired && nextGoalToGo === undefined
+      ? "Pick 1st & 10 or 1st & Goal above to save."
+      : playType.id === "pat" && !result
+        ? "Pick whether the kick was good to save."
+        : (steps.includes("penalty") && !stepReady("penalty")) || !stepReady("review")
+          ? "Finish the flag to save: the foul, the team and the yards."
+          : null;
+
+    const situation = isKickPlay && playType.id !== "punt" && playType.id !== "fair_catch"
+      ? playType.id === "onside_kick" ? "Onside kick" : "Kickoff"
+      : isConversion ? (playType.id === "pat" ? "PAT try" : "2-pt try")
+        : `${ordinal(gameState.down)} & ${gameState.goalToGo ? "Goal" : gameState.distance}`;
+    const quarterText = gameState.quarter > 4 ? "OT" : `Q${gameState.quarter}`;
+
+    const confirmLeave = (what: string) => changeCount === 0 || window.confirm(`${what} without saving? ${changeCount === 1 ? "The change" : `The ${changeCount} changes`} to this play will be lost.`);
+    const pane = isFilmPane(editPane)
+      ? film && filmPane(film, editPane, {
+        teams: { us: progTag, them: oppTag },
+        beforeStartSave: () => changedIds.size === 0
+          || window.confirm("Saving the start reopens this play, so the other changes to its stats will be lost. Save the start anyway?"),
+      })
+      : editPane === "clock"
+      ? {
+        title: "Clock at the snap",
+        hint: "What the scoreboard read when the ball was snapped.",
+        body: <div className="card p-3"><ClockInput seconds={clockSecs} onChange={secs => { touchedRef.current = true; setClockSecs(secs); }} maxSeconds={gameConfig.quarter_length_secs} /></div>,
+      }
+      : paneStep
+        ? { title: paneStep === "penalty" ? undefined : detailHeading.title, hint: paneStep === "penalty" ? undefined : detailHeading.hint, body: stepBody }
+        : null;
+
+    /* One Save for the Film Chart: the play when it changed, then its
+       charting, then this play closes or the next one opens. */
+    const statsBlocked = statsEditable && statsChanged && saveBlocker != null;
+    const filmSave = async (then: "close" | "next") => {
+      if (!film || savingRef.current || statsBlocked) return;
+      savingRef.current = true;
+      setSaving(true);
+      setSavingNext(then === "next");
+      setSaveError(null);
+      try {
+        let captured: PlaySubmitData | null = null;
+        if (film.canEditStats && statsChanged) handleSubmit(data => { captured = data; });
+        const stats = captured as PlaySubmitData | null;
+        if (film.canEditStats && statsChanged && !stats) return;
+        const ok = await film.onSave(stats, then).catch(() => false);
+        if (!ok) setSaveError("Couldn't save. Check the connection and try again.");
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+        setSavingNext(false);
+      }
+    };
+    const canWriteAnything = !film || film.canEditStats || film.canChart;
+    const nav: EditNav | null = film?.nav
+      ? {
+        prev: film.nav.prev ? { label: film.nav.prev.label, onClick: () => { if (confirmLeave(`Go to play ${film.nav!.prev!.label}`)) film.nav!.prev!.go(); } } : undefined,
+        next: film.nav.next ? { label: film.nav.next.label, onClick: () => { if (confirmLeave(`Go to play ${film.nav!.next!.label}`)) film.nav!.next!.go(); } } : undefined,
+      }
+      : null;
+
+    return (
+      <EditPlayLayout
+        title={film ? `Play ${playNumber ?? ""}`.trim() : playNumber != null ? `Edit play ${playNumber}` : "Edit play"}
+        pill={!film || film.canEditStats ? "Editing" : film.canChart ? "Charting" : "View only"}
+        subtitle={statsEditable ? `${playType.label} · tap a line to change it` : `${playType.label} · ${film?.canChart ? "the stats are locked, the charting isn't" : "view only"}`}
+        bug={{
+          situation,
+          spot: formatFieldSpot(gameState.ballOn, gameState.possession),
+          clock: `${quarterText} · ${clockText}`,
+          description: shown?.description || editing?.description || playType.label,
+          color: gameState.possession === "us" ? progAccent : oppAccent,
+          action: film?.start && film.canEditStats
+            ? { label: "Change start", onClick: () => openPane("film:start"), active: editPane === "film:start" }
+            : null,
+        }}
+        sections={sections}
+        toggles={toggles}
+        tail={filmPart ? [filmPart.section] : []}
+        notices={<>
+          {film?.lockNote && !film.canEditStats && <div className="ep-note info">{film.lockNote}</div>}
+          {statsEditable && goalChoiceRequired && (
+            <div className={`ep-note ${nextGoalToGo === undefined ? "warn" : ""}`}>
+              <GoalToGoChoice value={nextGoalToGo} onChange={value => { touchedRef.current = true; setNextGoalToGo(value); }} />
+            </div>
+          )}
+        </>}
+        pane={pane}
+        onClosePane={closePane}
+        onClose={() => { if (confirmLeave("Close")) onClose(); }}
+        saving={saving}
+        savingNext={savingNext}
+        canSave={film ? !statsBlocked : saveBlocker == null}
+        saveBlocker={film ? (statsBlocked ? saveBlocker : null) : saveBlocker}
+        saveError={saveError}
+        changes={changeCount}
+        onSave={!canWriteAnything ? undefined : film ? () => { void filmSave("close"); } : () => { void saveFromButton(); }}
+        saveLabel={film ? "Save" : submitLabel ?? "Save Changes"}
+        saveNext={film?.hasNext && canWriteAnything ? { label: "Save & next", onClick: () => { void filmSave("next"); } } : null}
+        onDelete={statsEditable ? onDelete : undefined}
+        nav={nav}
+        emptyText={film
+          ? statsEditable
+            ? { big: "Tap any line to change it", small: "Players, the spot, the clock, the flag and the film charting all open here. One Save keeps it all." }
+            : { big: "Tap a film charting line", small: "The stats on this play are locked. Formation, play call, tags and notes still open here." }
+          : undefined}
+      />
+    );
+  }
+
   return (
     <div className="sheet bg-black/60 backdrop-blur-sm">
       <div className="sheet-panel max-h-[92vh] flex flex-col">
@@ -2899,1768 +5024,7 @@ export default function PlayEntryModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-
-          {/* ── STEP: Players ── */}
-          {currentStep === "players" && (
-            <>
-              {playType.id === "two_pt" && (
-                <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Conversion Type</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["pass", "run"] as const).map((style) => (
-                      <button
-                        key={style}
-                        onClick={() => {
-                          setTwoPointStyle(style);
-                          setTagged([]);
-                          setCurrentRoleIdx(0);
-                        }}
-                        className={`py-2.5 rounded-xl text-sm font-black border-2 capitalize transition-all duration-200 ${
-                          twoPointStyle === style
-                            ? "border-dragon-primary bg-dragon-primary/15 text-dragon-primary"
-                            : "border-surface-border bg-surface-bg text-slate-500"
-                        }`}
-                      >
-                        {style}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Blocked kick recovery.
-                  Above the role chips on purpose: it decides which roster the
-                  `recoverer` role picks from, so it has to be answered BEFORE
-                  that pick. It lived on the yards step first, which comes
-                  after — you chose a recoverer from the defending team's
-                  roster and only then got asked who recovered, with no way to
-                  reach your own players. */}
-              {playType.id === "blocked_kick" && (
-                <div className="mb-1">
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => changeBlockedRecoveredBy(false)}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        !blockedRecoveredByKicking ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {gameState.possession === "us" ? oppName : progName}
-                    </button>
-                    <button onClick={() => changeBlockedRecoveredBy(true)}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        blockedRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {gameState.possession === "us" ? progName : oppName} (kicking team)
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Fumble as a modifier, on the PLAYERS step because that is
-                  where the roles it adds are collected. It sat on the yards
-                  step first, which runs after this one, so turning it on
-                  appended forced_fumble and fumble_recovery to a step already
-                  behind you and nobody was ever asked who forced it or who
-                  came up with it. Next walks the new roles from here. */}
-              {canHaveFumble && (
-                <button
-                  onClick={() => setHasFumble(f => !f)}
-                  className={`w-full py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer mb-1 ${
-                    hasFumble
-                      ? "border-orange-500 bg-orange-500/20 text-orange-400"
-                      : "border-dashed border-surface-border bg-surface-bg text-slate-500"
-                  }`}
-                >
-                  {hasFumble ? "Fumble on this play" : "+ Fumble"}
-                </button>
-              )}
-
-              {/* Role tabs — amber = carried over from the last play, green = picked here */}
-              <div className="flex gap-1.5 flex-wrap">
-                {roles.map((role, i) => {
-                  const tp = tagged.find(t => t.role === role);
-                  // Amber = not a confirmed pick, whether that's a carry-over
-                  // from the last play or an unrostered jersey.
-                  const unconfirmed = carriedRoles.has(role) || !!tp?.isPending;
-                  return (
-                    <button key={role} onClick={() => setCurrentRoleIdx(i)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all duration-200 cursor-pointer ${
-                        currentRoleIdx === i
-                          ? "text-white"
-                          : tp
-                            ? unconfirmed
-                              ? "bg-amber-500/15 text-amber-400 border border-amber-500/40"
-                              : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            // Grey-on-dark read as "just another chip" at a
-                            // glance. Dashed says unfilled the way the rest of
-                            // the modal uses dashed for "not a real pick yet".
-                            : "bg-surface-bg text-slate-500 border border-dashed border-slate-600"
-                      }`}
-                      style={currentRoleIdx === i ? { backgroundColor: activeTeamColor } : undefined}>
-                      {/* Fall back to the name when there's no jersey, rather
-                          than rendering "#null". */}
-                      {role}{tp ? `: ${tp.jersey_number != null ? `#${tp.jersey_number}` : tp.name}${tp.isPending ? "?" : ""}` : ": —"}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {carriedRoles.size > 0 && (
-                <div className="flex items-center justify-between gap-2 text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
-                  <span className="text-amber-400/90">
-                    Carried from last play:{" "}
-                    <span className="font-bold">
-                      {roles
-                        .filter(r => carriedRoles.has(r))
-                        .map(r => {
-                          const tp = tagged.find(t => t.role === r);
-                          return `${r} #${tp?.jersey_number ?? "?"}${tp?.isPending ? "?" : ""}`;
-                        })
-                        .join(", ")}
-                    </span>
-                    {carriedRoles.has(currentRole) && (
-                      <span className="text-amber-400/60"> — Next to keep, or tap another</span>
-                    )}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setTagged(prev => prev.filter(t => !carriedRoles.has(t.role)));
-                      setCarriedRoles(new Set());
-                      setCurrentRoleIdx(0);
-                    }}
-                    className="text-amber-400 font-bold shrink-0 underline"
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
-
-              {/* Whose players am I looking at? Team color + logo answers it
-                  without reading, which matters when the rosters look alike. */}
-              <div
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-                style={{
-                  borderColor: `${activeTeamAccent}66`,
-                  background: `linear-gradient(90deg, ${activeTeamAccent}22, transparent)`,
-                }}
-              >
-                {activeTeamLogo ? (
-                  <img src={activeTeamLogo} alt="" className="w-6 h-6 object-contain rounded" />
-                ) : (
-                  <span
-                    className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-black text-white"
-                    style={{ backgroundColor: activeTeamColor }}
-                  >
-                    {activeTeamTag}
-                  </span>
-                )}
-                <span className="text-sm font-display font-black uppercase tracking-wide" style={{ color: activeTeamAccent }}>
-                  {activeTeamName}
-                </span>
-                <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  {currentRole}
-                </span>
-              </div>
-
-              {/* Their side is recorded as TEAM unless a number was caught, so
-                  say so here instead of leaving it to happen at submit. */}
-              {teamDefaultRoles.includes(currentRole) && (
-                <div className="px-3 py-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-[11px] text-amber-400/80">
-                  Records as <span className="font-black">TEAM</span> unless you pick someone.
-                </div>
-              )}
-
-              {/* Show opponent or our roster. The fumble roles get the
-                  compact picker the recovery step uses, not a roster grid. */}
-              {["forced_fumble", "fumble_recovery", "recovery_tackler"].includes(currentRole) ? (
-                fumbleRolePicker(currentRole, showOpponentRoster, playerStepNames[currentRole] ?? currentRole, showOpponentRoster ? oppAccent : progAccent)
-              ) : showOpponentRoster ? (
-                <OpponentPlayerGrid
-                  players={[...localOppPlayers].sort((a, b) => playerUseCount(playerUsage, currentRole, b.id, true) - playerUseCount(playerUsage, currentRole, a.id, true))}
-                  label={`Select ${currentRole} — ${oppName}`}
-                  onSelect={handleOpponentSelect}
-                  selectedId={tagged.find(t => t.role === currentRole)?.id ?? null}
-                  search={searches[currentRole] ?? ""}
-                  onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
-                  onQuickAdd={handleQuickAddOpponent}
-                  accentColor={oppAccent}
-                />
-              ) : (
-                <>
-                {(currentRole === "rusher" || currentRole === "passer") && (
-                  <button
-                    onClick={handleTeamSelect}
-                    aria-pressed={tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed)}
-                    className={`w-full mb-2 py-2 rounded-xl border text-xs font-bold uppercase tracking-wide ${
-                      tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed)
-                        ? "border-amber-400 bg-amber-500/25 text-amber-300"
-                        : "border-amber-500/40 bg-amber-500/10 text-amber-400"
-                    }`}
-                  >
-                    {tagged.some(t => t.role === currentRole && t.isTeam && t.teamCreditConfirmed) ? "✓ " : ""}
-                    {currentRole === "passer" ? "QB" : "Runner"}: TEAM
-                  </button>
-                )}
-                <PlayerGrid
-                  roster={[...roster].sort((a, b) => playerUseCount(playerUsage, currentRole, b.player_id) - playerUseCount(playerUsage, currentRole, a.player_id))}
-                  label={`Select ${currentRole} — ${progName}`}
-                  onSelect={handlePlayerSelect}
-                  selectedId={tagged.find(t => t.role === currentRole)?.player_id ?? null}
-                  search={searches[currentRole] ?? ""}
-                  onSearch={v => setSearches(s => ({ ...s, [currentRole]: v }))}
-                  accentColor={progAccent}
-                  onSelectPending={handlePendingSelect}
-                  selectedPendingId={tagged.find(t => t.role === currentRole && t.isPending)?.player_id ?? null}
-                  selectionIsCarried={carriedRoles.has(currentRole)}
-                />
-                </>
-              )}
-            </>
-          )}
-
-          {/* ── KICK STEP: Kicker / Punter ── */}
-          {currentStep === "kick_kicker" && (
-            <>
-              {carriedRoles.has(kickerRole) && (
-                <div className="mb-2 px-3 py-2 rounded-xl border border-dashed border-amber-500/50 bg-amber-500/10 text-[11px] text-amber-400/90">
-                  Carried from the last kick - Next keeps him, tap anyone to change.
-                </div>
-              )}
-              {isTheirBall ? (
-                <OpponentPlayerGrid
-                  players={localOppPlayers}
-                  label={`Select ${kickerRole} (opponent)`}
-                  onSelect={handleKickerSelectOpp}
-                  selectedId={tagged.find(t => t.role === kickerRole)?.id ?? null}
-                  search={kickerSearch}
-                  onSearch={setKickerSearch}
-                  onQuickAdd={handleQuickAddOpponent}
-                  accentColor={oppAccent}
-                />
-              ) : (
-                <PlayerGrid
-                  roster={roster}
-                  label={`Select ${kickerRole}`}
-                  onSelect={handleKickerSelect}
-                  selectedId={tagged.find(t => t.role === kickerRole)?.player_id ?? null}
-                  search={kickerSearch}
-                  onSearch={setKickerSearch}
-                  accentColor={progAccent}
-                  selectionIsCarried={carriedRoles.has(kickerRole)}
-                />
-              )}
-            </>
-          )}
-
-          {/* ── KICK STEP: Kick Location ── */}
-          {currentStep === "kick_location" && (
-            <>
-              {isTheirBall && !showOppKicker && (
-                <button
-                  onClick={() => { setShowOppKicker(true); setStepIdx(0); }}
-                  className="w-full mb-1 px-3 py-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-[11px] font-bold text-amber-400/80 flex items-center justify-between"
-                >
-                  <span className="uppercase tracking-wide">
-                    {kickerRole}: <span className="font-black">TEAM</span>
-                  </span>
-                  <span className="underline">Name him</span>
-                </button>
-              )}
-              {/* Same spot-picking as the run/pass yards step: tap the field
-                  or drag the ruler. It's also the only control here that can
-                  place the ball on EITHER side of the 50 — the "caught at" box
-                  takes a receiving-team yard line by definition, so a punt
-                  that never reached midfield can't be expressed in it. */}
-              <div className="mb-3">
-                <FieldVisualizer
-                  compact
-                  ballOn={kickLandingBallOn}
-                  ballPosition={toFieldDisplay(kickLandingBallOn)}
-                  firstDownPosition={toFieldDisplay(gameState.ballOn)}
-                  possession={gameState.possession}
-                  ourEndZoneSide={ourEndZoneSide}
-                  primaryColor={progColor}
-                  oppColor={oppColor}
-                  progName={progName}
-                  oppName={oppName}
-                  progAbbr={progTag}
-                  oppAbbr={oppTag}
-                  progLogoUrl={progLogoUrl}
-                  oppLogoUrl={oppLogoUrl}
-                  onPickSpot={(displayPosition) => setKickedToYardFromBallOn(toFieldDisplay(displayPosition))}
-                />
-                <div className="text-[10px] text-slate-600 text-center mt-1">
-                  Tap the field where it came down · kicked from {yardLabel(gameState.ballOn)}
-                </div>
-              </div>
-
-              <YardReel
-                value={kickLandingBallOn}
-                onChange={setKickedToYardFromBallOn}
-                offenseDirection={offenseDirection}
-                accentColor="#a78bfa"
-                formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
-              />
-
-              <div className="mt-3">
-                {/* Type whichever number you actually caught — each derives the other. */}
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block mb-1">Caught at (yd line)</span>
-                    <input
-                      type="number" inputMode="numeric" min={0} max={50}
-                      placeholder="e.g. 5"
-                      value={kickedToRaw}
-                      onChange={e => {
-                        setKickedToRaw(e.target.value);
-                        setKickDistanceRaw("");
-                        const n = parseInt(e.target.value, 10);
-                        if (!isNaN(n)) setKickedToYard(Math.max(0, Math.min(50, n)));
-                      }}
-                      className="input w-full text-center text-sm font-black"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block mb-1">
-                      Or {(playType.id === "kickoff" || playType.id === "onside_kick") ? "kick" : "punt"} distance
-                    </span>
-                    <input
-                      type="number" inputMode="numeric" min={0} max={100}
-                      placeholder="e.g. 42"
-                      value={kickDistanceRaw}
-                      onChange={e => {
-                        setKickDistanceRaw(e.target.value);
-                        setKickedToRaw("");
-                        const n = parseInt(e.target.value, 10);
-                        if (!isNaN(n)) setKickedToYardFromDistance(Math.max(0, Math.min(100, n)));
-                      }}
-                      className="input w-full text-center text-sm font-black"
-                    />
-                  </div>
-                </div>
-                <div className="text-xs text-slate-500 mt-2">
-                  {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{kickDistance} yards</span>
-                  {" "}({kickStartLabel} → {landingLabel})
-                </div>
-              </div>
-
-              <div>
-                <label className="label block mb-1.5">What happened to it?</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {kickOutcomes.map((outcome, i) => (
-                    <button
-                      key={outcome.value}
-                      onClick={() => setKickOutcome(outcome.value)}
-                      className={`py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
-                        kickOutcomes.length % 2 === 1 && i === kickOutcomes.length - 1 ? "col-span-2" : ""
-                      } ${
-                        kickOutcome === outcome.value
-                          ? outcome.value === "touchback"
-                            ? "border-sky-500 bg-sky-500/20 text-sky-400"
-                            : "border-purple-500 bg-purple-500/20 text-purple-400"
-                          : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}
-                    >
-                      {outcome.label}
-                    </button>
-                  ))}
-                </div>
-                {isKickoffOutOfBounds && (
-                  <div className="mt-2 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
-                    <div className="text-xs font-bold text-amber-300">Penalty: Kickoff Out of Bounds</div>
-                    {/* The receiving team's call (NFHS 6-1-9). The two spots
-                        measured from where it went out use the landing spot
-                        above. */}
-                    <div className="grid grid-cols-2 gap-2">
-                      {KICKOFF_OUT_OF_BOUNDS_CHOICES.map(choice => <button key={choice} type="button"
-                        aria-pressed={outOfBoundsChoice === choice} onClick={() => setOutOfBoundsChoice(choice)}
-                        className={`min-h-11 rounded-lg border px-2 text-xs font-bold ${outOfBoundsChoice === choice ? "border-amber-300 bg-amber-500/20 text-white" : "border-slate-600 text-slate-300"}`}>
-                        {KICKOFF_OUT_OF_BOUNDS_LABELS[choice]}
-                      </button>)}
-                    </div>
-                    <p className="text-xs text-slate-300">{outOfBoundsSummary}. Went out at {landingLabel}.</p>
-                  </div>
-                )}
-                {/* Same escape as the FG/PAT result step. A punt that never
-                    got away isn't one of these outcomes at all — it's a
-                    different play — and it has to BE a blocked_kick before it
-                    is written, so next_situation_source lands on
-                    "pending_review" instead of the engine computing a spot and
-                    possession off a kick that never happened. */}
-                <button
-                  onClick={() => {
-                    const blocked = PLAY_TYPES.find(pt => pt.id === "blocked_kick");
-                    if (!blocked) return;
-                    // fair_catch is a punt that was fair caught, so a block on
-                    // it is a blocked punt — not a blocked kickoff.
-                    setBlockedKickType(
-                      ["punt", "fair_catch"].includes(playType.id) ? "punt" : "kickoff",
-                    );
-                    setPlayTypeOverride(blocked);
-                    // A blocked kick has no returner, but the sticky one from
-                    // the last kick is already tagged and would be saved and
-                    // credited as a 0-yard return.
-                    setTagged(prev => prev.filter(t => t.role !== "returner"));
-                    setCarriedRoles(prev => { const next = new Set(prev); next.delete("returner"); return next; });
-                    // Roles change to kicker/blocker/recoverer, so restart. The
-                    // kicker or punter already tagged keeps his tag.
-                    setCurrentRoleIdx(0);
-                    setStepIdx(0);
-                  }}
-                  className="mt-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-dashed border-red-500/50 bg-red-500/10 text-red-400"
-                >
-                  Blocked
-                </button>
-              </div>
-
-              <div className="text-xs text-slate-500 text-center">
-                {kickOutcome === "returned" && "You'll pick the returner and where they got to."}
-                {kickOutcome === "fair_catch" && `Ball spotted at ${landingLabel}. No return yards — you'll still tag who signaled.`}
-                {isMuffed && "You'll pick who muffed it, which team and player recovered, and where."}
-                {isReturnFumble && "You'll pick who fumbled it, which team and player recovered, and where."}
-                {kickOutcome === "downed" && `Downed by the kicking team. Ball spotted at ${landingLabel}.`}
-                {kickOutcome === "out_of_bounds" && !isKickoffOutOfBounds && `Out of bounds at ${landingLabel}. No return.`}
-                {kickOutcome === "touchback" && "Receiving team will start at their own 20 yard line."}
-              </div>
-
-              {/* Every play can carry a live-ball foul, so every play has to
-                  have somewhere to put one. The standalone Penalty play type
-                  is for dead-ball fouls - a flag between snaps, where there is
-                  no play to attach it to.
-
-                  This step is the one every kick reaches, whatever the outcome,
-                  so it covers the kicks that never get a return step at all:
-                  a fair catch, a touchback, one downed or out of bounds.
-                  Roughing the kicker and holding on the return are not rare.
-                  A returned kick sees the control again on the return step,
-                  where a block in the back actually happens - same flag, two
-                  places to reach it, and the button reads back whatever is
-                  already set. */}
-              <button onClick={openPenaltyStep}
-                className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
-                  penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
-                }`}>
-                <Flag className="w-3 h-3 inline mr-1" />
-                {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
-              </button>
-            </>
-          )}
-
-          {/* ── KICK STEP: Returner ── */}
-          {currentStep === "kick_returner" && (
-            <>
-              <div className="text-xs text-slate-400 mb-1">
-                {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kicked" : "Punted"} to {landingLabel} ({kickDistance} yds). Select the {playType.id === "onside_kick" ? "recoverer" : "returner"}.
-              </div>
-
-              {/* Onside: who came up with it — drives possession */}
-              {playType.id === "onside_kick" && (
-                <div className="mb-3">
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setOnsideRecoveredByKicker(false)}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        !onsideRecoveredByKicker ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {isTheirBall ? progName : oppName} (receivers)
-                    </button>
-                    <button onClick={() => setOnsideRecoveredByKicker(true)}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        onsideRecoveredByKicker ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {isTheirBall ? oppName : progName} (kickers)
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {(playType.id === "onside_kick" && onsideRecoveredByKicker ? !isTheirBall : isTheirBall) ? (
-                <PlayerGrid
-                  roster={roster}
-                  label={`Select ${playType.id === "onside_kick" ? "recoverer" : "returner"} (${progName})`}
-                  onSelect={handleReturnerSelect}
-                  selectedId={tagged.find(t => t.role === "returner")?.player_id ?? null}
-                  search={returnerSearch}
-                  onSearch={setReturnerSearch}
-                  accentColor={progAccent}
-                  selectionIsCarried={carriedRoles.has("returner")}
-                />
-              ) : (
-                <OpponentPlayerGrid
-                  players={localOppPlayers}
-                  label={`Select ${playType.id === "onside_kick" ? "recoverer" : "returner"} (${oppName})`}
-                  onSelect={handleReturnerSelectOpp}
-                  selectedId={tagged.find(t => t.role === "returner")?.id ?? null}
-                  search={returnerSearch}
-                  onSearch={setReturnerSearch}
-                  onQuickAdd={handleQuickAddOpponent}
-                  accentColor={oppAccent}
-                />
-              )}
-            </>
-          )}
-
-          {/* -- FUMBLE STEP: recovery, return, and who stopped it -- */}
-          {currentStep === "fumble_return" && (
-            <>
-              <div className="text-xs text-slate-400 mb-1">
-                {fumbleRecoveredByUs
-                  ? `${isTheirBall ? oppName : progName} kept it.`
-                  : `${isTheirBall ? progName : oppName} recovered it.`}
-                {" "}Who came up with it, how far he carried it, and who stopped him.
-              </div>
-              <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 text-sm space-y-1" aria-live="polite">
-                <p>Ball carrier fumbled at <strong>{formatFieldSpot(fumbleSpotBallOn, gameState.possession)}</strong> · {yards} yards before the fumble</p>
-                <p>Recovered at <strong>{formatFieldSpot(fumbleRecoveredAtBallOn, gameState.possession)}</strong></p>
-                <p>{fumbleReturnScores
-                  ? <><strong>Touchdown</strong> · {fumbleReturnYards} return yards</>
-                  : <>Return ended at <strong>{formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</strong> · {fumbleReturnYards} return yards</>}</p>
-                {["rush", "pass_comp"].includes(playType.id)
-                  ? <p className="text-xs text-slate-300">NFHS credited {playType.id === "pass_comp" ? "passing / receiving" : "rushing"} yards: <strong>{fumbleRecoveredAtBallOn - gameState.ballOn}</strong>. Includes the loose ball's travel to recovery. Return yards start at recovery.</p>
-                  : <p className="text-xs text-slate-300">Return yards start where the loose ball was recovered.</p>}
-              </div>
-
-              <div className="mt-3 fumble-pickers">
-                <label className="label block mb-1">1. Who came up with it</label>
-                {fumbleRolePicker("fumble_recovery", recoveryUsesOpponentRoster, "Recovered by",
-                  recoveryUsesOpponentRoster ? oppAccent : fumbleRecoveredByUs ? offenseAccent : defenseAccent)}
-                {!tagged.some(t => t.role === "fumble_recovery" && !t.isTeam && t.player_id !== OPP_TEAM_PLAYER.id) && (
-                  <p className="text-[11px] text-amber-400/80 mt-1">Left blank, it records as {recoveryUsesOpponentRoster ? oppName : progName} TEAM.</p>
-                )}
-              </div>
-
-              <div className="mt-3">
-                <label className="label block mb-1">2. Loose ball recovered at</label>
-                <div className="text-xs text-slate-400 mb-1">
-                  Set where the recovering player gained possession. Starts at the fumble spot{" "}
-                  ({formatFieldSpot(fumbleSpotBallOn, gameState.possession)}); move it if the ball bounced forward or backward.
-                </div>
-                <YardReel
-                  value={fumbleRecoveredAtBallOn}
-                  onChange={moveFumbleRecovery}
-                  offenseDirection={offenseDirection}
-                  accentColor="#f59e0b"
-                  formatSpot={(b) => formatFieldSpot(b, gameState.possession)}
-                />
-              </div>
-
-              {/* Same spot picking the yards step uses, because a recovery
-                  return is a spot on the field like any other. */}
-              <div className="mt-3">
-                <label className="label block mb-2">3. Return ended at</label>
-                {/* First, because it is the whole answer when it applies: one
-                    tap, and the field and ruler below follow it to the goal. */}
-                <div className="mb-2">{fumbleTdButton}</div>
-                <FieldVisualizer
-                  compact
-                  ballOn={fumbleReturnBallOn}
-                  ballPosition={toFieldDisplay(fumbleReturnBallOn)}
-                  firstDownPosition={toFieldDisplay(fumbleRecoveredAtBallOn)}
-                  possession={gameState.possession}
-                  ourEndZoneSide={ourEndZoneSide}
-                  primaryColor={progColor}
-                  oppColor={oppColor}
-                  progName={progName}
-                  oppName={oppName}
-                  progAbbr={progTag}
-                  oppAbbr={oppTag}
-                  progLogoUrl={progLogoUrl}
-                  oppLogoUrl={oppLogoUrl}
-                  onPickSpot={(displayPosition) => setFumbleReturnFromBallOn(toFieldDisplay(displayPosition))}
-                />
-                <div className="text-[10px] text-slate-600 text-center mt-1">
-                  Tap the field, drag the ruler, or type the yards
-                </div>
-              </div>
-
-              <YardReel
-                value={fumbleReturnBallOn}
-                onChange={setFumbleReturnFromBallOn}
-                offenseDirection={offenseDirection}
-                advancing={fumbleRecoveredByUs ? "offense" : "returner"}
-                accentColor="#fb923c"
-                formatSpot={(b) => formatFieldSpot(b, gameState.possession)}
-              />
-
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-[10px] text-slate-500">Return yards:</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="0"
-                  value={fumbleReturnRaw}
-                  onChange={e => setFumbleReturnRaw(e.target.value)}
-                  className="input w-24 text-center text-sm font-black"
-                />
-                <span className="text-xs text-slate-400">from the recovery spot to the end of the return</span>
-              </div>
-
-              {!fumbleReturnScores && <div className="mt-3">
-                <label className="label block mb-1">4. Who stopped him</label>
-                {/* The other side from the recoverer: whoever brought the return down. */}
-                {fumbleRolePicker("recovery_tackler", !recoveryUsesOpponentRoster, "Stopped by", recoveryUsesOpponentRoster ? progAccent : oppAccent)}
-              </div>}
-            </>
-          )}
-
-          {/* ── KICK STEP: Return To Yard Line ── */}
-          {currentStep === "kick_return_yards" && (
-            <>
-              {/* A muff is decided by who fell on it: the receivers keep a
-                  live ball they can still run back, the kickers keep the ball
-                  where they recovered it. */}
-              {isLooseKick && (
-                <div className="space-y-2">
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">{isMuffed ? "Muff" : "Fumble"} recovered by</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => changeKickRecoveredBy(false)}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        !muffRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {receivingTeamLabel} (receivers)
-                    </button>
-                    <button onClick={() => changeKickRecoveredBy(true)}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        muffRecoveredByKicking ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {fieldTeamLabel(kickingFieldSide)} (kickers)
-                    </button>
-                  </div>
-                  {/* Who fell on it. Left blank, it records as TEAM. */}
-                  {fumbleRolePicker("fumble_recovery", kickRecoveryUsesOpponentRoster, "Recovered by",
-                    kickRecoveryUsesOpponentRoster ? oppAccent : muffRecoveredByKicking ? offenseAccent : defenseAccent)}
-                </div>
-              )}
-              <div>
-                <label className="label block mb-2">{muffLostToKickers || isReturnFumble ? "Recovered At (Yard Line)" : "Returned To (Yard Line)"}</label>
-
-                {/* Tap the field where he was brought down, or drag the ruler.
-                    Every other spot in this modal is picked this way; the
-                    return was the one place still asking for a yard line to be
-                    stepped to a button at a time. The ghost marker sits on the
-                    catch, so the return is visible as a distance. */}
-                <div className="mb-3">
-                  <FieldVisualizer
-                    compact
-                    ballOn={returnSpotBallOn}
-                    ballPosition={toFieldDisplay(returnSpotBallOn)}
-                    firstDownPosition={toFieldDisplay(kickLandingBallOn)}
-                    possession={gameState.possession}
-                    ourEndZoneSide={ourEndZoneSide}
-                    primaryColor={progColor}
-                    oppColor={oppColor}
-                    progName={progName}
-                    oppName={oppName}
-                    progAbbr={progTag}
-                    oppAbbr={oppTag}
-                    progLogoUrl={progLogoUrl}
-                    oppLogoUrl={oppLogoUrl}
-                    onPickSpot={(displayPosition) => {
-                      if (isTD) setIsTD(false);
-                      setReturnSpotFromBallOn(toFieldDisplay(displayPosition));
-                    }}
-                  />
-                  <div className="text-[10px] text-slate-600 text-center mt-1">
-                    {isTD
-                      ? "Returned for a score - tap the field if he was stopped short"
-                      : isLooseKick
-                        ? `Tap the field where the ball was recovered - kick landed at ${landingLabel}`
-                        : `Tap the field where he was brought down - caught at ${landingLabel}`}
-                  </div>
-                </div>
-
-                <YardReel
-                  value={returnSpotBallOn}
-                  onChange={(ballOn) => {
-                    if (isTD) setIsTD(false);
-                    setReturnSpotFromBallOn(ballOn);
-                  }}
-                  offenseDirection={offenseDirection}
-                  advancing="returner"
-                  accentColor={defenseAccent}
-                  formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
-                />
-
-                <div className="h-3" />
-
-                {/* Side selector */}
-                <div className="flex gap-1.5 mb-3">
-                  {fieldSideOrder.map((side) => (
-                    <button
-                      key={side}
-                      onClick={() => setReturnToTeam(side)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
-                        returnToTeam === side
-                            ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                            : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}
-                    >
-                      {fieldTeamLabel(side)}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Yard line stepper */}
-                <div className="flex items-center gap-1.5">
-                  {[-10, -5, -1].map(n => (
-                    <button key={n} onClick={() => adjustFieldTeamYardLine(returnToYardLine, n, returnToTeam, setReturnToYardLine, setReturnToTeam)}
-                      className="btn-ghost flex-1 h-10 text-sm font-bold">{n}</button>
-                  ))}
-                  <div className="w-16 h-10 shrink-0 rounded-lg bg-surface-bg flex items-center justify-center text-lg font-black tabular-nums text-emerald-400">
-                    {returnToYardLine}
-                  </div>
-                  {[1, 5, 10].map(n => (
-                    <button key={n} onClick={() => adjustFieldTeamYardLine(returnToYardLine, n, returnToTeam, setReturnToYardLine, setReturnToTeam)}
-                      className="btn-ghost flex-1 h-10 text-sm font-bold">+{n}</button>
-                  ))}
-                </div>
-                {/* Same idea as the kick spot: enter the yard line you saw, or
-                    the return yardage — whichever you're sure of. */}
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block mb-1">Returned to (yd line)</span>
-                    <input
-                      type="number" inputMode="numeric" min={1} max={50}
-                      placeholder="e.g. 30"
-                      value={returnToRaw}
-                      onChange={e => {
-                        setReturnToRaw(e.target.value);
-                        setReturnYardsRaw("");
-                        const n = parseInt(e.target.value, 10);
-                        if (!isNaN(n)) setReturnToYardLine(Math.max(1, Math.min(50, n)));
-                      }}
-                      className="input w-full text-center text-sm font-black"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block mb-1">Or return yards</span>
-                    <input
-                      type="number" inputMode="numeric" min={0} max={100}
-                      placeholder="e.g. 18"
-                      value={returnYardsRaw}
-                      onChange={e => {
-                        setReturnYardsRaw(e.target.value);
-                        setReturnToRaw("");
-                        const n = parseInt(e.target.value, 10);
-                        if (!isNaN(n)) setReturnSpotFromYards(Math.max(0, Math.min(100, n)));
-                      }}
-                      className="input w-full text-center text-sm font-black"
-                    />
-                  </div>
-                </div>
-                <div className="text-xs text-slate-500 mt-3">
-                  {(() => {
-                    if (isTD) return `Caught at ${landingLabel} → Touchdown (${100 - Math.max(0, kickedToYard)} yds)`;
-                    const sideLabel = fieldTeamTag(returnToTeam);
-                    const isReceiverSide = returnToTeam === receivingFieldSide;
-                    const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
-                    const retYds = receiverYard - kickedToYard;
-                    if (muffLostToKickers) return (
-                      <>{isMuffed ? "Muffed" : "Caught"} at {landingLabel}{isReturnFumble ? ", fumbled" : ""} → kicking team ball at <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span>, 1st down{isReturnFumble ? ` (${retYds > 0 ? "+" : ""}${retYds} return yds)` : ""}</>
-                    );
-                    if (isReturnFumble) return (
-                      <>Caught at {landingLabel}, fumbled, recovered by the receivers at <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
-                    );
-                    return (
-                      <>{isMuffed ? "Muffed" : "Caught"} at {landingLabel} → returned to <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* How the return ended, one tap each. Fair Catch drops the
-                  return step (the step list shrinks under it and this index
-                  becomes the next step); Muffed and Fumble keep it and ask who
-                  fell on it. A kicking team that recovers one cannot score on
-                  it here. */}
-              <div className="grid grid-cols-4 gap-2">
-                <button onClick={() => { setIsTD(false); setKickOutcome("fair_catch"); }}
-                  className="py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer border-surface-border bg-surface-bg text-slate-500">
-                  Fair Catch
-                </button>
-                <button onClick={() => { setIsTD(false); setKickOutcome(isMuffed ? "returned" : "muffed"); }}
-                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                    isMuffed ? "border-purple-500 bg-purple-500/20 text-purple-400" : "border-surface-border bg-surface-bg text-slate-500"
-                  }`}>Muffed</button>
-                <button onClick={() => { setIsTD(false); setKickOutcome(isReturnFumble ? "returned" : "fumbled"); }}
-                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                    isReturnFumble ? "border-orange-500 bg-orange-500/20 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
-                  }`}>Fumble</button>
-                <button onClick={() => setIsTD(t => !t)} disabled={muffLostToKickers}
-                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                    isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
-                  }`}>Return TD</button>
-              </div>
-
-              {/* A kick play could not carry a flag at all: the penalty picker
-                  lives on the yards step, and the kick flow skips that step
-                  entirely - kicker, location, returner, return, review. So a
-                  block in the back on a thirty-yard return had nowhere to go.
-
-                  It belongs here rather than on its own step because the
-                  return is where the foul happened, and because the yardage
-                  does not have to be worked out now: recording any flag pops
-                  the Adjust Next Situation sheet after the play, which is
-                  where a spot foul gets marked off. Record the return as it
-                  happened, name the foul, then put the ball where the
-                  officials put it. */}
-              <button onClick={openPenaltyStep}
-                className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
-                  penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
-                }`}>
-                <Flag className="w-3 h-3 inline mr-1" />
-                {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
-              </button>
-              {penalty && (
-                <div className="text-[10px] text-slate-600 text-center">
-                  You'll place the ball after the play - a spot foul is marked
-                  from where it happened, not from the end of the return.
-                </div>
-              )}
-            </>
-          )}
-
-          {/* ── KICK STEP: Tacklers (optional) ── */}
-
-          {/* ── STEP: Yards / Result ── */}
-          {currentStep === "yards" && (
-            <>
-              {playType.id === "pass_inc" && <PassDefenderPicker
-                accentColor={defenseAccent}
-                team={isTheirBall ? progName : oppName}
-                players={isTheirBall
-                  ? roster.map(p => ({ id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number, name: `${p.player.first_name} ${p.player.last_name}`, role: "defender" }))
-                  : localOppPlayers.map(p => opponentTag(p, "defender"))}
-                onAddJersey={isTheirBall ? undefined : jersey => opponentTag(addOpponentJersey(jersey), "defender")}
-                selected={tagged.filter(t => t.role === "defender")}
-                onSelect={player => setTagged(prev => [...prev.filter(t => t.role !== "defender"), player ? { ...player, role: "defender" } : isTheirBall ? makeTeamTag("defender") : { id: OPP_TEAM_PLAYER.id, player_id: OPP_TEAM_PLAYER.id, jersey_number: null, name: "TEAM", role: "defender", isOpponent: true }])}
-                onClear={() => setTagged(prev => prev.filter(t => t.role !== "defender"))} />}
-              {/* Down and distance while the yardage is being chosen. Picking
-                  yards is the one step where what's NEEDED matters as much as
-                  what happened, and the operator was having to remember it
-                  from the screen before. Goal-to-go says "Goal" rather than a
-                  distance, same as the scoreboard. */}
-              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-surface-border bg-black/20">
-                <span className="text-sm font-display font-black text-amber-400 tabular-nums">
-                  {ordinalDown(gameState.down)}
-                  {" & "}
-                  {distanceLabel(gameState)}
-                </span>
-                <span className="text-[11px] font-bold text-slate-500 tabular-nums">
-                  Ball on {yardLabel(gameState.ballOn)}
-                  {gameState.ballOn + gameState.distance < 100 && (
-                    <> · 1st at {yardLabel(gameState.ballOn + gameState.distance)}</>
-                  )}
-                </span>
-              </div>
-
-              {playType.id === "blocked_kick" && (
-                <div>
-                  <label className="label block mb-1.5">Blocked Kick Type</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {BLOCKED_KICK_TYPES.map((option) => (
-                      <button
-                        key={option.value}
-                        onClick={() => setBlockedKickType(option.value)}
-                        className={`py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 ${
-                          blockedKickType === option.value
-                            ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary"
-                            : "border-surface-border bg-surface-bg text-slate-500"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {needsYards && (
-                <div>
-                  {isInterception ? (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="label block mb-2">Intercepted At</label>
-                        <div className="flex gap-1.5 mb-3">
-                          {fieldSideOrder.map((side) => (
-                            <button
-                              key={side}
-                              onClick={() => setIntCaughtTeam(side)}
-                              className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
-                                intCaughtTeam === side
-                                  ? "border-red-500 bg-red-500/20 text-red-400"
-                                  : "border-surface-border bg-surface-bg text-slate-500"
-                              }`}
-                            >
-                              {fieldTeamLabel(side)}
-                            </button>
-                          ))}
-                        </div>
-                        <YardReel
-                          value={toOffensePerspectiveBallOn(intCaughtTeam, intCaughtYardLine)}
-                          onChange={(ballOn) => {
-                            const spot = toFieldSpot(ballOn);
-                            setIntCaughtTeam(spot.side);
-                            setIntCaughtYardLine(spot.yardLine);
-                          }}
-                          offenseDirection={offenseDirection}
-                          accentColor={defenseAccent}
-                          formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="label block mb-2">Returned To</label>
-                        {!isTD && (
-                          <div className="flex gap-1.5 mb-3">
-                            {fieldSideOrder.map((side) => (
-                              <button
-                                key={side}
-                                onClick={() => setIntReturnTeam(side)}
-                                className={`flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer ${
-                                  intReturnTeam === side
-                                    ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                                    : "border-surface-border bg-surface-bg text-slate-500"
-                                }`}
-                              >
-                                {fieldTeamLabel(side)}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {isTD ? (
-                          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-bold text-amber-300">
-                            {fieldTeamTag(gameState.possession === "us" ? "program" : "opponent")} EZ
-                          </div>
-                        ) : (
-                          <YardReel
-                            value={toOffensePerspectiveBallOn(intReturnTeam, intReturnYardLine)}
-                            onChange={(ballOn) => {
-                              const spot = toFieldSpot(ballOn);
-                              setIntReturnTeam(spot.side);
-                              setIntReturnYardLine(spot.yardLine);
-                            }}
-                            offenseDirection={offenseDirection}
-                            advancing="returner"
-                            accentColor={defenseAccent}
-                            formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
-                          />
-                        )}
-                      </div>
-
-                      <div className="text-xs text-slate-500 space-y-1">
-                        <div>
-                          INT at <span className="font-bold text-slate-300">{fieldTeamTag(intCaughtTeam)} {intCaughtYardLine}</span>
-                        </div>
-                        <div>
-                          Return to <span className="font-bold text-slate-300">{interceptionReturnLabel}</span>
-                          {" "}(<span className={interceptionReturnYards > 0 ? "text-emerald-400" : interceptionReturnYards < 0 ? "text-red-400" : ""}>
-                            {interceptionReturnYards > 0 ? "+" : ""}{interceptionReturnYards} yds
-                          </span>)
-                        </div>
-                        <div>
-                          Net from LOS: <span className={interceptionNetYards > 0 ? "text-emerald-400 font-bold" : interceptionNetYards < 0 ? "text-red-400 font-bold" : "font-bold text-slate-300"}>
-                            {interceptionNetYards > 0 ? "+" : ""}
-                            {interceptionNetYards} yds
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <label className="label block mb-2">{canHaveFumble && hasFumble ? "Ball carrier fumbled at" : "Ball Spotted At"}</label>
-                      {canHaveFumble && hasFumble && <p className="text-sm text-orange-300 mb-3">Count only the carrier's gain before losing the ball here. On the next step, set where the loose ball was recovered and where the return ended.</p>}
-
-                      {/* Tap the field to drop the ball where you saw it. The
-                          orientation matches the main screen so the mental map
-                          carries over; the LOS ghost shows where it started. */}
-                      <div className="mb-3">
-                        <FieldVisualizer
-                          compact
-                          ballOn={resultBallOn}
-                          ballPosition={toFieldDisplay(resultBallOn)}
-                          firstDownPosition={toFieldDisplay(
-                            Math.min(gameState.ballOn + gameState.distance, 100),
-                          )}
-                          possession={gameState.possession}
-                          ourEndZoneSide={ourEndZoneSide}
-                          primaryColor={progColor}
-                          oppColor={oppColor}
-                          progName={progName}
-                          oppName={oppName}
-                          progAbbr={progTag}
-                          oppAbbr={oppTag}
-                          progLogoUrl={progLogoUrl}
-                          oppLogoUrl={oppLogoUrl}
-                          onPickSpot={(displayPosition) => {
-                            // Tapping a spot means it wasn't a score after all.
-                            // Without this the field is inert while TD is on and
-                            // reads as broken.
-                            if (isTD) setIsTD(false);
-                            handleFieldPick(displayPosition);
-                          }}
-                        />
-                        <div className="text-[10px] text-slate-600 text-center mt-1">
-                          {isTD
-                            ? <>Scored · tap the field if it was stopped short</>
-                            : <>Tap the field to set the spot · started at {yardLabel(gameState.ballOn)}</>}
-                        </div>
-                      </div>
-
-                      {/* A touchdown has no spot to pick — the ball is in the end
-                          zone, and submit already scores it as 100 - ballOn (or
-                          -ballOn on a turnover return). Leaving the picker live
-                          showed a yard line that contradicted the TD toggle and
-                          invited the operator to "fix" a number that was never
-                          used. Same treatment the interception return already
-                          gets. */}
-                      {isTD ? (
-                        <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 flex items-center justify-between">
-                          <span className="text-sm font-black text-amber-300">
-                            {fieldTeamTag(
-                              (["int", "fumble"].includes(playType.id) || (playType.id === "blocked_kick" && !blockedRecoveredByKicking))
-                                ? (gameState.possession === "us" ? "program" : "opponent")
-                                : (gameState.possession === "us" ? "opponent" : "program"),
-                            )} EZ
-                          </span>
-                          <span className="text-[11px] font-bold text-amber-400/80 tabular-nums">
-                            {playType.id === "blocked_kick"
-                              ? blockedTouchdownNetYards(gameState.ballOn, blockedRecoveredByKicking)
-                              : ["int", "fumble"].includes(playType.id)
-                              ? -gameState.ballOn
-                              : 100 - gameState.ballOn} yds · touchdown
-                          </span>
-                        </div>
-                      ) : (
-                      <>
-                      <div className="flex gap-1.5 mb-3">
-                        {spotSideOrder.map(side => (
-                        <button
-                          key={side}
-                          onClick={() => setResultSide(side)}
-                            className="flex-1 py-2 rounded-xl text-xs font-black border-2 transition-all duration-200 cursor-pointer border-surface-border bg-surface-bg text-slate-500"
-                            style={resultSide === side
-                              ? {
-                                  borderColor: offenseAccent,
-                                  backgroundColor: `${offenseAccent}33`,
-                                  color: offenseAccent,
-                                }
-                              : undefined}
-                        >
-                            {perspectiveSideLabel(side)}
-                          </button>
-                        ))}
-                      </div>
-
-                      <YardReel
-                        value={resultBallOn}
-                        onChange={applySpotBallOn}
-                        offenseDirection={offenseDirection}
-                        accentColor={offenseAccent}
-                        formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
-                        /* Only where the offense keeps the ball and the chains
-                           are the question. A pick or a lost fumble ends the
-                           series, so a first-down call on it is noise. */
-                        firstDownBallOn={
-                          ["int", "blocked_kick"].includes(playType.id)
-                            || (isFumblePlay && !fumbleRecoveredByUs)
-                            ? null
-                            : gameState.ballOn + gameState.distance
-                        }
-                      />
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[10px] text-slate-500">Or type:</span>
-                        <input
-                          type="number" inputMode="numeric" min={1} max={50}
-                          placeholder="e.g. 35"
-                          value={resultYardRaw}
-                          onChange={e => {
-                            setResultYardRaw(e.target.value);
-                            const n = parseInt(e.target.value, 10);
-                            if (!isNaN(n)) setResultYardLine(Math.max(1, Math.min(50, n)));
-                          }}
-                          className="input w-20 text-center text-sm font-black"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        {/* On a blocked kick the number that matters is what
-                            the recoverer did with it, so say so rather than
-                            leaving a bare "Yards" to be guessed at. */}
-                        <span className="text-[10px] text-slate-500">
-                          {playType.id === "blocked_kick" ? "Net field yards:" : "Yards:"}
-                        </span>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          placeholder="+7 or -2"
-                          value={totalYardsRaw}
-                          onChange={e => {
-                            const nextValue = e.target.value;
-                            setTotalYardsRaw(nextValue);
-                            const parsed = parseInt(nextValue, 10);
-                            if (!isNaN(parsed)) {
-                              setResultFromTotalYards(parsed);
-                            }
-                          }}
-                          onBlur={() => setTotalYardsRaw(String(yards))}
-                          className="input w-24 text-center text-sm font-black"
-                        />
-                      </div>
-
-                      <div className="text-xs text-slate-500 mt-3">
-                        {yardLabel(gameState.ballOn)} → <span className="font-bold text-slate-300">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
-                        {" "}(<span className={yards > 0 ? "text-emerald-400" : yards < 0 ? "text-red-400" : ""}>{yards > 0 ? "+" : ""}{yards} yds</span>)
-                      </div>
-                      </>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {needsResult && (
-                <div>
-                  <label className="label block mb-1.5">
-                    Result
-                    {playType.id === "pat" && !result && <span className="text-amber-400"> · pick one to continue</span>}
-                  </label>
-                  <div className="flex gap-2">
-                    {/* Returned is a 2-point try's defensive return. A kicked PAT
-                        has none worth offering, so it shows only on a PAT that
-                        was already saved with it, to keep an edit honest. */}
-                    {(playType.id === "two_pt" || result === "Returned"
-                      ? (["Good", "No Good", "Returned"] as const)
-                      : (["Good", "No Good"] as const)
-                    ).map(r => (
-                      <button key={r} onClick={() => setResult(prev => prev === r ? "" : r)}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                          result === r
-                            ? r === "Good" ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                              : r === "Returned" ? "border-orange-500 bg-orange-500/20 text-orange-400"
-                              : "border-red-500 bg-red-500/20 text-red-400"
-                            : "border-surface-border bg-surface-bg text-slate-500"
-                        }`}>{r}</button>
-                    ))}
-                  </div>
-                  {/* A block is discovered after you've already committed to
-                      the kick, so it has to be reachable from here rather than
-                      only as its own play type on the ST tab. This switches the
-                      flow outright — the play must BE a blocked_kick by the
-                      time it's written, or next_situation_source computes a
-                      possession and spot the engine can't know. */}
-                  {["fg", "pat"].includes(playType.id) && (
-                    <button
-                      onClick={() => {
-                        const blocked = PLAY_TYPES.find(pt => pt.id === "blocked_kick");
-                        if (!blocked) return;
-                        setBlockedKickType(playType.id === "pat" ? "extra_point" : "field_goal");
-                        setResult("");
-                        setPlayTypeOverride(blocked);
-                        // Roles change (kicker, blocker, recoverer), so restart
-                        // the flow. The kicker already tagged keeps his tag.
-                        setCurrentRoleIdx(0);
-                        setStepIdx(0);
-                      }}
-                      className="mt-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-dashed border-red-500/50 bg-red-500/10 text-red-400"
-                    >
-                      Blocked
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* TD / First Down toggles. Not on a play where the ball hit
-                  the ground - an incompletion scores nothing and moves no
-                  chains, and offering the toggles invites a mis-tap that the
-                  engine would then have to be argued out of. */}
-              {!needsResult && !isDeadBall && (
-                <div className={`grid gap-2 ${isFumblePlay ? "grid-cols-1" : "grid-cols-2"}`}>
-                  {/* Not on a fumble. Here it silently meant "the RECOVERY was
-                      returned for a score", under a heading about where the
-                      carrier lost it - so it read as the carrier scoring. A
-                      fumble's touchdown is "Returned for a touchdown", next to
-                      the return it describes. */}
-                  {!isFumblePlay && <button onClick={() => setIsTD(t => !t)}
-                    className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                      isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
-                    }`}>TD</button>}
-                  <button onClick={() => setIsFirstDown(f => !f)}
-                    className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
-                      isFirstDown ? "border-blue-500 bg-blue-500/20 text-blue-400" : "border-surface-border bg-surface-bg text-slate-500"
-                    }`}>1st Down</button>
-                </div>
-              )}
-
-              {/* Fumble recovery — drives possession */}
-              {isFumblePlay && (
-                <div>
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Recovered by</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => {
-                      if (fumbleRecoveredByUs) setTagged(prev => prev.filter(t => !["fumble_recovery", "recovery_tackler"].includes(t.role)));
-                      setFumbleRecoveredByUs(false);
-                    }}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        !fumbleRecoveredByUs ? "border-red-500 bg-red-500/20 text-red-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {gameState.possession === "us" ? oppName : progName} (turnover)
-                    </button>
-                    <button onClick={() => {
-                      if (!fumbleRecoveredByUs) setTagged(prev => prev.filter(t => !["fumble_recovery", "recovery_tackler"].includes(t.role)));
-                      setFumbleRecoveredByUs(true);
-                    }}
-                      className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
-                        fumbleRecoveredByUs ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>
-                      {gameState.possession === "us" ? progName : oppName} (kept)
-                    </button>
-                  </div>
-                  {/* How far the recoverer carried it. Separate from the play's
-                      own yardage: a sack is -7 to the QB whether or not the
-                      recovery was returned 20 yards afterwards. */}
-                  {canHaveFumble && hasFumble ? <p className="text-xs text-slate-400 mt-2">Next: set the recovery spot and the end of the return.</p> : <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[10px] text-slate-500">Return yards:</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={fumbleReturnRaw}
-                      onChange={e => setFumbleReturnRaw(e.target.value)}
-                      className="input w-24 text-center text-sm font-black"
-                    />
-                    <span className="text-[10px] text-slate-600">by the recoverer</span>
-                  </div>}
-                  {!(canHaveFumble && hasFumble) && fumbleTdButton}
-                </div>
-              )}
-
-              {/* Penalty */}
-              <button onClick={openPenaltyStep}
-                className={`w-full py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${
-                  penalty ? "border-orange-500/50 bg-orange-500/10 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
-                }`}>
-                <Flag className="w-3 h-3 inline mr-1" />
-                {penalty ? `${penalty} · ${flagYards} yds` : "Add Penalty"}
-              </button>
-
-            </>
-          )}
-
-          {/* Penalty decisions share one resulting situation for entry and review. */}
-          {currentStep === "penalty" && <>
-            {penaltyPicker}
-            {penalty?.trim() && <section className="space-y-3 border-t border-surface-border pt-4" aria-label="Penalty result">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <span className="block text-xs font-semibold text-slate-400">{overrideSpot && penaltyEnforcement === "accepted" ? "Spotted at" : scoringPenaltyRuling ? "Next spot" : "Enforced to"}</span>
-                  <span className="block text-lg font-bold text-emerald-400">{penaltyPreview ? formatFieldSpot(penaltyPreview.ballOn, gameState.possession) : "Ending spot missing"}</span>
-                </div>
-                {penaltyEnforcement === "accepted" && <span className="shrink-0 text-xs text-slate-400">{actualPenaltyYards} {scoringPenaltyRuling ? "penalty yards" : "yards marked off"}</span>}
-                {/* Was an unlabelled pin icon, which nobody found. */}
-                {penaltyEnforcement === "accepted" && <button type="button" aria-pressed={overrideSpot}
-                  onClick={() => { if (overrideSpot) setOverrideSpot(false); else openSpotEditor(); }}
-                  className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold ${overrideSpot ? "border-amber-500 text-amber-300" : "border-surface-border text-slate-300"}`}>
-                  {overrideSpot ? <><RotateCcw size={15} /> Use rules</> : <><MapPin size={15} /> Adjust</>}
-                </button>}
-              </div>
-              {scoringPenaltyRuling && <p role="status" className="text-sm text-amber-300">{overrideSpot ? "Scoring play kept. Next spot set by hand." : "Scoring play kept. Confirm the next spot."}</p>}
-              {penaltyPreview && <>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-300">
-                  <span>{penaltyNextPossession === "us" ? progName : oppName} ball</span>
-                  <span>{penaltyPreview.down} &amp; {penaltyDistanceLabel}</span>
-                </div>
-                <FieldVisualizer compact ballOn={penaltyPreview.ballOn} ballPosition={toFieldDisplay(penaltyPreview.ballOn)}
-                  firstDownPosition={toFieldDisplay(penaltyPreview.ballOn + (penaltyNextPossession === gameState.possession ? penaltyPreview.distance : -penaltyPreview.distance))}
-                  possession={penaltyNextPossession} ourEndZoneSide={ourEndZoneSide} primaryColor={progColor}
-                  oppColor={oppColor} progName={progName} oppName={oppName} progAbbr={progAbbr ?? "OUR"} oppAbbr={oppAbbr ?? "OPP"}
-                  progLogoUrl={progLogoUrl} oppLogoUrl={oppLogoUrl}
-                  onPickSpot={penaltyEnforcement === "accepted" ? displayPosition => adjustPenaltySpot(toFieldDisplay(displayPosition)) : undefined} />
-                {/* Kept mounted with other words once the spot is moved: dropping
-                    it shifted the ruler up under the finger on the first nudge. */}
-                {penaltyEnforcement === "accepted" && enforcement && !scoringPenaltyRuling && <div className="text-xs text-slate-400">
-                  {overrideSpot ? "Spotted by hand" : <>{enforcement.from}{enforcement.actualYards < flagYards ? " · Half the distance" : ""}</>}
-                </div>}
-                {/* The yardage on the book is not always where the ball ends up.
-                    Same spot controls as a run or a return: tap the field or
-                    drag the ruler to where the officials put it. */}
-                {penaltyEnforcement === "accepted" && <YardReel value={penaltyPreview.ballOn} onChange={adjustPenaltySpot}
-                  offenseDirection={offenseDirection} advancing={penaltyNextPossession === gameState.possession ? "offense" : "returner"}
-                  accentColor="#34d399" formatSpot={value => formatFieldSpot(value, gameState.possession)} />}
-              </>}
-              {overrideSpot && penaltyEnforcement === "accepted" && <>
-                <div className="grid grid-cols-2 gap-2" role="group" aria-label="Next possession">
-                  {(["us", "them"] as const).map(possession => <button key={possession} type="button" aria-pressed={spotNextPossession === possession}
-                    onClick={() => setSpotNextPossession(possession)}
-                    className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${spotNextPossession === possession ? "border-amber-500 text-amber-300" : "border-surface-border text-slate-400"}`}>{possession === "us" ? progName : oppName}</button>)}
-                </div>
-                {manualSpotEditor}
-              </>}
-            </section>}
-            {!isPenaltyOnly && <button type="button" onClick={() => { clearPenalty(); setShowPenalties(false); setStepIdx(index => Math.max(0, index - 1)); }}
-              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-surface-border text-sm font-semibold text-slate-400">
-              <X size={16} /> Remove penalty
-            </button>}
-          </>}
-
-          {/* ── STEP: Formations ── */}
-          {currentStep === "formations" && (
-            <>
-              <div>
-                <label className="label block mb-1.5">Hash Mark</label>
-                <div className="flex gap-2">
-                  {(["left", "middle", "right"] as const).map(h => (
-                    <button key={h} onClick={() => setHashMark(prev => prev === h ? null : h)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
-                        hashMark === h ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>{h}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="label block mb-1.5">Play Direction</label>
-                <div className="flex gap-2">
-                  {(["left", "right"] as const).map(d => (
-                    <button key={d} onClick={() => setPlayDirection(prev => prev === d ? null : d)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 capitalize transition-all duration-200 ${
-                        playDirection === d ? "border-dragon-primary bg-dragon-primary/10 text-dragon-primary" : "border-surface-border bg-surface-bg text-slate-500"
-                      }`}>{d}</button>
-                  ))}
-                </div>
-                <div className="text-[10px] text-slate-600 mt-1">
-                  Offense left and right, the way the play was called.
-                </div>
-              </div>
-              <div>
-                <label className="label block mb-1.5">Wristband Call</label>
-                <input
-                  type="text"
-                  inputMode="text"
-                  autoCapitalize="characters"
-                  placeholder="e.g. R42"
-                  value={wristbandCall}
-                  onChange={e => setWristbandCall(e.target.value.toUpperCase())}
-                  className="input w-full text-center text-base font-black tracking-widest"
-                />
-              </div>
-              <div>
-                <label className="label block mb-1.5">Offensive Formation</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {OFFENSIVE_FORMATIONS.map(f => (
-                    <button key={f} onClick={() => setOffFormation(prev => prev === f ? null : f)}
-                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-all duration-200 cursor-pointer ${
-                        offFormation === f ? "border-blue-500 bg-blue-500/15 text-blue-400" : "border-surface-border text-slate-500"
-                      }`}>{f}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="label block mb-1.5">Defensive Formation</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {DEFENSIVE_FORMATIONS.map(f => (
-                    <button key={f} onClick={() => setDefFormation(prev => prev === f ? null : f)}
-                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-all duration-200 cursor-pointer ${
-                        defFormation === f ? "border-red-500 bg-red-500/15 text-red-400" : "border-surface-border text-slate-500"
-                      }`}>{f}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="text-[10px] text-slate-600 text-center">
-                Formations are optional — skip if not tracking.
-              </div>
-            </>
-          )}
-
-          {/* ── STEP: Defense (tacklers) ── */}
-          {currentStep === "defense" && (
-            <>
-              <div className="text-xs text-slate-400 mb-1">
-                Select up to 3 {playType.id === "sack" ? "sackers" : "tacklers"} from {tacklersAreOurs ? progName : oppName}.
-                {" "}1 player = {playType.id === "sack" ? "full sack (1.0)" : "solo (1.0)"}, 2+ = {playType.id === "sack" ? "split (0.5 each)" : "assist (0.5 each)"}.
-              </div>
-              {/* Three outcomes, all one tap: name them, owe it to TEAM, or say
-                  no tackle happened. Only the last two are here — naming is the
-                  grid below. */}
-              {tacklersAreOurs && (tacklers.length === 0 || tacklers.every(t => !t.isTeam || t.teamCreditConfirmed)) && (
-                <div className="flex gap-2 mb-2">
-                  {/* A toggle, not a replace: TEAM can take the whole tackle or
-                      share one with the players picked below (half each). */}
-                  <button
-                    onClick={() => { toggleTeamTackler(); setSkipWarning(null); }}
-                    aria-pressed={tacklers.some(t => t.isTeam && t.teamCreditConfirmed)}
-                    className={`flex-1 py-2 rounded-xl border text-xs font-bold uppercase tracking-wide ${
-                      tacklers.some(t => t.isTeam && t.teamCreditConfirmed)
-                        ? "border-amber-400 bg-amber-500/25 text-amber-300"
-                        : "border-amber-500/40 bg-amber-500/10 text-amber-400"
-                    }`}
-                  >
-                    {tacklers.some(t => t.isTeam && t.teamCreditConfirmed) ? "✓ " : tacklers.length > 0 ? "+ " : ""}
-                    {playType.id === "sack" ? "Sack by TEAM" : "Tackle by TEAM"}
-                  </button>
-                  {tacklers.length === 0 && <button onClick={() => { setNoTackle(false); setTacklers([{ ...makeTeamTag(defensiveCreditRole), credit: 1 }]); setSkipWarning(null); }}
-                    className="flex-1 py-2 rounded-xl border border-surface-border text-slate-300 text-xs font-bold">Identify on film later</button>}
-                  {/* A sack always had somebody get there — "no tackle" is only
-                      an answer for a runner who went out of bounds, scored, or
-                      fell down. */}
-                  {playType.id !== "sack" && tacklers.length === 0 && (
-                    <button
-                      onClick={() => { setNoTackle(true); setSkipWarning(null); goNext(); }}
-                      className="flex-1 py-2 rounded-xl border border-surface-border bg-surface-bg text-slate-400 text-xs font-bold uppercase tracking-wide"
-                    >
-                      No tackle
-                    </button>
-                  )}
-                </div>
-              )}
-              {tacklers.length > 0 && (
-                <div className="flex gap-2 flex-wrap mb-2">
-                  {tacklers.map(t => (
-                    <span key={t.id} className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${
-                      t.isTeam
-                        ? "bg-amber-500/15 text-amber-400 border border-amber-500/40"
-                        : t.isOpponent ? "bg-orange-900/30 text-orange-400" : "bg-red-900/30 text-red-400"
-                    }`}>
-                      {t.isOpponent && <span className="text-[9px]">{oppTag}</span>}
-                      {/* A TEAM tag has no jersey and no surname — the generic
-                          chip would render "#null undefined". */}
-                      {t.isTeam
-                        ? (t.teamCreditConfirmed ? "TEAM" : "Film later")
-                        : `#${t.jersey_number ?? "?"} ${t.name.split(" ")[1] ?? t.name}`}
-                      <span className="text-[10px] opacity-60">({t.credit})</span>
-                      <button onClick={() => setTacklers(prev => {
-                        const next = prev.filter(x => x.id !== t.id);
-                        if (next.length === 1) return next.map(x => ({ ...x, credit: 1 }));
-                        return next;
-                      })} className="ml-0.5 opacity-60"><X className="w-3 h-3" /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {tacklersAreOurs ? (
-                <PlayerGrid
-                  roster={roster}
-                  label={`Select ${playType.id === "sack" ? "sacker" : "tackler"}(s) from ${progName}`}
-                  onSelect={p => handleAddTackler(p)}
-                  selectedId={null}
-                  search={tacklerSearch}
-                  onSearch={setTacklerSearch}
-                  addedIds={new Set(tacklers.map(t => t.player_id))}
-                />
-              ) : (
-                <OpponentPlayerGrid
-                  players={localOppPlayers}
-                  label={`Select ${oppName} tackler(s)`}
-                  onSelect={p => handleAddOpponentTackler(p)}
-                  selectedId={null}
-                  search={tacklerSearch}
-                  onSearch={setTacklerSearch}
-                  onQuickAdd={handleQuickAddOpponent}
-                  addedIds={new Set(tacklers.map(t => t.id))}
-                />
-              )}
-              <div className="text-[10px] text-slate-600 text-center mt-2">
-                Optional — skip if not tracking tacklers on this play.
-              </div>
-            </>
-          )}
-
-          {/* ── STEP: Review ── */}
-          {currentStep === "review" && (
-            <div className="space-y-3">
-              <div className="text-sm font-bold text-slate-300">
-                {isEditing ? "Review Changes" : "Review Play"}
-              </div>
-              {goalChoiceRequired && <GoalToGoChoice value={nextGoalToGo} onChange={setNextGoalToGo} />}
-              {canFlagBadSnap(playType.id) && playType.id !== "bad_snap" && (
-                <button type="button" aria-pressed={badSnap} onClick={() => setBadSnap(value => !value)}
-                  className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 py-2 text-sm font-bold ${
-                    badSnap ? "border-orange-500 bg-orange-500/15 text-orange-300" : "border-surface-border bg-surface-bg text-slate-400"
-                  }`}>
-                  <span>Bad snap</span>
-                  <span className="text-xs">{badSnap ? "Yes · shows BS in the log" : "No"}</span>
-                </button>
-              )}
-              {isKickoffOutOfBounds &&<div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
-                <strong>Penalty: Kickoff Out of Bounds</strong>
-                <div className="mt-1">{outOfBoundsSummary}</div>
-              </div>}
-
-              {/* Scoreboard time at the snap. Pre-filled from the running
-                  clock, so entering a play live costs nothing; correcting one
-                  charted from film no longer means leaving the play. */}
-              <div className="card p-3">
-                <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1.5">
-                  Clock at snap
-                </div>
-                <ClockInput
-                  seconds={clockSecs}
-                  onChange={setClockSecs}
-                  maxSeconds={gameConfig.quarter_length_secs}
-                />
-              </div>
-              <div className="card p-3 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Type</span>
-                  <span className="font-bold">{playType.label}</span>
-                </div>
-                {/* A loose kick's recoverer has its own Recovered By line below. */}
-                {shownTagged.filter(t => !(isKickPlay && t.role === "fumble_recovery")).map(t => (
-                  <div key={t.role} className="flex justify-between">
-                    <span className="text-slate-500 capitalize">{t.role.replace(/_/g, " ")}</span>
-                    <span className="font-bold">
-                      {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>}
-                      {/* A TEAM tag has no jersey and no name of its own; the
-                          generic line rendered it as "#null TEAM". */}
-                      {t.isTeam || t.player_id === OPP_TEAM_PLAYER.id
-                        ? "TEAM"
-                        : `#${t.jersey_number ?? "?"} ${t.name}`}
-                    </span>
-                  </div>
-                ))}
-                {/* What is about to be filled in for us, before it happens
-                    rather than in the play log afterwards. */}
-                {[...teamDefaultRoles, ...(teamDefaultTackle ? [defensiveCreditRole] : [])].map(role => (
-                  <div key={`team-${role}`} className="flex justify-between">
-                    <span className="text-slate-500 capitalize">{role.replace(/_/g, " ")}</span>
-                    <span className="font-bold text-amber-400/80">
-                      {teamDefaultIsOpponent(role) && role !== defensiveCreditRole
-                        ? <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>
-                        : <span className="text-[10px] mr-1">{progTag}</span>}TEAM
-                    </span>
-                  </div>
-                ))}
-                {needsYards && (
-                  <>
-                    {isInterception ? (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Intercepted At</span>
-                          <span className="font-bold">{fieldTeamTag(intCaughtTeam)} {intCaughtYardLine}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Returned To</span>
-                          <span className="font-bold">{interceptionReturnLabel}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Return Yards</span>
-                          <span className={`font-bold ${interceptionReturnYards > 0 ? "text-emerald-400" : interceptionReturnYards < 0 ? "text-red-400" : ""}`}>
-                            {interceptionReturnYards > 0 ? `+${interceptionReturnYards}` : interceptionReturnYards}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Net Yards</span>
-                          <span className={`font-bold ${interceptionNetYards > 0 ? "text-emerald-400" : interceptionNetYards < 0 ? "text-red-400" : ""}`}>
-                            {interceptionNetYards > 0 ? `+${interceptionNetYards}` : interceptionNetYards}
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {!isTD && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">Spotted At</span>
-                            <span className="font-bold">{perspectiveSideTag(resultSide)} {resultYardLine}</span>
-                          </div>
-                        )}
-                        {(() => {
-                          const displayYards = playType.id === "blocked_kick" && isTD
-                            ? blockedTouchdownNetYards(gameState.ballOn, blockedRecoveredByKicking)
-                            : isTD && !isFumblePlay
-                            ? (["int", "fumble"].includes(playType.id) ? -gameState.ballOn : 100 - gameState.ballOn)
-                            : yards;
-                          return (
-                            <div className="flex justify-between">
-                              <span className="text-slate-500">Yards</span>
-                              <span className={`font-bold ${displayYards > 0 ? "text-emerald-400" : displayYards < 0 ? "text-red-400" : ""}`}>
-                                {displayYards > 0 ? `+${displayYards}` : displayYards}
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </>
-                    )}
-                  </>
-                )}
-                {isKickPlay && (
-                  <>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Kick Distance</span>
-                      <span className="font-bold text-purple-400">{kickDistance} yds</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Landed At</span>
-                      <span className="font-bold">{isTouchback ? "Touchback" : landingLabel}</span>
-                    </div>
-                    {!isTouchback && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Outcome</span>
-                        <span className="font-bold text-purple-400">
-                          {KICK_OUTCOMES.find(o => o.value === kickOutcome)?.label}
-                        </span>
-                      </div>
-                    )}
-                    {isLooseKick && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Recovered By</span>
-                        <span className="font-bold">
-                          {muffRecoveredByKicking ? `${fieldTeamLabel(kickingFieldSide)} (kickers)` : `${receivingTeamLabel} (receivers)`}
-                          {(() => {
-                            const r = tagged.find(t => t.role === "fumble_recovery");
-                            return r ? ` · ${r.jersey_number != null ? `#${r.jersey_number} ` : ""}${r.name}` : "";
-                          })()}
-                        </span>
-                      </div>
-                    )}
-                    {hasReturnSpot && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">{muffLostToKickers || isReturnFumble ? "Recovered At" : "Returned To"}</span>
-                        <span className="font-bold text-emerald-400">
-                          {(() => {
-                            if (isTD) return `Touchdown (${100 - Math.max(0, kickedToYard)} yds)`;
-                            const sideLabel = fieldTeamTag(returnToTeam);
-                            const isReceiverSide = returnToTeam === receivingFieldSide;
-                            const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
-                            const retYds = receiverYard - kickedToYard;
-                            return `${sideLabel} ${returnToYardLine} (${retYds > 0 ? "+" : ""}${retYds} yds)`;
-                          })()}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {isFumblePlay && (
-                  <div className="space-y-2 border-t border-orange-500/30 pt-3">
-                    <div className="flex justify-between gap-3">
-                      <span className="text-slate-500">Fumble</span>
-                      <span className="font-bold text-orange-400">{fumbleRecoveredByUs ? "Possession kept" : "Turnover"}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-slate-500">Recovered At</span>
-                      <span className="font-bold">{formatFieldSpot(fumbleRecoveredAtBallOn, gameState.possession)}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-slate-500">Return / Final Spot</span>
-                      <span className="font-bold">{fumbleReturnYards} yds / {formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</span>
-                    </div>
-                  </div>
-                )}
-                {needsResult && result && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Result</span>
-                    <span className={`font-bold ${result === "Good" ? "text-emerald-400" : "text-red-400"}`}>{result}</span>
-                  </div>
-                )}
-                {(isTD || isFirstDown) && (!penalty || penaltyEnforcement === "declined" || penaltyEnforcement === "accepted" && penaltyPlayCounts) && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Flags</span>
-                    <span className="font-bold">
-                      {[isTD && "TD", isFirstDown && "1st Down"].filter(Boolean).join(", ")}
-                    </span>
-                  </div>
-                )}
-                {penalty && (
-                  <>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Penalty</span>
-                      <span className="font-bold text-orange-400">
-                        {penaltyDisplayName(penalty)}
-                        {penaltyEnforcement === "accepted" ? ` (${actualPenaltyYards} yds)` : ""}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Flag On</span>
-                      <span className={`font-bold ${penaltyCategory ? "text-orange-400" : "text-red-400"}`}>
-                        {penaltyCategory
-                          ? `${flagTeamName(penaltyCategory)} (${flagRoleWord(penaltyCategory)})`
-                          : "Pick which team"}
-                      </span>
-                    </div>
-                    {penaltyEnforcement !== "accepted" && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Enforcement</span>
-                        <span className="font-bold capitalize text-slate-300">{penaltyEnforcement}</span>
-                      </div>
-                    )}
-                    {foulSpotBallOn != null && (penaltyEnforcementFrom === "spot_of_foul" || penaltyEnforcementFrom === "auto" && isSpotFoul(penalty)) && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Spot of Foul</span>
-                        <span className="font-bold text-orange-400">
-                          {formatFieldSpot(foulSpotBallOn, gameState.possession)}
-                          {isSpotFoul(penalty) && (
-                            <span className="text-[10px] text-amber-400/80"> · spot foul</span>
-                          )}
-                        </span>
-                      </div>
-                    )}
-                    {!isPenaltyOnly && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Play Counts</span>
-                        <span className="font-bold">{penaltyEnforcement === "declined" || penaltyEnforcement === "accepted" && penaltyPlayCounts ? "Yes" : "No"}</span>
-                      </div>
-                    )}
-                    {penaltyPreview ? (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">
-                          Next Spot{penaltyPreview.source === "operator" ? " (yours)" : ""}
-                        </span>
-                        <span className={`font-bold text-right ${penaltyPreview.source === "operator" ? "text-amber-400" : "text-emerald-400"}`}>
-                          {formatFieldSpot(penaltyPreview.ballOn, gameState.possession)}
-                          {" · "}
-                          {penaltyPreview.down}
-                          {" & "}
-                          {penaltyDistanceLabel}
-                          {penaltyPreview.from && (
-                            <span className="block text-[9px] font-normal text-slate-500">
-                              {penaltyPreview.from}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex justify-between items-baseline">
-                        <span className="text-slate-500">Next Spot</span>
-                        <span className="text-[10px] font-bold text-amber-400/90 text-right leading-tight">
-                          Set after the play<br />
-                          <span className="text-slate-500 font-normal">
-                            depends on the foul spot
-                          </span>
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {offFormation && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">OFF</span>
-                    <span className="font-bold">{offFormation}</span>
-                  </div>
-                )}
-                {defFormation && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">DEF</span>
-                    <span className="font-bold">{defFormation}</span>
-                  </div>
-                )}
-                {shownTacklers.length > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Tacklers</span>
-                    <span className="font-bold">
-                      {/* A TEAM tackle has no jersey and no name of its own,
-                          and a tag rebuilt from the database may have no
-                          number either. Bare interpolation printed "#null"
-                          for both - which is what an edited play showed for
-                          every tackler on it. */}
-                      {shownTacklers.map(t => (
-                        t.isTeam || t.player_id === OPP_TEAM_PLAYER.id
-                          ? "TEAM"
-                          : t.jersey_number != null
-                            ? `#${t.jersey_number}`
-                            : (t.name?.trim().split(/s+/).slice(-1)[0] || "?")
-                      )).join(", ")}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {stepBody}
         </div>
 
         {/* Footer navigation */}
