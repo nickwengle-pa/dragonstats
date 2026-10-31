@@ -862,9 +862,18 @@ export default function PostGameReview() {
   // Play-data editor (reuses the live play entry modal)
   const [editRecord, setEditRecord] = useState<PlayRecord | null>(null);
 
+  /* The play last opened from the table. Every save reloads the game, and the
+     reload used to swap the table for "Loading…", which threw the page back to
+     the top - so after an edit you had to hunt for the play you were on. The
+     table now stays up through a reload, and the play is marked and scrolled
+     back into view once its sheets close. */
+  const [lastPlayId, setLastPlayId] = useState<string | null>(null);
+  const scrollToLast = useRef(false);
+  const loadedFor = useRef<string | null>(null);
+
   const load = useCallback(async (): Promise<PlayWithPlayers[]> => {
     if (!gameId) return [];
-    setLoading(true);
+    if (loadedFor.current !== gameId) setLoading(true);
     setError(null);
     try {
       const [rawPlays, chart, gRes] = await Promise.all([
@@ -927,6 +936,7 @@ export default function PostGameReview() {
       console.error(e);
       return [];
     } finally {
+      loadedFor.current = gameId;
       setLoading(false);
     }
   }, [gameId]);
@@ -948,7 +958,19 @@ export default function PostGameReview() {
     return load();
   }, [meta, program, gameId, load]);
 
+  // What is actually on screen: saving an edit sets editingPlay without a
+  // charting draft, which draws nothing.
+  const sheetOpen = (editingPlay != null && draft != null) || editRecord != null;
+  useEffect(() => {
+    if (sheetOpen) { scrollToLast.current = true; return; }
+    if (!scrollToLast.current || !lastPlayId || loading) return;
+    scrollToLast.current = false;
+    const row = document.querySelector(`tr[data-play-id="${lastPlayId}"]`);
+    row?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [sheetOpen, lastPlayId, loading]);
+
   const openCharting = useCallback((play: PlayWithPlayers) => {
+    setLastPlayId(play.id);
     setEditingPlay(play);
     setDraft(emptyDraft(play, gameId!, charting[play.id]));
     setSitDraft(situationFromPlay(play));
@@ -1558,10 +1580,13 @@ export default function PostGameReview() {
                   return (
                     <tr
                       key={p.id}
+                      data-play-id={p.id}
                       onClick={() => openCharting(p)}
-                      className="border-b border-surface-border/40 cursor-pointer hover:bg-surface-cardHover active:bg-surface-cardHover"
+                      className={`border-b border-surface-border/40 cursor-pointer hover:bg-surface-cardHover active:bg-surface-cardHover ${
+                        p.id === lastPlayId ? "bg-sky-500/15" : ""}`}
                     >
-                      <Td>
+                      {/* A bar, not an outline: Safari paints no outline on a table row. */}
+                      <Td className={p.id === lastPlayId ? "border-l-4 border-l-sky-400" : ""}>
                         <span
                           className={`inline-block w-2 h-2 rounded-full ${charted ? "bg-emerald-500" : "bg-surface-border"}`}
                           title={charted ? "Charted" : "Not charted"}
@@ -1595,7 +1620,7 @@ export default function PostGameReview() {
                       </Td>
                       <Td>
                         {canWrite && <button
-                          onClick={(e) => { e.stopPropagation(); setEditRecord(rowToPlayRecord(p, rosterJerseys)); }}
+                          onClick={(e) => { e.stopPropagation(); setLastPlayId(p.id); setEditRecord(rowToPlayRecord(p, rosterJerseys)); }}
                           className="btn-ghost p-1 text-surface-muted/50 hover:text-dragon-primary cursor-pointer"
                           title="Edit this play"
                         >
@@ -1679,7 +1704,7 @@ export default function PostGameReview() {
             oppName={meta?.opponent_name ?? "Opponent"}
             trackFormations
             trackTacklers
-            onSubmit={(data) => { void handleSavePlayEdit(editRecord.id, data); }}
+            onSubmit={(data) => handleSavePlayEdit(editRecord.id, data)}
             onDelete={() => { void handleDeletePlayEdit(editRecord.id); }}
             onClose={() => setEditRecord(null)}
           />

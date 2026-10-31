@@ -707,6 +707,14 @@ export default function GameScreen() {
   const lastEndPromptKey = useRef<string | null>(null);
   const [scoreCorrectTeam, setScoreCorrectTeam] = useState<TimeoutTeam | null>(null);
   const [editPlay, setEditPlay] = useState<PlayRecord | null>(null);
+  /* A short "Play 23 saved" after an edit closes, so the sheet vanishing is
+     not the only sign the save went through. */
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!savedNotice) return;
+    const t = window.setTimeout(() => setSavedNotice(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [savedNotice]);
   /* Recording a play that belongs BEFORE the end of the list.
      Holds the id of the play the new one goes after - null means the normal
      case, appending to the end. A missed snap noticed three plays later has
@@ -2439,6 +2447,8 @@ export default function GameScreen() {
     }
 
     setEditPlay(null);
+    // The number the play log shows: position in the list, not sequence.
+    setSavedNotice(`Play ${idx + 1} saved`);
     await recalcScoreAndState(newPlays);
 
     // A hand-set spot the edit replaced gets confirmed again, as on entry.
@@ -3368,13 +3378,19 @@ export default function GameScreen() {
                skipped live, so both steps are always available here. */
             trackFormations
             trackTacklers
-            onSubmit={(data) => { void handleSaveEdit(editPlay.id, data); }}
+            onSubmit={(data) => handleSaveEdit(editPlay.id, data)}
             onDelete={() => { void handleDeletePlay(editPlay.id); }}
             onClose={() => setEditPlay(null)}
             onAddOpponentPlayer={addOpponentPlayer}
           />
         );
       })()}
+
+      {savedNotice && (
+        <div role="status" className="fixed left-1/2 -translate-x-1/2 bottom-6 z-[60] pointer-events-none rounded-full border border-emerald-500/60 bg-emerald-950/95 px-4 py-2 text-sm font-bold text-emerald-300 shadow-lg">
+          ✓ {savedNotice}
+        </div>
+      )}
 
       {/* PAT Gate */}
       {showPatGate && (
