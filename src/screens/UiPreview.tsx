@@ -85,7 +85,7 @@ export default function UiPreview() {
     <header className="ui-top"><div><strong>PL STATS <span>/ UI LAB</span></strong><p>Working Run prototype · sample data · clears on reload</p></div><button className="ui-chip" onClick={reset}>Reset practice</button></header>
     <div className="ui-scoreboard"><Scoreboard state={state} progName="Purchase Line" oppName="Northern Cambria" progAbbr="PL" oppAbbr="NC" primaryColor="#dc2626" oppColor="#eab308" ballLabel={spot(state.ballOn)}
       onPreviousQuarter={() => setState(s => ({ ...s, quarter: Math.max(1, s.quarter - 1) }))} onNextQuarter={() => setState(s => ({ ...s, quarter: Math.min(4, s.quarter + 1) }))} canPreviousQuarter={state.quarter > 1} canNextQuarter={state.quarter < 4}
-      onEditClock={openClock} onEndGame={() => { setPaused(true); setNotice("Practice ended. Reset practice to start again."); }} onSetDown={down => setState(s => ({ ...s, down }))}
+      onEditClock={openClock} onSetDown={down => setState(s => ({ ...s, down }))}
       onAdjustDistance={n => setState(s => ({ ...s, distance: clamp(s.distance + n, 1, 99) }))} onAdjustBall={n => { setState(s => ({ ...s, ballOn: clamp(s.ballOn + n, 1, 99) })); setDraft(empty()); }}
       onEditBall={() => setNotice("Use the scoreboard − / + controls to set the starting spot. Tap the field to set the run’s ending spot.")}
       ourTimeoutsRemaining={3} theirTimeoutsRemaining={3} onTakeTimeout={team => { setNotice(`${team === "us" ? "Purchase Line" : "Northern Cambria"} timeout: edit the practice clock.`); openClock(); }}
