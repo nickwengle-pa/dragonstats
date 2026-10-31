@@ -1,6 +1,6 @@
 import { blockedTouchdownNetYards } from "@/services/blockedKickOutcome";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, ChevronLeft, ChevronRight, Flag, Plus, Trash2, ArrowLeftRight, RotateCcw, MapPin } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Flag, Plus, Trash2, ArrowLeftRight, RotateCcw, MapPin, Loader2 } from "lucide-react";
 import Keypad from "./Keypad";
 import PenaltyPicker from "./PenaltyPicker";
 import GoalToGoChoice from "./GoalToGoChoice";
@@ -1396,6 +1396,18 @@ export default function PlayEntryModal({
   // ever being displayed. Carried picks are shown in amber instead, so they're
   // one glance to verify and one tap to change.
   const [stepIdx, setStepIdx] = useState(0);
+  /* The save button said nothing until the network answered and the sheet
+     closed, so a slow save looked like a missed tap and got tapped again.
+     It now reads "Saving…" from the first touch, and ignores further taps
+     until the save settles; a failed save leaves the sheet open as before. */
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const saveFromButton = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try { await handleSubmit(); } finally { savingRef.current = false; setSaving(false); }
+  };
   const currentStep = steps[stepIdx] ?? "review";
 
   const canGoNext = (): boolean => {
@@ -4708,14 +4720,17 @@ export default function PlayEntryModal({
                   onClick={() => {
                     if (window.confirm("Delete this play? Everything after it re-chains.")) onDelete();
                   }}
-                  className="px-4 py-3 rounded-xl border-2 border-red-500/50 bg-red-500/10 text-red-400 text-sm font-black shrink-0"
+                  disabled={saving}
+                  className="px-4 py-3 rounded-xl border-2 border-red-500/50 bg-red-500/10 text-red-400 text-sm font-black shrink-0 disabled:opacity-40"
                   title="Delete play"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
-              <button onClick={() => handleSubmit()} disabled={!canGoNext()} className="btn-primary flex-1 py-3 text-sm font-black disabled:opacity-50">
-                {submitLabel ?? (isEditing ? "Save Changes" : "Record Play")}
+              <button onClick={() => { void saveFromButton(); }} disabled={!canGoNext() || saving} aria-busy={saving}
+                className={`btn-primary flex-1 py-3 text-sm font-black inline-flex items-center justify-center gap-2 active:scale-[0.98] transition-transform ${saving ? "opacity-80" : "disabled:opacity-50"}`}>
+                {saving && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
+                {saving ? "Saving…" : submitLabel ?? (isEditing ? "Save Changes" : "Record Play")}
               </button>
             </>
           )}
