@@ -9,6 +9,7 @@ import {
 import type { GameConfig } from "./programService";
 import { isKickoffOutOfBoundsChoice, kickoffOutOfBoundsSituation } from "./kickoffOutOfBounds";
 import { canChooseGoalToGo, carryGoalToGo, storedGoalToGo } from "./goalToGo";
+import { kickLostToKickers } from "./kickSpots";
 
 export type TeamSide = "us" | "them";
 export type FieldDirection = "left" | "right";
@@ -750,9 +751,9 @@ function advanceSituation(
   }
 
   if (play.type === "kickoff" || play.type === "punt" || play.type === "fair_catch") {
-    // A muff the kicking team fell on is theirs where they fell on it - no
-    // flip, same frame, exactly as an onside kick they recover.
-    if (play.playData?.kick_outcome === "muffed" && play.playData?.muff_recovered_by_kicking === true) {
+    // A muff or return fumble the kicking team fell on is theirs where they
+    // fell on it - no flip, same frame, exactly as an onside kick they recover.
+    if (kickLostToKickers(play.playData)) {
       return {
         possession,
         down: 1,

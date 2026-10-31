@@ -13,7 +13,7 @@ import { getPregameConfig } from "./gameFlow";
 import { resolveDriveResults } from "./driveResults";
 import { runOutFinalClock } from "./finalClock";
 import { isInsideTwenty, resolveKickSpots } from "./kickSpots";
-import { applyLostMuffs } from "./lostMuffs";
+import { applyLostMuffs, initDefStats } from "./lostMuffs";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import {
   FootballStatsEngine,
@@ -276,8 +276,8 @@ export async function computeGameStatsBundle(
     // so the column read zero however well anyone punted.
     supplementPuntsInside20(summary, subsetPlays);
 
-    // A muff the kicking team recovered is a fumble lost for the receiver
-    // and his team. The engine charges fumbles to the team in possession,
+    // A muff or return fumble the kicking team recovered is a fumble lost
+    // for the receiving team. The engine charges fumbles to the team in possession,
     // which on a kick is the wrong one. See lostMuffs.ts.
     applyLostMuffs(summary, subset, new Map(allPlayers.map(p => [p.id, p.name])));
     return summary;
@@ -328,37 +328,6 @@ export async function computeGameStatsBundle(
 // ---------------------------------------------------------------------------
 // Defense stat supplement
 // ---------------------------------------------------------------------------
-
-function initDefStats(playerId: string, playerName: string): DefensiveStats {
-  return {
-    playerId,
-    playerName,
-    totalTackles: 0,
-    soloTackles: 0,
-    assistedTackles: 0,
-    tacklesForLoss: 0,
-    sacks: 0,
-    halfSacks: 0,
-    sackYards: 0,
-    qbHits: 0,
-    pressures: 0,
-    interceptions: 0,
-    interceptionYards: 0,
-    interceptionTouchdowns: 0,
-    passesDefended: 0,
-    forcedFumbles: 0,
-    fumbleRecoveries: 0,
-    fumbleRecoveryYards: 0,
-    fumbleRecoveryTouchdowns: 0,
-    safeties: 0,
-    stuffs: 0,
-    missedTackles: 0,
-    targetedInCoverage: 0,
-    completionsAllowed: 0,
-    yardsAllowedInCoverage: 0,
-    touchdownsAllowedInCoverage: 0,
-  };
-}
 
 /**
  * Names for the tags that have no players row.

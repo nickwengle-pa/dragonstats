@@ -17,7 +17,7 @@ import { TEAM_PLAYER_ID, isWipedByPenaltyRow, teamTagCounts } from "@/components
 import type { PlayWithPlayers } from "./gameService";
 import { splitTackleCredit, type TackleCredit } from "./tackleCredit";
 import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
-import { lostMuffFumble } from "./lostMuffs";
+import { lostMuffFumble, returnFumbleEvent } from "./lostMuffs";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { readFumbleSpots } from "./fumbleSpots";
 import {
@@ -737,8 +737,10 @@ export function convertPlay(
         returnYards: receipt.fairCaught ? 0 : returner ? spots?.returnYards : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         ...(receipt.muffLostToKickers
-          ? { fumble: lostMuffFumble(firstPlayerByRole(play, "returner"), context.possessionTeam) }
-          : {}),
+          ? { fumble: lostMuffFumble(firstPlayerByRole(play, "returner"), context.possessionTeam, firstPlayerByRole(play, "fumble_recovery")) }
+          : receipt.returnFumble || receipt.muffKept
+            ? { fumble: returnFumbleEvent(returner, context.possessionTeam, otherTeam(context.possessionTeam, ctx), receipt.returnFumbleLost, firstPlayerByRole(play, "fumble_recovery")) }
+            : {}),
         isTouchback,
         isTouchdown: play.is_touchdown,
         // Nobody fielded it, or he signalled: there was no tackle, so a
@@ -770,8 +772,10 @@ export function convertPlay(
         returnYards: receipt.fairCaught ? 0 : returner ? spots?.returnYards : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         ...(receipt.muffLostToKickers
-          ? { fumble: lostMuffFumble(firstPlayerByRole(play, "returner"), context.possessionTeam) }
-          : {}),
+          ? { fumble: lostMuffFumble(firstPlayerByRole(play, "returner"), context.possessionTeam, firstPlayerByRole(play, "fumble_recovery")) }
+          : receipt.returnFumble || receipt.muffKept
+            ? { fumble: returnFumbleEvent(returner, context.possessionTeam, otherTeam(context.possessionTeam, ctx), receipt.returnFumbleLost, firstPlayerByRole(play, "fumble_recovery")) }
+            : {}),
         isTouchback,
         isTouchdown: play.is_touchdown,
         // Nobody fielded it, or he signalled: there was no tackle, so a

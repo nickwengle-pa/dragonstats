@@ -194,6 +194,14 @@ for (const possession of ["us", "them"] as const) {
     possession, type: "punt", ballOn: 30, yards: 42, tagged: [O(`${t}p`, "punter"), D(`${possession === "us" ? "o_" : ""}kr`, "returner")],
     playData: { kick_outcome: "muffed", kicked_to_yard: 30, return_to_ball_on: 72, muff_recovered_by_kicking: true },
   });
+  add(`${possession} punt fumbled, receivers recover`, {
+    possession, type: "punt", ballOn: 30, yards: 32, tagged: [O(`${t}p`, "punter"), D(`${possession === "us" ? "o_" : ""}kr`, "returner"), D(`${possession === "us" ? "o_" : ""}fr`, "fumble_recovery")],
+    playData: { kick_outcome: "fumbled", kicked_to_yard: 30, return_to_ball_on: 62, muff_recovered_by_kicking: false },
+  });
+  add(`${possession} punt fumbled, kickers recover`, {
+    possession, type: "punt", ballOn: 30, yards: 32, tagged: [O(`${t}p`, "punter"), D(`${possession === "us" ? "o_" : ""}kr`, "returner"), O(`${t}fr`, "fumble_recovery")],
+    playData: { kick_outcome: "fumbled", kicked_to_yard: 30, return_to_ball_on: 62, muff_recovered_by_kicking: true },
+  });
   add(`${possession} short punt downed on kicking side`, {
     possession, type: "punt", ballOn: 10, yards: 30, tagged: [O(`${t}p`, "punter")],
     playData: { kick_outcome: "downed", kicked_to_yard: 60, return_to_ball_on: 40 },
