@@ -1,4 +1,4 @@
-import { keepsGainToFoulSpot, nullifiedStats, preservesAdvance, withStatYards } from "./statAuditRules";
+import { keepsGainToFoulSpot, nullifiedStats, preservesAdvance, withFumbleYards, withStatYards } from "./statAuditRules";
 /**
  * Transforms dragonstats PlayWithPlayers records into football-stats-engine Play objects.
  *
@@ -438,14 +438,7 @@ export function convertPlay(
   // No series to renew: out of reach, so no flag's yardage reads as a first down.
   if (betweenSeries && ["penalty", "penalty_only"].includes(play.play_type)) context = { ...context, distance: 100 };
   // A loose ball remains part of the original advance up to recovery, before any recovery return.
-  // The stat manual credits the fumbler "to the point of recovery ... regardless of which team
-  // recovers". It was cut to the fumble spot for a morning (Oct 24); Nick put it back to the book.
-  // Read through readFumbleSpots: a stored 0 is a leftover, not the goal line.
-  const recoveredAt = readFumbleSpots(pd).fumbleRecoveredAt;
-  if (play.is_turnover && ["rush", "pass_comp", "sack", "fum_rec"].includes(play.play_type)
-      && recoveredAt != null) {
-    play = { ...play, yards_gained: recoveredAt - (play.yard_line ?? 0) };
-  }
+  play = withFumbleYards(play);
   const penalties = buildPenalties(play, ctx);
   const gainToFoulSpot = Boolean(penalties?.length) && keepsGainToFoulSpot(play);
   if (penalties?.length && pd?.penalty_play_counts === false && pd.penalty_enforcement !== "declined" && !gainToFoulSpot) {

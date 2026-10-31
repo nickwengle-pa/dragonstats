@@ -394,8 +394,29 @@ export function countBadSnaps(
  * a suggestion, never as a confirmed pick.
  */
 export const STICKY_ROLES = new Set([
-  "passer", "rusher", "kicker", "punter", "returner",
+  "passer", "rusher", "receiver", "kicker", "punter", "returner",
 ]);
+
+/** Which kick a play is, for the roles that change with it: the kickoff man,
+ *  the PAT kicker and the punter are often three different players, and the
+ *  kickoff and punt returners too. Null for every other play. */
+function kickScenario(playTypeId: string): string | null {
+  if (playTypeId === "kickoff" || playTypeId === "onside_kick") return "kickoff";
+  if (playTypeId === "punt" || playTypeId === "fair_catch") return "punt";
+  if (playTypeId === "pat" || playTypeId === "fg" || playTypeId === "blocked_kick") return playTypeId;
+  return null;
+}
+
+/**
+ * The key the last player in a role is remembered under. Side always, so their
+ * QB never lands in our passer slot; and for kicking roles the kind of kick, so
+ * the kickoff man is not offered for the PAT. A blocked kick keeps its own
+ * kicker key: it does not say which kick it was.
+ */
+export function lastPlayerKey(role: string, side: "us" | "opp", playTypeId: string): string {
+  const scenario = ["kicker", "punter", "returner"].includes(role) ? kickScenario(playTypeId) : null;
+  return scenario ? `${role}:${side}:${scenario}` : `${role}:${side}`;
+}
 
 // Stored labels remain compatible with existing games; names and rules come
 // from the engine's standalone catalog, also usable by plain-node flow tests.

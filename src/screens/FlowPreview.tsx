@@ -16,7 +16,7 @@ import QuickActions from "@/components/game/QuickActions";
 import TimeoutSheet from "@/components/game/TimeoutSheet";
 import type { TimeoutCaller } from "@/components/game/TimeoutEditModal";
 import { isKickoffDue } from "@/components/game/specialTeamsPrompt";
-import { PLAY_TYPES, type GameState, type RosterPlayer, type TaggedPlayer, type PlayTypeDef } from "@/components/game/types";
+import { PLAY_TYPES, lastPlayerKey, type GameState, type RosterPlayer, type TaggedPlayer, type PlayTypeDef } from "@/components/game/types";
 import { advanceSituationAfterPlay } from "@/services/gameFlow";
 import { DEFAULT_GAME_CONFIG } from "@/services/programService";
 
@@ -66,7 +66,7 @@ export default function FlowPreview() {
     }));
     setRemembered(prev => {
       const updated = { ...prev };
-      for (const t of data.tagged) if (!t.isTeam && t.player_id !== "opp_team") updated[`${t.role}:${t.isOpponent ? "opp" : "us"}`] = t;
+      for (const t of data.tagged) if (!t.isTeam && t.player_id !== "opp_team") updated[lastPlayerKey(t.role, t.isOpponent ? "opp" : "us", data.playType.id)] = t;
       return updated;
     });
     setPlayType(null);

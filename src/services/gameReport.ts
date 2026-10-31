@@ -224,11 +224,17 @@ function hasFumbleRole(play: PlayWithPlayers): boolean {
 function tagWithRole(
   play: PlayWithPlayers,
   roles: string[],
+  /* Stop at a TEAM tag and hand back that team, nameless, instead of reading
+     on down the list. Scoring needs it: a fumble return TD with the recoverer
+     left as TEAM used to fall through to "rusher" and credit OUR ball carrier
+     with the other team's six. */
+  stopAtTeam = false,
 ): { id: string; name: string; jersey: number | null } | null {
   const loose = [
     ...(Array.isArray(play.play_data?.opp_tagged) ? play.play_data.opp_tagged : []),
     ...(Array.isArray(play.play_data?.pending_tagged) ? play.play_data.pending_tagged : []),
   ] as Array<{ id?: string; name?: string; role?: string; jersey_number?: number | null }>;
+  const ourTeam = (Array.isArray(play.play_data?.team_tagged) ? play.play_data.team_tagged : []) as Array<{ role?: string }>;
 
   for (const role of roles) {
     const pp = play.play_players?.find(p => p.role === role);
@@ -249,8 +255,26 @@ function tagWithRole(
         jersey: tag.jersey_number ?? null,
       };
     }
+    if (stopAtTeam && tag) return { id: "opp_team", name: "", jersey: null };
+    if (stopAtTeam && ourTeam.some(t => t.role === role)) return { id: TEAM_PLAYER_ID, name: "", jersey: null };
   }
   return null;
+}
+
+/** Roles that can carry a RETURN touchdown in. The offense's rusher, passer
+ *  and receiver are left out: on a return they are the ones who gave it up. */
+const RETURN_SCORER_ROLES = ["fumble_recovery", "recoverer", "interceptor", "returner"];
+
+/** Who scored a touchdown: a player, a team's TEAM tag, or null when nobody
+ *  was tagged. */
+function touchdownScorer(play: PlayWithPlayers) {
+  const isReturn = isReturnTouchdown({
+    quarter: play.quarter,
+    type: play.play_type,
+    possession: play.possession === "them" ? "them" : "us",
+    turnover: play.is_turnover ?? false,
+  });
+  return tagWithRole(play, isReturn ? RETURN_SCORER_ROLES : SCORER_ROLES, true);
 }
 
 /* ── Points by player ─────────────────────────────────────────────────── */
@@ -284,7 +308,7 @@ export function playerScoringFromPlays(plays: PlayWithPlayers[]): Map<string, Pl
   for (const play of plays) {
     if (nullifiedStats(play)) continue;
     if (play.is_touchdown) {
-      add(tagWithRole(play, SCORER_ROLES)?.id, "touchdowns", 6);
+      add(touchdownScorer(play)?.id, "touchdowns", 6);
       continue;
     }
     const good = String(play.play_data?.result ?? "") === "Good";
@@ -495,7 +519,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       if (scoredByUs) runningUs += 6 + conversionPoints;
       else runningThem += 6 + conversionPoints;
 
-      const scorer = tagWithRole(play, SCORER_ROLES);
+      const scorer = touchdownScorer(play);
       const who = scorer && scorer.name
         ? labelFor(scorer, jerseys)
         : (scoredByUs ? program.abbreviation : opponent.abbreviation);
@@ -931,10 +955,12 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const netKoUs = netKickFor("us", ["kickoff"]);
   const netKoThem = netKickFor("them", ["kickoff"]);
 
-  const rushTdUs = countPlays("us", p => p.is_touchdown && RUSH_TYPES.has(p.play_type));
-  const rushTdThem = countPlays("them", p => p.is_touchdown && RUSH_TYPES.has(p.play_type));
-  const passTdUs = countPlays("us", p => p.is_touchdown && p.play_type === "pass_comp");
-  const passTdThem = countPlays("them", p => p.is_touchdown && p.play_type === "pass_comp");
+  /* A run or a catch that ends in the OTHER team's fumble return touchdown is
+     their six, not a rushing or passing touchdown for the side with the ball. */
+  const rushTdUs = countPlays("us", p => p.is_touchdown && !p.is_turnover && RUSH_TYPES.has(p.play_type));
+  const rushTdThem = countPlays("them", p => p.is_touchdown && !p.is_turnover && RUSH_TYPES.has(p.play_type));
+  const passTdUs = countPlays("us", p => p.is_touchdown && !p.is_turnover && p.play_type === "pass_comp");
+  const passTdThem = countPlays("them", p => p.is_touchdown && !p.is_turnover && p.play_type === "pass_comp");
   /* A muff or a return fumble is the RECEIVING team's fumble, whoever fell
      on it, and the play is filed under the kicking team's possession - so it
      counts for the side that did not have the ball at the snap. See

@@ -1078,7 +1078,7 @@ export default function PostGameReview() {
           // editor has to actually clear the TEAM placeholder, which is the
           // whole point of tagging TEAM live.
           team_tagged: result.tagged
-            .filter((t) => t.isTeam)
+            .filter((t) => t.isTeam && !t.isOpponent)
             .map((t) => ({
               role: t.role,
               credit: t.credit ?? null,
