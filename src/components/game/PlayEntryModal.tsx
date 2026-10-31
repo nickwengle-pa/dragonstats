@@ -27,6 +27,7 @@ import {
   PENALTY_OPTIONS,
   penaltyDisplayName,
   STICKY_ROLES,
+  lastPlayerKey,
   OFFENSIVE_FORMATIONS,
   DEFENSIVE_FORMATIONS,
   getPenaltyDefaultSide,
@@ -45,6 +46,7 @@ import FieldVisualizer from "./FieldVisualizer";
 import YardReel from "./YardReel";
 import NumberField from "./NumberField";
 import FastPlayEntry from "./FastPlayEntry";
+import PlayerPicker from "./PlayerPicker";
 import PassDefenderPicker from "./PassDefenderPicker";
 import { FAST_PLAY_IDS, toggleFastTackler } from "./fastEntry";
 import { advanceSituationAfterPlay, getHandSetNextSituation } from "@/services/gameFlow";
@@ -737,7 +739,7 @@ export default function PlayEntryModal({
       // Seeds assume the un-reversed case (no onside recovery yet, fumble not
       // yet marked recovered) — both are decided later in the flow.
       const usesOpp = roleUsesOpponentRoster(role, theirBall, { playTypeId: playType.id });
-      const remembered = lastPlayerByRole[`${role}:${usesOpp ? "opp" : "us"}`];
+      const remembered = lastPlayerByRole[lastPlayerKey(role, usesOpp ? "opp" : "us", playType.id)];
       // The TEAM placeholder is a fallback, not a real pick — never carry it.
       if (!remembered || remembered.isTeam || remembered.player_id === OPP_TEAM_PLAYER.id) continue;
       tags.push({ ...remembered, role });
@@ -2705,6 +2707,20 @@ export default function PlayEntryModal({
     </div>
   );
 
+  /* The recovery pickers. They were full roster grids, tall enough on an iPad
+     that picking a recoverer meant scrolling past the whole team; this is the
+     same tap-or-type-a-jersey picker the runner and the tacklers use, sorted
+     by who has played the role. Left blank, a recovery records as TEAM. */
+  const fumbleRolePicker = (role: string, useOpp: boolean, label: string, accent: string) => {
+    const players: TaggedPlayer[] = useOpp
+      ? localOppPlayers.map(p => opponentTag(p))
+      : roster.map(p => ({ id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number, name: `${p.player.first_name} ${p.player.last_name}`, role: "" }));
+    return <PlayerPicker label={label} team={useOpp ? oppName : progName} players={players} usage={playerUsage} role={role}
+      accentColor={accent} selected={tagged.filter(t => t.role === role && !t.isTeam && t.player_id !== OPP_TEAM_PLAYER.id)}
+      onAddJersey={useOpp ? jersey => opponentTag(addOpponentJersey(jersey)) : undefined}
+      onSelect={player => setTagged(prev => [...prev.filter(t => t.role !== role), ...(player ? [{ ...player, role }] : [])])} />;
+  };
+
   if (!isEditing && playType.id === "kneel") {
     const players: TaggedPlayer[] = isTheirBall
       ? localOppPlayers.map(p => opponentTag(p, "rusher"))
@@ -2732,6 +2748,10 @@ export default function PlayEntryModal({
       badSnap={badSnap}
       onToggleBadSnap={playType.id === "rush" || playType.id === "bad_snap" ? undefined : () => setBadSnap(value => !value)}
       playerUsage={playerUsage}
+      recentByRole={Object.fromEntries(playType.roles.map(role => {
+        const last = lastPlayerByRole?.[lastPlayerKey(role === "target" ? "receiver" : role, isTheirBall ? "opp" : "us", playType.id)];
+        return [role, last && !last.isTeam && last.player_id !== OPP_TEAM_PLAYER.id ? last.player_id : undefined];
+      }))}
       inline={inlineSimple}
       fieldSpotRequest={fieldSpotRequest}
       onFieldPreview={onFieldPreview}
@@ -3037,8 +3057,11 @@ export default function PlayEntryModal({
                 </div>
               )}
 
-              {/* Show opponent or our roster */}
-              {showOpponentRoster ? (
+              {/* Show opponent or our roster. The fumble roles get the
+                  compact picker the recovery step uses, not a roster grid. */}
+              {["forced_fumble", "fumble_recovery", "recovery_tackler"].includes(currentRole) ? (
+                fumbleRolePicker(currentRole, showOpponentRoster, playerStepNames[currentRole] ?? currentRole, showOpponentRoster ? oppAccent : progAccent)
+              ) : showOpponentRoster ? (
                 <OpponentPlayerGrid
                   players={[...localOppPlayers].sort((a, b) => playerUseCount(playerUsage, currentRole, b.id, true) - playerUseCount(playerUsage, currentRole, a.id, true))}
                   label={`Select ${currentRole} — ${oppName}`}
@@ -3379,37 +3402,19 @@ export default function PlayEntryModal({
                 <p>{fumbleReturnScores
                   ? <><strong>Touchdown</strong> · {fumbleReturnYards} return yards</>
                   : <>Return ended at <strong>{formatFieldSpot(fumbleReturnBallOn, gameState.possession)}</strong> · {fumbleReturnYards} return yards</>}</p>
-                {!fumbleRecoveredByUs && ["rush", "pass_comp"].includes(playType.id)
+                {["rush", "pass_comp"].includes(playType.id)
                   ? <p className="text-xs text-slate-300">NFHS credited {playType.id === "pass_comp" ? "passing / receiving" : "rushing"} yards: <strong>{fumbleRecoveredAtBallOn - gameState.ballOn}</strong>. Includes the loose ball's travel to recovery. Return yards start at recovery.</p>
                   : <p className="text-xs text-slate-300">Return yards start where the loose ball was recovered.</p>}
               </div>
 
-              {recoveryUsesOpponentRoster ? (
-                <OpponentPlayerGrid
-                  players={localOppPlayers}
-                  label={`Recovered by (${oppName})`}
-                  onSelect={(pl) => tagRoleOpp("fumble_recovery", pl)}
-                  selectedId={tagged.find(t => t.role === "fumble_recovery")?.id ?? null}
-                  search={recoverySearch}
-                  onSearch={setRecoverySearch}
-                  onQuickAdd={handleQuickAddOpponent}
-                  accentColor={oppAccent}
-                />
-              ) : (
-                <PlayerGrid
-                  roster={roster}
-                  label={`Recovered by (${progName})`}
-                  onSelect={(pl) => tagRole("fumble_recovery", pl)}
-                  selectedId={tagged.find(t => t.role === "fumble_recovery")?.player_id ?? null}
-                  search={recoverySearch}
-                  onSearch={setRecoverySearch}
-                  /* Without this the confirmed tile renders exactly like an
-                     unpicked one: PlayerGrid paints the selection through an
-                     inline style gated on accentColor. The tap registered and
-                     showed nothing, which reads as a dead button. */
-                  accentColor={fumbleRecoveredByUs ? offenseAccent : defenseAccent}
-                />
-              )}
+              <div className="mt-3 fumble-pickers">
+                <label className="label block mb-1">1. Who came up with it</label>
+                {fumbleRolePicker("fumble_recovery", recoveryUsesOpponentRoster, "Recovered by",
+                  recoveryUsesOpponentRoster ? oppAccent : fumbleRecoveredByUs ? offenseAccent : defenseAccent)}
+                {!tagged.some(t => t.role === "fumble_recovery" && !t.isTeam && t.player_id !== OPP_TEAM_PLAYER.id) && (
+                  <p className="text-[11px] text-amber-400/80 mt-1">Left blank, it records as {recoveryUsesOpponentRoster ? oppName : progName} TEAM.</p>
+                )}
+              </div>
 
               <div className="mt-3">
                 <label className="label block mb-1">2. Loose ball recovered at</label>
@@ -3478,28 +3483,9 @@ export default function PlayEntryModal({
               </div>
 
               {!fumbleReturnScores && <div className="mt-3">
-                {recoveryUsesOpponentRoster ? (
-                  <PlayerGrid
-                    roster={roster}
-                    label={`Stopped by (${progName})`}
-                    onSelect={(pl) => tagRole("recovery_tackler", pl)}
-                    selectedId={tagged.find(t => t.role === "recovery_tackler")?.player_id ?? null}
-                    search={recoveryTacklerSearch}
-                    onSearch={setRecoveryTacklerSearch}
-                    accentColor={progAccent}
-                  />
-                ) : (
-                  <OpponentPlayerGrid
-                    players={localOppPlayers}
-                    label={`Stopped by (${oppName})`}
-                    onSelect={(pl) => tagRoleOpp("recovery_tackler", pl)}
-                    selectedId={tagged.find(t => t.role === "recovery_tackler")?.id ?? null}
-                    search={recoveryTacklerSearch}
-                    onSearch={setRecoveryTacklerSearch}
-                    onQuickAdd={handleQuickAddOpponent}
-                    accentColor={oppAccent}
-                  />
-                )}
+                <label className="label block mb-1">4. Who stopped him</label>
+                {/* The other side from the recoverer: whoever brought the return down. */}
+                {fumbleRolePicker("recovery_tackler", !recoveryUsesOpponentRoster, "Stopped by", recoveryUsesOpponentRoster ? progAccent : oppAccent)}
               </div>}
             </>
           )}
@@ -3528,28 +3514,8 @@ export default function PlayEntryModal({
                     </button>
                   </div>
                   {/* Who fell on it. Left blank, it records as TEAM. */}
-                  {kickRecoveryUsesOpponentRoster ? (
-                    <OpponentPlayerGrid
-                      players={localOppPlayers}
-                      label={`Recovered by (${oppName})`}
-                      onSelect={(pl) => tagRoleOpp("fumble_recovery", pl)}
-                      selectedId={tagged.find(t => t.role === "fumble_recovery")?.id ?? null}
-                      search={recoverySearch}
-                      onSearch={setRecoverySearch}
-                      onQuickAdd={handleQuickAddOpponent}
-                      accentColor={oppAccent}
-                    />
-                  ) : (
-                    <PlayerGrid
-                      roster={roster}
-                      label={`Recovered by (${progName})`}
-                      onSelect={(pl) => tagRole("fumble_recovery", pl)}
-                      selectedId={tagged.find(t => t.role === "fumble_recovery")?.player_id ?? null}
-                      search={recoverySearch}
-                      onSearch={setRecoverySearch}
-                      accentColor={muffRecoveredByKicking ? offenseAccent : defenseAccent}
-                    />
-                  )}
+                  {fumbleRolePicker("fumble_recovery", kickRecoveryUsesOpponentRoster, "Recovered by",
+                    kickRecoveryUsesOpponentRoster ? oppAccent : muffRecoveredByKicking ? offenseAccent : defenseAccent)}
                 </div>
               )}
               <div>

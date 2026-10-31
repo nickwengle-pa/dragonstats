@@ -61,6 +61,20 @@ export function kickInfoFromDescription(
  * description old enough to hold them; callers leave the stat unrecorded
  * rather than reporting a guess as fact.
  */
+/**
+ * Where the receiving team fouled during a kick's return, when the flag was
+ * marked off from that spot or from the end of the run, in the kicking team's
+ * frame. Such a foul leaves the kick standing (it is not a re-kick); only the
+ * return is cut back. Null for every other flag.
+ */
+export function receiverFoulSpot(pd: Record<string, unknown>): number | null {
+  const from = pd.penalty_enforcement_from;
+  if (!pd.penalty_type || pd.play_category !== "defense") return null;
+  if (pd.penalty_enforcement === "declined" || pd.penalty_enforcement === "offset") return null;
+  if (from !== "spot_of_foul" && from !== "end_of_play") return null;
+  return num(pd.foul_spot_ball_on);
+}
+
 export function resolveKickSpots(args: {
   ballOn: number;
   playData: Record<string, unknown> | null | undefined;
@@ -76,9 +90,17 @@ export function resolveKickSpots(args: {
     /* kickedToYard counts from the RECEIVING team's goal line and
        return_to_ball_on counts from the KICKING team's, so they are
        complements — the return is the difference between them. */
-    const returnYards = touchback ? 0 : args.isTouchdown ? 100 - Math.max(0, storedKickedTo) : storedReturnTo != null
+    let returnYards = touchback ? 0 : args.isTouchdown ? 100 - Math.max(0, storedKickedTo) : storedReturnTo != null
       ? (100 - storedReturnTo) - storedKickedTo
       : 0;
+    /* A foul by the return team during the return: the return counts only to
+       the foul spot (both spots in the kicking team's frame). A blindside
+       block at the UV 18 behind a 39-yard return off the UV 13 is a 5-yard
+       return, not 39 (United Valley, play 20). */
+    const foul = receiverFoulSpot(pd);
+    if (foul != null && storedReturnTo != null && !args.isTouchdown && foul > storedReturnTo) {
+      returnYards = Math.min(returnYards, Math.max(0, (100 - storedKickedTo) - foul));
+    }
     return {
       kickDistance: Math.max(0, (100 - storedKickedTo) - args.ballOn),
       kickedToYard: storedKickedTo,

@@ -14,6 +14,8 @@ import {
 
 interface Props {
   playerUsage?: PlayerUsage;
+  /** Last player in each offensive role for this side, by role. */
+  recentByRole?: Record<string, string | undefined>;
   inline?: boolean;
   spotConfirmed?: boolean;
   fieldSpotRequest?: { ballOn: number; id: number } | null;
@@ -160,6 +162,7 @@ export default function FastPlayEntry(p: Props) {
               {p.playType.roles.length > 0 && <div className="offense-selection" role="group" aria-label={`${p.offenseName} offense players`}>
                 {p.playType.roles.map(role => <PlayerPicker key={role} label={`${labels[role] ?? role}${role === "target" ? " (optional)" : ""}`} team={p.offenseName}
                   players={p.offensePlayers} usage={p.playerUsage} role={role} accentColor={p.accentColor}
+                  recentId={p.recentByRole?.[role]}
                   onAddJersey={ours ? undefined : p.onAddOpponent}
                   /* Team as the QB or runner: ours, deliberately unnamed -
                      a direct snap, a wildcat, a pile nobody could read. Not

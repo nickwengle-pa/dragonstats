@@ -460,12 +460,27 @@ export interface PlayWithPlayers extends PlayRow {
 export async function loadGamePlays(gameId: string): Promise<PlayWithPlayers[]> {
   const plays = await loadGamePlayRows(gameId);
   return plays.map(p => {
+    p = withoutMirroredKneelTeam(p);
     const turnover = storedRowTurnover(p);
     const description = p.description == null ? p.description : tidyStoredDescription(p.play_type, p.description);
     return turnover === Boolean(p.is_turnover) && description === p.description
       ? p
       : { ...p, is_turnover: turnover, description };
   });
+}
+
+/* The quick Kneel button on THEIR ball once saved its TEAM runner on both
+   sides: in opp_tagged, where it belongs, and in team_tagged as OUR TEAM, so
+   the kneel turned up as a carry on our rushing sheet (United Valley 139-141).
+   The button is fixed; this drops the stray copy from rows already saved, and
+   a re-save of the play then stores it clean. */
+export function withoutMirroredKneelTeam<T extends { play_type: string; possession: string; play_data: any }>(p: T): T {
+  const pd = p.play_data;
+  if (p.play_type !== "kneel" || p.possession !== "them" || !Array.isArray(pd?.team_tagged)) return p;
+  const theirRusher = Array.isArray(pd.opp_tagged) && pd.opp_tagged.some((t: { role?: string }) => t.role === "rusher");
+  if (!theirRusher) return p;
+  const kept = pd.team_tagged.filter((t: { role?: string }) => t.role !== "rusher");
+  return kept.length === pd.team_tagged.length ? p : { ...p, play_data: { ...pd, team_tagged: kept } };
 }
 
 async function loadGamePlayRows(gameId: string): Promise<PlayWithPlayers[]> {

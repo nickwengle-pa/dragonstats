@@ -105,6 +105,7 @@ import {
   QUARTER_LABELS,
   fmtClock,
   quarterLabel,
+  lastPlayerKey,
 } from "@/components/game/types";
 import BadSnapTag from "@/components/game/BadSnapTag";
 
@@ -835,7 +836,7 @@ export default function GameScreen() {
       for (const tag of play.tagged ?? []) {
         // Pending tags carry their own jersey and keep their own slot, so the
         // same unrostered back carries forward like any other player.
-        map[`${tag.role}:${tag.isOpponent ? "opp" : "us"}`] = {
+        map[lastPlayerKey(tag.role, tag.isOpponent ? "opp" : "us", play.type)] = {
           ...tag,
           jersey_number: tag.jersey_number ?? jerseyByPlayerId.get(tag.player_id) ?? null,
         };
@@ -1210,7 +1211,7 @@ export default function GameScreen() {
         fumble_return_yards: play.fumbleReturnYards ?? null,
         fumble_recovered_at: play.fumbleRecoveredAt ?? null,
         team_tagged: play.tagged
-          .filter((tag) => tag.isTeam)
+          .filter((tag) => tag.isTeam && !tag.isOpponent)
           .map((tag) => ({
             role: tag.role,
             credit: tag.credit ?? null,
@@ -1791,7 +1792,8 @@ export default function GameScreen() {
            conflating them would misreport how the spot was arrived at. */
         next_situation_source: data.nextSituation
           ? data.nextSituation.source
-          : data.penalty || (data.playType.id === "blocked_kick" && !data.isTouchdown) || isTurnover ? "pending_review" : "auto",
+          // A turnover returned for a score has no spot to confirm: the try comes next.
+          : data.penalty || (data.playType.id === "blocked_kick" && !data.isTouchdown) || (isTurnover && !data.isTouchdown) ? "pending_review" : "auto",
       },
     }, insertAt ? plays[insertAt.index] : plays[plays.length - 1], pregame, gc);
     const liveReplay = liveSessionConfig ? replayLiveGame([...plays, previewPlay], liveSessionConfig) : null;
@@ -2420,7 +2422,7 @@ export default function GameScreen() {
             credit: t.credit ?? null,
           })),
         team_tagged: result.tagged
-          .filter(t => t.isTeam)
+          .filter(t => t.isTeam && !t.isOpponent)
           .map(t => ({ role: t.role, credit: t.credit ?? null, ...(t.teamCreditConfirmed ? { confirmed: true } : {}) })),
         next_possession: editNext?.possession ?? null,
         next_down: editNext?.down ?? null,

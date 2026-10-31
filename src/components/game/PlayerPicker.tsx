@@ -15,7 +15,11 @@ export function playerLabel(player: TaggedPlayer) {
 /** Added by jersey alone: the name IS the number, so show it once. */
 const numberOnly = (player: TaggedPlayer) => (player.name ?? "").trim() === `#${player.jersey_number}`;
 
-export default function PlayerPicker({ label, team, players, selected, multiple = false, onSelect, usage, role = "", onSelectTeam, accentColor, onAddJersey }: {
+export default function PlayerPicker({ label, team, players, selected, multiple = false, onSelect, usage, role = "", onSelectTeam, accentColor, onAddJersey, recentId }: {
+  /** Whoever filled this role last, listed first and marked "Last". Offered,
+   *  never picked: a runner carried silently onto the next snap is how the
+   *  wrong man gets the yards. */
+  recentId?: string;
   accentColor?: string;
   /** Mint a player for a typed jersey nobody in `players` wears. Only for a
    *  side where a bare number is a real pick — the opponent, whose roster is
@@ -42,6 +46,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
   const [position, setPosition] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number }>({ top: 0, left: 0, width: 300, maxHeight: 280 });
   const filtered = players.filter(player => `${player.jersey_number ?? ""} ${player.name}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => Number(String(b.jersey_number) === query.trim()) - Number(String(a.jersey_number) === query.trim())
+      || Number(b.player_id === recentId) - Number(a.player_id === recentId)
       || playerUseCount(usage, role, b.player_id, b.isOpponent) - playerUseCount(usage, role, a.player_id, a.isOpponent)
       || (a.jersey_number ?? 1000) - (b.jersey_number ?? 1000));
   /* A whole jersey nobody listed wears. Never picked for the operator: it is
@@ -146,7 +151,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
           const picked = selected.some(p => p.player_id === player.player_id);
           return <button type="button" role="option" aria-selected={picked} id={`${id}-${index + addOffset}`} key={player.player_id}
             className={active === index + addOffset ? "player-active" : ""} onMouseDown={e => e.preventDefault()} onClick={() => choose(player)}>
-            <span className="player-jersey">#{player.jersey_number ?? "?"}</span><span>{numberOnly(player) ? "" : player.name}</span>{picked && <Check size={17} />}
+            <span className="player-jersey">#{player.jersey_number ?? "?"}</span><span>{numberOnly(player) ? "" : player.name}</span>{player.player_id === recentId && !picked && <em className="player-recent">Last</em>}{picked && <Check size={17} />}
           </button>;
         })}
         {!filtered.length && newJersey == null && <p className="player-empty">{
