@@ -42,7 +42,7 @@ import { resolveDriveResults } from "./driveResults";
 import { splitTackleCredit } from "./tackleCredit";
 import { grantsAutoFirstDown, penaltyWipesPlay } from "@/components/game/types";
 import { kickReceiptOf, resolveKickSpots } from "./kickSpots";
-import { applyLostMuffs, lostMuffFumble } from "./lostMuffs";
+import { applyLostMuffs, lostMuffFumble, returnFumbleEvent } from "./lostMuffs";
 import { scoringEventsForPlay } from "./scoringLedger";
 import { convertPlay, endsSeriesForKick } from "./playTransformer";
 import type { PlayWithPlayers } from "./gameService";
@@ -604,8 +604,10 @@ function toEnginePlay(
           : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         ...(receipt.muffLostToKickers
-          ? { fumble: lostMuffFumble(firstTaggedPlayer(play, "returner")?.player_id, context.possessionTeam) }
-          : {}),
+          ? { fumble: lostMuffFumble(firstTaggedPlayer(play, "returner")?.player_id, context.possessionTeam, firstTaggedPlayer(play, "fumble_recovery")?.player_id) }
+          : receipt.returnFumble || receipt.muffKept
+            ? { fumble: returnFumbleEvent(firstTaggedPlayer(play, "returner")?.player_id, context.possessionTeam, otherTeamId(context.possessionTeam, config), receipt.returnFumbleLost, firstTaggedPlayer(play, "fumble_recovery")?.player_id) }
+            : {}),
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
         tackledBy: receipt.noReceiver || receipt.fairCaught ? undefined : tackles.tackledBy,
@@ -630,8 +632,10 @@ function toEnginePlay(
           : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         ...(receipt.muffLostToKickers
-          ? { fumble: lostMuffFumble(firstTaggedPlayer(play, "returner")?.player_id, context.possessionTeam) }
-          : {}),
+          ? { fumble: lostMuffFumble(firstTaggedPlayer(play, "returner")?.player_id, context.possessionTeam, firstTaggedPlayer(play, "fumble_recovery")?.player_id) }
+          : receipt.returnFumble || receipt.muffKept
+            ? { fumble: returnFumbleEvent(firstTaggedPlayer(play, "returner")?.player_id, context.possessionTeam, otherTeamId(context.possessionTeam, config), receipt.returnFumbleLost, firstTaggedPlayer(play, "fumble_recovery")?.player_id) }
+            : {}),
         isTouchback: play.isTouchback,
         isTouchdown: play.isTouchdown,
         tackledBy: receipt.noReceiver || receipt.fairCaught ? undefined : tackles.tackledBy,

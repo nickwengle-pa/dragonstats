@@ -135,19 +135,44 @@ export function netKickYards(
  * as a 0-yard return. A muff the KICKING team fell on is not a return either:
  * the receiver never had the ball, so he gets no attempt and no yards, and
  * the kicking team keeps it (see gameFlow).
+ *
+ * A return fumble is different: he caught it and ran, so it is a return to
+ * the recovery spot plus a fumble, lost only when the kickers fell on it.
+ * Both loose-ball outcomes store who recovered in muff_recovered_by_kicking.
+ *
+ * Every muff is charged to the receiver as a fumble, whoever fell on it
+ * (Nick, 2026-10-31) - the stat manual would not count one his own team
+ * recovered, but here a fumble counts for the man who put the ball on the
+ * ground and is lost only when the other team gets it.
  */
 export function kickReceiptOf(playData: Record<string, unknown> | null | undefined): {
   fairCaught: boolean;
   muffLostToKickers: boolean;
+  /** A muff the receiving team fell on: still his fumble, not lost. */
+  muffKept: boolean;
+  /** Caught, run with, and fumbled - whoever recovered. */
+  returnFumble: boolean;
+  /** A return fumble the kicking team recovered. */
+  returnFumbleLost: boolean;
   /** Downed, out of bounds or a touchback: nobody fielded it, so a returner
    *  tag on the play is a stale carry-over from the previous kick, not a
    *  0-yard return. */
   noReceiver: boolean;
 } {
   const pd = playData ?? {};
+  const kickersRecovered = pd.muff_recovered_by_kicking === true;
   return {
     fairCaught: pd.kick_outcome === "fair_catch",
-    muffLostToKickers: pd.kick_outcome === "muffed" && pd.muff_recovered_by_kicking === true,
+    muffLostToKickers: pd.kick_outcome === "muffed" && kickersRecovered,
+    muffKept: pd.kick_outcome === "muffed" && !kickersRecovered,
+    returnFumble: pd.kick_outcome === "fumbled",
+    returnFumbleLost: pd.kick_outcome === "fumbled" && kickersRecovered,
     noReceiver: pd.kick_outcome === "downed" || pd.kick_outcome === "out_of_bounds" || pd.kick_outcome === "touchback",
   };
+}
+
+/** The kicking team fell on a loose kick, muffed or fumbled, and keeps it. */
+export function kickLostToKickers(playData: Record<string, unknown> | null | undefined): boolean {
+  const r = kickReceiptOf(playData);
+  return r.muffLostToKickers || r.returnFumbleLost;
 }

@@ -739,15 +739,25 @@ function playerLabel(t: TaggedPlayer | undefined): string {
 /** The return clause of a kick's description. Keeps the ", ret ... N yds"
  *  shape kickInfoFromDescription parses back out of older plays. */
 function kickReturnLabel(
-  kickInfo: { isTouchback: boolean; returnYards: number; muffRecoveredBy?: "receivers" | "kickers" },
+  kickInfo: {
+    isTouchback: boolean; returnYards: number;
+    muffRecoveredBy?: "receivers" | "kickers";
+    fumbleRecoveredBy?: "receivers" | "kickers";
+  },
   ret: TaggedPlayer | undefined,
+  recoverer: TaggedPlayer | undefined,
 ): string {
   if (kickInfo.isTouchback) return "";
+  const by = recoverer && !recoverer.isTeam ? ` ${playerLabel(recoverer)}` : "";
   if (kickInfo.muffRecoveredBy === "kickers") {
-    return `, muffed${ret ? ` by ${playerLabel(ret)}` : ""}, recovered by kicking team`;
+    return `, muffed${ret ? ` by ${playerLabel(ret)}` : ""}, recovered by kicking team${by}`;
   }
-  const muffed = kickInfo.muffRecoveredBy === "receivers" ? ", muffed" : "";
-  return ret ? `${muffed}, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds` : muffed;
+  const muffed = kickInfo.muffRecoveredBy === "receivers" ? `, muffed${by ? `, recovered${by}` : ""}` : "";
+  // A return fumble is still a return, so the ", ret" clause keeps its shape.
+  const fumbled = kickInfo.fumbleRecoveredBy === "kickers"
+    ? `, fumbled, recovered by kicking team${by}`
+    : kickInfo.fumbleRecoveredBy === "receivers" ? `, fumbled, recovered${by || " by receiving team"}` : "";
+  return ret ? `${muffed}, ret ${playerLabel(ret)} ${kickInfo.returnYards} yds${fumbled}` : `${muffed}${fumbled}`;
 }
 
 /** A saved description, cleaned of what buildDescription no longer writes.
@@ -775,6 +785,8 @@ export function buildDescription(
     landingLabel?: string;
     /** Muffed: which team fell on it. A kicking-team recovery is no return. */
     muffRecoveredBy?: "receivers" | "kickers";
+    /** Caught and fumbled: which team fell on it. A return either way. */
+    fumbleRecoveredBy?: "receivers" | "kickers";
   },
   turnoverInfo?: {
     turnoverSpotLabel?: string;
@@ -844,7 +856,7 @@ export function buildDescription(
         const kickLabel = kickInfo.isTouchback
           ? "Touchback"
           : `to ${kickInfo.landingLabel ?? `OPP ${kickInfo.kickedToYard}`}`;
-        const retLabel = kickReturnLabel(kickInfo, ret);
+        const retLabel = kickReturnLabel(kickInfo, ret, byRole("fumble_recovery"));
         parts.push(`Kickoff${k ? ` ${playerLabel(k)}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
       } else {
         parts.push(`Kickoff${k ? ` ${playerLabel(k)}` : ""}${ret ? ` ret ${playerLabel(ret)} ${yards}` : ""}`);
@@ -857,7 +869,7 @@ export function buildDescription(
         const kickLabel = kickInfo.isTouchback
           ? "Touchback"
           : `to ${kickInfo.landingLabel ?? `OPP ${kickInfo.kickedToYard}`}`;
-        const retLabel = kickReturnLabel(kickInfo, ret);
+        const retLabel = kickReturnLabel(kickInfo, ret, byRole("fumble_recovery"));
         parts.push(`Punt${p ? ` ${playerLabel(p)}` : ""} ${kickInfo.kickDistance} yds ${kickLabel}${retLabel}`);
       } else {
         parts.push(`Punt${p ? ` ${playerLabel(p)}` : ""}${ret ? ` ret ${playerLabel(ret)} ${yards}` : ""}`);

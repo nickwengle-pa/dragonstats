@@ -68,10 +68,12 @@ describe("punt outcomes", () => {
     }
   });
 
-  it("does not charge a muff the receivers recovered", () => {
+  it("charges a muff the receivers recovered as his fumble, not lost", () => {
     for (const s of run(punt({ kick_outcome: "muffed", muff_recovered_by_kicking: false, return_to_ball_on: 65 }, 35))) {
-      expect(s.returns.returner.puntReturnFumbles).toBe(0);
+      expect(s.returns.returner.puntReturnFumbles).toBe(1);
+      expect(s.awayTeamStats.fumblesLost).toBe(0);
       expect(s.awayTeamStats.turnovers).toBe(0);
+      expect(s.homeTeamStats.turnovers).toBe(0);
     }
   });
 

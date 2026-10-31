@@ -183,12 +183,13 @@ type Step = "players" | "yards" | "penalty" | "formations" | "defense" | "review
   | "kick_kicker" | "kick_location" | "kick_returner" | "kick_return_yards"
   | "fumble_return";
 type FieldTeam = "program" | "opponent";
-type KickOutcome = "returned" | "fair_catch" | "muffed" | "downed" | "out_of_bounds" | "touchback";
+type KickOutcome = "returned" | "fair_catch" | "muffed" | "fumbled" | "downed" | "out_of_bounds" | "touchback";
 
 const KICK_OUTCOMES: Array<{ value: KickOutcome; label: string }> = [
   { value: "returned", label: "Returned" },
   { value: "fair_catch", label: "Fair Catch" },
   { value: "muffed", label: "Muffed" },
+  { value: "fumbled", label: "Fumble" },
   { value: "downed", label: "Downed" },
   { value: "touchback", label: "Touchback" },
   { value: "out_of_bounds", label: "Out of Bounds" },
@@ -211,7 +212,8 @@ const DEFENSIVE_ROLES = new Set([
  *   returner        — the team WITHOUT the ball fields the kick, so it's the
  *                     opposite of possession. Reverses only when the kicking
  *                     team recovers its own onside kick.
- *   fumble_recovery — whoever ends up with it; follows the "recovered by" flag.
+ *   fumble_recovery — whoever ends up with it; follows the "recovered by" flag
+ *                     (on a muffed or fumbled kick, the kick's own one).
  */
 function roleUsesOpponentRoster(
   role: string,
@@ -221,9 +223,14 @@ function roleUsesOpponentRoster(
     fumbleRecoveredByUs?: boolean;
     onsideRecoveredByKicker?: boolean;
     blockedRecoveredByKicking?: boolean;
+    /** A muffed or fumbled punt/kickoff: true when the kickers fell on it. */
+    kickRecoveredByKicking?: boolean;
   } = {},
 ): boolean {
   if (role === "fumble_recovery") {
+    // On a loose kick the kicking team is the offense, so their recovery is
+    // the "offense kept it" case.
+    if (opts.kickRecoveredByKicking !== undefined) return opts.kickRecoveredByKicking ? isTheirBall : !isTheirBall;
     return opts.fumbleRecoveredByUs ? isTheirBall : !isTheirBall;
   }
   if (role === "returner" || role === "recoverer") {
@@ -845,9 +852,16 @@ export default function PlayEntryModal({
      that does not hand the ball over. */
   const [muffRecoveredByKicking, setMuffRecoveredByKicking] = useState(edit?.muffRecoveredByKicking ?? false);
   const isMuffed = kickOutcome === "muffed";
-  const muffLostToKickers = isMuffed && muffRecoveredByKicking;
+  /* Fumble: he caught it, ran, and lost it. Unlike a muff it is his return
+     either way - to the recovery spot - and his fumble either way; it is lost
+     only when the kickers fall on it. It shares the muff's recovered-by
+     answer and its stored flag. */
+  const isReturnFumble = kickOutcome === "fumbled";
+  /** A ball on the ground after the kick that either team could fall on. */
+  const isLooseKick = isMuffed || isReturnFumble;
+  const muffLostToKickers = isLooseKick && muffRecoveredByKicking;
   /** The ball moved off the landing spot, so the play has a spot to pick. */
-  const hasReturnSpot = wasReturned || isMuffed;
+  const hasReturnSpot = wasReturned || isLooseKick;
   const [result, setResult] = useState<"Good" | "No Good" | "Returned" | "">(edit?.result ?? "");
 
   // Penalty
@@ -1292,14 +1306,17 @@ export default function PlayEntryModal({
   }, [isInterception, intCaughtTeam, intCaughtYardLine]);
 
   /** An onside kick has its own recovered-by question, so it has no muff. */
-  const kickOutcomes = KICK_OUTCOMES.filter(o => o.value !== "muffed" || playType.id !== "onside_kick");
+  const kickOutcomes = KICK_OUTCOMES.filter(o => !["muffed", "fumbled"].includes(o.value) || playType.id !== "onside_kick");
   /* Downed, out of bounds, touchback: nobody fielded it. The returner is a
      sticky role, so the last kick's returner rides in as a carry-over - and
      these outcomes skip the returner step, so nothing on screen ever showed
      it or let it be cleared. It was saved, and the engine read it as a
      0-yard return. Such a kick has no returner, whatever was carried. */
   const kickHasNoReceiver = isKickPlay && !hasReturnSpot && kickOutcome !== "fair_catch";
-  const shownTagged = kickHasNoReceiver ? tagged.filter(t => t.role !== "returner") : tagged;
+  /* A recoverer picked for a muff or fumble outlives a switch back to a plain
+     return the same way, and would credit a recovery nobody made. */
+  const shownTagged = tagged.filter(t => !(kickHasNoReceiver && t.role === "returner")
+    && !(isKickPlay && !isLooseKick && t.role === "fumble_recovery"));
   /* Same leak, one step later: tacklers picked on a return stay in state when
      the outcome changes to one with no tackle step - Downed, Fair Catch,
      Return TD, a muff the kickers kept - and an edit loads them from the
@@ -1324,7 +1341,7 @@ export default function PlayEntryModal({
     // Downed / out of bounds / touchback: nobody fielded it, so there's no
     // returner to tag. A fair catch DOES have a receiver worth crediting, but
     // by definition no return yards.
-    if (kickOutcome === "returned" || kickOutcome === "fair_catch" || isMuffed) {
+    if (kickOutcome === "returned" || kickOutcome === "fair_catch" || isLooseKick) {
       steps.push("kick_returner");
     }
     if (hasReturnSpot) {
@@ -1428,7 +1445,8 @@ export default function PlayEntryModal({
        a return attempt on a play where nobody touched the ball - and the
        review screen now displays that list, so it was visible as well as
        wrong. Touchback was already excluded; the other two were not. */
-    ? [kickerRole, ...((hasReturnSpot || kickOutcome === "fair_catch") ? ["returner"] : [])]
+    ? [kickerRole, ...((hasReturnSpot || kickOutcome === "fair_catch") ? ["returner"] : []),
+      ...(isLooseKick ? ["fumble_recovery"] : [])]
     : [...new Set([...roles, ...(isFumblePlay ? ["fumble_recovery"] : [])])]
   ).filter(role => !tagged.some(t => t.role === role)
     /* The one exception: an unnamed interceptor reads "INT by ?", not TEAM.
@@ -1437,6 +1455,7 @@ export default function PlayEntryModal({
   const teamDefaultIsOpponent = (role: string) => roleUsesOpponentRoster(role, isTheirBall, {
     playTypeId: playType.id,
     fumbleRecoveredByUs,
+    ...(isKickPlay ? { kickRecoveredByKicking: muffRecoveredByKicking } : {}),
     onsideRecoveredByKicker,
     blockedRecoveredByKicking,
   });
@@ -1627,6 +1646,19 @@ export default function PlayEntryModal({
     onsideRecoveredByKicker,
     blockedRecoveredByKicking,
   });
+  /** Muffed or fumbled kick: the recoverer comes off the kickers' roster
+   *  when they fell on it, the receivers' otherwise. */
+  const kickRecoveryUsesOpponentRoster = roleUsesOpponentRoster("fumble_recovery", isTheirBall, {
+    kickRecoveredByKicking: muffRecoveredByKicking,
+  });
+  /** Same reasoning as the blocked kick: a recoverer already picked came off
+   *  the other roster, so the flip takes him with it. */
+  const changeKickRecoveredBy = (byKicking: boolean) => {
+    if (byKicking === muffRecoveredByKicking) return;
+    setMuffRecoveredByKicking(byKicking);
+    if (byKicking) setIsTD(false);
+    setTagged(prev => prev.filter(t => t.role !== "fumble_recovery"));
+  };
 
   const tagRole = (role: string, p: RosterPlayer) => {
     setTagged(prev => [...prev.filter(t => t.role !== role), {
@@ -1859,6 +1891,7 @@ export default function PlayEntryModal({
       isTouchback,
       landingLabel,
       ...(isMuffed ? { muffRecoveredBy: muffRecoveredByKicking ? "kickers" as const : "receivers" as const } : {}),
+      ...(isReturnFumble ? { fumbleRecoveredBy: muffRecoveredByKicking ? "kickers" as const : "receivers" as const } : {}),
     } : undefined, isInterception ? {
       turnoverSpotLabel: `${fieldTeamTag(intCaughtTeam)} ${intCaughtYardLine}`,
       returnSpotLabel: interceptionReturnLabel ?? undefined,
@@ -1944,7 +1977,7 @@ export default function PlayEntryModal({
           // Returned to Fair Catch would read back as return yards. A touchback
           // reads no return regardless, so it keeps what it always stored.
           return_to_ball_on: hasReturnSpot || isTouchback ? returnSpotBallOn : kickLandingBallOn,
-          ...(isMuffed ? { muff_recovered_by_kicking: muffRecoveredByKicking } : {}),
+          ...(isLooseKick ? { muff_recovered_by_kicking: muffRecoveredByKicking } : {}),
           ...(playType.id === "onside_kick"
             ? { onside_recovered_by_kicker: onsideRecoveredByKicker }
             : {}),
@@ -1963,6 +1996,7 @@ export default function PlayEntryModal({
   const showOpponentRoster = roleUsesOpponentRoster(currentRole, isTheirBall, {
     playTypeId: playType.id,
     fumbleRecoveredByUs,
+    ...(isKickPlay ? { kickRecoveredByKicking: muffRecoveredByKicking } : {}),
     onsideRecoveredByKicker,
     blockedRecoveredByKicking,
   });
@@ -2126,8 +2160,8 @@ export default function PlayEntryModal({
   const enforcement = enforcementInput ? enforcePenalty(enforcementInput) : null;
 
   /** What gameFlow reads to keep the ball with the kickers after a muff. */
-  const muffPlayData = isKickPlay && isMuffed
-    ? { kick_outcome: "muffed", muff_recovered_by_kicking: muffRecoveredByKicking }
+  const muffPlayData = isKickPlay && isLooseKick
+    ? { kick_outcome: kickOutcome, muff_recovered_by_kicking: muffRecoveredByKicking }
     : {};
 
   const scoringPenaltyRuling = requiresScoringPenaltyRuling({
@@ -2781,7 +2815,9 @@ export default function PlayEntryModal({
     kick_kicker: { title: kickerRole === "punter" ? "Punter" : "Kicker", hint: `${fieldTeamLabel(kickingFieldSide)} · Who kicked the ball?` },
     kick_location: { title: "Kick location", hint: "Where did the kick land, and what happened there?" },
     kick_returner: { title: playType.id === "onside_kick" ? "Recoverer" : "Returner", hint: `${playType.id === "onside_kick" && onsideRecoveredByKicker ? fieldTeamLabel(kickingFieldSide) : receivingTeamLabel} · Who fielded the kick?` },
-    kick_return_yards: { title: "Return ending spot", hint: "Where was the returner stopped?" },
+    kick_return_yards: isLooseKick
+      ? { title: "Recovery", hint: `Who fell on the ${isMuffed ? "muff" : "fumble"}, and where?` }
+      : { title: "Return ending spot", hint: "Where was the returner stopped?" },
     fumble_return: { title: "Recovery & return", hint: "Who recovered the fumble, and where did the return end?" },
   };
   const detailHeading = detailHeadings[currentStep];
@@ -3244,7 +3280,8 @@ export default function PlayEntryModal({
               <div className="text-xs text-slate-500 text-center">
                 {kickOutcome === "returned" && "You'll pick the returner and where they got to."}
                 {kickOutcome === "fair_catch" && `Ball spotted at ${landingLabel}. No return yards — you'll still tag who signaled.`}
-                {isMuffed && "You'll pick who muffed it, which team recovered, and where."}
+                {isMuffed && "You'll pick who muffed it, which team and player recovered, and where."}
+                {isReturnFumble && "You'll pick who fumbled it, which team and player recovered, and where."}
                 {kickOutcome === "downed" && `Downed by the kicking team. Ball spotted at ${landingLabel}.`}
                 {kickOutcome === "out_of_bounds" && !isKickoffOutOfBounds && `Out of bounds at ${landingLabel}. No return.`}
                 {kickOutcome === "touchback" && "Receiving team will start at their own 20 yard line."}
@@ -3473,27 +3510,50 @@ export default function PlayEntryModal({
               {/* A muff is decided by who fell on it: the receivers keep a
                   live ball they can still run back, the kickers keep the ball
                   where they recovered it. */}
-              {isMuffed && (
-                <div>
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Muff recovered by</div>
+              {isLooseKick && (
+                <div className="space-y-2">
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">{isMuffed ? "Muff" : "Fumble"} recovered by</div>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setMuffRecoveredByKicking(false)}
+                    <button onClick={() => changeKickRecoveredBy(false)}
                       className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
                         !muffRecoveredByKicking ? "border-emerald-500 bg-emerald-500/20 text-emerald-400" : "border-surface-border bg-surface-bg text-slate-500"
                       }`}>
                       {receivingTeamLabel} (receivers)
                     </button>
-                    <button onClick={() => { setMuffRecoveredByKicking(true); setIsTD(false); }}
+                    <button onClick={() => changeKickRecoveredBy(true)}
                       className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all cursor-pointer ${
                         muffRecoveredByKicking ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
                       }`}>
                       {fieldTeamLabel(kickingFieldSide)} (kickers)
                     </button>
                   </div>
+                  {/* Who fell on it. Left blank, it records as TEAM. */}
+                  {kickRecoveryUsesOpponentRoster ? (
+                    <OpponentPlayerGrid
+                      players={localOppPlayers}
+                      label={`Recovered by (${oppName})`}
+                      onSelect={(pl) => tagRoleOpp("fumble_recovery", pl)}
+                      selectedId={tagged.find(t => t.role === "fumble_recovery")?.id ?? null}
+                      search={recoverySearch}
+                      onSearch={setRecoverySearch}
+                      onQuickAdd={handleQuickAddOpponent}
+                      accentColor={oppAccent}
+                    />
+                  ) : (
+                    <PlayerGrid
+                      roster={roster}
+                      label={`Recovered by (${progName})`}
+                      onSelect={(pl) => tagRole("fumble_recovery", pl)}
+                      selectedId={tagged.find(t => t.role === "fumble_recovery")?.player_id ?? null}
+                      search={recoverySearch}
+                      onSearch={setRecoverySearch}
+                      accentColor={muffRecoveredByKicking ? offenseAccent : defenseAccent}
+                    />
+                  )}
                 </div>
               )}
               <div>
-                <label className="label block mb-2">{muffLostToKickers ? "Recovered At (Yard Line)" : "Returned To (Yard Line)"}</label>
+                <label className="label block mb-2">{muffLostToKickers || isReturnFumble ? "Recovered At (Yard Line)" : "Returned To (Yard Line)"}</label>
 
                 {/* Tap the field where he was brought down, or drag the ruler.
                     Every other spot in this modal is picked this way; the
@@ -3524,7 +3584,9 @@ export default function PlayEntryModal({
                   <div className="text-[10px] text-slate-600 text-center mt-1">
                     {isTD
                       ? "Returned for a score - tap the field if he was stopped short"
-                      : `Tap the field where he was brought down - caught at ${landingLabel}`}
+                      : isLooseKick
+                        ? `Tap the field where the ball was recovered - kick landed at ${landingLabel}`
+                        : `Tap the field where he was brought down - caught at ${landingLabel}`}
                   </div>
                 </div>
 
@@ -3615,7 +3677,10 @@ export default function PlayEntryModal({
                     const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
                     const retYds = receiverYard - kickedToYard;
                     if (muffLostToKickers) return (
-                      <>Muffed at {landingLabel} → kicking team ball at <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span>, 1st down</>
+                      <>{isMuffed ? "Muffed" : "Caught"} at {landingLabel}{isReturnFumble ? ", fumbled" : ""} → kicking team ball at <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span>, 1st down{isReturnFumble ? ` (${retYds > 0 ? "+" : ""}${retYds} return yds)` : ""}</>
+                    );
+                    if (isReturnFumble) return (
+                      <>Caught at {landingLabel}, fumbled, recovered by the receivers at <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
                     );
                     return (
                       <>{isMuffed ? "Muffed" : "Caught"} at {landingLabel} → returned to <span className="font-bold text-slate-300">{sideLabel} {returnToYardLine}</span> ({retYds > 0 ? "+" : ""}{retYds} yds)</>
@@ -3626,9 +3691,10 @@ export default function PlayEntryModal({
 
               {/* How the return ended, one tap each. Fair Catch drops the
                   return step (the step list shrinks under it and this index
-                  becomes the next step); Muffed keeps it and asks who fell on
-                  it. A kicking team that recovers a muff cannot score on it. */}
-              <div className="grid grid-cols-3 gap-2">
+                  becomes the next step); Muffed and Fumble keep it and ask who
+                  fell on it. A kicking team that recovers one cannot score on
+                  it here. */}
+              <div className="grid grid-cols-4 gap-2">
                 <button onClick={() => { setIsTD(false); setKickOutcome("fair_catch"); }}
                   className="py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer border-surface-border bg-surface-bg text-slate-500">
                   Fair Catch
@@ -3637,6 +3703,10 @@ export default function PlayEntryModal({
                   className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
                     isMuffed ? "border-purple-500 bg-purple-500/20 text-purple-400" : "border-surface-border bg-surface-bg text-slate-500"
                   }`}>Muffed</button>
+                <button onClick={() => { setIsTD(false); setKickOutcome(isReturnFumble ? "returned" : "fumbled"); }}
+                  className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                    isReturnFumble ? "border-orange-500 bg-orange-500/20 text-orange-400" : "border-surface-border bg-surface-bg text-slate-500"
+                  }`}>Fumble</button>
                 <button onClick={() => setIsTD(t => !t)} disabled={muffLostToKickers}
                   className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                     isTD ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-surface-border bg-surface-bg text-slate-500"
@@ -4353,9 +4423,10 @@ export default function PlayEntryModal({
                   <span className="text-slate-500">Type</span>
                   <span className="font-bold">{playType.label}</span>
                 </div>
-                {shownTagged.map(t => (
+                {/* A loose kick's recoverer has its own Recovered By line below. */}
+                {shownTagged.filter(t => !(isKickPlay && t.role === "fumble_recovery")).map(t => (
                   <div key={t.role} className="flex justify-between">
-                    <span className="text-slate-500 capitalize">{t.role}</span>
+                    <span className="text-slate-500 capitalize">{t.role.replace(/_/g, " ")}</span>
                     <span className="font-bold">
                       {t.isOpponent && <span className="text-red-400 text-[10px] mr-1">{oppTag}</span>}
                       {/* A TEAM tag has no jersey and no name of its own; the
@@ -4448,15 +4519,21 @@ export default function PlayEntryModal({
                         </span>
                       </div>
                     )}
-                    {isMuffed && (
+                    {isLooseKick && (
                       <div className="flex justify-between">
                         <span className="text-slate-500">Recovered By</span>
-                        <span className="font-bold">{muffRecoveredByKicking ? `${fieldTeamLabel(kickingFieldSide)} (kickers)` : `${receivingTeamLabel} (receivers)`}</span>
+                        <span className="font-bold">
+                          {muffRecoveredByKicking ? `${fieldTeamLabel(kickingFieldSide)} (kickers)` : `${receivingTeamLabel} (receivers)`}
+                          {(() => {
+                            const r = tagged.find(t => t.role === "fumble_recovery");
+                            return r ? ` · ${r.jersey_number != null ? `#${r.jersey_number} ` : ""}${r.name}` : "";
+                          })()}
+                        </span>
                       </div>
                     )}
                     {hasReturnSpot && (
                       <div className="flex justify-between">
-                        <span className="text-slate-500">{muffLostToKickers ? "Recovered At" : "Returned To"}</span>
+                        <span className="text-slate-500">{muffLostToKickers || isReturnFumble ? "Recovered At" : "Returned To"}</span>
                         <span className="font-bold text-emerald-400">
                           {(() => {
                             if (isTD) return `Touchdown (${100 - Math.max(0, kickedToYard)} yds)`;

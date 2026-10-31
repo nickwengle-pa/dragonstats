@@ -28,7 +28,7 @@ import type {
 import type { GameStatsBundle } from "./statsService";
 import type { PlayWithPlayers } from "./gameService";
 import { defensiveReturnsFromPlays, isFumbleLost } from "./defensiveReturns";
-import { kickReceiptOf, netKickYards, resolveKickSpots } from "./kickSpots";
+import { kickLostToKickers, kickReceiptOf, netKickYards, resolveKickSpots } from "./kickSpots";
 import { isOutOfBoundsKickoff } from "./kickoffOutOfBounds";
 import { firstPlayerByRole } from "./playTransformer";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, countBadSnaps, isWipedByPenaltyRow } from "@/components/game/types";
@@ -106,8 +106,8 @@ export interface PuntingRow {
 }
 export interface ReturnRow {
   name: string;
-  /** fum: fumbles on the return, a muff the kicking team fell on included
-   *  (lostMuffs.ts). A muff alone is a fumble with no return attempt. */
+  /** fum: fumbles on the return, every muff included (lostMuffs.ts). A muff
+   *  the kicking team fell on is a fumble with no return attempt. */
   ko: { no: number; yds: number; long: number; td: number; fum: number };
   punt: { no: number; yds: number; long: number; td: number; fum: number };
   int: { no: number; yds: number; long: number; td: number };
@@ -935,22 +935,33 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const rushTdThem = countPlays("them", p => p.is_touchdown && RUSH_TYPES.has(p.play_type));
   const passTdUs = countPlays("us", p => p.is_touchdown && p.play_type === "pass_comp");
   const passTdThem = countPlays("them", p => p.is_touchdown && p.play_type === "pass_comp");
-  /* A muff the kickers fell on is the RECEIVING team's fumble, and the play
-     is filed under the kicking team's possession - so it counts for the side
-     that did not have the ball at the snap. See lostMuffs.ts. */
-  const lostMuffs = (receiving: "us" | "them") => countPlays(receiving === "us" ? "them" : "us",
-    p => kickReceiptOf(p.play_data).muffLostToKickers && !isWipedByPenaltyRow(p));
+  /* A muff or a return fumble is the RECEIVING team's fumble, whoever fell
+     on it, and the play is filed under the kicking team's possession - so it
+     counts for the side that did not have the ball at the snap. See
+     lostMuffs.ts. */
+  const kickFumbles = (receiving: "us" | "them") => countPlays(receiving === "us" ? "them" : "us", p => {
+    const r = kickReceiptOf(p.play_data);
+    return (r.muffLostToKickers || r.muffKept || r.returnFumble) && !isWipedByPenaltyRow(p);
+  });
+  /* A loose kick we fell on, muffed or fumbled, that reached no FR column of
+     ours: no recoverer at all, or one off the wrong roster. A named player or
+     a TEAM tag is in defenseTotal.fr already (lostMuffs.ts credits whoever the
+     transformer reads), so it is looked up the same way. */
+  const unnamedKickRecoveries = countPlays("us", p => kickLostToKickers(p.play_data)
+    && !isWipedByPenaltyRow(p)
+    && !ours.has(firstPlayerByRole(p, "fumble_recovery") ?? ""));
   /* A fumble on a sack, a run or a catch keeps that play's type, and the
      had_fumble flag this once read is written nowhere - so a lost
      sack-fumble printed "0-1". A fumble role on the play, or a lost one,
      is the fumble. */
   const hadFumble = (p: PlayWithPlayers) => !nullifiedStats(p) && (
     p.play_type === "fumble"
-    || hasFumbleRole(p)
+    // A recoverer on a kick is the RECEIVING team's fumble, counted above.
+    || hasFumbleRole(p) && !["kickoff", "punt"].includes(p.play_type)
     || readFumbleSpots(p.play_data).fumbleRecoveredAt != null
     || isFumbleLost(p));
-  const fumblesUs = countPlays("us", hadFumble) + lostMuffs("us");
-  const fumblesThem = countPlays("them", hadFumble) + lostMuffs("them");
+  const fumblesUs = countPlays("us", hadFumble) + kickFumbles("us");
+  const fumblesThem = countPlays("them", hadFumble) + kickFumbles("them");
 
   /* ── Team comparison ──────────────────────────────────────────────────── */
   /* Rushing gain and loss, per side, off the plays. Every play is charted
@@ -1027,11 +1038,12 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     row("Interceptions: Number-Yards-TD",
       `${ourPicks.length}-${ourIntReturnYards}-${intTdUs}`,
       `${usTeam.interceptionsThrown}-${theirIntReturnYards}-${intTdThem}`),
-    // A muff we fell on counts as a recovery here, the mirror of the other
-    // side's column, which is our fumbles lost and so already includes it.
-    // Nobody is tagged for it, so it is in no player's FR and has no yards.
+    // A muff or return fumble we fell on counts as a recovery here, the
+    // mirror of the other side's column, which is our fumbles lost and so
+    // already includes it. A named recoverer of ours is in defenseTotal.fr
+    // already; only the unnamed ones are added. No yards either way.
     row("Fumble returns: Number-Yards-TD",
-      `${defenseTotal.fr + lostMuffs("them")}-${defenseTotal.frYds}-${fumbleReturnTdUs}`,
+      `${defenseTotal.fr + unnamedKickRecoveries}-${defenseTotal.frYds}-${fumbleReturnTdUs}`,
       `${usTeam.fumblesLost}-${theirFumbleReturnYards}-${fumbleReturnTdThem}`),
     row("Third-Down Conversions",
       dash(usTeam.thirdDownConversions, usTeam.thirdDownAttempts),

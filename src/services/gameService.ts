@@ -14,6 +14,7 @@ import { mergeQueuedPlays } from "./mergeQueuedPlays";
 import { cacheKeys, invalidateCache } from "./offlineCache";
 import { updateGamesRow } from "./gamesRowWrite";
 import { STATS_FINAL_TAG } from "./gameCompletion";
+import { kickLostToKickers } from "./kickSpots";
 
 /**
  * Mark a game's stats finished, or take the mark back off.
@@ -1275,7 +1276,10 @@ export function calcDefenseStats(
         }
       }
       if (pp.role === "interceptor")     s.ints            += 1;
-      if (pp.role === "fumble_recovery") s.fumbleRecoveries += 1;
+      // A receiver falling on his own team's loose kick is no recovery from
+      // the other team; only the kickers' one is.
+      if (pp.role === "fumble_recovery"
+        && (!["kickoff", "punt"].includes(play.play_type) || kickLostToKickers(play.play_data))) s.fumbleRecoveries += 1;
       if (pp.role === "forced_fumble")   s.forcedFumbles   += 1;
       if (pp.role === "defender")        s.pbus            += 1;
       if (pp.role === "pass_rusher")     s.hurries         += 1;

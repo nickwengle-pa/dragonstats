@@ -211,7 +211,7 @@ const PD_FIELDS: Array<[string, string]> = [
   ["foul_spot_ball_on", "Foul spot"],
   ["blocked_kick_type", "Blocked kick"],
   ["blocked_recovered_by_kicking", "Kicking team recovered the block"],
-  ["muff_recovered_by_kicking", "Kicking team recovered the muff"],
+  ["muff_recovered_by_kicking", "Kicking team recovered the loose kick"],
   ["fumble_recovered_at", "Fumble recovered at"],
   ["fumble_return_yards", "Fumble return yards"],
   ["interception_return_yards", "Interception return yards"],
