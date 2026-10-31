@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Pencil, RotateCcw, CloudOff, Plus, Trash2 } from "lucide-react";
 import { fmtClock, quarterLabel, yardLabel, TEAM_JERSEY, type PlayRecord } from "./types";
 
@@ -45,6 +45,8 @@ interface Props {
   onClose: () => void;
   /** Play ids that are still in the sync queue (haven't pushed to server yet). */
   pendingPlayIds?: Set<string>;
+  /** The play just edited from here: marked, and scrolled to on opening. */
+  highlightId?: string | null;
 }
 
 const PLAY_ICONS: Record<string, string> = {
@@ -81,7 +83,11 @@ const PLAY_ICON_COLORS: Record<string, string> = {
   timeout: "text-amber-300",
 };
 
-export default function PlayLog({ plays, onEdit, onInsertAfter, onDelete, onUndo, onClose, pendingPlayIds }: Props) {
+export default function PlayLog({ plays, onEdit, onInsertAfter, onDelete, onUndo, onClose, pendingPlayIds, highlightId = null }: Props) {
+  useEffect(() => {
+    if (!highlightId) return;
+    document.querySelector(`[data-log-play="${highlightId}"]`)?.scrollIntoView({ block: "center" });
+  }, [highlightId]);
   const [filter, setFilter] = useState<LogFilter>("all");
   const [playerQuery, setPlayerQuery] = useState("");
 
@@ -235,8 +241,11 @@ export default function PlayLog({ plays, onEdit, onInsertAfter, onDelete, onUndo
               return (
                 <div
                   key={play.id}
+                  data-log-play={play.id}
                   className={`flex items-start gap-2 rounded-xl px-3 py-2 border transition-colors ${
-                    isLast ? "border-dragon-primary/30 bg-dragon-primary/5" : "border-surface-border bg-surface-card"
+                    play.id === highlightId
+                      ? "border-sky-400/70 bg-sky-500/15 border-l-4 border-l-sky-400"
+                      : isLast ? "border-dragon-primary/30 bg-dragon-primary/5" : "border-surface-border bg-surface-card"
                   }`}
                 >
                   {/* Recording order, so a play can be called out by number
