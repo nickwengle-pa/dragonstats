@@ -1,0 +1,270 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SEASON STATS — the Broadcast stage, opened up for stat tables.
+
+   Built on the .bc palette (homeBroadcast.css): black bug bars, the red
+   slash, Chakra Petch for every label and number. A phone gets one column;
+   an iPad gets the room a table needs (the screen otherwise caps itself at
+   phone width below 1024px).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (min-width: 768px) {
+  .ss { max-width: 760px; margin-left: auto; margin-right: auto; }
+}
+@media (min-width: 1024px) {
+  .ss { max-width: 1120px; }
+}
+
+.ss-stage { padding: 22px 16px 28px; }
+@media (min-width: 768px) { .ss-stage { padding: 28px 28px 32px; } }
+@media (min-width: 1024px) { .ss-stage { padding: 32px 40px 36px; } }
+
+.ss .ss-book-btn { flex: none; }
+@media (max-width: 359px) { .ss .ss-book-btn { padding: 0 10px; letter-spacing: .06em; } }
+
+/* ── Season Book progress, under the header ── */
+.ss-book-status {
+  margin-top: 6px;
+  background: var(--bc-bug); color: #fff;
+  padding: 9px 16px 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px;
+  font-size: 12px; line-height: 16px;
+}
+.ss-book-status > span { flex: 1; min-width: 0; }
+.ss-book-status.bad { background: var(--bc-red); }
+.ss-book-status .ss-book-bar { flex: 1 0 100%; }
+.ss-book-x { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, .7); cursor: pointer; }
+.ss-book-x:hover { color: #fff; }
+.ss-book-bar { height: 4px; background: rgba(140, 146, 156, .3); overflow: hidden; }
+.ss-book-bar i { display: block; height: 100%; background: var(--bc-red); transition: width 250ms ease-out; }
+.ss-book-status .ss-book-bar { background: rgba(255, 255, 255, .16); }
+
+/* ── Team · Players · Games ── */
+.ss-views {
+  display: flex;
+  background: var(--bc-bug);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}
+.ss-views button {
+  flex: 1; height: 46px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  color: rgba(255, 255, 255, .6); transition: color 200ms, background-color 200ms;
+}
+.ss-views button:hover { color: #fff; }
+.ss-views button.on { color: #fff; background: var(--bc-red); }
+
+.ss-periods { margin-top: 14px; }
+
+.ss-loading { margin-top: 26px; display: flex; flex-direction: column; gap: 9px; font-size: 13px; color: var(--bc-mute); }
+.ss-empty { margin-top: 24px; font-size: 14px; color: var(--bc-mute); }
+.ss-note { margin: 10px 0 0; font-size: 12px; line-height: 17px; color: var(--bc-mute); }
+.ss-block { margin-top: 24px; }
+.ss-block.ss-first { margin-top: 16px; }
+.ss-strong { font-weight: 700; }
+.ss-mute { color: var(--bc-mute); }
+.ss-unrostered { color: var(--bc-amber-text); }
+.ss-older {
+  display: block; margin-top: 28px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--bc-mute);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.ss-older:hover { color: var(--bc-ink); }
+
+/* ── Tiles ── */
+.ss-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 16px; }
+@media (min-width: 560px) { .ss-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .ss-tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.ss-tile {
+  background: var(--bc-surface); border-top: 3px solid var(--bc-bug);
+  padding: 10px 12px 11px; display: flex; flex-direction: column; gap: 3px; min-width: 0;
+}
+html[data-theme="dark"] .bc .ss-tile { border-top-color: var(--bc-red); }
+.ss-tile-l {
+  font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--bc-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ss-tile-v { font-family: "Chakra Petch", sans-serif; font-size: 28px; line-height: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ss-tile-s { font-size: 11px; color: var(--bc-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Leaders ── */
+.ss-leaders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+@media (min-width: 768px) { .ss-leaders { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.ss-leader {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0; cursor: pointer; text-align: left;
+  background: var(--bc-surface); border-left: 4px solid var(--bc-red); padding: 9px 12px 10px;
+  transition: background-color 200ms;
+}
+.ss-leader:hover { background: var(--bc-surface-2); }
+.ss-leader b {
+  font-family: "Chakra Petch", sans-serif; font-size: 15px; line-height: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ss-leader > span:last-child { font-size: 12px; color: var(--bc-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Tables ── */
+/* A table wider than the screen scrolls sideways; a shadow at the right
+   edge says there is more, and goes once the last column is in view. */
+.ss-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  border: 1px solid var(--bc-line);
+  background:
+    linear-gradient(to left, var(--bc-surface) 45%, transparent) right center / 32px 100% no-repeat local,
+    linear-gradient(to left, rgba(11, 13, 16, .16), transparent) right center / 12px 100% no-repeat scroll,
+    var(--bc-surface);
+}
+html[data-theme="dark"] .bc .ss-table-wrap {
+  background:
+    linear-gradient(to left, var(--bc-surface) 45%, transparent) right center / 32px 100% no-repeat local,
+    linear-gradient(to left, rgba(0, 0, 0, .55), transparent) right center / 12px 100% no-repeat scroll,
+    var(--bc-surface);
+}
+.ss-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ss-table th, .ss-table td { padding: 8px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--bc-line); }
+.ss-table thead th {
+  background: var(--bc-surface-2); color: var(--bc-mute);
+  font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  border-bottom: 2px solid var(--bc-ink);
+}
+.ss-table thead th.on { color: var(--bc-ink); }
+.ss-table thead th button { cursor: pointer; letter-spacing: inherit; text-transform: inherit; min-height: 24px; }
+.ss-table thead th i { font-style: normal; font-size: 8px; margin-left: 3px; vertical-align: 1px; }
+/* The name column stays put while the numbers scroll under it. */
+.ss-table .ss-name {
+  text-align: left; position: sticky; left: 0; z-index: 1;
+  background: var(--bc-surface); max-width: 46vw; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 1px 0 0 var(--bc-line);
+}
+.ss-table thead .ss-name { background: var(--bc-surface-2); z-index: 2; }
+.ss-table tbody .ss-name, .ss-table tfoot .ss-name { font-family: "Manrope", sans-serif; letter-spacing: 0; font-weight: 700; color: var(--bc-ink); }
+.ss-table tbody .ss-name button { font-weight: 700; color: var(--bc-ink); text-align: left; cursor: pointer; }
+.ss-table tbody tr.tap { cursor: pointer; }
+.ss-table tbody tr.tap:hover > * { background: var(--bc-surface-2); }
+.ss-table tbody tr:last-child > * { border-bottom: 0; }
+.ss-table tfoot th, .ss-table tfoot td { font-weight: 700; border-top: 2px solid var(--bc-ink); border-bottom: 0; }
+.ss-table tfoot .ss-name { text-transform: uppercase; }
+/* The team table has to fit a phone without scrolling: its labels wrap
+   rather than push the opponents' column off the edge. */
+.ss-compare .ss-name { white-space: normal; max-width: none; min-width: 120px; line-height: 16px; }
+.ss-compare th, .ss-compare td { padding: 7px 7px; }
+@media (max-width: 479px) {
+  .ss-compare { font-size: 12px; }
+  .ss-compare th, .ss-compare td { padding: 6px 5px; }
+  .ss-compare .ss-name { padding-left: 8px; }
+}
+.ss-compare tr.head > *, .ss-compare tbody tr.head .ss-name { font-family: "Chakra Petch", sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.ss-compare tr.sub .ss-name { padding-left: 20px; font-weight: 500; color: var(--bc-mute); }
+.ss-compare tbody .ss-name { font-weight: 500; }
+.ss-compare tbody tr.head .ss-name { font-weight: 700; }
+.ss-quarters td { min-width: 44px; }
+
+/* ── Category chips ── */
+.ss-cats { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 10px; padding-bottom: 2px; scrollbar-width: none; }
+.ss-cats::-webkit-scrollbar { display: none; }
+.ss-cats button {
+  flex: none; height: 36px; padding: 0 12px; cursor: pointer;
+  background: var(--bc-surface); border: 1px solid var(--bc-line); color: var(--bc-mute);
+  font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  transition: background-color 200ms, color 200ms;
+}
+.ss-cats button:hover { color: var(--bc-ink); }
+.ss-cats button.on { background: var(--bc-bug); border-color: var(--bc-bug); color: #fff; }
+html[data-theme="dark"] .bc .ss-cats button.on { background: var(--bc-red); border-color: var(--bc-red); }
+
+/* ── Games list ── */
+.ss-games { display: flex; flex-direction: column; gap: 6px; }
+.ss-game-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; text-align: left; border-left: 4px solid var(--c, var(--bc-line)); }
+.ss-game-row .bc-wl { width: 30px; height: 30px; font-size: 13px; }
+.ss-game-row .bc-score { font-size: 20px; }
+.ss-game-row .bc-name { font-size: 15px; }
+.ss-game-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ss-game-meta { font-size: 11px; color: var(--bc-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── One game ── */
+.ss-crumb {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 16px; cursor: pointer;
+  font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--bc-mute);
+}
+.ss-crumb:hover { color: var(--bc-ink); }
+.ss-game-head { margin-top: 10px; background: var(--bc-surface); box-shadow: var(--bc-shadow); padding-bottom: 12px; border-left: 4px solid var(--c, var(--bc-line)); }
+.ss-game-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px; background: var(--bc-bug); color: #fff; }
+.ss-result {
+  flex: none; padding: 3px 10px; color: #fff;
+  font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-variant-numeric: tabular-nums;
+}
+.ss-result.w { background: var(--bc-green); }
+.ss-result.l { background: var(--bc-red); }
+.ss-result.t, .ss-result.live { background: rgba(255, 255, 255, .18); }
+.ss-game-title {
+  padding: 12px 14px 4px; font-family: "Chakra Petch", sans-serif; font-size: 28px; line-height: 32px; font-weight: 700; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ss-line { margin: 6px 14px 0; width: calc(100% - 28px); border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.ss-line th, .ss-line td { padding: 5px 6px; text-align: right; border-bottom: 1px solid var(--bc-line); }
+.ss-line th:first-child { text-align: left; padding-left: 0; }
+.ss-line thead th { font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--bc-mute); border-bottom: 2px solid var(--bc-ink); }
+.ss-line tbody th { font-family: "Chakra Petch", sans-serif; font-weight: 700; letter-spacing: .06em; }
+.ss-line tbody tr:last-child > * { border-bottom: 0; }
+
+.ss-subtabs { display: flex; margin-top: 14px; border-bottom: 2px solid var(--bc-line); }
+.ss-subtabs button {
+  flex: 1; height: 44px; position: relative; cursor: pointer; color: var(--bc-mute);
+  font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.ss-subtabs button:hover { color: var(--bc-ink); }
+.ss-subtabs button.on { color: var(--bc-ink); }
+.ss-subtabs button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 3px; background: var(--bc-red); }
+.ss-subtabs + .ss-table-wrap, .ss-subtabs + .ss-block { margin-top: 14px; }
+.ss-subtabs + .ss-block.ss-pbp { margin-top: 4px; }
+
+.ss-scoring { list-style: none; margin: 0; padding: 0; background: var(--bc-surface); border: 1px solid var(--bc-line); }
+.ss-scoring li {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: baseline;
+  padding: 9px 12px; border-bottom: 1px solid var(--bc-line); border-left: 3px solid transparent; font-size: 13px; line-height: 18px;
+}
+.ss-scoring li:last-child { border-bottom: 0; }
+.ss-scoring li.us { border-left-color: var(--bc-red); }
+.ss-scoring li > span:first-child { font-variant-numeric: tabular-nums; font-size: 12px; }
+.ss-scoring b { font-family: "Chakra Petch", sans-serif; letter-spacing: .06em; }
+
+.ss-open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 24px; }
+@media (min-width: 768px) { .ss-open { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.ss-open-btn {
+  display: flex; align-items: center; gap: 8px; min-width: 0; height: 48px; padding: 0 12px; cursor: pointer;
+  background: var(--bc-surface); border: 1px solid var(--bc-line); color: var(--bc-ink);
+  font-family: "Chakra Petch", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  transition: background-color 200ms, border-color 200ms;
+}
+.ss-open-btn:hover { background: var(--bc-surface-2); border-color: var(--bc-ink); }
+.ss-open-btn span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ss-open-btn svg:first-child { color: var(--bc-red); flex: none; }
+.ss-open-btn svg:last-child { color: var(--bc-mute); flex: none; }
+
+/* ── Play-by-play ── */
+.ss-pbp-q { margin-top: 12px; }
+.ss-pbp-qh {
+  margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  background: var(--bc-bug); color: #fff; padding: 7px 12px;
+  font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+}
+.ss-pbp-qh em { font-style: normal; font-family: "Manrope", sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none; color: rgba(255, 255, 255, .7); }
+.ss-pbp-drive { margin-top: 6px; background: var(--bc-surface); border-left: 4px solid var(--bc-red); }
+.ss-pbp-drive.them { border-left-color: var(--c, var(--bc-mute)); }
+.ss-pbp-dh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 8px 12px; background: var(--bc-surface-2); }
+.ss-pbp-dh b { font-family: "Chakra Petch", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.ss-pbp-dh em { font-style: normal; font-size: 11px; color: var(--bc-mute); }
+.ss-pbp-dh span { margin-left: auto; font-size: 11px; color: var(--bc-mute); }
+.ss-play { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--bc-line); font-size: 13px; }
+.ss-play-n { display: flex; flex-direction: column; gap: 1px; font-variant-numeric: tabular-nums; }
+.ss-play-n b { font-size: 11px; font-weight: 600; color: var(--bc-mute); }
+.ss-play-n span { font-size: 12px; }
+.ss-play-sit { font-family: "Chakra Petch", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--bc-mute); }
+.ss-play-text { line-height: 18px; overflow-wrap: anywhere; }
+.ss-play.td .ss-play-text { font-weight: 700; }
+.ss-play-credit { margin-top: 2px; font-size: 11px; line-height: 15px; color: var(--bc-mute); }
+.ss-play-gain { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; font-variant-numeric: tabular-nums; }
+.ss-play-gain b.amber { color: var(--bc-amber-text); font-size: 11px; }
+.ss-flags { display: flex; gap: 3px; }
+.ss-flags i { font-style: normal; font-family: "Chakra Petch", sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 1px 4px; background: var(--bc-line); }
+.ss-flags i.td { background: var(--bc-green); color: #fff; }
+.ss-flags i.to { background: var(--bc-red); color: #fff; }
+.ss-flags i.pen { background: var(--bc-amber); color: #1a1200; }
+.ss-play-score { font-size: 11px; font-weight: 700; white-space: nowrap; }

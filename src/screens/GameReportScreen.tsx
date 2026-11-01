@@ -1,4 +1,5 @@
 import GameHomeLink from "@/components/game/GameHomeLink";
+import { useBackTo } from "@/hooks/useBackTo";
 import PrintReportButton from "@/components/report/PrintReportButton";
 import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
 import { PERIOD_LONG } from "@/services/statPeriod";
@@ -323,6 +324,7 @@ function ScoreBlock({ abbr, score, won }: { abbr: string; score: number; won: bo
 export default function GameReportScreen() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
+  const back = useBackTo(`/game/${gameId}/summary`);
   const { program, season } = useProgramContext();
   const [period, setPeriod] = useStatPeriod("game");
 
@@ -417,7 +419,7 @@ export default function GameReportScreen() {
     <div ref={screenRoot} className="min-h-dvh flex flex-col bg-surface-bg print:bg-white">
       <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2 print:hidden">
-        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-2 cursor-pointer">
+        <button onClick={back} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Report</h1>

@@ -157,6 +157,30 @@ export async function computeGameStatsBundle(
   program: ProgramInfo,
   period: StatPeriod = "game",
 ): Promise<GameStatsBundle | null> {
+  const inputs = await loadGameStatsInputs(gameId);
+  if (!inputs) return null;
+  return computeGameStatsBundles(inputs, program, [period])?.get(period) ?? null;
+}
+
+/**
+ * Everything a game's stats are computed from, fetched once.
+ *
+ * Split from the computation so a screen that wants several periods of the
+ * same game - the season book prints every quarter and half of every game -
+ * pays for the network once instead of once per period.
+ */
+export interface GameStatsInputs {
+  game: GameRecord;
+  plays: PlayWithPlayers[];
+  roster: RosterPlayer[];
+  opponentPlayers: Array<{ id: string; name: string; jersey_number: number | null; position: string | null }>;
+}
+
+/** Rosters by season, shared by the games of one season so a ten-game load
+ *  asks for the roster once rather than ten times. */
+export type RosterCache = Map<string, Promise<RosterPlayer[]>>;
+
+export async function loadGameStatsInputs(gameId: string, rosters?: RosterCache): Promise<GameStatsInputs | null> {
   // 1. Load game, plays, roster in parallel
   const [game, plays] = await Promise.all([
     loadGame(gameId),
@@ -166,10 +190,30 @@ export async function computeGameStatsBundle(
   if (!game) return null;
 
   // Load roster + opponent players in parallel
-  const [roster, realOppPlayers] = await Promise.all([
-    loadRoster(game.season_id),
+  let rosterRead = rosters?.get(game.season_id);
+  if (!rosterRead) {
+    rosterRead = loadRoster(game.season_id);
+    rosters?.set(game.season_id, rosterRead);
+  }
+  const [roster, opponentPlayers] = await Promise.all([
+    rosterRead,
     opponentPlayerService.getByOpponent(game.opponent_id),
   ]);
+  return { game, plays, roster, opponentPlayers };
+}
+
+/**
+ * The stats for each requested period of one game, off inputs already
+ * loaded. Null when the game has no plays to count, as computeGameStatsBundle
+ * has always answered.
+ */
+export function computeGameStatsBundles(
+  inputs: GameStatsInputs,
+  program: ProgramInfo,
+  periods: StatPeriod[],
+): Map<StatPeriod, GameStatsBundle> | null {
+  const { game, plays, roster, opponentPlayers: realOppPlayers } = inputs;
+  const gameId = game.id;
 
   if (plays.length === 0) return null;
 
@@ -298,31 +342,37 @@ export async function computeGameStatsBundle(
     result: String(p.play_data?.result ?? ""),
   })));
 
-  // 6. One period of it. The plays were transformed as a whole game first, so
-  //    each keeps its real score and drive number; only the stat pass is cut
-  //    down. Drives come from the whole game - a period's drives are the ones
-  //    that started in it - so a drive across a quarter break is not cut in
-  //    two and given a result it never had.
-  let summary = full;
-  let periodPlays = plays;
-  if (period !== "game") {
-    periodPlays = plays.filter(p => inPeriod(Number(p.quarter), period));
-    summary = summarize(enginePlays.filter(p => inPeriod(p.context.quarter, period)), periodPlays);
-    summary.drives = full.drives.filter(d => inPeriod(d.startQuarter, period));
-  }
+  const out = new Map<StatPeriod, GameStatsBundle>();
+  for (const period of new Set(periods)) {
+    // 6. One period of it. The plays were transformed as a whole game first, so
+    //    each keeps its real score and drive number; only the stat pass is cut
+    //    down. Drives come from the whole game - a period's drives are the ones
+    //    that started in it - so a drive across a quarter break is not cut in
+    //    two and given a result it never had.
+    let summary = full;
+    let periodPlays = plays;
+    if (period !== "game") {
+      periodPlays = plays.filter(p => inPeriod(Number(p.quarter), period));
+      summary = summarize(enginePlays.filter(p => inPeriod(p.context.quarter, period)), periodPlays);
+      summary.drives = full.drives.filter(d => inPeriod(d.startQuarter, period));
+    }
 
-  // 7. A final game ran its clock out, set to 0:00 or not. The time left
-  //    after the last snap goes to whoever had the ball. See finalClock.ts.
-  //    A period that ends before the 4th quarter has nothing to run out: its
-  //    last drive did not end in the 4th.
-  if (game.status === "completed") {
-    const last = plays[plays.length - 1];
-    const side = last.play_data?.next_possession ?? last.possession;
-    const holder = side === "us" ? program.id : side === "them" ? game.opponent.id : null;
-    summary = runOutFinalClock(summary, holder);
-  }
+    // 7. A final game ran its clock out, set to 0:00 or not. The time left
+    //    after the last snap goes to whoever had the ball. See finalClock.ts.
+    //    Only a slice holding the game's last drive has a clock to run out. A
+    //    3rd quarter whose last drive carried into the 4th also "ends in the
+    //    4th", and was handed the whole 4th quarter left after that drive.
+    const lastDrive = full.drives[full.drives.length - 1];
+    if (game.status === "completed" && summary.drives[summary.drives.length - 1] === lastDrive) {
+      const last = plays[plays.length - 1];
+      const side = last.play_data?.next_possession ?? last.possession;
+      const holder = side === "us" ? program.id : side === "them" ? game.opponent.id : null;
+      summary = runOutFinalClock(summary, holder);
+    }
 
-  return { summary, plays: periodPlays, allPlays: plays, period, roster, game };
+    out.set(period, { summary, plays: periodPlays, allPlays: plays, period, roster, game });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

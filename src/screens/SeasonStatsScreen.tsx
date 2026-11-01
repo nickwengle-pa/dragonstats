@@ -1,771 +1,158 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Shield, Zap, Target } from "lucide-react";
-import { TabBar } from "@/screens/DashboardScreen";
-import { useProgramContext } from "@/hooks/useProgramContext";
-import { supabase } from "@/lib/supabase";
-import { computeGameStatsBundle } from "@/services/statsService";
-import { defensiveReturnsFromPlays, type DefensiveReturnTally } from "@/services/defensiveReturns";
-import type { GameSummary } from "football-stats-engine";
 import BroadcastHeader from "@/components/BroadcastHeader";
-import { SheetIcon } from "@/components/icons/BroadcastIcons";
-import { countBadSnaps } from "@/components/game/types";
-
-/* ─── Aggregate interfaces ─── */
-
-interface AggPassing {
-  playerId: string; name: string;
-  attempts: number; completions: number; yards: number; tds: number; ints: number;
-  games: number;
-}
-interface AggRushing {
-  playerId: string; name: string;
-  carries: number; yards: number; tds: number; long: number;
-  games: number;
-}
-interface AggReceiving {
-  playerId: string; name: string;
-  receptions: number; targets: number; yards: number; tds: number; long: number;
-  games: number;
-}
-interface AggDefense {
-  playerId: string; name: string;
-  totalTackles: number; soloTackles: number; assistedTackles: number;
-  tacklesForLoss: number; sacks: number; interceptions: number;
-  forcedFumbles: number; fumbleRecoveries: number;
-  games: number;
-}
-interface AggKicking {
-  playerId: string; name: string;
-  fgAtt: number; fgMade: number; fgLong: number;
-  xpAtt: number; xpMade: number;
-  totalPoints: number;
-  games: number;
-}
-interface AggPunting {
-  playerId: string; name: string;
-  punts: number; puntYards: number; puntLong: number;
-  touchbacks: number; puntsInside20: number;
-  games: number;
-}
-interface AggReturns {
-  playerId: string; name: string;
-  kickReturns: number; kickReturnYards: number; kickReturnLong: number; kickReturnTDs: number;
-  puntReturns: number; puntReturnYards: number; puntReturnLong: number; puntReturnTDs: number;
-  /** Fumbles, including a muff the kicking team recovered (lostMuffs.ts). */
-  kickReturnFum: number; puntReturnFum: number;
-  games: number;
-}
-
-/** Interceptions and fumbles brought back - the defense's side of returns. */
-interface AggDefReturns {
-  playerId: string; name: string;
-  int: { no: number; yds: number; long: number; td: number };
-  fr: { no: number; yds: number; long: number; td: number };
-}
-
-type Tab = "offense" | "defense" | "specialteams";
-
-/* ─── Helpers ─── */
-
-function fmt(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
-}
-
-/* ─── Components ─── */
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="section-title">{children}</div>;
-}
+import { TabBar } from "@/components/TabBar";
+import { useProgramContext } from "@/hooks/useProgramContext";
+import { loadSeasonGames } from "@/services/seasonBookLoader";
+import {
+  bookPlayers, gamesPlayed, seasonHasOT, seasonModel, seasonSlice,
+  type BookGame, type BookPlayer, type BookProgram,
+} from "@/services/seasonBook";
+import { formatSeasonName } from "@/services/seasonService";
+import { SeasonBookButton, SeasonBookStatus, useSeasonBook } from "@/components/season/SeasonBook";
+import { GamesList, PlayersView, TeamView } from "@/components/season/SeasonViews";
+import GameDetail from "@/components/season/GameDetail";
+import "./seasonStats.css";
 
 /* ═══════════════════════════════════════════════
-   SEASON STATS SCREEN
+   SEASON STATS
+
+   Team, Players and Games, each for the season or any half or quarter of
+   it, and from Games down into one game, its players and its plays. The
+   whole season is read once when the screen opens; every view and period
+   after that is worked out on the device from what was read
+   (seasonBook.ts), so switching never waits on the network. The Season Book
+   button turns the same numbers into one linked PDF.
    ═══════════════════════════════════════════════ */
 
-export default function SeasonStatsScreen() {
+type View = "team" | "players" | "games";
+type Loader = typeof loadSeasonGames;
+
+export default function SeasonStatsScreen({ loader = loadSeasonGames }: {
+  /** Where the games come from. The dev preview passes a made-up season. */
+  loader?: Loader;
+}) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { program, season } = useProgramContext();
   const [period, setPeriod] = useStatPeriod("season");
+  const [params, setParams] = useSearchParams();
+  const view: View = params.get("view") === "players" ? "players" : params.get("view") === "games" ? "games" : "team";
+  const gameId = view === "games" ? params.get("game") : null;
+  const [categoryId, setCategoryId] = useState("rushing");
 
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("offense");
-
-  // Raw per-game summaries
-  const [summaries, setSummaries] = useState<GameSummary[]>([]);
-  // Per game, in the same order: returns read off the plays, for the long
-  // the engine does not keep.
-  const [defReturnsByGame, setDefReturnsByGame] = useState<Map<string, DefensiveReturnTally>[]>([]);
-  const [rosterIds, setRosterIds] = useState<Set<string>>(new Set());
-  const [badSnaps, setBadSnaps] = useState(0);
+  const [games, setGames] = useState<BookGame[] | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!program || !season) return;
-    let cancelled = false;
+    if (!season) return;
+    const signal = { cancelled: false };
+    setGames(null); setError(""); setProgress(null);
+    loader(season.id, { signal, onProgress: (done, total) => { if (!signal.cancelled) setProgress({ done, total }); } })
+      .then(list => { if (!signal.cancelled) setGames(list); })
+      .catch(e => { if (!signal.cancelled) setError(e instanceof Error ? e.message : "Could not load the season."); });
+    return () => { signal.cancelled = true; };
+  }, [season, loader]);
 
-    (async () => {
-      setLoading(true);
+  const bookProgram = useMemo<BookProgram | null>(() => program && ({
+    id: program.id, name: program.name, abbreviation: program.abbreviation, game_config: program.game_config,
+    logoUrl: program.logo_url, color: program.primary_color,
+  }), [program]);
+  const model = useMemo(() => (bookProgram && games ? seasonModel(bookProgram, games) : null), [bookProgram, games]);
+  const players = useMemo(() => {
+    const map = new Map<string, BookPlayer>();
+    if (model) for (const p of bookPlayers(model.program, model.games)) map.set(p.id, p);
+    return map;
+  }, [model]);
+  const gp = useMemo(() => {
+    const map = new Map<string, number>();
+    if (model) for (const id of players.keys()) map.set(id, gamesPlayed(model.program, model.games, id));
+    return map;
+  }, [model, players]);
+  const hasOT = useMemo(() => (model ? seasonHasOT(model.games) : false), [model]);
+  const shownPeriod = period === "ot" && !hasOT ? "game" : period;
+  const slice = useMemo(() => (model ? seasonSlice(model, shownPeriod) : null), [model, shownPeriod]);
 
-      // Load roster IDs
-      const { data: rData } = await supabase
-        .from("season_rosters")
-        .select("player_id")
-        .eq("season_id", season.id)
-        .eq("is_active", true);
-      if (cancelled) return;
-      setRosterIds(new Set((rData ?? []).map((r: any) => r.player_id)));
+  const seasonLabel = season ? formatSeasonName(season) : "Season";
+  const book = useSeasonBook(model, { seasonLabel, abbreviation: program?.abbreviation ?? "Team" });
+  const finals = model?.games.filter(g => g.meta.status === "completed" && g.inputs).length ?? 0;
 
-      // Load all played games
-      const { data: games } = await supabase
-        .from("games")
-        .select("id")
-        .eq("season_id", season.id)
-        .in("status", ["completed", "live"])
-        .order("game_date");
-
-      if (cancelled || !games) { setLoading(false); return; }
-
-      const results: GameSummary[] = [];
-      const returnTallies: Map<string, DefensiveReturnTally>[] = [];
-      let snaps = 0;
-      for (const g of games) {
-        const bundle = await computeGameStatsBundle(g.id, {
-          id: program.id, name: program.name, abbreviation: program.abbreviation, game_config: program.game_config,
-        }, period);
-        if (cancelled) return;
-        if (bundle) {
-          results.push(bundle.summary);
-          returnTallies.push(defensiveReturnsFromPlays(bundle.plays));
-          snaps += countBadSnaps(bundle.plays, "us");
-        }
-      }
-
-      setSummaries(results);
-      setDefReturnsByGame(returnTallies);
-      setBadSnaps(snaps);
-      setLoading(false);
-    })();
-
-    return () => { cancelled = true; };
-  }, [program, season, period]);
-
-  /* ── Aggregate stats across all games ── */
-  const { passing, rushing, receiving, defense, kicking, punting, returns, defReturns } = useMemo(() => {
-    const pMap = new Map<string, AggPassing>();
-    const rMap = new Map<string, AggRushing>();
-    const rcMap = new Map<string, AggReceiving>();
-    const dMap = new Map<string, AggDefense>();
-    const kMap = new Map<string, AggKicking>();
-    const puMap = new Map<string, AggPunting>();
-    const retMap = new Map<string, AggReturns>();
-
-    for (const s of summaries) {
-      // Passing
-      for (const [pid, ps] of Object.entries(s.passing)) {
-        if (!rosterIds.has(pid) || ps.attempts === 0) continue;
-        const e = pMap.get(pid) ?? { playerId: pid, name: ps.playerName, attempts: 0, completions: 0, yards: 0, tds: 0, ints: 0, games: 0 };
-        e.attempts += ps.attempts; e.completions += ps.completions; e.yards += ps.yards;
-        e.tds += ps.touchdowns; e.ints += ps.interceptions; e.games++;
-        pMap.set(pid, e);
-      }
-      // Rushing
-      for (const [pid, rs] of Object.entries(s.rushing)) {
-        if (!rosterIds.has(pid) || rs.carries === 0) continue;
-        const e = rMap.get(pid) ?? { playerId: pid, name: rs.playerName, carries: 0, yards: 0, tds: 0, long: 0, games: 0 };
-        e.carries += rs.carries; e.yards += rs.yards; e.tds += rs.touchdowns;
-        e.long = Math.max(e.long, rs.longRush); e.games++;
-        rMap.set(pid, e);
-      }
-      // Receiving
-      for (const [pid, rc] of Object.entries(s.receiving)) {
-        if (!rosterIds.has(pid) || rc.receptions === 0) continue;
-        const e = rcMap.get(pid) ?? { playerId: pid, name: rc.playerName, receptions: 0, targets: 0, yards: 0, tds: 0, long: 0, games: 0 };
-        e.receptions += rc.receptions; e.targets += rc.targets; e.yards += rc.yards;
-        e.tds += rc.touchdowns; e.long = Math.max(e.long, rc.longReception); e.games++;
-        rcMap.set(pid, e);
-      }
-      // Defense
-      for (const [pid, ds] of Object.entries(s.defense)) {
-        // Not just tacklers: a corner whose only stat is a pick belongs here too.
-        if (!rosterIds.has(pid)) continue;
-        if (ds.totalTackles === 0 && ds.sacks === 0 && ds.interceptions === 0
-          && ds.forcedFumbles === 0 && ds.fumbleRecoveries === 0) continue;
-        const e = dMap.get(pid) ?? { playerId: pid, name: ds.playerName, totalTackles: 0, soloTackles: 0, assistedTackles: 0, tacklesForLoss: 0, sacks: 0, interceptions: 0, forcedFumbles: 0, fumbleRecoveries: 0, games: 0 };
-        e.totalTackles += ds.totalTackles; e.soloTackles += ds.soloTackles;
-        e.assistedTackles += ds.assistedTackles; e.tacklesForLoss += ds.tacklesForLoss;
-        e.sacks += ds.sacks; e.interceptions += ds.interceptions;
-        e.forcedFumbles += ds.forcedFumbles; e.fumbleRecoveries += ds.fumbleRecoveries;
-        e.games++;
-        dMap.set(pid, e);
-      }
-      // Kicking
-      for (const [pid, ks] of Object.entries(s.kicking)) {
-        if (!rosterIds.has(pid) || (ks.fieldGoalAttempts === 0 && ks.extraPointAttempts === 0)) continue;
-        const e = kMap.get(pid) ?? { playerId: pid, name: ks.playerName, fgAtt: 0, fgMade: 0, fgLong: 0, xpAtt: 0, xpMade: 0, totalPoints: 0, games: 0 };
-        e.fgAtt += ks.fieldGoalAttempts; e.fgMade += ks.fieldGoalMade;
-        e.fgLong = Math.max(e.fgLong, ks.fieldGoalLong);
-        e.xpAtt += ks.extraPointAttempts; e.xpMade += ks.extraPointMade;
-        e.totalPoints += ks.totalPoints; e.games++;
-        kMap.set(pid, e);
-      }
-      // Punting
-      for (const [pid, ps] of Object.entries(s.punting)) {
-        if (!rosterIds.has(pid) || ps.punts === 0) continue;
-        const e = puMap.get(pid) ?? { playerId: pid, name: ps.playerName, punts: 0, puntYards: 0, puntLong: 0, touchbacks: 0, puntsInside20: 0, games: 0 };
-        e.punts += ps.punts; e.puntYards += ps.puntYards;
-        e.puntLong = Math.max(e.puntLong, ps.puntLong);
-        e.touchbacks += ps.touchbacks; e.puntsInside20 += ps.puntsInside20; e.games++;
-        puMap.set(pid, e);
-      }
-      // Returns
-      for (const [pid, rs] of Object.entries(s.returns)) {
-        if (!rosterIds.has(pid) || (rs.kickReturns === 0 && rs.puntReturns === 0
-          && !rs.kickReturnFumbles && !rs.puntReturnFumbles)) continue;
-        const e = retMap.get(pid) ?? { playerId: pid, name: rs.playerName, kickReturns: 0, kickReturnYards: 0, kickReturnLong: 0, kickReturnTDs: 0, puntReturns: 0, puntReturnYards: 0, puntReturnLong: 0, puntReturnTDs: 0, kickReturnFum: 0, puntReturnFum: 0, games: 0 };
-        e.kickReturnFum += rs.kickReturnFumbles ?? 0; e.puntReturnFum += rs.puntReturnFumbles ?? 0;
-        e.kickReturns += rs.kickReturns; e.kickReturnYards += rs.kickReturnYards;
-        e.kickReturnLong = Math.max(e.kickReturnLong, rs.kickReturnLong);
-        e.kickReturnTDs += rs.kickReturnTouchdowns;
-        e.puntReturns += rs.puntReturns; e.puntReturnYards += rs.puntReturnYards;
-        e.puntReturnLong = Math.max(e.puntReturnLong, rs.puntReturnLong);
-        e.puntReturnTDs += rs.puntReturnTouchdowns; e.games++;
-        retMap.set(pid, e);
-      }
-    }
-
-    // Defensive returns: count, yards and long off the plays, touchdowns from
-    // the engine - the same split the game report uses.
-    const drMap = new Map<string, AggDefReturns>();
-    summaries.forEach((s, gi) => {
-      for (const [pid, t] of defReturnsByGame[gi] ?? []) {
-        if (!rosterIds.has(pid)) continue;
-        const ds = s.defense[pid];
-        const e = drMap.get(pid) ?? {
-          playerId: pid, name: ds?.playerName ?? "",
-          int: { no: 0, yds: 0, long: 0, td: 0 }, fr: { no: 0, yds: 0, long: 0, td: 0 },
-        };
-        if (!e.name && ds?.playerName) e.name = ds.playerName;
-        e.int.no += t.int.no; e.int.yds += t.int.yds; e.int.long = Math.max(e.int.long, t.int.long);
-        e.int.td += ds?.interceptionTouchdowns ?? 0;
-        e.fr.no += t.fr.no; e.fr.yds += t.fr.yds; e.fr.long = Math.max(e.fr.long, t.fr.long);
-        e.fr.td += ds?.fumbleRecoveryTouchdowns ?? 0;
-        drMap.set(pid, e);
-      }
-    });
-
-    return {
-      defReturns: Array.from(drMap.values()),
-      passing: Array.from(pMap.values()).sort((a, b) => b.yards - a.yards),
-      rushing: Array.from(rMap.values()).sort((a, b) => b.yards - a.yards),
-      receiving: Array.from(rcMap.values()).sort((a, b) => b.yards - a.yards),
-      defense: Array.from(dMap.values()).sort((a, b) => b.totalTackles - a.totalTackles),
-      kicking: Array.from(kMap.values()).sort((a, b) => b.totalPoints - a.totalPoints),
-      punting: Array.from(puMap.values()).sort((a, b) => b.punts - a.punts),
-      returns: Array.from(retMap.values()).sort((a, b) => (b.kickReturnYards + b.puntReturnYards) - (a.kickReturnYards + a.puntReturnYards)),
-    };
-  }, [summaries, rosterIds, defReturnsByGame]);
-
-  /* ── Team season totals ── */
-  const teamTotals = useMemo(() => {
-    let rushYds = 0, passYds = 0, totalYds = 0, pts = 0, ptsAllowed = 0, firstDowns = 0, turnovers = 0;
-    for (const s of summaries) {
-      const us = program && s.homeTeamStats.teamId === program.id ? s.homeTeamStats : s.awayTeamStats;
-      const them = us === s.homeTeamStats ? s.awayTeamStats : s.homeTeamStats;
-      rushYds += us.rushingYards; passYds += us.passingYards; totalYds += us.totalYards;
-      pts += us.pointsScored; ptsAllowed += them.pointsScored;
-      firstDowns += us.firstDowns; turnovers += us.turnovers;
-    }
-    const gp = summaries.length || 1;
-    return { rushYds, passYds, totalYds, pts, ptsAllowed, firstDowns, turnovers, gp,
-      ppg: (pts / gp).toFixed(1), papg: (ptsAllowed / gp).toFixed(1), ypg: (totalYds / gp).toFixed(1) };
-  }, [summaries, program]);
-
-  const primaryColor = program?.primary_color ?? "#ef4444";
+  /* Views and the open game live in the URL, so Back on the iPad (or the
+     arrow on a game's own screens) comes back to the same place. */
+  const go = (next: { view?: View; game?: string | null }, replace = false) => {
+    const p = new URLSearchParams(params);
+    if (next.view) { if (next.view === "team") p.delete("view"); else p.set("view", next.view); }
+    if (next.game === null || (next.view && next.view !== "games")) p.delete("game");
+    else if (next.game) p.set("game", next.game);
+    setParams(p, { replace });
+  };
+  const here = `${location.pathname}${location.search}`;
+  const openPlayer = (id: string) => navigate(`/player/${id}`, { state: { from: here } });
+  const openGameScreen = (id: string, screen: string) => navigate(`/game/${id}/${screen}`, { state: { from: here } });
+  const openGame = model?.games.find(g => g.meta.id === gameId) ?? null;
 
   return (
-    <div className="bc screen safe-top pb-20">
+    <div className="bc ss screen safe-top pb-20">
       <BroadcastHeader
         title="Season Stats"
-        actions={
-          <button type="button" className="bc-btn bc-btn-primary" style={{ flex: "none" }} onClick={() => navigate("/season-report")}>
-            <SheetIcon size={14} />Season PDF
-          </button>
-        }
+        subtitle={seasonLabel}
+        actions={<SeasonBookButton book={book} disabled={!model || finals === 0} />}
       />
+      <SeasonBookStatus book={book} />
 
-      <div className="flex-1 px-5 pt-7 overflow-y-auto pb-8 space-y-4">
-        {/* Season totals for one slice of every game: Q4 is the season's 4th
-            quarters added up. The Season PDF follows the same pick. */}
-        <PeriodSwitch value={period} onChange={setPeriod} showOT />
-        {loading && (
-          <div className="card p-8 text-center">
-            <div className="text-neutral-500 animate-pulse">Computing season stats...</div>
+      <div className="ss-stage">
+        <div className="ss-views" role="tablist" aria-label="Season view">
+          {([["team", "Team"], ["players", "Players"], ["games", "Games"]] as const).map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={view === id} className={view === id ? "on" : undefined}
+              onClick={() => go({ view: id, game: null })}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {error && <div className="bc-alert" role="alert">{error}</div>}
+
+        {!error && !model && (
+          <div className="ss-loading" role="status">
+            <div className="ss-book-bar"><i style={{ width: `${progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 4}%` }} /></div>
+            <span>{progress && progress.total ? `Reading game ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…` : "Reading the season…"}</span>
           </div>
         )}
 
-        {!loading && summaries.length === 0 && (
-          <div className="card p-8 text-center">
-            <div className="text-neutral-500 text-sm">No completed games yet this season.</div>
-          </div>
-        )}
+        {model && model.games.length === 0 && <p className="ss-empty">No games played yet this season.</p>}
 
-        {!loading && summaries.length > 0 && (
+        {model && model.games.length > 0 && (
           <>
-            {/* Team overview cards */}
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: "PPG", val: teamTotals.ppg },
-                { label: "YPG", val: teamTotals.ypg },
-                { label: "PPG Allowed", val: teamTotals.papg },
-              ].map(s => (
-                <div key={s.label} className="card p-3 text-center">
-                  <div className="stat-value" style={{ color: primaryColor }}>{s.val}</div>
-                  <div className="stat-label mt-1">{s.label}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-5 gap-1.5">
-              {[
-                { label: "Total Pts", val: teamTotals.pts },
-                { label: "Rush Yds", val: teamTotals.rushYds },
-                { label: "Pass Yds", val: teamTotals.passYds },
-                { label: "1st Downs", val: teamTotals.firstDowns },
-                { label: "Bad Snaps", val: badSnaps },
-              ].map(s => (
-                <div key={s.label} className="card p-2 text-center">
-                  <div className="text-sm font-display font-extrabold tabular-nums">{s.val}</div>
-                  <div className="text-[8px] font-display font-bold text-surface-muted uppercase tracking-wider">{s.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Tab switcher */}
-            <div className="flex gap-2">
-              <button onClick={() => setTab("offense")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-display font-bold uppercase tracking-wider border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
-                  tab === "offense" ? "border-blue-500 bg-blue-500/10 text-blue-400" : "border-surface-border text-surface-muted"
-                }`}>
-                <Zap className="w-3.5 h-3.5" /> Offense
-              </button>
-              <button onClick={() => setTab("defense")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-display font-bold uppercase tracking-wider border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
-                  tab === "defense" ? "border-red-500 bg-red-500/10 text-red-400" : "border-surface-border text-surface-muted"
-                }`}>
-                <Shield className="w-3.5 h-3.5" /> Defense
-              </button>
-              <button onClick={() => setTab("specialteams")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-display font-bold uppercase tracking-wider border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
-                  tab === "specialteams" ? "border-purple-500 bg-purple-500/10 text-purple-400" : "border-surface-border text-surface-muted"
-                }`}>
-                <Target className="w-3.5 h-3.5" /> Special Teams
-              </button>
-            </div>
-
-            {/* ═══ OFFENSE TAB ═══ */}
-            {tab === "offense" && (
-              <div className="space-y-4">
-                {/* Passing */}
-                {passing.length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Passing</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">GP</th>
-                            <th className="text-right py-1.5 font-bold">C/A</th>
-                            <th className="text-right py-1.5 font-bold">Yds</th>
-                            <th className="text-right py-1.5 font-bold">TD</th>
-                            <th className="text-right py-1.5 font-bold">INT</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {passing.map(p => (
-                            <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                              onClick={() => navigate(`/player/${p.playerId}`)}>
-                              <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
-                              <td className="py-1.5 text-right font-mono">{p.completions}/{p.attempts}</td>
-                              <td className="py-1.5 text-right font-mono font-bold">{p.yards}</td>
-                              <td className="py-1.5 text-right font-mono text-emerald-400">{p.tds}</td>
-                              <td className="py-1.5 text-right font-mono text-red-400">{p.ints}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Rushing */}
-                {rushing.length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Rushing</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">GP</th>
-                            <th className="text-right py-1.5 font-bold">Car</th>
-                            <th className="text-right py-1.5 font-bold">Yds</th>
-                            <th className="text-right py-1.5 font-bold">Avg</th>
-                            <th className="text-right py-1.5 font-bold">TD</th>
-                            <th className="text-right py-1.5 font-bold">Lng</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rushing.map(p => (
-                            <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                              onClick={() => navigate(`/player/${p.playerId}`)}>
-                              <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
-                              <td className="py-1.5 text-right font-mono">{p.carries}</td>
-                              <td className="py-1.5 text-right font-mono font-bold">{p.yards}</td>
-                              <td className="py-1.5 text-right font-mono">{p.carries > 0 ? (p.yards / p.carries).toFixed(1) : "0.0"}</td>
-                              <td className="py-1.5 text-right font-mono text-emerald-400">{p.tds}</td>
-                              <td className="py-1.5 text-right font-mono">{p.long}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Receiving */}
-                {receiving.length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Receiving</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">GP</th>
-                            <th className="text-right py-1.5 font-bold">Rec</th>
-                            <th className="text-right py-1.5 font-bold">Yds</th>
-                            <th className="text-right py-1.5 font-bold">Avg</th>
-                            <th className="text-right py-1.5 font-bold">TD</th>
-                            <th className="text-right py-1.5 font-bold">Lng</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {receiving.map(p => (
-                            <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                              onClick={() => navigate(`/player/${p.playerId}`)}>
-                              <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
-                              <td className="py-1.5 text-right font-mono">{p.receptions}</td>
-                              <td className="py-1.5 text-right font-mono font-bold">{p.yards}</td>
-                              <td className="py-1.5 text-right font-mono">{p.receptions > 0 ? (p.yards / p.receptions).toFixed(1) : "0.0"}</td>
-                              <td className="py-1.5 text-right font-mono text-emerald-400">{p.tds}</td>
-                              <td className="py-1.5 text-right font-mono">{p.long}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
+            {view !== "games" && (
+              <PeriodSwitch value={shownPeriod} onChange={setPeriod} showOT={hasOT} className="ss-periods" wholeLabel="Season" />
             )}
 
-            {/* ═══ DEFENSE TAB ═══ */}
-            {tab === "defense" && (
-              <div className="space-y-4">
-                {/* Tackle leaders */}
-                {defense.some(p => p.totalTackles > 0) && (
-                  <div className="card p-4">
-                    <SectionTitle>Tackle Leaders</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">GP</th>
-                            <th className="text-right py-1.5 font-bold">Tot</th>
-                            <th className="text-right py-1.5 font-bold">Solo</th>
-                            <th className="text-right py-1.5 font-bold">Ast</th>
-                            <th className="text-right py-1.5 font-bold">TFL</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {defense.filter(p => p.totalTackles > 0).map(p => (
-                            <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                              onClick={() => navigate(`/player/${p.playerId}`)}>
-                              <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
-                              <td className="py-1.5 text-right font-mono font-bold">{fmt(p.totalTackles)}</td>
-                              <td className="py-1.5 text-right font-mono">{fmt(p.soloTackles)}</td>
-                              <td className="py-1.5 text-right font-mono">{fmt(p.assistedTackles)}</td>
-                              <td className="py-1.5 text-right font-mono">{fmt(p.tacklesForLoss)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
+            {view === "team" && slice && (
+              <TeamView model={model} slice={slice} period={shownPeriod} players={players} onPlayer={openPlayer} />
+            )}
+            {view === "players" && slice && (
+              <PlayersView slice={slice} players={players} gamesPlayed={gp} categoryId={categoryId} onCategory={setCategoryId} onPlayer={openPlayer} />
+            )}
+            {view !== "games" && !slice && <p className="ss-empty">No plays charted yet this season.</p>}
 
-                {/* Playmakers (sacks, INTs, FF, FR) */}
-                {defense.filter(d => d.sacks > 0 || d.interceptions > 0 || d.forcedFumbles > 0 || d.fumbleRecoveries > 0).length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Playmakers</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">Sacks</th>
-                            <th className="text-right py-1.5 font-bold">INT</th>
-                            <th className="text-right py-1.5 font-bold">FF</th>
-                            <th className="text-right py-1.5 font-bold">FR</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {defense
-                            .filter(d => d.sacks > 0 || d.interceptions > 0 || d.forcedFumbles > 0 || d.fumbleRecoveries > 0)
-                            .sort((a, b) => (b.sacks + b.interceptions + b.forcedFumbles + b.fumbleRecoveries) - (a.sacks + a.interceptions + a.forcedFumbles + a.fumbleRecoveries))
-                            .map(p => (
-                              <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                                onClick={() => navigate(`/player/${p.playerId}`)}>
-                                <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                                <td className="py-1.5 text-right font-mono text-amber-400">{fmt(p.sacks)}</td>
-                                <td className="py-1.5 text-right font-mono text-red-400">{p.interceptions}</td>
-                                <td className="py-1.5 text-right font-mono text-orange-400">{p.forcedFumbles}</td>
-                                <td className="py-1.5 text-right font-mono">{p.fumbleRecoveries}</td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Defensive returns - the other returns live under Special Teams */}
-                {defReturns.length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Defensive Returns</SectionTitle>
-                    <div className="space-y-3">
-                    {([
-                      ["int", "Interceptions"],
-                      ["fr", "Fumble Recoveries"],
-                    ] as const).map(([key, label]) => {
-                      const rows = defReturns.filter(r => r[key].no > 0).sort((a, b) => b[key].yds - a[key].yds);
-                      if (rows.length === 0) return null;
-                      return (
-                        <div key={key} className="overflow-x-auto">
-                          {/* Fixed widths, so the two tables' columns line up. */}
-                          <table className="w-full text-xs table-fixed">
-                            <colgroup>
-                              <col />
-                              <col className="w-8" /><col className="w-10" /><col className="w-12" /><col className="w-10" /><col className="w-8" />
-                            </colgroup>
-                            <thead>
-                              <tr className="text-neutral-500 border-b border-surface-border">
-                                <th className="text-left py-1.5 font-bold">{label}</th>
-                                <th className="text-right py-1.5 font-bold">No</th>
-                                <th className="text-right py-1.5 font-bold">Yds</th>
-                                <th className="text-right py-1.5 font-bold">Avg</th>
-                                <th className="text-right py-1.5 font-bold">Lng</th>
-                                <th className="text-right py-1.5 font-bold">TD</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rows.map(p => (
-                                <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                                  onClick={() => navigate(`/player/${p.playerId}`)}>
-                                  <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                                  <td className="py-1.5 text-right font-mono">{p[key].no}</td>
-                                  <td className="py-1.5 text-right font-mono font-bold">{p[key].yds}</td>
-                                  <td className="py-1.5 text-right font-mono">{(p[key].yds / p[key].no).toFixed(1)}</td>
-                                  <td className="py-1.5 text-right font-mono">{p[key].long}</td>
-                                  <td className="py-1.5 text-right font-mono text-emerald-400">{p[key].td}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })}
-                    </div>
-                  </div>
-                )}
-
-                {defense.length === 0 && (
-                  <div className="card p-6 text-center text-neutral-500 text-sm">
-                    No defensive stats recorded yet. Add tackler info during PBP to populate this.
-                  </div>
-                )}
-              </div>
+            {view === "games" && !openGame && <GamesList model={model} onGame={id => go({ view: "games", game: id })} />}
+            {view === "games" && openGame && (
+              <GameDetail
+                program={model.program}
+                game={openGame}
+                players={players}
+                onBack={() => go({ view: "games", game: null })}
+                onPlayer={openPlayer}
+                onOpen={screen => openGameScreen(openGame.meta.id, screen)}
+              />
             )}
 
-            {/* ═══ SPECIAL TEAMS TAB ═══ */}
-            {tab === "specialteams" && (
-              <div className="space-y-4">
-                {/* Kicking */}
-                {kicking.length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Kicking</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">GP</th>
-                            <th className="text-right py-1.5 font-bold">FG</th>
-                            <th className="text-right py-1.5 font-bold">FG%</th>
-                            <th className="text-right py-1.5 font-bold">Lng</th>
-                            <th className="text-right py-1.5 font-bold">XP</th>
-                            <th className="text-right py-1.5 font-bold">Pts</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {kicking.map(p => (
-                            <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                              onClick={() => navigate(`/player/${p.playerId}`)}>
-                              <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
-                              <td className="py-1.5 text-right font-mono">{p.fgMade}/{p.fgAtt}</td>
-                              <td className="py-1.5 text-right font-mono">{p.fgAtt > 0 ? (p.fgMade / p.fgAtt * 100).toFixed(0) : "0"}%</td>
-                              <td className="py-1.5 text-right font-mono">{p.fgLong || "-"}</td>
-                              <td className="py-1.5 text-right font-mono">{p.xpMade}/{p.xpAtt}</td>
-                              <td className="py-1.5 text-right font-mono font-bold text-emerald-400">{p.totalPoints}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Punting */}
-                {punting.length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Punting</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">GP</th>
-                            <th className="text-right py-1.5 font-bold">Punts</th>
-                            <th className="text-right py-1.5 font-bold">Yds</th>
-                            <th className="text-right py-1.5 font-bold">Avg</th>
-                            <th className="text-right py-1.5 font-bold">Lng</th>
-                            <th className="text-right py-1.5 font-bold">I20</th>
-                            <th className="text-right py-1.5 font-bold">TB</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {punting.map(p => (
-                            <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                              onClick={() => navigate(`/player/${p.playerId}`)}>
-                              <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                              <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
-                              <td className="py-1.5 text-right font-mono">{p.punts}</td>
-                              <td className="py-1.5 text-right font-mono font-bold">{p.puntYards}</td>
-                              <td className="py-1.5 text-right font-mono">{p.punts > 0 ? (p.puntYards / p.punts).toFixed(1) : "0.0"}</td>
-                              <td className="py-1.5 text-right font-mono">{p.puntLong}</td>
-                              <td className="py-1.5 text-right font-mono">{p.puntsInside20}</td>
-                              <td className="py-1.5 text-right font-mono">{p.touchbacks}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Kick Returns */}
-                {returns.filter(r => r.kickReturns > 0 || r.kickReturnFum > 0).length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Kick Returns</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">GP</th>
-                            <th className="text-right py-1.5 font-bold">Ret</th>
-                            <th className="text-right py-1.5 font-bold">Yds</th>
-                            <th className="text-right py-1.5 font-bold">Avg</th>
-                            <th className="text-right py-1.5 font-bold">Lng</th>
-                            <th className="text-right py-1.5 font-bold">TD</th>
-                            <th className="text-right py-1.5 font-bold">Fum</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {returns.filter(r => r.kickReturns > 0 || r.kickReturnFum > 0)
-                            .sort((a, b) => b.kickReturnYards - a.kickReturnYards)
-                            .map(p => (
-                              <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                                onClick={() => navigate(`/player/${p.playerId}`)}>
-                                <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                                <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
-                                <td className="py-1.5 text-right font-mono">{p.kickReturns}</td>
-                                <td className="py-1.5 text-right font-mono font-bold">{p.kickReturnYards}</td>
-                                <td className="py-1.5 text-right font-mono">{p.kickReturns > 0 ? (p.kickReturnYards / p.kickReturns).toFixed(1) : "0.0"}</td>
-                                <td className="py-1.5 text-right font-mono">{p.kickReturnLong}</td>
-                                <td className="py-1.5 text-right font-mono text-emerald-400">{p.kickReturnTDs}</td>
-                                <td className="py-1.5 text-right font-mono">{p.kickReturnFum}</td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Punt Returns */}
-                {returns.filter(r => r.puntReturns > 0 || r.puntReturnFum > 0).length > 0 && (
-                  <div className="card p-4">
-                    <SectionTitle>Punt Returns</SectionTitle>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-neutral-500 border-b border-surface-border">
-                            <th className="text-left py-1.5 font-bold">Player</th>
-                            <th className="text-right py-1.5 font-bold">GP</th>
-                            <th className="text-right py-1.5 font-bold">Ret</th>
-                            <th className="text-right py-1.5 font-bold">Yds</th>
-                            <th className="text-right py-1.5 font-bold">Avg</th>
-                            <th className="text-right py-1.5 font-bold">Lng</th>
-                            <th className="text-right py-1.5 font-bold">TD</th>
-                            <th className="text-right py-1.5 font-bold">Fum</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {returns.filter(r => r.puntReturns > 0 || r.puntReturnFum > 0)
-                            .sort((a, b) => b.puntReturnYards - a.puntReturnYards)
-                            .map(p => (
-                              <tr key={p.playerId} className="border-b border-surface-border/50 cursor-pointer active:bg-surface-hover"
-                                onClick={() => navigate(`/player/${p.playerId}`)}>
-                                <td className="py-1.5 font-bold truncate max-w-[120px]">{p.name}</td>
-                                <td className="py-1.5 text-right font-mono text-neutral-400">{p.games}</td>
-                                <td className="py-1.5 text-right font-mono">{p.puntReturns}</td>
-                                <td className="py-1.5 text-right font-mono font-bold">{p.puntReturnYards}</td>
-                                <td className="py-1.5 text-right font-mono">{p.puntReturns > 0 ? (p.puntReturnYards / p.puntReturns).toFixed(1) : "0.0"}</td>
-                                <td className="py-1.5 text-right font-mono">{p.puntReturnLong}</td>
-                                <td className="py-1.5 text-right font-mono text-emerald-400">{p.puntReturnTDs}</td>
-                                <td className="py-1.5 text-right font-mono">{p.puntReturnFum}</td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {kicking.length === 0 && punting.length === 0 && returns.length === 0 && (
-                  <div className="card p-6 text-center text-neutral-500 text-sm">
-                    No special teams stats recorded yet.
-                  </div>
-                )}
-              </div>
+            {view === "team" && (
+              <button type="button" className="ss-older" onClick={() => navigate("/season-report")}>
+                One-page season summary to print ›
+              </button>
             )}
           </>
         )}

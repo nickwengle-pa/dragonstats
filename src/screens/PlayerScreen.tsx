@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Download } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
@@ -426,8 +426,12 @@ function GameLog<T>({
   category: keyof PlayerGameLine;
   columns: Column<T>[];
 }) {
+  const navigate = useNavigate();
+  const here = useLocation().pathname;
   const gamesWithData = lines.filter((l) => l[category] != null);
   if (gamesWithData.length === 0) return null;
+  // A game's line opens that game's box score, whose back arrow comes here.
+  const open = (gameId: string) => navigate(`/game/${gameId}/boxscore`, { state: { from: here } });
 
   return (
     <div>
@@ -446,10 +450,14 @@ function GameLog<T>({
             {gamesWithData.map((line) => {
               const stats = line[category] as T;
               return (
-                <tr key={line.gameId} className="border-t border-slate-800">
+                <tr key={line.gameId} className="border-t border-slate-800 cursor-pointer hover:bg-surface-hover"
+                  onClick={() => open(line.gameId)} title="Open this game's box score">
                   <td className="py-1 pr-2 text-slate-400">
                     <span className="text-slate-500 mr-1">{fmtDate(line.gameDate)}</span>
-                    {line.opponentName}
+                    <button type="button" className="underline decoration-dotted underline-offset-2 cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); open(line.gameId); }}>
+                      {line.opponentName}
+                    </button>
                   </td>
                   {columns.map((c) => (
                     <td key={c.label} className="text-right py-1 px-1 font-mono">{c.render(stats)}</td>

@@ -1,4 +1,5 @@
 import GameHomeLink from "@/components/game/GameHomeLink";
+import { useBackTo } from "@/hooks/useBackTo";
 import PrintReportButton from "@/components/report/PrintReportButton";
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -146,6 +147,7 @@ interface GameInfo {
 export default function GameSummaryScreen() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
+  const back = useBackTo(`/game/${gameId}`);
   const { program, season } = useProgramContext();
   const [period, setPeriod] = useStatPeriod("game");
   const [hasOT, setHasOT] = useState(false);
@@ -285,7 +287,7 @@ export default function GameSummaryScreen() {
       {/* Header */}
       <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2">
-        <button onClick={() => navigate(`/game/${gameId}`)} className="btn-ghost p-2 cursor-pointer">
+        <button onClick={back} className="btn-ghost p-2 cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-display font-extrabold uppercase tracking-[0.1em] flex-1">Game Summary</h1>

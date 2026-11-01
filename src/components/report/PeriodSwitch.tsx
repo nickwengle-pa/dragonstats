@@ -32,12 +32,14 @@ export function useStatPeriod(scope: PeriodScope): [StatPeriod, (p: StatPeriod) 
 
 const REGULATION: StatPeriod[] = ["game", "h1", "h2", "q1", "q2", "q3", "q4"];
 
-export default function PeriodSwitch({ value, onChange, showOT = false, className = "" }: {
+export default function PeriodSwitch({ value, onChange, showOT = false, className = "", wholeLabel }: {
   value: StatPeriod;
   onChange: (p: StatPeriod) => void;
   /** Offer overtime. Games show it only once there was one. */
   showOT?: boolean;
   className?: string;
+  /** What the whole-span button says: "Season" on a season screen. */
+  wholeLabel?: string;
 }) {
   const options: StatPeriod[] = showOT || value === "ot" ? [...REGULATION, "ot"] : REGULATION;
   return (
@@ -47,7 +49,7 @@ export default function PeriodSwitch({ value, onChange, showOT = false, classNam
           className={`shrink-0 min-h-10 px-3 rounded-lg text-xs font-display font-extrabold uppercase tracking-wider border transition-colors ${value === p
             ? "bg-dragon-primary text-white border-dragon-primary"
             : "bg-surface-card text-surface-muted border-surface-border"}`}>
-          {PERIOD_SHORT[p]}
+          {p === "game" && wholeLabel ? wholeLabel : PERIOD_SHORT[p]}
         </button>
       ))}
     </div>
