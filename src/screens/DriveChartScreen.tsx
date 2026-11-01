@@ -1,4 +1,5 @@
 import GameHomeLink from "@/components/game/GameHomeLink";
+import { useBackTo } from "@/hooks/useBackTo";
 import PrintReportButton from "@/components/report/PrintReportButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -46,6 +47,7 @@ function gain(play: PlayWithPlayers): string {
 export default function DriveChartScreen() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
+  const back = useBackTo(`/game/${gameId}/summary`);
   const { program } = useProgramContext();
   const screenRoot = useRef<HTMLDivElement>(null);
   const [params, setParams] = useSearchParams();
@@ -130,7 +132,7 @@ export default function DriveChartScreen() {
     <div ref={screenRoot} className="screen safe-top safe-bottom">
       <GameHomeLink />
       <div className="flex items-center gap-3 px-5 pt-5 pb-2">
-        <button onClick={() => navigate(`/game/${gameId}/summary`)} className="btn-ghost p-2 cursor-pointer print:hidden" aria-label="Back to summary">
+        <button onClick={back} className="btn-ghost p-2 cursor-pointer print:hidden" aria-label="Back">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1 min-w-0">

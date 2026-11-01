@@ -79,9 +79,12 @@ export interface ScoringRow {
   score: string;
 }
 
-export interface PointsRow { name: string; points: number }
+/* `id` on a row is the player's, so a season book can link a line to that
+   player's page. Totals carry none. */
+export interface PointsRow { id?: string; name: string; points: number }
 
 export interface RushingRow {
+  id?: string;
   name: string; att: number; gain: number; loss: number; sackYds: number;
   net: number; td: number; long: number; avg: number; fum: number;
 }
@@ -97,14 +100,17 @@ export interface RushingCheck {
   kind: "their_snap" | "our_snap";
 }
 export interface PassingRow {
+  id?: string;
   name: string; att: number; comp: number; int: number;
   yds: number; long: number; sack: number; td: number;
 }
-export interface ReceivingRow { name: string; rec: number; yds: number; td: number; long: number }
+export interface ReceivingRow { id?: string; name: string; rec: number; yds: number; td: number; long: number }
 export interface PuntingRow {
+  id?: string;
   name: string; att: number; yds: number; avg: number; long: number; inside20: number; tb: number;
 }
 export interface ReturnRow {
+  id?: string;
   name: string;
   /** fum: fumbles on the return, every muff included (lostMuffs.ts). A muff
    *  the kicking team fell on is a fumble with no return attempt. */
@@ -114,8 +120,9 @@ export interface ReturnRow {
   /** Fumbles recovered from the other team and brought back. */
   fr: { no: number; yds: number; long: number; td: number };
 }
-export interface KickoffRow { name: string; no: number; yds: number; avg: number; tb: number }
+export interface KickoffRow { id?: string; name: string; no: number; yds: number; avg: number; tb: number }
 export interface DefensiveRow {
+  id?: string;
   jersey: number | null; name: string;
   solo: number; ast: number; total: number;
   sacks: number; sackYds: number;
@@ -598,7 +605,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   /* ── Points by player (ours) ──────────────────────────────────────────── */
   const points: PointsRow[] = [...playerScoringFromPlays(plays).entries()]
     .filter(([id]) => ours.has(id))
-    .map(([id, s]) => ({ name: names.get(id) ?? "", points: s.points }))
+    .map(([id, s]) => ({ id, name: names.get(id) ?? "", points: s.points }))
     .filter(r => r.points > 0)
     .sort((a, b) => b.points - a.points);
   const pointsTotal = points.reduce((s, r) => s + r.points, 0);
@@ -623,6 +630,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
     const gain = rushGainById.get(id) ?? Math.max(0, s.yards);
     const sackYds = -Math.abs(summary.passing[id]?.sackYardsLost ?? 0);
     return {
+      id,
       name: names.get(id) ?? s.playerName,
       att: s.carries,
       gain,
@@ -676,6 +684,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const passing: PassingRow[] = ourRows<PassingStats>(
     summary.passing, ours, s => s.attempts > 0, s => s.yards,
   ).map(([id, s]) => ({
+    id,
     name: names.get(id) ?? s.playerName,
     att: s.attempts, comp: s.completions, int: s.interceptions,
     yds: s.yards, long: s.longPass ?? 0, sack: s.sacks ?? 0, td: s.touchdowns,
@@ -691,6 +700,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const receiving: ReceivingRow[] = ourRows<ReceivingStats>(
     summary.receiving, ours, s => s.receptions > 0, s => s.yards,
   ).map(([id, s]) => ({
+    id,
     name: names.get(id) ?? s.playerName,
     rec: s.receptions, yds: s.yards, td: s.touchdowns, long: s.longReception ?? 0,
   }));
@@ -703,6 +713,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const punting: PuntingRow[] = ourRows<PuntingStats>(
     summary.punting, ours, s => s.punts > 0, s => s.puntYards,
   ).map(([id, s]) => ({
+    id,
     name: names.get(id) ?? s.playerName,
     att: s.punts, yds: s.puntYards, avg: avg(s.puntYards, s.punts),
     long: s.puntLong ?? 0, inside20: s.puntsInside20 ?? 0, tb: s.touchbacks ?? 0,
@@ -729,6 +740,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       const pick = defensiveReturns.get(id)?.int ?? { yds: 0, long: 0, no: 0 };
       const scoop = defensiveReturns.get(id)?.fr ?? { yds: 0, long: 0, no: 0 };
       return {
+        id,
         name: names.get(id) ?? r?.playerName ?? "",
         ko: {
           no: r?.kickReturns ?? 0,
@@ -782,6 +794,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   ).map(([id, s]) => {
     const measured = kickoffDistance(measuredKickoffs.filter(kick => kick.id === id));
     return {
+    id,
     name: names.get(id) ?? s.playerName,
     no: s.kickoffs,
     yds: measured.yards,
@@ -828,6 +841,7 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       || s.passesDefended > 0 || s.forcedFumbles > 0 || s.fumbleRecoveries > 0,
     s => s.totalTackles * 10 + s.sacks + s.interceptions,
   ).map(([id, s]) => ({
+    id,
     jersey: jerseys.get(id) ?? null,
     name: names.get(id) ?? s.playerName,
     solo: s.soloTackles, ast: s.assistedTackles, total: s.totalTackles,
