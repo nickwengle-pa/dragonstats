@@ -154,6 +154,8 @@ export default function BoxScoreScreen() {
   const [period, setPeriod] = useStatPeriod("game");
 
   const [summary, setSummary] = useState<GameSummary | null>(null);
+  /* Possession time estimated where the clock was left alone (staleClock.ts). */
+  const [clockEstimated, setClockEstimated] = useState(false);
   /* The line score is derived from the plays, not from the engine ledger — see
      the comment on lineScore below. */
   const [scorePlays, setScorePlays] = useState<Array<Record<string, unknown>>>([]);
@@ -216,6 +218,7 @@ export default function BoxScoreScreen() {
       }
       setRoster(map);
       setSummary(result?.summary ?? null);
+      setClockEstimated(Boolean(result?.clockEstimated));
       setScorePlays((result?.allPlays ?? []) as unknown as Array<Record<string, unknown>>);
 
       if (result && gData && program) {
@@ -512,7 +515,7 @@ export default function BoxScoreScreen() {
                 {statRow("Turnovers", fmt(ourStats?.turnovers), fmt(theirStats?.turnovers))}
                 {statRow("Bad Snaps", summary ? String(countBadSnaps(periodPlays, "us")) : "—", summary ? String(countBadSnaps(periodPlays, "them")) : "—")}
                 {statRow("Penalties", `${fmt(ourStats?.penalties)}–${fmt(ourStats?.penaltyYards)}`, `${fmt(theirStats?.penalties)}–${fmt(theirStats?.penaltyYards)}`)}
-                {statRow("Time of Poss.", ourStats?.timeOfPossession ?? "—", theirStats?.timeOfPossession ?? "—")}
+                {statRow(clockEstimated ? "Time of Poss. (est.)" : "Time of Poss.", ourStats?.timeOfPossession ?? "—", theirStats?.timeOfPossession ?? "—")}
               </tbody>
             </table>
 

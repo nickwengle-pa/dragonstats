@@ -185,7 +185,17 @@ const num = (v: unknown): number => {
 const avg = (total: number, count: number): number =>
   count > 0 ? Math.round((total / count) * 10) / 10 + 0 : 0;
 
-const dash = (a: number, b: number) => `${a}-${b}`;
+/** "11-112", or "4 for -3" when the yards went backwards: a hyphen then a
+ *  minus sign printed "4--3", which reads as a typo. */
+export function countYards(count: string | number, yards: number): string {
+  return yards < 0 ? `${count} for ${yards}` : `${count}-${yards}`;
+}
+
+const dash = (a: number, b: number) => countYards(a, b);
+
+/** Number-Yards-TD, with yards that went backwards in brackets: "1-(-3)-0",
+ *  not "1--3-0". */
+const returnLine = (no: number, yds: number, td: number) => `${no}-${yds < 0 ? `(${yds})` : yds}-${td}`;
 
 /** Jersey-prefixed where we know the number: "#21 Victor Bartlebaugh". */
 function labelFor(
@@ -1066,25 +1076,25 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       avg(netKoThem.yards, netKoThem.count).toFixed(1), "sub"),
     row("Touchbacks", kickoffsTotal.tb, theirKickoffTBs, "sub"),
     row("Punt returns: Number-Yards-TD",
-      `${returnsTotal.punt.no}-${returnsTotal.punt.yds}-${puntReturnTdUs}`,
-      `${theirPuntReturns}-${theirPuntReturnYards}-${puntReturnTdThem}`),
+      returnLine(returnsTotal.punt.no, returnsTotal.punt.yds, puntReturnTdUs),
+      returnLine(theirPuntReturns, theirPuntReturnYards, puntReturnTdThem)),
     row("Average Per Return", avg(returnsTotal.punt.yds, returnsTotal.punt.no).toFixed(1),
       avg(theirPuntReturnYards, theirPuntReturns).toFixed(1), "sub"),
     row("Kickoff returns: Number-Yards-TD",
-      `${returnsTotal.ko.no}-${returnsTotal.ko.yds}-${koReturnTdUs}`,
-      `${theirKoReturns}-${theirKoReturnYards}-${koReturnTdThem}`),
+      returnLine(returnsTotal.ko.no, returnsTotal.ko.yds, koReturnTdUs),
+      returnLine(theirKoReturns, theirKoReturnYards, koReturnTdThem)),
     row("Average Per Return", avg(returnsTotal.ko.yds, returnsTotal.ko.no).toFixed(1),
       avg(theirKoReturnYards, theirKoReturns).toFixed(1), "sub"),
     row("Interceptions: Number-Yards-TD",
-      `${ourPicks.length}-${ourIntReturnYards}-${intTdUs}`,
-      `${usTeam.interceptionsThrown}-${theirIntReturnYards}-${intTdThem}`),
+      returnLine(ourPicks.length, ourIntReturnYards, intTdUs),
+      returnLine(usTeam.interceptionsThrown, theirIntReturnYards, intTdThem)),
     // A muff or return fumble we fell on counts as a recovery here, the
     // mirror of the other side's column, which is our fumbles lost and so
     // already includes it. A named recoverer of ours is in defenseTotal.fr
     // already; only the unnamed ones are added. No yards either way.
     row("Fumble returns: Number-Yards-TD",
-      `${defenseTotal.fr + unnamedKickRecoveries}-${defenseTotal.frYds}-${fumbleReturnTdUs}`,
-      `${usTeam.fumblesLost}-${theirFumbleReturnYards}-${fumbleReturnTdThem}`),
+      returnLine(defenseTotal.fr + unnamedKickRecoveries, defenseTotal.frYds, fumbleReturnTdUs),
+      returnLine(usTeam.fumblesLost, theirFumbleReturnYards, fumbleReturnTdThem)),
     row("Third-Down Conversions",
       dash(usTeam.thirdDownConversions, usTeam.thirdDownAttempts),
       dash(themTeam.thirdDownConversions, themTeam.thirdDownAttempts)),
@@ -1096,7 +1106,9 @@ export function buildGameReport(input: BuildReportInput): GameReport {
       dash(theirSacks, theirSackYards)),
     row("PAT Kicks", dash(patMadeUs, patAttUs), dash(patMadeThem, patAttThem)),
     row("Field Goals", dash(fgMadeUs, fgAttUs), dash(fgMadeThem, fgAttThem)),
-    row("Possession Time", usTeam.timeOfPossession || "-", themTeam.timeOfPossession || "-"),
+    // Estimated where the clock was left alone across snaps (staleClock.ts).
+    row(bundle.clockEstimated ? "Possession Time (estimated)" : "Possession Time",
+      usTeam.timeOfPossession || "-", themTeam.timeOfPossession || "-"),
   ];
 
   const dateLabel = input.gameDate
