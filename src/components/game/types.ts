@@ -746,8 +746,8 @@ export function yardLabel(yard: number) {
 function playerLabel(t: TaggedPlayer | undefined): string {
   if (!t) return "?";
   const num = t.jersey_number != null ? `#${t.jersey_number}` : "";
-  // A number-only player is *named* "#7"; don't print it twice.
-  if (t.name && t.name !== "?" && t.name.trim() !== num) {
+  // A number-only player is *named* "#7" (or "7"); don't print it twice.
+  if (t.name && t.name !== "?" && t.name.trim().replace(/^#?/, "#") !== num) {
     const parts = t.name.trim().split(/\s+/);
     const short = parts.length > 1
       ? `${parts[0][0]}.${parts[parts.length - 1]}`
@@ -783,12 +783,15 @@ function kickReturnLabel(
 
 /** A saved description, cleaned of what buildDescription no longer writes.
  *  Incomplete passes saved with no target read "#7 → ? inc", or "→ TEAM inc"
- *  once a blank target began recording as TEAM; they now read "#7 inc". The
+ *  once a blank target began recording as TEAM; they now read "#7 inc". A
+ *  player known only by number was printed twice before playerLabel learned
+ *  not to ("#6 #6 run for 17 yds"); it now reads "#6 run for 17 yds". The
  *  description is stored text, so plays already in the books need this on the
  *  way out to match the ones saved from here on. */
 export function tidyStoredDescription(playType: string, description: string): string {
-  if (playType !== "pass_inc") return description;
-  return description.replace(/ → (?:\?|TEAM) inc(?= · |$)/, " inc");
+  const once = description.replace(/#(\d+) #\1(?!\d)/g, "#$1");
+  if (playType !== "pass_inc") return once;
+  return once.replace(/ → (?:\?|TEAM) inc(?= · |$)/, " inc");
 }
 
 export function buildDescription(
