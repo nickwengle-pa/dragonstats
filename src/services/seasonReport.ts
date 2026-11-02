@@ -25,6 +25,7 @@ export function combineSeasonBundles(bundles: GameStatsBundle[], programId: stri
   result.plays = bundles.flatMap(b => b.plays);
   result.allPlays = bundles.flatMap(b => b.allPlays ?? b.plays);
   result.roster = [...new Map(bundles.flatMap(b => b.roster).map(r => [r.player_id, r])).values()];
+  result.clockEstimated = bundles.some(b => b.clockEstimated);
   return result;
 }
 

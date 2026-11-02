@@ -6,7 +6,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Share2, Film, FileText, ClipboardList, ListOrdered } from "lucide-react";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
-import { computeGameStats } from "@/services/statsService";
+import { computeGameStatsBundle } from "@/services/statsService";
 import { exportGameSummaryCsv } from "@/services/csvExport";
 import { pdfFilename } from "@/services/reportPrint";
 import { inPeriod } from "@/services/statPeriod";
@@ -153,6 +153,8 @@ export default function GameSummaryScreen() {
   const [hasOT, setHasOT] = useState(false);
 
   const [summary, setSummary] = useState<GameSummary | null>(null);
+  /* Possession time estimated where the clock was left alone (staleClock.ts). */
+  const [clockEstimated, setClockEstimated] = useState(false);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const screenRoot = useRef<HTMLDivElement>(null);
   /* "Final" written on a tablet with no signal looks exactly like "Final" the
@@ -234,7 +236,7 @@ export default function GameSummaryScreen() {
         setRoster(new Set((rData ?? []).map((r: any) => r.player_id)));
 
         // Compute stats
-        const result = await computeGameStats(gameId, {
+        const result = await computeGameStatsBundle(gameId, {
           id: program.id,
           name: program.name,
           abbreviation: program.abbreviation,
@@ -242,7 +244,8 @@ export default function GameSummaryScreen() {
         }, period);
 
         if (cancelled) return;
-        setSummary(result);
+        setSummary(result?.summary ?? null);
+        setClockEstimated(Boolean(result?.clockEstimated));
 
         // Load raw plays for formation breakdowns
         const gamePlays = await loadGamePlays(gameId);
@@ -489,7 +492,7 @@ export default function GameSummaryScreen() {
               home={`${ourTeamStats.penalties}-${ourTeamStats.penaltyYards}`}
               away={`${theirTeamStats.penalties}-${theirTeamStats.penaltyYards}`}
             />
-            <StatRow label="TOP" home={ourTeamStats.timeOfPossession} away={theirTeamStats.timeOfPossession} />
+            <StatRow label={clockEstimated ? "TOP (est.)" : "TOP"} home={ourTeamStats.timeOfPossession} away={theirTeamStats.timeOfPossession} />
           </div>
         )}
 

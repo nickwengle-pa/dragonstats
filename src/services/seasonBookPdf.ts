@@ -24,7 +24,7 @@
 
 import { jsPDF } from "jspdf";
 import type { DefensiveRow, GameReport, KickoffRow, PassingRow, PuntingRow, ReceivingRow, ReturnRow, RushingRow, TeamStatRow } from "./gameReport";
-import type { PlayerScoring } from "./gameReport";
+import { countYards, type PlayerScoring } from "./gameReport";
 import { playByPlay, type PbpPlay } from "./playByPlay";
 import {
   bookPlayers, clockFromSeconds, ensurePeriods, gameResult, gameStats, gamesPlayed, hasLine, kickingRows, leaders, n, per,
@@ -42,6 +42,12 @@ const MARGIN = 36;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const TOP = 66;
 const BOTTOM = PAGE_H - 46;
+/** A chapter's last page holding no more than this (a "continued" heading and
+ *  a few rows) is worth drawing the chapter again tighter to lose it. */
+const SPARSE = 120;
+/** How much shorter rows and gaps get, tried in turn, to pull those lines
+ *  back onto the pages before. */
+const SQUEEZES = [0.93, 0.86];
 
 type RGB = [number, number, number];
 const INK: RGB = [11, 13, 16];
@@ -158,7 +164,55 @@ class Book {
   ensure(height: number) {
     if (this.y + height > BOTTOM) this.newPage();
   }
-  gap(h: number) { this.y += h; }
+  gap(h: number) { this.y += h * this.density; }
+
+  /* chapters */
+  /** Under 1 while a chapter is drawn tighter: rows and gaps shrink by it. */
+  density = 1;
+  /** Called when a chapter is undone, for state kept outside the book. */
+  onRollback: ((page: number) => void) | null = null;
+  private mark() {
+    return { page: this.page, y: this.y, label: this.label, anchors: new Set(this.anchors.keys()), refs: this.pageRefs.length };
+  }
+  private rollback(m: ReturnType<Book["mark"]>) {
+    for (let p = this.doc.getNumberOfPages(); p > m.page; p--) this.doc.deletePage(p);
+    this.doc.setPage(m.page);
+    this.page = m.page;
+    this.y = m.y;
+    this.label = m.label;
+    for (const key of [...this.anchors.keys()]) if (!m.anchors.has(key)) this.anchors.delete(key);
+    this.pageRefs.length = m.refs;
+    this.pageLabels.length = m.page + 1;
+    this.onRollback?.(m.page);
+  }
+  /**
+   * A run of pages that starts on a fresh one: the season's team pages, a
+   * game's opening pages, its quarters, its play-by-play. When the last page
+   * would carry only a few lines that spilled over, the chapter is drawn again
+   * with shorter rows so they fit on the pages before, and the nearly blank
+   * page goes. If no squeeze saves a page, it is drawn as it was.
+   */
+  chapter(draw: () => void) {
+    const m = this.mark();
+    const run = (density: number) => {
+      this.density = density;
+      try {
+        this.newPage();
+        draw();
+      } finally {
+        this.density = 1;
+      }
+      return this.page - m.page;
+    };
+    const pages = run(1);
+    if (pages < 2 || this.y - TOP > SPARSE) return;
+    for (const density of SQUEEZES) {
+      this.rollback(m);
+      if (run(density) < pages) return;
+    }
+    this.rollback(m);
+    run(1);
+  }
 
   /* links */
   anchor(key: string, y = this.y) {
@@ -213,18 +267,29 @@ class Book {
   width(text: string): number {
     return this.doc.getTextWidth(text);
   }
-  /** Cut to fit, with an ellipsis. */
-  fit(text: string, max: number): string {
+  /** Cut to fit, with an ellipsis. Letter spacing counts against the room. */
+  fit(text: string, max: number, charSpace = 0): string {
+    const wide = (s: string) => this.width(s) + charSpace * s.length;
     let t = pdfText(text);
-    if (max <= 0 || this.width(t) <= max) return t;
-    while (t.length > 1 && this.width(`${t}…`) > max) t = t.slice(0, -1);
+    if (max <= 0 || wide(t) <= max) return t;
+    while (t.length > 1 && wide(`${t}…`) > max) t = t.slice(0, -1);
     return `${t.trimEnd()}…`;
+  }
+  /** The biggest size from `size` down to `min` at which the text fits in
+   *  `max`, or null when even `min` is too big. */
+  fitSize(text: string, max: number, size: number, min: number, bold = false): number | null {
+    const t = pdfText(text);
+    for (let s = size; s >= min; s -= 0.5) {
+      this.font(s, bold);
+      if (this.width(t) <= max) return s;
+    }
+    return null;
   }
   text(value: unknown, x: number, y: number, opts: { size?: number; bold?: boolean; color?: RGB; align?: "left" | "right" | "center"; max?: number; link?: string; charSpace?: number } = {}) {
     const size = opts.size ?? 8;
     const linked = this.canLink(opts.link);
     this.font(size, opts.bold, linked ? LINK : opts.color ?? INK);
-    const str = opts.max ? this.fit(String(value ?? ""), opts.max) : pdfText(value);
+    const str = opts.max ? this.fit(String(value ?? ""), opts.max, opts.charSpace) : pdfText(value);
     if (!str) return 0;
     const w = this.width(str) + (opts.charSpace ? opts.charSpace * str.length : 0);
     const left = opts.align === "right" ? x - w : opts.align === "center" ? x - w / 2 : x;
@@ -232,8 +297,8 @@ class Book {
     if (linked) this.link(opts.link, left - 1, y - size * 0.82, w + 2, size * 1.08);
     return w;
   }
-  wrap(value: string, width: number, size: number): string[] {
-    this.font(size);
+  wrap(value: string, width: number, size: number, bold = false): string[] {
+    this.font(size, bold);
     return this.doc.splitTextToSize(pdfText(value), width) as string[];
   }
 
@@ -256,7 +321,7 @@ class Book {
     this.rect(MARGIN, y, 5, 18, this.accent);
     this.text(title.toUpperCase(), MARGIN + 12, y + 12.4, { size: 9, bold: true, color: WHITE, charSpace: 0.6 });
     if (opts.note) this.text(opts.note, MARGIN + CONTENT_W - 8, y + 12.2, { size: 7.5, color: [200, 204, 210], align: "right" });
-    this.y = y + 26;
+    this.y = y + 18 + 8 * this.density;
   }
   /** A smaller heading, with a rule running to the right edge. */
   subhead(title: string, opts: { note?: string; anchor?: string; minBelow?: number; link?: string } = {}) {
@@ -266,7 +331,7 @@ class Book {
   }
   /** Draw a subhead whose top is at `top`, with no page break; the y under it. */
   subheadAt(title: string, top: number, opts: { note?: string; link?: string } = {}): number {
-    const y = top + 9;
+    const y = top + 9 * this.density;
     const w = this.text(title.toUpperCase(), MARGIN, y, { size: 7.5, bold: true, color: INK, charSpace: 0.4, link: opts.link });
     let right = MARGIN + CONTENT_W;
     if (opts.note) {
@@ -274,7 +339,7 @@ class Book {
       right -= nw + 6;
     }
     this.rule(y - 2.6, LINE, 0.5, MARGIN + w + 6, right);
-    return y + 6;
+    return y + 6 * this.density;
   }
   note(text: string, opts: { size?: number; color?: RGB } = {}) {
     const size = opts.size ?? 6.8;
@@ -294,7 +359,11 @@ class Book {
    */
   table(cols: Column[], rows: Row[], opts: { title?: string; titleNote?: string; titleAnchor?: string; size?: number; rowH?: number; empty?: string; x?: number; width?: number } = {}) {
     const size = opts.size ?? 7.4;
-    const rowH = opts.rowH ?? size + 4.2;
+    const fullH = opts.rowH ?? size + 4.2;
+    // A squeezed chapter takes height off each row, never below a line of its
+    // text, and lifts the text by half of it so the row stays centred.
+    const rowH = Math.max(size + 1.6, fullH * this.density);
+    const lift = (fullH - rowH) / 2;
     const x0 = opts.x ?? MARGIN;
     const width = opts.width ?? CONTENT_W;
     const fixed = cols.reduce((s, c) => s + c.width, 0);
@@ -314,7 +383,7 @@ class Book {
       cols.forEach((c, i) => {
         const align = c.align ?? (i === 0 ? "left" : "right");
         const tx = align === "right" ? xs[i] + ws[i] - 2 : align === "center" ? xs[i] + ws[i] / 2 : xs[i] + 2;
-        this.text(c.label.toUpperCase(), tx, y + size - 0.6, { size: size - 1.4, bold: true, color: MUTE, align, max: ws[i] - 3 });
+        this.text(c.label.toUpperCase(), tx, y + size - 0.6 - lift, { size: size - 1.4, bold: true, color: MUTE, align, max: ws[i] - 3 });
       });
       this.rule(y + headH - 0.5, INK, 0.7, x0, x0 + width);
       this.y = y + headH + 0.5;
@@ -324,7 +393,9 @@ class Book {
     this.ensure((opts.title ? 22 : 0) + headH + rowH * Math.min(3, body.length));
     header(false);
     const extraSize = size - 1.1;
-    const extraH = extraSize + 2.6;
+    const extraFull = extraSize + 2.6;
+    const extraH = Math.max(extraSize + 1.2, extraFull * this.density);
+    const extraLift = (extraFull - extraH) / 2;
     body.forEach((row, ri) => {
       const isLast = ri === body.length - 1;
       const next = body[ri + 1];
@@ -341,7 +412,7 @@ class Book {
       if (row.kind === "group") this.rect(x0, y, width, rowH, STRIPE);
       if (row.kind === "total") this.rule(y, INK, 0.8, x0, x0 + width);
       if (rows.length === 0 && ri === 0) {
-        this.text(opts.empty ?? "None recorded", xs[0] + 2, y + size + 0.8, { size, color: MUTE });
+        this.text(opts.empty ?? "None recorded", xs[0] + 2, y + size + 0.8 - lift, { size, color: MUTE });
       } else {
         const cellSize = extra ? extraSize : size;
         row.cells.forEach((raw, i) => {
@@ -352,10 +423,10 @@ class Book {
           const tx = align === "right" ? xs[i] + ws[i] - 2 : align === "center" ? xs[i] + ws[i] / 2 : xs[i] + 2 + indent;
           const bold = cell.bold ?? (row.kind === "total" || row.kind === "head" || row.kind === "group");
           if (cell.pageOf) {
-            this.pageRef(cell.pageOf, tx, y + cellSize + 0.8, { size: cellSize, bold, align });
+            this.pageRef(cell.pageOf, tx, y + cellSize + 0.8 - lift, { size: cellSize, bold, align });
             return;
           }
-          this.text(cell.text, tx, y + cellSize + (extra ? 0.2 : 0.8), {
+          this.text(cell.text, tx, y + cellSize + (extra ? 0.2 - extraLift : 0.8 - lift), {
             size: cellSize, bold, align, color: cell.color ?? ((row.kind === "sub" && i === 0) || extra ? MUTE : INK),
             max: ws[i] - 4 - indent, link: cell.link,
           });
@@ -364,9 +435,12 @@ class Book {
       this.y = y + h;
       if (row.kind !== "total" && !isLast && next?.kind !== "total" && next?.kind !== "extra") this.rule(this.y, LINE, 0.25, x0, x0 + width);
     });
-    this.y += 8;
+    this.y += 8 * this.density;
   }
 }
+
+/** Under team statistics whose possession time was estimated (staleClock.ts). */
+const ESTIMATED_NOTE = "Where the clock was not updated between snaps, the time from one reading to the next is shared among the plays in between, more to a play that kept the clock running, so possession time there is an estimate.";
 
 /* ── Keys ─────────────────────────────────────────────────────────────────── */
 
@@ -619,8 +693,22 @@ class SeasonBookBuild {
       } catch { /* a logo that will not draw is left off */ }
     }
     b.text("SEASON BOOK", textX, 84, { size: 10, bold: true, color: onDark(b.accent), charSpace: 2.4 });
-    b.text(this.program.name.toUpperCase(), textX, 116, { size: 26, bold: true, color: WHITE, max: MARGIN + CONTENT_W - textX - 20 });
-    b.text(this.options.seasonLabel.toUpperCase(), textX, 140, { size: 13, bold: true, color: [200, 204, 210], charSpace: 1 });
+    // The whole name, never cut: smaller until it fits, and only a name too
+    // long even at 18pt goes over two lines ("PURCHASE LINE HIGH SCH…").
+    const name = this.program.name.toUpperCase();
+    const nameW = MARGIN + CONTENT_W - textX - 20;
+    const oneLine = b.fitSize(name, nameW, 26, 18, true);
+    let seasonY = 140;
+    if (oneLine) {
+      b.text(name, textX, 116, { size: oneLine, bold: true, color: WHITE });
+    } else {
+      let size = 20;
+      let lines = b.wrap(name, nameW, size, true);
+      while (lines.length > 2 && size > 12) { size -= 1; lines = b.wrap(name, nameW, size, true); }
+      lines.slice(0, 2).forEach((line, i) => b.text(line, textX, 106 + i * (size + 3), { size, bold: true, color: WHITE, max: nameW }));
+      seasonY = 106 + (size + 3) + 21;
+    }
+    b.text(this.options.seasonLabel.toUpperCase(), textX, seasonY, { size: 13, bold: true, color: [200, 204, 210], charSpace: 1 });
     b.text(`${recordLabel(rec)}  ·  ${rec.final} game${rec.final === 1 ? "" : "s"}  ·  ${rec.pf} points for, ${rec.pa} against`, textX, 172, { size: 9.5, color: WHITE });
     b.text(`Made ${this.options.generatedLabel}`, textX, 190, { size: 7.5, color: [160, 166, 176] });
 
@@ -792,25 +880,27 @@ class SeasonBookBuild {
     const s = this.season;
     b.label = "Season totals";
 
-    // Team statistics.
-    b.newPage();
-    b.band("Season team statistics", { anchor: K.seasonTeam, note: `${s.games} final game${s.games === 1 ? "" : "s"}` });
-    this.teamComparison(s.report, s.games, true);
-
-    // By quarter and half.
-    b.band("Season by quarter and half", { anchor: K.seasonSplits, note: "Each quarter's numbers added up across the season", minBelow: 200 });
-    this.teamSplits(p => this.seasonFor(p), "Season");
-    this.playerSplits(p => this.seasonFor(p), "Season");
+    // Team statistics, then by quarter and half.
+    b.chapter(() => {
+      b.band("Season team statistics", { anchor: K.seasonTeam, note: `${s.games} final game${s.games === 1 ? "" : "s"}` });
+      this.teamComparison(s.report, s.games, true);
+      if (s.bundle.clockEstimated) b.note(`Possession time includes estimates. ${ESTIMATED_NOTE}`);
+      b.band("Season by quarter and half", { anchor: K.seasonSplits, note: "Each quarter's numbers added up across the season", minBelow: 200 });
+      this.teamSplits(p => this.seasonFor(p), "Season");
+      this.playerSplits(p => this.seasonFor(p), "Season");
+    });
 
     // Individual statistics.
-    b.newPage();
-    b.band("Season individual statistics", { anchor: K.seasonPlayers, note: "GP = games with a stat line" });
-    this.individualTables(s, true);
+    b.chapter(() => {
+      b.band("Season individual statistics", { anchor: K.seasonPlayers, note: "GP = games with a stat line" });
+      this.individualTables(s, true);
+    });
 
     // Game by game.
-    b.newPage();
-    b.band("Game by game", { anchor: K.seasonGames, note: "Tap a game to open it" });
-    this.gameByGame();
+    b.chapter(() => {
+      b.band("Game by game", { anchor: K.seasonGames, note: "Tap a game to open it" });
+      this.gameByGame();
+    });
   }
 
   private teamComparison(report: GameReport, games: number | null, perGame: boolean) {
@@ -850,8 +940,8 @@ class SeasonBookBuild {
     const stats: Array<[string, (l: TeamPeriodLine) => string]> = [
       ["Points", l => String(l.points)],
       ["First downs", l => String(l.firstDowns)],
-      ["Rushing att-yds", l => `${l.rushAtt}-${l.rushYds}`],
-      ["Passing c-a-yds", l => `${l.passComp}-${l.passAtt}-${l.passYds}`],
+      ["Rushing att-yds", l => countYards(l.rushAtt, l.rushYds)],
+      ["Passing c-a-yds", l => countYards(`${l.passComp}-${l.passAtt}`, l.passYds)],
       ["Total yards", l => String(l.totalYds)],
       ["Plays · yds/play", l => `${l.plays} · ${per(l.totalYds, l.plays)}`],
       ["3rd down conv", l => `${l.thirdConv}-${l.thirdAtt}`],
@@ -936,12 +1026,12 @@ class SeasonBookBuild {
     ].map((c, i) => (i === 1 ? { ...c, label: who } : c));
     const row = (g: BookGame, l: TeamPeriodLine): CellIn[] => [
       g.number, { text: this.opponentText(g), link: K.game(g.meta.id) }, { text: this.resultText(g), bold: true, color: this.resultColor(g) },
-      l.firstDowns, `${l.rushAtt}-${l.rushYds}`, `${l.passComp}-${l.passAtt}-${l.passYds}`, { text: String(l.totalYds), bold: true }, l.plays,
+      l.firstDowns, countYards(l.rushAtt, l.rushYds), countYards(`${l.passComp}-${l.passAtt}`, l.passYds), { text: String(l.totalYds), bold: true }, l.plays,
       per(l.totalYds, l.plays), `${l.thirdConv}-${l.thirdAtt}`, l.turnovers, `${l.penalties}-${l.penaltyYds}`,
     ];
     const s = teamPeriodLines(this.season, this.program.id);
     const totalRow = (l: TeamPeriodLine): Row => ({ kind: "total", cells: [
-      "", "Season", "", l.firstDowns, `${l.rushAtt}-${l.rushYds}`, `${l.passComp}-${l.passAtt}-${l.passYds}`, l.totalYds, l.plays,
+      "", "Season", "", l.firstDowns, countYards(l.rushAtt, l.rushYds), countYards(`${l.passComp}-${l.passAtt}`, l.passYds), l.totalYds, l.plays,
       per(l.totalYds, l.plays), `${l.thirdConv}-${l.thirdAtt}`, l.turnovers, `${l.penalties}-${l.penaltyYds}`,
     ] });
     b.table(cols(`${this.abbr} offense`), [...lines.map(x => ({ cells: row(x.g, x.t.us) })), totalRow(s.us)], { title: `${this.program.name} offense`, titleNote: "Rush att-yds · Pass comp-att-yds" });
@@ -959,9 +1049,9 @@ class SeasonBookBuild {
       { label: "Receiving", width: 0, align: "left" }, { label: "Tackles", width: 0, align: "left" },
     ], lines.map(({ g, s: st }) => ({ cells: [
       g.number, { text: g.meta.opponentName, link: K.game(g.meta.id) },
-      leader(st.report.rushing, r => r.net, r => `${r.att}-${r.net}`),
-      leader(st.report.passing, r => r.yds, r => `${r.comp}/${r.att}-${r.yds}`),
-      leader(st.report.receiving, r => r.yds, r => `${r.rec}-${r.yds}`),
+      leader(st.report.rushing, r => r.net, r => countYards(r.att, r.net)),
+      leader(st.report.passing, r => r.yds, r => countYards(`${r.comp}/${r.att}`, r.yds)),
+      leader(st.report.receiving, r => r.yds, r => countYards(r.rec, r.yds)),
       leader(st.report.defense, r => r.total, r => n(r.total)),
     ] })), { title: "Leaders by game", size: 7 });
   }
@@ -981,63 +1071,69 @@ class SeasonBookBuild {
     const r = s.report;
     const hasOT = gameHasOT(g);
     b.label = `Game ${g.number} · ${this.opponentText(g)}`;
-    b.newPage();
-    b.anchor(K.game(g.meta.id), TOP);
+    // Each run of pages is a chapter: see Book.chapter.
+    b.chapter(() => {
+      b.anchor(K.game(g.meta.id), TOP);
 
-    // Masthead.
-    const y0 = b.y;
-    b.text(`GAME ${g.number}  ·  ${longDate(g.meta.date)}  ·  ${g.meta.isHome ? "HOME" : "AWAY"}`, MARGIN, y0 + 8, { size: 7.5, bold: true, color: MUTE, charSpace: 0.6 });
-    b.text(`${g.meta.isHome ? "vs" : "at"} ${g.meta.opponentName}`.toUpperCase(), MARGIN, y0 + 30, { size: 20, bold: true, max: CONTENT_W - 150 });
-    const result = gameResult(g.meta);
-    const chipW = 128;
-    b.rect(MARGIN + CONTENT_W - chipW, y0 + 6, chipW, 30, result === "W" ? GREEN : result === "L" ? b.accent : MUTE);
-    b.text(`${result === "W" ? "WIN" : result === "L" ? "LOSS" : result === "T" ? "TIE" : ""}  ${g.meta.ourScore}-${g.meta.theirScore}`, MARGIN + CONTENT_W - chipW / 2, y0 + 26, { size: 13, bold: true, color: WHITE, align: "center" });
-    b.y = y0 + 44;
-    // Jump links within the game.
-    let jx = MARGIN;
-    for (const [text, key] of [["Players", K.gamePlayers(g.meta.id)], ["By quarter", K.gameSplits(g.meta.id)], ["Play-by-play", K.gamePbp(g.meta.id)], ["Game by game", K.seasonGames]] as const) {
-      jx += b.text(`${text} ›`, jx, b.y + 4, { size: 7.6, bold: true, link: key }) + 14;
-    }
-    b.y += 14;
+      // Masthead.
+      const y0 = b.y;
+      b.text(`GAME ${g.number}  ·  ${longDate(g.meta.date)}  ·  ${g.meta.isHome ? "HOME" : "AWAY"}`, MARGIN, y0 + 8, { size: 7.5, bold: true, color: MUTE, charSpace: 0.6 });
+      const title = `${g.meta.isHome ? "vs" : "at"} ${g.meta.opponentName}`.toUpperCase();
+      b.text(title, MARGIN, y0 + 30, { size: b.fitSize(title, CONTENT_W - 150, 20, 14, true) ?? 14, bold: true, max: CONTENT_W - 150 });
+      const result = gameResult(g.meta);
+      const chipW = 128;
+      b.rect(MARGIN + CONTENT_W - chipW, y0 + 6, chipW, 30, result === "W" ? GREEN : result === "L" ? b.accent : MUTE);
+      b.text(`${result === "W" ? "WIN" : result === "L" ? "LOSS" : result === "T" ? "TIE" : ""}  ${g.meta.ourScore}-${g.meta.theirScore}`, MARGIN + CONTENT_W - chipW / 2, y0 + 26, { size: 13, bold: true, color: WHITE, align: "center" });
+      b.y = y0 + 44;
+      // Jump links within the game.
+      let jx = MARGIN;
+      for (const [text, key] of [["Players", K.gamePlayers(g.meta.id)], ["By quarter", K.gameSplits(g.meta.id)], ["Play-by-play", K.gamePbp(g.meta.id)], ["Game by game", K.seasonGames]] as const) {
+        jx += b.text(`${text} ›`, jx, b.y + 4, { size: 7.6, bold: true, link: key }) + 14;
+      }
+      b.y += 14;
 
-    // Line score.
-    const qCols = r.quarters.map(q => col(q === "OT" ? "OT" : q, 34));
-    b.table([{ label: "Team", width: 0, align: "left" }, ...qCols, col("Final", 44)], [
-      { cells: [{ text: this.program.name, bold: true }, ...r.lineScore.us.map(String), { text: String(g.meta.ourScore), bold: true }] },
-      { cells: [g.meta.opponentName, ...r.lineScore.them.map(String), { text: String(g.meta.theirScore), bold: true }] },
-    ], { title: "Line score", size: 8.4, rowH: 13 });
+      // Line score.
+      const qCols = r.quarters.map(q => col(q === "OT" ? "OT" : q, 34));
+      b.table([{ label: "Team", width: 0, align: "left" }, ...qCols, col("Final", 44)], [
+        { cells: [{ text: this.program.name, bold: true }, ...r.lineScore.us.map(String), { text: String(g.meta.ourScore), bold: true }] },
+        { cells: [g.meta.opponentName, ...r.lineScore.them.map(String), { text: String(g.meta.theirScore), bold: true }] },
+      ], { title: "Line score", size: 8.4, rowH: 13 });
 
-    // Scoring summary.
-    if (r.scoring.length) {
-      b.table([
-        col("Qtr", 26), { label: "Time", width: 32, align: "left" }, { label: "Team", width: 32, align: "left" },
-        { label: "Scoring play", width: 0, align: "left" }, col(`${this.abbr}-${g.meta.opponentAbbr}`, 48),
-      ], r.scoring.map(row => {
-        const [them, us] = row.score.split("-");
-        return { cells: [
-          row.quarter > 4 ? "OT" : String(row.quarter), row.clock, { text: row.team, bold: true, color: row.isUs ? INK : MUTE },
-          `${row.play}${row.conversion ? ` ${row.conversion}` : ""}`, { text: `${us}-${them}`, bold: true },
-        ] };
-      }), { title: "Scoring summary" });
-    }
+      // Scoring summary.
+      if (r.scoring.length) {
+        b.table([
+          col("Qtr", 26), { label: "Time", width: 32, align: "left" }, { label: "Team", width: 32, align: "left" },
+          { label: "Scoring play", width: 0, align: "left" }, col(`${this.abbr}-${g.meta.opponentAbbr}`, 48),
+        ], r.scoring.map(row => {
+          const [them, us] = row.score.split("-");
+          return { cells: [
+            row.quarter > 4 ? "OT" : String(row.quarter), row.clock, { text: row.team, bold: true, color: row.isUs ? INK : MUTE },
+            `${row.play}${row.conversion ? ` ${row.conversion}` : ""}`, { text: `${us}-${them}`, bold: true },
+          ] };
+        }), { title: "Scoring summary" });
+      }
 
-    // Team statistics, two columns.
-    this.twoColumnTeamStats(r);
+      // Team statistics, two columns.
+      this.twoColumnTeamStats(r);
+      if (s.bundle.clockEstimated) b.note(ESTIMATED_NOTE);
 
-    // Players.
-    b.band("Individual statistics", { anchor: K.gamePlayers(g.meta.id), note: `${this.opponentText(g)} · ${this.resultText(g)}` });
-    this.individualTables(s, false);
+      // Players.
+      b.band("Individual statistics", { anchor: K.gamePlayers(g.meta.id), note: `${this.opponentText(g)} · ${this.resultText(g)}` });
+      this.individualTables(s, false);
+    });
 
     // By quarter and half.
-    b.newPage();
-    b.band("By quarter and half", { anchor: K.gameSplits(g.meta.id), note: `${this.opponentText(g)} · ${this.resultText(g)}` });
-    this.teamSplits(p => gameStats(this.program, g, p), "Game", hasOT, g.meta.opponentAbbr);
-    this.playerSplits(p => gameStats(this.program, g, p), "Game", hasOT);
+    b.chapter(() => {
+      b.band("By quarter and half", { anchor: K.gameSplits(g.meta.id), note: `${this.opponentText(g)} · ${this.resultText(g)}` });
+      this.teamSplits(p => gameStats(this.program, g, p), "Game", hasOT, g.meta.opponentAbbr);
+      this.playerSplits(p => gameStats(this.program, g, p), "Game", hasOT);
+    });
 
     // Play-by-play.
-    b.newPage();
-    b.band("Play-by-play", { anchor: K.gamePbp(g.meta.id), note: "Yards are what the stats counted · # matches the app's play log" });
-    this.playByPlaySection(g, s);
+    b.chapter(() => {
+      b.band("Play-by-play", { anchor: K.gamePbp(g.meta.id), note: "Yards are what the stats counted · # matches the app's play log" });
+      this.playByPlaySection(g, s);
+    });
   }
 
   private twoColumnTeamStats(r: GameReport) {
@@ -1073,12 +1169,13 @@ class SeasonBookBuild {
     const X = { num: MARGIN, clock: MARGIN + 20, down: MARGIN + 46, spot: MARGIN + 92, play: MARGIN + 134, gain: MARGIN + CONTENT_W - 66, note: MARGIN + CONTENT_W };
     const playW = X.gain - X.play - 26;
     const size = 7.2;
-    const lineH = size + 2.3;
+    // A squeezed chapter tightens the leading, not the type.
+    const lineH = size + 2.3 * b.density;
 
     const drawPlay = (p: PbpPlay) => {
       const lines = b.wrap(p.text, playW, size);
       const credit = p.credits ? b.wrap(p.credits, playW, size - 0.8) : [];
-      const h = lines.length * lineH + credit.length * (lineH - 1) + 3.5;
+      const h = lines.length * lineH + credit.length * (lineH - 1) + 3.5 * b.density;
       if (b.y + h > BOTTOM) { b.newPage(); pbpHeader(); }
       const y = b.y + size + 1;
       b.text(String(p.number), X.num + 14, y, { size: size - 0.6, color: FAINT, align: "right" });
@@ -1091,7 +1188,7 @@ class SeasonBookBuild {
       const flags = p.flags.join(" ");
       if (flags) b.text(flags, X.note, y, { size: size - 0.6, bold: true, align: "right", color: p.flags.includes("TD") ? GREEN : p.flags.includes("TO") ? RED_TEXT : AMBER });
       if (p.score) b.text(p.score, X.note, y + lineH, { size: size - 0.8, bold: true, align: "right" });
-      b.y += Math.max(h, p.score ? lineH * 2 + 3 : 0);
+      b.y += Math.max(h, p.score ? lineH * 2 + 3 * b.density : 0);
       b.rule(b.y - 1.2, LINE, 0.2);
     };
     const pbpHeader = () => {
@@ -1111,7 +1208,7 @@ class SeasonBookBuild {
       b.rect(MARGIN, y, CONTENT_W, 14, INK);
       b.text(q.title.toUpperCase(), MARGIN + 8, y + 9.8, { size: 8, bold: true, color: WHITE, charSpace: 0.5 });
       b.text(`End of quarter: ${q.endScore}`, MARGIN + CONTENT_W - 8, y + 9.6, { size: 7, color: [200, 204, 210], align: "right" });
-      b.y = y + 18;
+      b.y = y + 14 + 4 * b.density;
       for (const d of q.drives) {
         // A drive heading never sits alone at the foot of a page.
         b.ensure(44);
@@ -1124,9 +1221,9 @@ class SeasonBookBuild {
         const cont = [d.continuedFrom != null ? `continued from Q${d.continuedFrom}` : "", d.continuesInto != null ? `continues in Q${d.continuesInto}` : ""].filter(Boolean).join(" · ");
         if (cont) b.text(cont, MARGIN + 14 + hw, dy + 8.8, { size: 6.4, color: MUTE });
         if (d.summary) b.text(d.summary, MARGIN + CONTENT_W - 6, dy + 8.8, { size: 6.6, color: MUTE, align: "right" });
-        b.y = dy + 15.5;
+        b.y = dy + 12.5 + 3 * b.density;
         for (const p of d.plays) drawPlay(p);
-        b.y += 3;
+        b.y += 3 * b.density;
       }
     }
   }
@@ -1255,10 +1352,11 @@ class SeasonBookBuild {
     b.fill(b.accent);
     b.doc.triangle(MARGIN + CONTENT_W - 10, 44, MARGIN + CONTENT_W, 44, MARGIN + CONTENT_W - 10, 47.5, "F");
     b.doc.rect(MARGIN, 44, CONTENT_W - 10, 3.5, "F");
-    b.text(`${this.program.name}  ·  ${this.options.seasonLabel}  ·  Season Book`.toUpperCase(), MARGIN + 8, 37.6, { size: 6.6, bold: true, color: WHITE, charSpace: 0.5, max: 280 });
+    // The page's own label first; the school's name gets whatever it leaves.
     const players = this.pagePlayers.get(page);
     const label = players ? players.join("  ·  ") : b.pageLabels[page] ?? "";
-    if (label) b.text(label.toUpperCase(), MARGIN + CONTENT_W - 8, 37.6, { size: 6.6, bold: true, color: [200, 204, 210], align: "right", charSpace: 0.4, max: 230 });
+    const labelW = label ? b.text(label.toUpperCase(), MARGIN + CONTENT_W - 8, 37.6, { size: 6.6, bold: true, color: [200, 204, 210], align: "right", charSpace: 0.4, max: 230 }) : 0;
+    b.text(`${this.program.name}  ·  ${this.options.seasonLabel}  ·  Season Book`.toUpperCase(), MARGIN + 8, 37.6, { size: 6.6, bold: true, color: WHITE, charSpace: 0.5, max: CONTENT_W - 16 - labelW - 16 });
   }
 
   private footer(page: number, total: number) {

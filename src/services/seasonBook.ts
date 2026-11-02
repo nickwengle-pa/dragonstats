@@ -23,6 +23,7 @@ import {
 } from "./statsService";
 import {
   buildGameReport,
+  countYards,
   playerScoringFromPlays,
   type BuildReportInput,
   type DefensiveRow,
@@ -466,17 +467,18 @@ export function shortDate(date: string | null): string {
 }
 
 /**
- * The by-quarter cells, in two parts: the counting line ("11-112") and what
- * scored or took the ball away ("2 TD"). Both blank when there is nothing.
- * The book prints the second part on a line of its own under the first, so a
- * cell never has to be cut to fit a column.
+ * The by-quarter cells, in two parts: the counting line ("11-112", or
+ * "4 for -3" when the yards went backwards) and what scored or took the ball
+ * away ("2 TD"). Both blank when there is nothing. The book prints the second
+ * part on a line of its own under the first, so a cell never has to be cut to
+ * fit a column.
  */
 export const splitParts = {
-  rushing: (r?: RushingRow): [string, string] => r && r.att ? [`${r.att}-${r.net}`, r.td ? `${r.td} TD` : ""] : ["", ""],
+  rushing: (r?: RushingRow): [string, string] => r && r.att ? [countYards(r.att, r.net), r.td ? `${r.td} TD` : ""] : ["", ""],
   passing: (r?: PassingRow): [string, string] => r && r.att
-    ? [`${r.comp}/${r.att}-${r.yds}`, [r.td ? `${r.td} TD` : "", r.int ? `${r.int} INT` : ""].filter(Boolean).join(" ")]
+    ? [countYards(`${r.comp}/${r.att}`, r.yds), [r.td ? `${r.td} TD` : "", r.int ? `${r.int} INT` : ""].filter(Boolean).join(" ")]
     : ["", ""],
-  receiving: (r?: ReceivingRow): [string, string] => r && r.rec ? [`${r.rec}-${r.yds}`, r.td ? `${r.td} TD` : ""] : ["", ""],
+  receiving: (r?: ReceivingRow): [string, string] => r && r.rec ? [countYards(r.rec, r.yds), r.td ? `${r.td} TD` : ""] : ["", ""],
   defense: (r?: DefensiveRow): [string, string] => {
     if (!r) return ["", ""];
     const extras = [

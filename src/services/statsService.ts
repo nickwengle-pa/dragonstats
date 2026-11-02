@@ -12,6 +12,7 @@ import { opponentPlayerService } from "./opponentService";
 import { getPregameConfig } from "./gameFlow";
 import { resolveDriveResults } from "./driveResults";
 import { runOutFinalClock } from "./finalClock";
+import { ESTIMATED_SNAPS, estimateStaleClocks } from "./staleClock";
 import { isInsideTwenty, resolveKickSpots } from "./kickSpots";
 import { applyLostMuffs, initDefStats } from "./lostMuffs";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
@@ -20,6 +21,7 @@ import {
   CoinTossChoice,
   type GameSummary,
   type TeamId,
+  type TeamStats,
   type DefensiveStats,
   type Play as EnginePlay,
 } from "football-stats-engine";
@@ -132,6 +134,9 @@ export interface GameStatsBundle {
   period: StatPeriod;
   roster: RosterPlayer[];
   game: GameRecord;
+  /** Time of possession is estimated: the clock was left alone across
+   *  enough snaps that ran it to matter (staleClock.ts). */
+  clockEstimated?: boolean;
 }
 
 /**
@@ -238,6 +243,12 @@ export function computeGameStatsBundles(
 
   if (enginePlays.length === 0) return null;
 
+  // 3b. The same plays with an estimated clock wherever it was left alone
+  //     across snaps that ran it, for time of possession only. See
+  //     staleClock.ts.
+  const clockEstimate = estimateStaleClocks(plays, { completed: game.status === "completed" });
+  const timedPlays = clockEstimate ? transformPlays(clockEstimate.rows, transformCtx) : null;
+
   const rulesConfig = (game.rules_config ?? {}) as Record<string, unknown>;
   const level = rulesConfig.level === "nfl" || rulesConfig.level === "college" || rulesConfig.level === "high_school"
     ? rulesConfig.level
@@ -342,6 +353,8 @@ export function computeGameStatsBundles(
     result: String(p.play_data?.result ?? ""),
   })));
 
+  const fullTimed = clockEstimate && timedPlays ? summarize(timedPlays, clockEstimate.rows) : null;
+
   const out = new Map<StatPeriod, GameStatsBundle>();
   for (const period of new Set(periods)) {
     // 6. One period of it. The plays were transformed as a whole game first, so
@@ -356,6 +369,17 @@ export function computeGameStatsBundles(
       summary = summarize(enginePlays.filter(p => inPeriod(p.context.quarter, period)), periodPlays);
       summary.drives = full.drives.filter(d => inPeriod(d.startQuarter, period));
     }
+    // The same slice off the estimated clock, cut the same way.
+    let timed: GameSummary | null = null;
+    if (fullTimed && timedPlays && clockEstimate) {
+      timed = period === "game" ? fullTimed : {
+        ...summarize(
+          timedPlays.filter(p => inPeriod(p.context.quarter, period)),
+          clockEstimate.rows.filter(p => inPeriod(Number(p.quarter), period)),
+        ),
+        drives: fullTimed.drives.filter(d => inPeriod(d.startQuarter, period)),
+      };
+    }
 
     // 7. A final game ran its clock out, set to 0:00 or not. The time left
     //    after the last snap goes to whoever had the ball. See finalClock.ts.
@@ -368,11 +392,42 @@ export function computeGameStatsBundles(
       const side = last.play_data?.next_possession ?? last.possession;
       const holder = side === "us" ? program.id : side === "them" ? game.opponent.id : null;
       summary = runOutFinalClock(summary, holder);
+      if (timed) timed = runOutFinalClock(timed, holder);
     }
+    if (timed) summary = withPossessionFrom(summary, timed);
 
-    out.set(period, { summary, plays: periodPlays, allPlays: plays, period, roster, game });
+    // Labelled only where the estimate reached this slice's own snaps.
+    const estimatedSnaps = clockEstimate ? periodPlays.filter(p => clockEstimate.snaps.has(p.id)).length : 0;
+    out.set(period, {
+      summary, plays: periodPlays, allPlays: plays, period, roster, game,
+      clockEstimated: estimatedSnaps >= ESTIMATED_SNAPS,
+    });
   }
   return out;
+}
+
+/**
+ * The summary with time of possession, per team and per drive, taken from the
+ * same slice timed off the estimated clock. Drive starts and ends stay as the
+ * clock was entered; only how long each drive held the ball changes.
+ */
+function withPossessionFrom(summary: GameSummary, timed: GameSummary): GameSummary {
+  const top = (stats: TeamStats, from: TeamStats): TeamStats => ({
+    ...stats,
+    timeOfPossession: from.timeOfPossession,
+    timeOfPossessionSeconds: from.timeOfPossessionSeconds,
+    averageDriveTime: from.averageDriveTime,
+  });
+  const timedDrives = new Map(timed.drives.map(d => [d.driveNumber, d]));
+  return {
+    ...summary,
+    homeTeamStats: top(summary.homeTeamStats, timed.homeTeamStats),
+    awayTeamStats: top(summary.awayTeamStats, timed.awayTeamStats),
+    drives: summary.drives.map(d => {
+      const t = timedDrives.get(d.driveNumber);
+      return t ? { ...d, timeOfPossession: t.timeOfPossession, timeOfPossessionSeconds: t.timeOfPossessionSeconds } : d;
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { computePlayerSeasonStats, computePlayerCareerStats, type PlayerGameLine, type PlayerSeasonBlock } from "@/services/statsService";
 import { exportPlayerSeasonCsv } from "@/services/csvExport";
 import type { PassingStats, RushingStats, ReceivingStats, DefensiveStats, KickingStats, PuntingStats, ReturnStats } from "football-stats-engine";
-import type { PlayerScoring } from "@/services/gameReport";
+import { countYards, type PlayerScoring } from "@/services/gameReport";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -403,8 +403,8 @@ function ReturnsSection({ lines }: { lines: PlayerGameLine[] }) {
         lines={lines.filter(l => has.kickReturns(l) || has.puntReturns(l))}
         category="returns"
         columns={[
-          { label: "KR", render: (s: ReturnStats) => `${s.kickReturns}-${fmt(s.kickReturnYards)}` },
-          { label: "PR", render: (s: ReturnStats) => `${s.puntReturns}-${fmt(s.puntReturnYards)}` },
+          { label: "KR", render: (s: ReturnStats) => countYards(s.kickReturns, s.kickReturnYards ?? 0) },
+          { label: "PR", render: (s: ReturnStats) => countYards(s.puntReturns, s.puntReturnYards ?? 0) },
           { label: "TD", render: (s: ReturnStats) => fmt((s.kickReturnTouchdowns ?? 0) + (s.puntReturnTouchdowns ?? 0)) },
         ]}
       />
