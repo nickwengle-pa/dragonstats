@@ -17,6 +17,8 @@
 import type { DriveStats } from "football-stats-engine";
 import type { PlayWithPlayers } from "./gameService";
 import type { RosterPlayer } from "./statsService";
+import type { PlayCharting } from "./chartingService";
+import { chartingParts } from "./chartingLine";
 import { drivesByQuarter } from "./drivesByQuarter";
 import { nullifiedStats, withStatYards } from "./statAuditRules";
 import { scoringEventsForPlay } from "./scoringLedger";
@@ -36,6 +38,10 @@ export interface PbpPlay {
   /** Our defensive credits the description leaves out: tacklers, forced
    *  fumbles, breakups, hurries, blocks. */
   credits: string;
+  /** The Film Chart's notes on the play, a part each: formation, personnel,
+   *  motion, call, the defense, hash, tags, note. Empty when it was not
+   *  charted. Printed joined by " · ", breaking between parts. */
+  charted: string[];
   /** Stat yards, "+5" / "-3" / "0"; "No play" when a flag wiped it out;
    *  blank for kicks, tries and timeouts. */
   gain: string;
@@ -159,7 +165,8 @@ function flagsFor(play: PlayWithPlayers): string[] {
 
 /**
  * The whole game, quarter by quarter. `plays` is every row of the game in
- * recording order and `drives` the engine's drives for the whole game.
+ * recording order, `drives` the engine's drives for the whole game and
+ * `charting` the Film Chart's rows by play id.
  */
 export function playByPlay(
   plays: PlayWithPlayers[],
@@ -167,6 +174,7 @@ export function playByPlay(
   roster: RosterPlayer[],
   usAbbr: string,
   themAbbr: string,
+  charting: Record<string, PlayCharting> = {},
 ): PbpQuarter[] {
   const sorted = [...plays].sort((a, b) => a.sequence - b.sequence);
   const numberOf = new Map(sorted.map((p, i) => [p.id, i + 1]));
@@ -209,6 +217,7 @@ export function playByPlay(
       spot: p.play_type === "timeout" ? "" : teamSpot(p.yard_line ?? 0, side, usAbbr, themAbbr),
       text: (p.description ?? "").trim() || p.play_type.replace(/_/g, " "),
       credits: creditsLine(record.tagged ?? []),
+      charted: chartingParts(charting[p.id], p),
       gain: gainText(p),
       flags: flagsFor(p),
       score: scoreAfter.get(p.id) ?? null,

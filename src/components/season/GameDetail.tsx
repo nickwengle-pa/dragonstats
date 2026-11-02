@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import PeriodSwitch, { useStatPeriod } from "@/components/report/PeriodSwitch";
 import { playByPlay, type PbpPlay } from "@/services/playByPlay";
 import {
@@ -154,8 +154,8 @@ function PlayByPlayList({ game, whole, period, usAbbr }: {
   usAbbr: string;
 }) {
   const quarters = useMemo(
-    () => playByPlay(whole.bundle.allPlays, whole.bundle.summary.drives, whole.bundle.roster, usAbbr, game.meta.opponentAbbr),
-    [whole, usAbbr, game.meta.opponentAbbr],
+    () => playByPlay(whole.bundle.allPlays, whole.bundle.summary.drives, whole.bundle.roster, usAbbr, game.meta.opponentAbbr, game.charting),
+    [whole, usAbbr, game.meta.opponentAbbr, game.charting],
   );
   const shown = quarters.filter(q => inPeriod(q.quarter, period));
   if (shown.length === 0) return <p className="ss-empty">No plays in the {PERIOD_LONG[period].toLowerCase()}.</p>;
@@ -191,6 +191,15 @@ function PlayRow({ play: p }: { play: PbpPlay }) {
         {(p.situation || p.spot) && <div className="ss-play-sit">{[p.situation, p.spot].filter(Boolean).join(" · ")}</div>}
         <div className="ss-play-text">{p.text}</div>
         {p.credits && <div className="ss-play-credit">{p.credits}</div>}
+        {p.charted.length > 0 && (
+          <div className="ss-play-chart">
+            <i>Film</i>
+            {/* A line breaks between parts, so "Middle of field" stays whole; a long note may still wrap. */}
+            {p.charted.map((part, k) => (
+              <Fragment key={k}>{k > 0 && "\u00a0· "}<span className={part.length > 30 ? "long" : undefined}>{part}</span></Fragment>
+            ))}
+          </div>
+        )}
       </div>
       <div className="ss-play-gain">
         {p.gain && <b className={p.gain === "No play" ? "amber" : undefined}>{p.gain}</b>}

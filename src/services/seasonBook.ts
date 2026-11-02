@@ -38,6 +38,7 @@ import {
   type RushingRow,
 } from "./gameReport";
 import { combineSeasonBundles } from "./seasonReport";
+import type { PlayCharting } from "./chartingService";
 import { inPeriod, type StatPeriod } from "./statPeriod";
 import { TEAM_PLAYER_ID, isPendingId } from "@/components/game/types";
 
@@ -74,6 +75,9 @@ export interface BookGame {
   number: number;
   /** Null when the game has no plays charted, or could not be loaded. */
   inputs: GameStatsInputs | null;
+  /** The Film Chart's rows by play id, for the play-by-play. Missing or empty
+   *  when the game was not film-charted or they could not be loaded. */
+  charting?: Record<string, PlayCharting>;
   /** Filled on demand by gameStats. */
   periods: Map<StatPeriod, PeriodStats | null>;
 }

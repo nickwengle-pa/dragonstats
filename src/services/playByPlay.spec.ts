@@ -10,7 +10,7 @@ import { playByPlay } from "./playByPlay";
 const [game] = sampleSeasonGames(1);
 const stats = gameStats(SAMPLE_PROGRAM, game, "game")!;
 const rows = [...stats.bundle.allPlays].sort((a, b) => a.sequence - b.sequence);
-const quarters = playByPlay(stats.bundle.allPlays, stats.bundle.summary.drives, stats.bundle.roster, "SD", game.meta.opponentAbbr);
+const quarters = playByPlay(stats.bundle.allPlays, stats.bundle.summary.drives, stats.bundle.roster, "SD", game.meta.opponentAbbr, game.charting);
 const plays = quarters.flatMap(q => q.drives.flatMap(d => d.plays));
 
 describe("play-by-play", () => {
@@ -44,6 +44,19 @@ describe("play-by-play", () => {
 
   it("names our tacklers beside the opponent's snaps", () => {
     expect(plays.some(p => p.credits.startsWith("Tkl #"))).toBe(true);
+  });
+
+  it("prints the Film Chart's notes under the plays that were charted", () => {
+    const numberOf = new Map(rows.map((p, i) => [p.id, i + 1]));
+    const run = rows.find(r => r.play_type === "rush" && r.possession === "us")!;
+    const c = game.charting![run.id];
+    const shown = plays.find(p => p.number === numberOf.get(run.id))!;
+    expect(shown.charted.slice(0, 2)).toEqual([c.offensive_formation, `${c.personnel} pers`]);
+    expect(shown.charted).toContain(c.play_call);
+    // Kicks were not charted, and a game nobody charted prints no line at all.
+    expect(plays.find(p => p.text.startsWith("Kickoff"))!.charted).toEqual([]);
+    const bare = playByPlay(stats.bundle.allPlays, stats.bundle.summary.drives, stats.bundle.roster, "SD", game.meta.opponentAbbr);
+    expect(bare.flatMap(q => q.drives.flatMap(d => d.plays)).every(p => p.charted.length === 0)).toBe(true);
   });
 
   it("puts down and distance on snaps only", () => {

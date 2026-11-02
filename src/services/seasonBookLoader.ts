@@ -9,6 +9,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { loadGameStatsInputs, type RosterCache } from "./statsService";
+import { loadGameCharting } from "./chartingService";
 import type { BookGame, BookGameMeta } from "./seasonBook";
 
 /** Games read at once. Enough to overlap the round trips on press-box wifi
@@ -56,8 +57,14 @@ export async function loadSeasonGames(
     while (next < games.length) {
       if (options.signal?.cancelled) return;
       const game = games[next++];
-      const inputs = await loadGameStatsInputs(game.meta.id, rosters);
+      // The Film Chart's notes ride along for the play-by-play; a failed read
+      // leaves them out rather than the game.
+      const [inputs, charting] = await Promise.all([
+        loadGameStatsInputs(game.meta.id, rosters),
+        loadGameCharting(game.meta.id),
+      ]);
       game.inputs = inputs && inputs.plays.length > 0 ? inputs : null;
+      game.charting = charting;
       done += 1;
       options.onProgress?.(done, games.length);
     }
