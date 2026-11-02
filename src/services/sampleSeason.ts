@@ -14,6 +14,7 @@
 import type { PlayWithPlayers } from "./gameService";
 import type { GameRecord, GameStatsInputs, RosterPlayer } from "./statsService";
 import type { BookGame, BookProgram } from "./seasonBook";
+import type { PlayCharting } from "./chartingService";
 
 export const SAMPLE_PROGRAM: BookProgram = {
   id: "sample-program",
@@ -388,7 +389,38 @@ function simulateGame(index: number, roster: RosterPlayer[]): { record: GameReco
   return { record, plays, opp };
 }
 
-/** Six games, simulated. Fresh objects every call, so a test can mutate. */
+const SCRIMMAGE = new Set(["rush", "scramble", "pass_comp", "pass_inc", "sack", "int", "fumble"]);
+const RUNS = ["Power Rt", "Inside Zone Lt", "Counter Rt", "Jet Sweep Lt"];
+const PASSES = ["Y-Cross", "Mesh", "Stick Rt", "Four Verts"];
+
+/** Film charting for every snap from scrimmage, the way a staff that broke
+ *  down a game's film would leave it. Picked off the play number, not the
+ *  game's random stream, so the games themselves do not change. */
+function sampleCharting(plays: PlayWithPlayers[]): Record<string, PlayCharting> {
+  const out: Record<string, PlayCharting> = {};
+  for (const p of plays) {
+    if (!SCRIMMAGE.has(p.play_type)) continue;
+    const n = p.sequence;
+    const ours = p.possession === "us";
+    const run = p.play_type === "rush";
+    out[p.id] = {
+      play_id: p.id, game_id: p.game_id,
+      hash_mark: ["left", "middle", "right"][n % 3],
+      personnel: ours ? ["11", "12", "21", "10"][n % 4] : null,
+      offensive_formation: ours ? ["Shotgun", "Pistol", "Trips", "I-Form", "Spread"][n % 5] : ["Spread", "Wing-T", "I-Form"][n % 3],
+      defensive_formation: ours ? (n % 2 ? "4-3" : "3-4") : ["4-4", "5-2"][n % 2],
+      motion: ours && n % 5 === 0 ? "Jet" : null,
+      play_call: ours ? (run ? RUNS : PASSES)[n % 4] : null,
+      passer: null, receiver: null,
+      tags: Number(p.yards_gained) >= 15 ? ["explosive"] : null,
+      notes: ours && n % 23 === 0 ? "Backside end crashed; the QB should have pulled it." : null,
+    };
+  }
+  return out;
+}
+
+/** Six games, simulated. Fresh objects every call, so a test can mutate. The
+ *  first two were film-charted. */
 export function sampleSeasonGames(count = OPPONENTS.length): BookGame[] {
   const roster = sampleRoster();
   return OPPONENTS.slice(0, count).map(([name, abbr, color, isHome], i) => {
@@ -403,6 +435,7 @@ export function sampleSeasonGames(count = OPPONENTS.length): BookGame[] {
         opponentLogo: null, isHome, ourScore: record.our_score, theirScore: record.opponent_score, status: "completed",
       },
       inputs: { game: record, plays, roster, opponentPlayers: opp },
+      charting: i < 2 ? sampleCharting(plays) : {},
       periods: new Map(),
     };
   });

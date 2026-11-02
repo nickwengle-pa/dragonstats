@@ -301,6 +301,23 @@ class Book {
     this.font(size, bold);
     return this.doc.splitTextToSize(pdfText(value), width) as string[];
   }
+  /** Parts joined by " · ", broken between parts where a line runs out, and
+   *  inside one only when it is wider than a whole line. */
+  wrapParts(parts: string[], width: number, size: number): string[] {
+    const lines: string[] = [];
+    let line = "";
+    for (const part of parts) {
+      this.font(size, false);
+      const joined = line ? `${line} · ${pdfText(part)}` : pdfText(part);
+      if (this.width(joined) <= width) { line = joined; continue; }
+      if (line) lines.push(line);
+      const pieces = this.wrap(part, width, size);
+      lines.push(...pieces.slice(0, -1));
+      line = pieces[pieces.length - 1] ?? "";
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
 
   /* shapes */
   fill(color: RGB) { this.doc.setFillColor(color[0], color[1], color[2]); }
@@ -1162,7 +1179,7 @@ class SeasonBookBuild {
 
   private playByPlaySection(g: BookGame, s: PeriodStats) {
     const b = this.b;
-    const quarters = playByPlay(s.bundle.allPlays, s.bundle.summary.drives, s.bundle.roster, this.abbr, g.meta.opponentAbbr);
+    const quarters = playByPlay(s.bundle.allPlays, s.bundle.summary.drives, s.bundle.roster, this.abbr, g.meta.opponentAbbr, g.charting);
     const usColor = b.accent;
     const themColor = apart(hexToRgb(g.meta.opponentColor, MUTE), usColor);
     // Columns: # · clock · down · spot · play · gain · note.
@@ -1174,8 +1191,12 @@ class SeasonBookBuild {
 
     const drawPlay = (p: PbpPlay) => {
       const lines = b.wrap(p.text, playW, size);
-      const credit = p.credits ? b.wrap(p.credits, playW, size - 0.8) : [];
-      const h = lines.length * lineH + credit.length * (lineH - 1) + 3.5 * b.density;
+      // Credits, then the Film Chart's notes, in the smaller grey type.
+      const small = [
+        ...(p.credits ? b.wrap(p.credits, playW, size - 0.8) : []),
+        ...(p.charted.length ? b.wrapParts([`Film: ${p.charted[0]}`, ...p.charted.slice(1)], playW, size - 0.8) : []),
+      ];
+      const h = lines.length * lineH + small.length * (lineH - 1) + 3.5 * b.density;
       if (b.y + h > BOTTOM) { b.newPage(); pbpHeader(); }
       const y = b.y + size + 1;
       b.text(String(p.number), X.num + 14, y, { size: size - 0.6, color: FAINT, align: "right" });
@@ -1183,7 +1204,7 @@ class SeasonBookBuild {
       b.text(p.situation, X.down, y, { size: size - 0.4, color: MUTE, max: 46 });
       b.text(p.spot, X.spot, y, { size: size - 0.4, color: MUTE, max: 40 });
       lines.forEach((line, i) => b.text(line, X.play, y + i * lineH, { size, bold: p.flags.includes("TD") }));
-      credit.forEach((line, i) => b.text(line, X.play, y + lines.length * lineH + i * (lineH - 1), { size: size - 0.8, color: MUTE }));
+      small.forEach((line, i) => b.text(line, X.play, y + lines.length * lineH + i * (lineH - 1), { size: size - 0.8, color: MUTE }));
       if (p.gain) b.text(p.gain, X.gain, y, { size, bold: true, align: "right", color: p.gain === "No play" ? AMBER : INK });
       const flags = p.flags.join(" ");
       if (flags) b.text(flags, X.note, y, { size: size - 0.6, bold: true, align: "right", color: p.flags.includes("TD") ? GREEN : p.flags.includes("TO") ? RED_TEXT : AMBER });

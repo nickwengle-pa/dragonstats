@@ -260,6 +260,11 @@ html[data-theme="dark"] .bc .ss-cats button.on { background: var(--bc-red); bord
 .ss-play-text { line-height: 18px; overflow-wrap: anywhere; }
 .ss-play.td .ss-play-text { font-weight: 700; }
 .ss-play-credit { margin-top: 2px; font-size: 11px; line-height: 15px; color: var(--bc-mute); }
+/* Film Chart notes: not stats, so tagged and kept quiet. */
+.ss-play-chart { margin-top: 2px; font-size: 11px; line-height: 15px; color: var(--bc-mute); overflow-wrap: anywhere; }
+.ss-play-chart span { white-space: nowrap; }
+.ss-play-chart span.long { white-space: normal; }
+.ss-play-chart i { font-style: normal; font-family: "Chakra Petch", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 0 4px; margin-right: 6px; border: 1px solid var(--bc-line); vertical-align: 1px; }
 .ss-play-gain { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; font-variant-numeric: tabular-nums; }
 .ss-play-gain b.amber { color: var(--bc-amber-text); font-size: 11px; }
 .ss-flags { display: flex; gap: 3px; }
