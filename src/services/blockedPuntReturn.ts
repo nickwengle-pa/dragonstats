@@ -1,0 +1,66 @@
+/**
+ * What a blocked punt is worth to the team that blocked it.
+ *
+ * The stat manuals (NFHS Football Section 10, NCAA Section 7 Article 1) score
+ * a blocked punt as a TEAM punt for no yards, and the yards the ball goes
+ * BACK from the line as punt return yards for the other side: to the player
+ * who blocked it for the roll back, to whoever picks it up for the run after,
+ * and a score on it is a punt return touchdown. The reports already charged
+ * the punt to TEAM, and then counted nothing for the return - so four blocked
+ * punts cost us no return yards at all, and the net punting average left the
+ * four of them out.
+ *
+ * A blocked kick stores one spot: where the play ended. That is the whole
+ * return (line of scrimmage to there), which is exact for the team and for a
+ * man who blocks it and picks it up himself. When two players are involved
+ * the split between them is not recorded, so it all goes to the one who ended
+ * up with the ball. Nick knows; the entry screen would have to ask where it
+ * was picked up.
+ */
+
+import { normalizeBlockedTouchdown } from "./blockedKickOutcome";
+
+interface BlockedRow {
+  play_type: string;
+  possession?: string | null;
+  yard_line: number | null;
+  yards_gained: number | null;
+  is_touchdown?: boolean | null;
+  is_penalty?: boolean | null;
+  play_data?: unknown;
+}
+
+export function isBlockedPunt(play: { play_type: string; play_data?: unknown }): boolean {
+  return play.play_type === "blocked_kick"
+    && (play.play_data as Record<string, unknown> | null | undefined)?.blocked_kick_type === "punt";
+}
+
+export interface BlockedPuntReturn {
+  /** Line of scrimmage back to where the play ended. Never negative. */
+  yards: number;
+  /** The blocking team scored on it. */
+  touchdown: boolean;
+}
+
+/**
+ * The return on a blocked punt, or null when the play is not one. Zero yards
+ * when the ball ended at or beyond the line: a block that still crossed it,
+ * or one the kicking team picked up and ran forward.
+ */
+export function blockedPuntReturn(play: BlockedRow): BlockedPuntReturn | null {
+  if (!isBlockedPunt(play)) return null;
+  const pd = (play.play_data ?? {}) as Record<string, unknown>;
+  const recoveredByKicking = pd.blocked_recovered_by_kicking === true;
+  const row = normalizeBlockedTouchdown({
+    play_type: play.play_type,
+    is_touchdown: Boolean(play.is_touchdown),
+    is_penalty: Boolean(play.is_penalty),
+    play_data: play.play_data,
+    yard_line: play.yard_line ?? 0,
+    yards_gained: Number(play.yards_gained ?? 0),
+  });
+  return {
+    yards: Math.max(0, -row.yards_gained),
+    touchdown: Boolean(play.is_touchdown) && !recoveredByKicking,
+  };
+}

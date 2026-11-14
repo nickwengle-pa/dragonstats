@@ -34,6 +34,7 @@ import { firstPlayerByRole } from "./playTransformer";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, countBadSnaps, isWipedByPenaltyRow } from "@/components/game/types";
 import { isReturnTouchdown, scoringEvents, scoreByQuarter } from "./scoringLedger";
 import { nullifiedStats, withStatYards } from "./statAuditRules";
+import { blockedPuntReturn } from "./blockedPuntReturn";
 import { readFumbleSpots } from "./fumbleSpots";
 import { inPeriod, type StatPeriod } from "./statPeriod";
 
@@ -903,8 +904,11 @@ export function buildGameReport(input: BuildReportInput): GameReport {
   const theirKoReturnYards = sumTheirs<ReturnStats>(summary.returns, s => s.kickReturnYards);
   const theirPuntReturns = sumTheirs<ReturnStats>(summary.returns, s => s.puntReturns);
   const theirPuntReturnYards = sumTheirs<ReturnStats>(summary.returns, s => s.puntReturnYards);
-  const theirSacks = sumTheirs<DefensiveStats>(summary.defense, s => s.sacks);
-  const theirSackYards = sumTheirs<DefensiveStats>(summary.defense, s => s.sackYards);
+  /* Their sacks are the times OUR passer went down, off our team line. Summed
+     over their tagged defenders it counted only the sacks somebody on the
+     other side was named for: one of the three we took this season. */
+  const theirSacks = usTeam.sacks;
+  const theirSackYards = usTeam.sackYardsLost;
 
   const isGood = (p: PlayWithPlayers) => String(p.play_data?.result ?? "") === "Good";
   const patAttUs = countPlays("us", p => p.play_type === "pat");
@@ -920,8 +924,11 @@ export function buildGameReport(input: BuildReportInput): GameReport {
      play, so possession is inverted for these counts. */
   const koReturnTdUs = countPlays("them", p => p.is_touchdown && ["kickoff", "onside_kick"].includes(p.play_type));
   const koReturnTdThem = countPlays("us", p => p.is_touchdown && ["kickoff", "onside_kick"].includes(p.play_type));
-  const puntReturnTdUs = countPlays("them", p => p.is_touchdown && ["punt", "fair_catch"].includes(p.play_type));
-  const puntReturnTdThem = countPlays("us", p => p.is_touchdown && ["punt", "fair_catch"].includes(p.play_type));
+  // A blocked punt run in is a punt return touchdown (blockedPuntReturn.ts).
+  const isPuntReturnTd = (p: PlayWithPlayers) =>
+    p.is_touchdown && ["punt", "fair_catch"].includes(p.play_type) || blockedPuntReturn(p)?.touchdown === true;
+  const puntReturnTdUs = countPlays("them", isPuntReturnTd);
+  const puntReturnTdThem = countPlays("us", isPuntReturnTd);
   const intTdUs = countPlays("them", p => p.is_touchdown && p.play_type === "int");
   const intTdThem = countPlays("us", p => p.is_touchdown && p.play_type === "int");
   /* This line printed a hard 0 for fumble-return touchdowns, so a
@@ -974,8 +981,23 @@ export function buildGameReport(input: BuildReportInput): GameReport {
         };
       }, { yards: 0, count: 0 });
 
-  const netPuntUs = netKickFor("us", ["punt", "fair_catch"]);
-  const netPuntThem = netKickFor("them", ["punt", "fair_catch"]);
+  /* A blocked punt is a punt: a team punt for no yards, less whatever the
+     other side brought it back (the stat manuals; blockedPuntReturn.ts). The
+     gross average already counted the four we had blocked and the net left
+     them out, so the two were worked out on different punts: 29.7 on 37 and
+     28.7 on 33, where the net on all 37 is 24.4. */
+  const netPuntFor = (side: "us" | "them"): { yards: number; count: number } => {
+    const kicked = netKickFor(side, ["punt", "fair_catch"]);
+    const blocked = plays
+      .filter(p => p.possession === side)
+      .flatMap(p => blockedPuntReturn(p) ?? []);
+    return {
+      yards: kicked.yards - blocked.reduce((s, r) => s + r.yards, 0),
+      count: kicked.count + blocked.length,
+    };
+  };
+  const netPuntUs = netPuntFor("us");
+  const netPuntThem = netPuntFor("them");
   const netKoUs = netKickFor("us", ["kickoff"]);
   const netKoThem = netKickFor("them", ["kickoff"]);
 

@@ -106,6 +106,8 @@ export function scoringEventsForPlay(play: ScorablePlay): ScoringEvent[] {
     is_penalty: Boolean(pd.penalty_type),
     play_data: pd,
     yard_line: play.ballOn ?? (typeof before?.yard_line === "number" ? before.yard_line : null),
+    // So a hand-typed foul is read off the next snap here as it is in the stats.
+    possession: play.possession,
   })) return [];
   const events: ScoringEvent[] = [];
   const q = play.quarter;

@@ -66,13 +66,27 @@ export function kickInfoFromDescription(
  * marked off from that spot or from the end of the run, in the kicking team's
  * frame. Such a foul leaves the kick standing (it is not a re-kick); only the
  * return is cut back. Null for every other flag.
+ *
+ * A row saved before the enforcement spot was recorded says where the flag
+ * was marched from only through the next snap: the receiving team starts
+ * exactly the penalty behind the foul spot. Read that way, a clip at the NC 26
+ * behind a 32-yard return is a 6-yard return (Northern Cambria, play 13), and
+ * a hold at our 36 turns Caldwell's 55 into 25 (Penns Manor, play 112). The
+ * foul spot on such a row is otherwise left alone, because one nobody set is
+ * only the kick spot the form was prefilled with.
  */
 export function receiverFoulSpot(pd: Record<string, unknown>): number | null {
   const from = pd.penalty_enforcement_from;
   if (!pd.penalty_type || pd.play_category !== "defense") return null;
   if (pd.penalty_enforcement === "declined" || pd.penalty_enforcement === "offset") return null;
-  if (from !== "spot_of_foul" && from !== "end_of_play") return null;
-  return num(pd.foul_spot_ball_on);
+  const foul = num(pd.foul_spot_ball_on);
+  if (from === "spot_of_foul" || from === "end_of_play") return foul;
+  if (from != null && from !== "auto") return null;
+  const next = num(pd.next_yard_line);
+  const yards = num(pd.penalty_yards);
+  if (foul == null || next == null || !yards) return null;
+  // next_yard_line is in the receiving team's frame; the foul spot is not.
+  return 100 - next === foul + yards ? foul : null;
 }
 
 export function resolveKickSpots(args: {
@@ -121,14 +135,44 @@ export function resolveKickSpots(args: {
 }
 
 /**
- * Did the punt pin them inside their own 20.
+ * Did the punt pin them inside their own 20, going by where it came down.
  *
  * A touchback is explicitly not inside the 20 — it is the opposite result —
- * and neither is a kick that reached the end zone.
+ * and neither is a kick that reached the end zone, nor one that stops ON the
+ * 20: the stat manual counts the ball spotted on the 20-yard line as not
+ * inside it. The landing spot alone is only the fallback; see puntInsideTwenty.
  */
 export function isInsideTwenty(spots: KickSpots, isTouchback: boolean): boolean {
   if (isTouchback) return false;
-  return spots.kickedToYard > 0 && spots.kickedToYard <= 20;
+  return spots.kickedToYard > 0 && spots.kickedToYard < 20;
+}
+
+/**
+ * Did the punt leave the other team starting inside its own 20.
+ *
+ * Nick's rule (2026-11-14), which is also the college stat manual's: it goes
+ * by where their next play starts, and it has to be inside the 20. A punt
+ * downed or fair caught on the 20 does not count, and neither does one
+ * fielded at the 15 and run out to the 30. It used to go by the landing spot
+ * alone, 20 included, so three of Johnston's eleven were not.
+ *
+ * The next snap is read off the row. When the kicking team has the ball next
+ * (a muff it fell on) nobody was pinned. A row with no next snap falls back
+ * to where the kick came down plus the return.
+ */
+export function puntInsideTwenty(play: {
+  possession?: string | null;
+  play_data?: Record<string, unknown> | null;
+}, spots: KickSpots | null): boolean {
+  const pd = play.play_data ?? {};
+  if (pd.is_touchback === true || pd.kick_outcome === "touchback") return false;
+  const next = num(pd.next_yard_line);
+  if (next != null && play.possession && typeof pd.next_possession === "string") {
+    return pd.next_possession !== play.possession && next > 0 && next < 20;
+  }
+  if (!spots) return false;
+  const start = spots.kickedToYard + spots.returnYards;
+  return spots.kickedToYard > 0 && start > 0 && start < 20;
 }
 
 /**
