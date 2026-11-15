@@ -574,13 +574,35 @@ export async function getGamesWithUnsynced(): Promise<string[]> {
   return [...ids];
 }
 
-export async function getPendingCount(): Promise<number> {
-  if (!isOfflineSupported()) return 0;
+/**
+ * Owed and stuck, in one read.
+ *
+ * The sync badge asks for these after every queued write, twice per write, and
+ * a re-chain queues one write per play in the game. Counting with getAll
+ * pulled every queued item - each carrying its play's whole play_data - out
+ * of IndexedDB and cloned it just to read the array's length, so one edit late
+ * in a game cloned tens of thousands of play records on the main thread. The
+ * iPad stopped answering taps while it did. Pending and syncing items are now
+ * counted by the index without being read; only failed ones are read, because
+ * whether a failure is stuck depends on its attempts.
+ */
+export async function getQueueCounts(): Promise<{ pending: number; stuck: number }> {
+  if (!isOfflineSupported()) return { pending: 0, stuck: 0 };
   const db = await getDb();
-  const pending = await db.getAllFromIndex("sync_queue", "by-status", "pending");
-  const syncing = await db.getAllFromIndex("sync_queue", "by-status", "syncing");
-  const failed = await db.getAllFromIndex("sync_queue", "by-status", "failed");
-  return pending.length + syncing.length + failed.filter((i) => !isStuck(i)).length;
+  const tx = db.transaction("sync_queue", "readonly");
+  const index = tx.store.index("by-status");
+  const [pending, syncing, failed] = await Promise.all([
+    index.count("pending"),
+    index.count("syncing"),
+    index.getAll("failed"),
+  ]);
+  await tx.done;
+  const stuck = failed.filter(isStuck).length;
+  return { pending: pending + syncing + failed.length - stuck, stuck };
+}
+
+export async function getPendingCount(): Promise<number> {
+  return (await getQueueCounts()).pending;
 }
 
 /**
@@ -736,10 +758,7 @@ export async function markRetryable(queueId: string, error: string): Promise<voi
  * server. The badge has to.
  */
 export async function getStuckCount(): Promise<number> {
-  if (!isOfflineSupported()) return 0;
-  const db = await getDb();
-  const failed = await db.getAllFromIndex("sync_queue", "by-status", "failed");
-  return failed.filter(isStuck).length;
+  return (await getQueueCounts()).stuck;
 }
 
 /** Manual reset: clears all queue items for a game. Use sparingly — destructive. */
