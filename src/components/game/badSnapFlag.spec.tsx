@@ -41,6 +41,9 @@ async function record(playTypeId: string, opts: { toggle?: boolean; editing?: Pl
   for (let i = 0; i < 20 && !out; i++) {
     const toggle = screen.queryByRole("button", { name: /Bad snap/ });
     if (toggle && opts.toggle) { await click(toggle); opts = { ...opts, toggle: false }; }
+    // A new kick has no landing spot until one is given.
+    const caught = screen.queryByPlaceholderText("e.g. 5") as HTMLInputElement | null;
+    if (caught && !caught.value) await act(async () => { fireEvent.change(caught, { target: { value: "20" } }); });
     const save = screen.queryByRole("button", { name: /Record Play|Save Changes/ });
     if (save) { await click(save); break; }
     const n = next();

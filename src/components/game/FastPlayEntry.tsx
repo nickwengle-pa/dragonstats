@@ -153,11 +153,6 @@ export default function FastPlayEntry(p: Props) {
         <div className="fast-body">
           <div className="fast-columns">
             <section className="fast-personnel" aria-label="Play participants">
-              {p.playType.id === "rush" && <button type="button" onClick={p.onBadSnap} className={`${button} ${idle} w-full`}>Bad Snap · charge rushing to Team</button>}
-              {p.playType.id === "rush" && <button type="button" disabled={saving} onClick={async () => {
-                setSaving(true); setSaveError("");
-                try { await p.onKneel(); } catch { setSaveError("Could not save. Try again."); } finally { setSaving(false); }
-              }} className={`${button} ${idle} w-full disabled:opacity-40`}>Kneel · QB or Team · −1 yd</button>}
               {p.playType.id === "bad_snap" && <p className="text-sm text-slate-300"><strong>Team rushing</strong> · Set where the ball ended. No individual runner is charged.</p>}
               {p.playType.roles.length > 0 && <div className="offense-selection" role="group" aria-label={`${p.offenseName} offense players`}>
                 {p.playType.roles.map(role => <PlayerPicker key={role} label={`${labels[role] ?? role}${role === "target" ? " (optional)" : ""}`} team={p.offenseName}
@@ -189,6 +184,17 @@ export default function FastPlayEntry(p: Props) {
                 {p.tacklers.length > 0 && <div className="fast-tags">{p.tacklers.map(t => <button key={t.player_id} type="button" onClick={() => p.onTackler(t)} aria-label={`Remove ${playerLabel(t)}`}>
                   {tacklerLabel(t)} · {t.credit === .5 ? "assist" : "solo"} ×
                 </button>)}</div>}
+              </div>}
+              {/* The two other ways a run can go, below the people rather than
+                  above them: on top they pushed the Runner box under the
+                  phone's pinned Save bar, so the one pick every run needs was
+                  the one you had to scroll to. */}
+              {p.playType.id === "rush" && <div className="fast-run-alternates">
+                <button type="button" onClick={p.onBadSnap} className={`${button} ${idle}`}>Bad Snap<span>Rushing to Team</span></button>
+                <button type="button" disabled={saving} onClick={async () => {
+                  setSaving(true); setSaveError("");
+                  try { await p.onKneel(); } catch { setSaveError("Could not save. Try again."); } finally { setSaving(false); }
+                }} className={`${button} ${idle} disabled:opacity-40`}>Kneel<span>QB or Team · −1 yd</span></button>
               </div>}
             </section>
             <section className="fast-position" aria-label="Field position">
