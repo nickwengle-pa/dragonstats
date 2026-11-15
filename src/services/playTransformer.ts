@@ -364,10 +364,14 @@ function buildPenalties(play: PlayWithPlayers, ctx: TransformContext): PenaltyEv
     isAutoFirstDown: grantsAutoFirstDown(penaltyType, penCategory),
     // The operator said the play counts: the engine must not wipe it.
     preservesPlayStats: pd?.penalty_play_counts === true || preservesAdvance(pd ?? {}, play.yard_line ?? 0),
-    // false is "the down is replayed"; the gain up to a foul past the line
-    // still stands, so it must not tell the engine to wipe the play.
-    ...(typeof pd?.penalty_play_counts === "boolean" && !keepsGainToFoulSpot(play)
-      ? { nullifiesPlayStats: !pd.penalty_play_counts } : {}),
+    /* Whether the flag wipes the play is decided in one place, for the engine
+       and for everything summed off the stored rows alike. Left to itself the
+       engine reads the ruling off the foul's name, and the two disagreed on a
+       hand-typed foul, an incomplete pass with a personal foul and a run
+       called back for an offensive facemask. (A gain kept up to the foul spot
+       is not wiped, so the down being replayed does not reach the engine as
+       "wipe the play".) */
+    ...(enforcement === PenaltyEnforcement.Accepted ? { nullifiesPlayStats: nullifiedStats(play) } : {}),
   }];
 }
 
@@ -416,6 +420,19 @@ function scoreForPlay(play: PlayWithPlayers): number {
 // Play conversion — route each play_type to the correct engine type
 // ---------------------------------------------------------------------------
 
+/** Kicks: a play on which the side "in possession" has no series to renew. */
+const KICK_ROW_TYPES = new Set(["kickoff", "onside_kick", "punt", "fair_catch", "fg", "pat", "blocked_kick"]);
+
+/** The snaps a team can score a touchdown on from scrimmage. */
+const SCORING_SNAP_TYPES = new Set(["rush", "scramble", "pass_comp", "fumble"]);
+
+/** The same flags, counted against the team that drew them, with no first
+ *  down attached. (The engine also awards one on yardage; the caller closes
+ *  that door through the play's context.) */
+function withoutFirstDown(penalties: PenaltyEvent[]): PenaltyEvent[] {
+  return penalties.map(p => ({ ...p, isAutoFirstDown: false }));
+}
+
 /**
  * Whether the snap after this play is a kickoff rather than a down: a try, a
  * made field goal or a safety ends the series. A dead-ball flag logged in that
@@ -439,10 +456,35 @@ export function convertPlay(
   if (betweenSeries && ["penalty", "penalty_only"].includes(play.play_type)) context = { ...context, distance: 100 };
   // A loose ball remains part of the original advance up to recovery, before any recovery return.
   play = withFumbleYards(play);
-  const penalties = buildPenalties(play, ctx);
+  let penalties = buildPenalties(play, ctx);
   const gainToFoulSpot = Boolean(penalties?.length) && keepsGainToFoulSpot(play);
   if (penalties?.length && pd?.penalty_play_counts === false && pd.penalty_enforcement !== "declined" && !gainToFoulSpot) {
     return { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } satisfies PenaltyPlay & { context: PlayContext };
+  }
+  /* A kick that stands renews nobody's series. The engine reads any flag on
+     any play as a possible first down for the side "in possession", which on
+     a kick is the kicking team: a clip on their kickoff return gave us a
+     first down by penalty at Northern Cambria, and a block on a punt return
+     another at Homer Center. A punt the flag wipes out (roughing the kicker)
+     is not this case and keeps its first down. */
+  if (penalties?.length && KICK_ROW_TYPES.has(play.play_type) && !isWipedByPenaltyRow(play)) {
+    penalties = withoutFirstDown(penalties);
+    context = { ...context, distance: 100 };
+  }
+  /* A play that ends in a touchdown is a touchdown, not a first down (Nick,
+     2026-11-14: "if it was a 1st down you'd think you have more plays to
+     score"). The engine credits a first down on every scoring run or catch
+     unless the snap was goal-to-go, so a 30-yard touchdown counted and a
+     4-yard one did not. Goal-to-go is the one switch it has, and it works
+     that out itself from the spot and the distance (a flag set here is
+     overwritten), so the scoring snap's distance becomes the distance to the
+     goal line. A third or fourth down the score converts still counts as
+     converted, because the engine reads the touchdown itself for that. A flag
+     on a scoring play is marched off on the try or the kickoff and renews
+     nothing either. */
+  if (play.is_touchdown && !play.is_turnover && SCORING_SNAP_TYPES.has(play.play_type)) {
+    context = { ...context, distance: Math.max(context.distance, 100 - context.yardLine) };
+    if (penalties?.length) penalties = withoutFirstDown(penalties);
   }
   // An offensive foul past the line keeps the gain up to the foul. A play the
   // operator said counts keeps all of it.
@@ -464,6 +506,27 @@ export function convertPlay(
   // A kick repeated after enforcement contributes the penalty, not a kick attempt.
   if (["kickoff", "onside_kick"].includes(play.play_type) && pd?.kickoff_out_of_bounds_choice === "rekick") {
     return penalties?.length ? { type: PlayType.Penalty, penalties, description: play.description ?? undefined, context } as Play : null;
+  }
+  /* A kickoff out of bounds is not a kick at all (Nick, 2026-11-14): no
+     kickoff and no yards for the kicker. It used to count as a kickoff with
+     its yards left out, so Johnston's line read 32 for 1,022 with an average
+     worked out on 27. Any flag on it still counts.
+
+     It still reaches the engine as a kickoff, with nobody named on it: the
+     engine keeps a free kick out of everybody's drive, where a bare penalty
+     play opens one for the kicking team. After a score on defense that drive
+     ran until the other side's next snap and took its time of possession
+     (Northern Cambria: 1:33 of our drive after their blocked-punt score). */
+  if (isOutOfBoundsKickoff(play)) {
+    return {
+      type: PlayType.Kickoff,
+      result: SpecialTeamsResult.Normal,
+      isTouchback: false,
+      isTouchdown: false,
+      penalties,
+      description: play.description ?? undefined,
+      context,
+    } satisfies SpecialTeamsPlay & { context: PlayContext } as Play;
   }
   // The penalty replaces the play: roughing or running into the punter, or
   // the operator saying so. The flag still counts; nothing from the snap does.
@@ -711,9 +774,8 @@ export function convertPlay(
 
     case "kickoff": {
       const kicker = firstPlayerByRole(play, "kicker");
-      const outOfBounds = isOutOfBoundsKickoff(play);
       const receipt = kickReceiptOf(pd);
-      const returner = outOfBounds || receipt.muffLostToKickers || receipt.noReceiver ? undefined : firstPlayerByRole(play, "returner");
+      const returner = receipt.muffLostToKickers || receipt.noReceiver ? undefined : firstPlayerByRole(play, "returner");
       const isTouchback = !!(pd?.is_touchback);
       const spots = kickSpotsFor(play);
       let stResult: SpecialTeamsResult = SpecialTeamsResult.Normal;
@@ -726,7 +788,7 @@ export function convertPlay(
         kicker,
         returner,
         result: stResult,
-        kickDistance: outOfBounds ? undefined : spots?.kickDistance,
+        kickDistance: spots?.kickDistance,
         returnYards: receipt.fairCaught ? 0 : returner ? spots?.returnYards : undefined,
         ...(receipt.fairCaught ? { isFairCatch: true } : {}),
         ...(receipt.muffLostToKickers
@@ -782,15 +844,14 @@ export function convertPlay(
 
     case "onside_kick": {
       const kicker = firstPlayerByRole(play, "kicker");
-      const outOfBounds = isOutOfBoundsKickoff(play);
       const recoverer = firstPlayerByRole(play, "recoverer") ?? firstPlayerByRole(play, "returner");
       const spots = kickSpotsFor(play);
       return {
         type: PlayType.Kickoff,
         kicker,
-        returner: outOfBounds || pd?.onside_recovered_by_kicker ? undefined : recoverer,
+        returner: pd?.onside_recovered_by_kicker ? undefined : recoverer,
         result: SpecialTeamsResult.Normal,
-        kickDistance: outOfBounds ? undefined : spots?.kickDistance,
+        kickDistance: spots?.kickDistance,
         returnYards: recoverer ? spots?.returnYards : undefined,
         isOnsideKick: true,
         isTouchdown: play.is_touchdown,

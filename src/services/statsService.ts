@@ -13,8 +13,12 @@ import { getPregameConfig } from "./gameFlow";
 import { resolveDriveResults } from "./driveResults";
 import { runOutFinalClock } from "./finalClock";
 import { ESTIMATED_SNAPS, estimateStaleClocks } from "./staleClock";
-import { isInsideTwenty, resolveKickSpots } from "./kickSpots";
+import { puntInsideTwenty, resolveKickSpots } from "./kickSpots";
 import { applyLostMuffs, initDefStats } from "./lostMuffs";
+import { blockedPuntReturn } from "./blockedPuntReturn";
+import { dropDoubledFirstDowns, dropInterceptionConversions } from "./teamStatCorrections";
+import { nullifiedStats } from "./statAuditRules";
+import { firstPlayerByRole } from "./playTransformer";
 import { TEAM_JERSEY, TEAM_PLAYER_ID, isWipedByPenaltyRow } from "@/components/game/types";
 import {
   FootballStatsEngine,
@@ -331,6 +335,14 @@ export function computeGameStatsBundles(
     // so the column read zero however well anyone punted.
     supplementPuntsInside20(summary, subsetPlays);
 
+    // The return on a blocked punt, which the engine does not count as one.
+    supplementBlockedPuntReturns(summary, subsetPlays, new Map(allPlayers.map(p => [p.id, p.name])));
+
+    // A first down counted twice, and an interception counted as a third
+    // down converted. See teamStatCorrections.ts.
+    dropDoubledFirstDowns(summary, subset);
+    dropInterceptionConversions(summary, subset);
+
     // A muff or return fumble the kicking team recovered is a fumble lost
     // for the receiving team. The engine charges fumbles to the team in possession,
     // which on a kick is the wrong one. See lostMuffs.ts.
@@ -465,7 +477,11 @@ function collectPlaceholderPlayers(
  *
  * Attributed to the punter who kicked it, which is why it cannot simply be
  * counted off the play list at the point of display: the stat belongs on his
- * line, beside his average.
+ * line, beside his average. What counts as pinned is puntInsideTwenty.
+ *
+ * The punter is read through every kind of tag. Reading play_players alone
+ * found only our own rostered punters, so the other team's column was zero
+ * whatever they did (three of theirs this season).
  */
 function supplementPuntsInside20(
   summary: GameSummary,
@@ -477,9 +493,9 @@ function supplementPuntsInside20(
     if (play.play_type !== "punt" && play.play_type !== "fair_catch") continue;
     // Wiped out by roughing the kicker: not a punt, so not one inside the 20.
     if (isWipedByPenaltyRow(play)) continue;
-    const punter = play.play_players?.find(p => p.role === "punter" || p.role === "kicker");
+    const punter = firstPlayerByRole(play, "punter") ?? firstPlayerByRole(play, "kicker");
     if (!punter) continue;
-    const stat = summary.punting[punter.player_id];
+    const stat = summary.punting[punter];
     if (!stat) continue;
     const spots = resolveKickSpots({
       ballOn: play.yard_line ?? 0,
@@ -487,10 +503,45 @@ function supplementPuntsInside20(
       description: play.description,
       isTouchdown: play.is_touchdown,
     });
-    if (!spots) continue;
-    if (isInsideTwenty(spots, Boolean(play.play_data?.is_touchback))) {
+    if (puntInsideTwenty(play, spots)) {
       stat.puntsInside20 += 1;
     }
+  }
+}
+
+/**
+ * Credit the return on a blocked punt as a punt return, as the stat manuals
+ * score it. See blockedPuntReturn.ts for what is and is not known about it.
+ *
+ * It goes to the player who ended up with the ball, or the blocker when
+ * nobody is named as recovering it. A block the kicking team fell on has no
+ * returner on the other side to give it to and is left alone here; its yards
+ * still come off the punting team's net in the report.
+ */
+function supplementBlockedPuntReturns(
+  summary: GameSummary,
+  plays: PlayWithPlayers[],
+  names: Map<string, string>,
+): void {
+  for (const play of plays) {
+    const ret = blockedPuntReturn(play);
+    if (!ret || nullifiedStats(play)) continue;
+    if (play.play_data?.blocked_recovered_by_kicking === true) continue;
+    const id = firstPlayerByRole(play, "recoverer") ?? firstPlayerByRole(play, "returner") ?? firstPlayerByRole(play, "blocker");
+    if (!id) continue;
+    const stat = summary.returns[id] ?? (summary.returns[id] = {
+      playerId: id, playerName: names.get(id) ?? id,
+      kickReturns: 0, kickReturnYards: 0, kickReturnAverage: 0,
+      kickReturnLong: 0, kickReturnTouchdowns: 0, kickReturnFumbles: 0,
+      puntReturns: 0, puntReturnYards: 0, puntReturnAverage: 0,
+      puntReturnLong: 0, puntReturnTouchdowns: 0, puntReturnFumbles: 0,
+      puntReturnFairCatches: 0,
+    });
+    stat.puntReturns += 1;
+    stat.puntReturnYards += ret.yards;
+    stat.puntReturnLong = Math.max(stat.puntReturnLong, ret.yards);
+    if (ret.touchdown) stat.puntReturnTouchdowns += 1;
+    stat.puntReturnAverage = stat.puntReturnYards / stat.puntReturns;
   }
 }
 

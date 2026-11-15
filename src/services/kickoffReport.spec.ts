@@ -18,18 +18,22 @@ function report(plays: PlayWithPlayers[]) {
   return { summary, report: buildGameReport({ bundle, program: { id: "us", name: "Us", abbreviation: "US", logoUrl: null, color: "#f00" }, opponent: { name: "Them", abbreviation: "TH", logoUrl: null, color: "#00f" }, gameDate: null, kickoffLabel: null, occasion: null, ourScore: 0, theirScore: 0, touchbackYardLine: 20 }) };
 }
 describe("out-of-bounds kickoff report yardage", () => {
-  it("counts an awarded-spot kickoff but gives it no distance, even beside a normal kick", () => {
+  /* A kickoff out of bounds is not a kick: no attempt and no yards (Nick,
+     2026-11-14). It used to count as an attempt with its yards left out, so
+     a kicker's count and his average were worked out on different kicks. */
+  it("leaves an awarded-spot kickoff out of the count and the yards beside a normal kick", () => {
     const result = report([
       kick("1", { kicked_to_yard: 5, kick_outcome: "out_of_bounds", kickoff_out_of_bounds_choice: "take_35" }),
       kick("2", { kicked_to_yard: 10, return_to_ball_on: 75, kick_outcome: "returned" }),
     ]);
-    expect(result.summary.kicking.k).toMatchObject({ kickoffs: 2, averageKickoffDistance: 50 });
-    expect(result.report.kickoffs[0]).toMatchObject({ no: 2, yds: 50, avg: 50 });
-    expect(result.report.kickoffsTotal).toMatchObject({ no: 2, yds: 50, avg: 50 });
+    expect(result.summary.kicking.k).toMatchObject({ kickoffs: 1, averageKickoffDistance: 50 });
+    expect(result.report.kickoffs[0]).toMatchObject({ no: 1, yds: 50, avg: 50 });
+    expect(result.report.kickoffsTotal).toMatchObject({ no: 1, yds: 50, avg: 50 });
   });
-  it("reports zero yardage when every kickoff went out of bounds", () => {
+  it("reports no kickoffs when every one went out of bounds", () => {
     const result = report([kick("1", { kicked_to_yard: 5, kickoff_out_of_bounds_choice: "take_35" })]);
-    expect(result.report.kickoffsTotal).toMatchObject({ no: 1, yds: 0, avg: 0 });
+    expect(result.report.kickoffs).toEqual([]);
+    expect(result.report.kickoffsTotal).toMatchObject({ no: 0, yds: 0, avg: 0 });
   });
   it("recognizes older recorded outcomes and descriptions without affecting punts", () => {
     expect(isOutOfBoundsKickoff(kick("1", { kick_outcome: "out_of_bounds" }))).toBe(true);
