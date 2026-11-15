@@ -3,7 +3,7 @@ import PrintReportButton from "@/components/report/PrintReportButton";
 import { useNavigate } from "react-router-dom";
 import { useProgramContext } from "@/hooks/useProgramContext";
 import { supabase } from "@/lib/supabase";
-import { computeGameStatsBundle } from "@/services/statsService";
+import { computeGameStatsBundles, GAME_READS_AT_ONCE, loadGameStatsInputs, mapLimited, type RosterCache } from "@/services/statsService";
 import { buildSeasonReport, combineSeasonBundles, paginateSeasonSections, type ReportSection } from "@/services/seasonReport";
 import { formatSeasonName } from "@/services/seasonService";
 import { pdfFilename } from "@/services/reportPrint";
@@ -24,13 +24,15 @@ export default function SeasonReportScreen() {
         const { data: games, error: queryError } = await supabase.from("games").select("id,game_date,our_score,opponent_score,is_home,opponent:opponents(name)").eq("season_id", season.id).eq("status", "completed").order("game_date");
         if (queryError) throw queryError;
         if (!games?.length) throw new Error("No completed games in this season yet.");
-        const bundles = [];
-        for (const g of games) {
-          const bundle = await computeGameStatsBundle(g.id, program, period);
-          if (cancelled) return;
-          if (!bundle) throw new Error("A game could not be loaded. Reload to try again; no partial report was generated.");
-          bundles.push(bundle);
-        }
+        // A few games at a time with one roster read, not one game after another.
+        const rosters: RosterCache = new Map();
+        const loaded = await mapLimited(games, GAME_READS_AT_ONCE, async g => {
+          const inputs = await loadGameStatsInputs(g.id, rosters);
+          return inputs ? computeGameStatsBundles(inputs, program, [period])?.get(period) ?? null : null;
+        });
+        if (cancelled) return;
+        if (loaded.some(b => !b)) throw new Error("A game could not be loaded. Reload to try again; no partial report was generated.");
+        const bundles = loaded.filter((b): b is NonNullable<typeof b> => !!b);
         const report = buildSeasonReport(bundles, {
           program: { id: program.id, name: program.name, abbreviation: program.abbreviation, logoUrl: program.logo_url, color: program.primary_color },
           opponent: { name: "Opponents", abbreviation: "OPP", logoUrl: null, color: "#444" },

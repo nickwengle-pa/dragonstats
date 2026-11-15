@@ -92,7 +92,7 @@ export function getSyncStatus(): SyncStatus {
   return { ..._status };
 }
 
-async function refreshPendingCount() {
+async function readCounts() {
   const previous = _status.pending;
   _status.pending = await getPendingCount();
   _status.stuck = await getStuckCount();
@@ -100,6 +100,32 @@ async function refreshPendingCount() {
   else if (previous === 0) _status.pendingSince = Date.now();
   emit();
   scheduleRetry();
+}
+
+/* A re-chain queues a write for every play it changes, and each one asks for
+   a fresh count when it lands. Those asks arrive together, so they share one
+   read: an ask made while a read is running gets one more read after it -
+   not one each - and every caller still waits for a count that includes its
+   own write. */
+let _countRun: Promise<void> | null = null;
+let _countAgain = false;
+
+function refreshPendingCount(): Promise<void> {
+  if (_countRun) {
+    _countAgain = true;
+    return _countRun;
+  }
+  _countRun = (async () => {
+    try {
+      do {
+        _countAgain = false;
+        await readCounts();
+      } while (_countAgain);
+    } finally {
+      _countRun = null;
+    }
+  })();
+  return _countRun;
 }
 
 /* ── retry timer ─────────────────────────────────────────────────────── */

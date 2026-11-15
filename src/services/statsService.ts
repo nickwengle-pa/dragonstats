@@ -190,6 +190,24 @@ export interface GameStatsInputs {
  *  asks for the roster once rather than ten times. */
 export type RosterCache = Map<string, Promise<RosterPlayer[]>>;
 
+/** Games read at once: enough to overlap round trips on weak wifi without
+ *  asking the server for a whole season in one burst. */
+export const GAME_READS_AT_ONCE = 3;
+
+/** `fn` over `items`, at most `limit` at a time, results in input order. */
+export async function mapLimited<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 export async function loadGameStatsInputs(gameId: string, rosters?: RosterCache): Promise<GameStatsInputs | null> {
   // 1. Load game, plays, roster in parallel
   const [game, plays] = await Promise.all([
@@ -686,8 +704,18 @@ export async function computePlayerSeasonStats(
 
   const lines: PlayerGameLine[] = [];
 
-  for (const game of games) {
-    const bundle = await computeGameStatsBundle(game.id, program, period);
+  /* Read a few games at a time, sharing the season's roster, rather than one
+     after another: ten games used to be twenty round trips back to back, each
+     also asking for the same roster again, which on press-box wifi was the
+     long blank wait on the player page. */
+  const rosters: RosterCache = new Map();
+  const bundles = await mapLimited(games, GAME_READS_AT_ONCE, async (game) => {
+    const inputs = await loadGameStatsInputs(game.id, rosters);
+    return inputs ? computeGameStatsBundles(inputs, program, [period])?.get(period) ?? null : null;
+  });
+
+  for (const [i, game] of games.entries()) {
+    const bundle = bundles[i];
     if (!bundle) continue;
     const { summary } = bundle;
 

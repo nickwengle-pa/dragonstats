@@ -108,6 +108,7 @@ import {
   lastPlayerKey,
 } from "@/components/game/types";
 import BadSnapTag from "@/components/game/BadSnapTag";
+import { persistedSignature } from "@/services/persistedSignature";
 
 interface LiveSituationSnapshot {
   goalToGo?: boolean;
@@ -368,6 +369,9 @@ export default function GameScreen() {
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const [oppPlayers, setOppPlayers] = useState<OpponentPlayerRef[]>([]);
   const [loading, setLoading] = useState(true);
+  /** What each play was last written as (or loaded as), so a re-chain writes
+   *  only the plays it changed. Reseeded on every load. */
+  const persistedSignatures = useRef(new Map<string, string>());
   const gc = useMemo(() => resolveGameConfig(baseGc, game?.rules_config as Record<string, unknown> | null), [baseGc, game]);
   const pregame = useMemo(() => getPregameConfig(game), [game]);
   const persistedLiveStateKey = useRef<string | null>(null);
@@ -478,6 +482,7 @@ export default function GameScreen() {
 
     // Convert DB plays to local PlayRecord format - one conversion, shared
     // with the film chart, so both screens replay the same records.
+    persistedSignatures.current = new Map(existingPlays.map(row => [row.id, persistedSignature(row)]));
     const localPlays: PlayRecord[] = existingPlays.map(p =>
       playRecordFromRow(p, { names: rosterNames, jerseys: rosterJerseys }));
 
@@ -1452,7 +1457,7 @@ export default function GameScreen() {
       );
       scoreCursor = stored.scoreAfter;
 
-      return updatePlaySituation(play.id, {
+      const fields = {
         /* Position in the list is the order of the game. Persisting it here -
            on the pass that already rewrites every play after any change -
            means a play spliced into the middle keeps its place across a
@@ -1467,7 +1472,14 @@ export default function GameScreen() {
         end_yard_line: stored.after.ballOn,
         play_start_time: getStoredStartClock(play),
         play_end_time: getStoredEndClock(play),
-      }, stored.playData, { gameId });
+      };
+      /* Only the plays this change actually moved. Rewriting all of them -
+         ~140 writes for one edit late in a game - is what held the next save
+         up on press-box wifi; see persistedSignature. */
+      const signature = persistedSignature({ ...fields, play_data: stored.playData });
+      if (persistedSignatures.current.get(play.id) === signature) return null;
+      persistedSignatures.current.set(play.id, signature);
+      return updatePlaySituation(play.id, fields, stored.playData, { gameId });
     });
 
     void Promise.all(updates);
