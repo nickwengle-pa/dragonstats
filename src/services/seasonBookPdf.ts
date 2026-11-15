@@ -548,7 +548,9 @@ function returnsCategory(kind: ReturnKind): Category<ReturnRow> {
     },
   };
 }
-const hasReturn = (kind: ReturnKind) => (r: ReturnRow) => r[kind].no > 0 || ((kind === "ko" || kind === "punt") && (r[kind] as { fum: number }).fum > 0);
+// A blocker can have punt return yards and no return (blockedPuntReturn.ts).
+const hasReturn = (kind: ReturnKind) => (r: ReturnRow) => r[kind].no > 0 || ((kind === "ko" || kind === "punt") && (r[kind] as { fum: number }).fum > 0)
+  || (kind === "punt" && r.punt.yds !== 0);
 
 /** The by-quarter categories and how one cell of each reads. */
 const SPLIT_CATS: Array<{ title: string; legend: string; cell: (line: PlayerLine) => [string, string] }> = [

@@ -63,7 +63,7 @@ const has = {
     || l.kicking.kickoffs > 0 || l.kicking.onsideKickAttempts > 0),
   punting: (l: PlayerGameLine) => !!l.punting && l.punting.punts > 0,
   kickReturns: (l: PlayerGameLine) => !!l.returns && (l.returns.kickReturns > 0 || l.returns.kickReturnFumbles > 0),
-  puntReturns: (l: PlayerGameLine) => !!l.returns && (l.returns.puntReturns > 0 || l.returns.puntReturnFumbles > 0
+  puntReturns: (l: PlayerGameLine) => !!l.returns && (l.returns.puntReturns > 0 || l.returns.puntReturnYards !== 0 || l.returns.puntReturnFumbles > 0
     || l.returns.puntReturnFairCatches > 0),
 };
 type Area = keyof typeof has;

@@ -10,12 +10,14 @@
  * punts cost us no return yards at all, and the net punting average left the
  * four of them out.
  *
- * A blocked kick stores one spot: where the play ended. That is the whole
- * return (line of scrimmage to there), which is exact for the team and for a
- * man who blocks it and picks it up himself. When two players are involved
- * the split between them is not recorded, so it all goes to the one who ended
- * up with the ball. Nick knows; the entry screen would have to ask where it
- * was picked up.
+ * A blocked kick stores where the play ended. That is the whole return (line
+ * of scrimmage to there), which is exact for the team and for a man who
+ * blocks it and picks it up himself. The entry screen can also say where the
+ * ball was picked up (`blocked_pickup_ball_on`, in the kicking team's frame
+ * like the row's own yard line), which splits the return between the two:
+ * the roll back from the line to the pickup is the blocker's, the run after
+ * it the runner's. Without that spot (older rows, or one man did both) it all
+ * goes to the one who ended up with the ball, as before.
  */
 
 import { normalizeBlockedTouchdown } from "./blockedKickOutcome";
@@ -40,6 +42,11 @@ export interface BlockedPuntReturn {
   yards: number;
   /** The blocking team scored on it. */
   touchdown: boolean;
+  /** The part of `yards` that is the blocker's: line of scrimmage back to
+   *  where the ball was picked up. Null when the pickup spot was not
+   *  recorded, which leaves the whole return to whoever ended up with it.
+   *  The runner's share is the rest. */
+  blockerYards: number | null;
 }
 
 /**
@@ -59,8 +66,17 @@ export function blockedPuntReturn(play: BlockedRow): BlockedPuntReturn | null {
     yard_line: play.yard_line ?? 0,
     yards_gained: Number(play.yards_gained ?? 0),
   });
+  const yards = Math.max(0, -row.yards_gained);
+  const pickup = pd.blocked_pickup_ball_on;
+  const line = play.yard_line;
+  /* The roll back can't be more than the whole return: a pickup typed beyond
+     where the play ended would hand the blocker yards the team never got. */
+  const blockerYards = !recoveredByKicking && typeof pickup === "number" && Number.isFinite(pickup) && line != null
+    ? Math.min(yards, Math.max(0, line - pickup))
+    : null;
   return {
-    yards: Math.max(0, -row.yards_gained),
+    yards,
     touchdown: Boolean(play.is_touchdown) && !recoveredByKicking,
+    blockerYards,
   };
 }

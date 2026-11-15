@@ -63,7 +63,7 @@ export default function SeasonReportScreen() {
         for (const [key, title] of [["ko","Kickoff returns"],["punt","Punt returns"]] as const) {
           // Fum includes a muff the kicking team recovered, which has no return attempt.
           const ret = (r: typeof report.returnsTotal) => [r.name,r[key].no,r[key].yds,r[key].long,r[key].td,r[key].fum];
-          add(title,["Player","No","Yds","Lg","TD","Fum"],report.returns.filter(r => r[key].no || r[key].fum).map(ret),ret(report.returnsTotal));
+          add(title,["Player","No","Yds","Lg","TD","Fum"],report.returns.filter(r => r[key].no || r[key].fum || (key === "punt" && r.punt.yds)).map(ret),ret(report.returnsTotal));
         }
         for (const [key, title] of [["int","Interception returns"],["fr","Fumble returns"]] as const) {
           const ret = (r: typeof report.returnsTotal) => [r.name,r[key].no,r[key].yds,r[key].long,r[key].td];
