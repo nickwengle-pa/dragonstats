@@ -71,6 +71,19 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
     if (!multiple || !player) { close(); input.current?.blur(); }
   };
   const addJersey = (jersey: number) => { if (onAddJersey) choose(onAddJersey(jersey)); };
+  /* Done with a jersey typed. The keypad has no Enter, so typing "22" and
+     tapping Done used to close the list with nobody picked - the row had to
+     be tapped instead. Done now takes the one player wearing exactly that
+     number. A partial ("2" with #2 and #22 listed both match by prefix, but
+     only #2 by number) or an unlisted number still picks nobody, so a typo
+     cannot credit the wrong player. */
+  const finish = () => {
+    const exact = typed ? players.filter(player => String(player.jersey_number) === typed) : [];
+    if (exact.length === 1 && !selected.some(p => p.player_id === exact[0].player_id)) {
+      onSelect(exact[0]);
+    }
+    close(); input.current?.blur();
+  };
   useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
@@ -139,7 +152,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
       <button type="button" aria-label={`Open ${label} list`} onClick={() => { setOpen(true); input.current?.focus(); }}><ChevronDown size={18} /></button>
     </div>
     {open && createPortal(<div ref={popup} className={`player-picker-popup${accentColor ? " player-picker-team" : ""}`} style={{ ...position, ...teamStyle }}>
-      <div className="player-picker-heading"><strong>{label} · {team}</strong>{!multiple && <button type="button" onClick={() => { close(); input.current?.blur(); }}>Done</button>}</div>
+      <div className="player-picker-heading"><strong>{label} · {team}</strong>{!multiple && <button type="button" onClick={finish}>Done</button>}</div>
       <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => choose(null)}><Film size={16} /> Identify on film later</button>
       {onSelectTeam && <button type="button" className="player-film" onMouseDown={e => e.preventDefault()} onClick={() => { onSelectTeam(); if (!multiple) { close(); input.current?.blur(); } }}>Team{selected.some(player => player.teamCreditConfirmed) && <Check size={17} />}</button>}
       <div id={`${id}-list`} role="listbox" aria-label={`${label} players`} aria-multiselectable={multiple || undefined}>
@@ -167,7 +180,7 @@ export default function PlayerPicker({ label, team, players, selected, multiple 
           where the thumb already is. A small Done in the heading got lost at
           the top of a tall list on the iPad. It names who is picked, since
           the field above shows the search while the list is open. */}
-      {multiple && <button type="button" className="player-picker-done" onMouseDown={e => e.preventDefault()} onClick={() => { close(); input.current?.blur(); }}>
+      {multiple && <button type="button" className="player-picker-done" onMouseDown={e => e.preventDefault()} onClick={finish}>
         <Check size={18} /><strong>Done</strong>{selected.length > 0 && <span>{value}</span>}
       </button>}
     </div>, document.body)}

@@ -24,6 +24,23 @@
 .fast-tackle-options { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:7px; }
 .fast-tackle-options > span { font-size:11px; color:#b8c5d7; }
 .fast-tackle-options button { min-height:36px; padding:6px 10px; font-size:12px; }
+.fast-run-alternates { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.fast-run-alternates button { display:flex; flex-direction:column; align-items:center; gap:1px; min-height:44px; padding:6px 8px; font-size:13px; font-weight:700; }
+.fast-run-alternates button span { font-size:11px; font-weight:400; opacity:.75; }
+/* One-screen kicks: the spot being set by a tap on the big field is lit. */
+.kick-spot-heading { display:flex; width:100%; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; margin-top:4px; border:1px solid transparent; border-left-width:4px; border-radius:8px; font-size:14px; text-align:left; }
+.kick-spot-heading h3, .kick-spot-heading strong { font-weight:750; }
+.kick-spot-heading:disabled { opacity:1; }
+.kick-spot-heading[data-active] { border-color:var(--fast-accent); background:color-mix(in srgb, var(--fast-accent) 14%, transparent); }
+.kick-not-set { color:#fcd34d; }
+/* Before the landing is known the ruler waits on the line of scrimmage, dimmed: a number it showed would read as an answer. */
+.kick-reel-unset { opacity:.5; }
+.kick-outcomes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; margin:10px 0 4px; }
+.kick-outcomes button { padding:6px 4px; font-size:12px; }
+.kick-outcomes .kick-blocked { border-style:dashed; border-color:rgba(239,68,68,.6); color:#f87171; background:rgba(239,68,68,.08); }
+.kick-return-td { align-self:end; min-height:44px; }
+.kick-carried { margin-top:6px; font-size:11px; color:#fcd34d; }
+.kick-next-note { color:#fcd34d; }
 .fast-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
 .fast-tags button { border:1px solid #64748b; border-radius:6px; padding:7px; font-size:12px; }
 .fast-footer { padding:10px 12px; border-top:1px solid #334155; background:#141b25; }
