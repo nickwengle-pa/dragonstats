@@ -198,7 +198,8 @@ const RETURN_NAMES: Record<ReturnKind, [string, string]> = {
 function returns(kind: ReturnKind): StatCategory<ReturnRow> {
   const withFum = kind === "ko" || kind === "punt";
   const part = (r: ReturnRow) => r[kind] as { no: number; yds: number; long: number; td: number; fum?: number };
-  const has = (r: ReturnRow) => part(r).no > 0 || (part(r).fum ?? 0) > 0;
+  // A blocker can have punt return yards and no return (blockedPuntReturn.ts).
+  const has = (r: ReturnRow) => part(r).no > 0 || (part(r).fum ?? 0) > 0 || (kind === "punt" && part(r).yds !== 0);
   return category<ReturnRow>({
     id: `ret-${kind}`, title: RETURN_NAMES[kind][0], short: RETURN_NAMES[kind][1],
     rows: s => rowsOf(s.report.returns.filter(has)),

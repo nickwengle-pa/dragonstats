@@ -58,6 +58,12 @@ export interface EditSeed {
   /** Muffed kick: true when the kicking team fell on it. */
   muffRecoveredByKicking: boolean;
   blockedRecoveredByKicking: boolean;
+  /** Blocked punt the other side recovered: where it was picked up, in the
+   *  kicking team's frame. Null when not recorded. */
+  blockedPickupBallOn?: number | null;
+  /** The kickers fell on their own blocked kick and kept the down going
+   *  (ran, threw or kicked it): the next play is the same down from there. */
+  blockedKickContinued?: boolean;
   blockedKickType: BlockedKickType | null;
   kickOutcome: KickOutcome;
   kickedToYard: number;
@@ -203,6 +209,8 @@ export function buildEditSeed(play: PlayRecord): EditSeed {
     onsideRecoveredByKicker: pd.onside_recovered_by_kicker === true,
     muffRecoveredByKicking: pd.muff_recovered_by_kicking === true,
     blockedRecoveredByKicking: pd.blocked_recovered_by_kicking === true,
+    blockedPickupBallOn: typeof pd.blocked_pickup_ball_on === "number" ? pd.blocked_pickup_ball_on : null,
+    blockedKickContinued: pd.blocked_kick_continued === true,
     blockedKickType: (play.blockedKickType ?? null) as BlockedKickType | null,
     kickOutcome: ((): KickOutcome => {
       const stored = str(pd.kick_outcome);

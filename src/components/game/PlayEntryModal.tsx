@@ -933,6 +933,14 @@ export default function PlayEntryModal({
   );
   /** Who fell on the blocked kick. Drives which roster `recoverer` picks from. */
   const [blockedRecoveredByKicking, setBlockedRecoveredByKicking] = useState(edit?.blockedRecoveredByKicking ?? false);
+  /** Blocked punt the other side recovered: where it was picked up, so the
+   *  return splits between the blocker (the roll back) and the runner (the
+   *  run after). Null until asked for; one man doing both needs no spot. */
+  const [blockedPickupBallOn, setBlockedPickupBallOn] = useState<number | null>(edit?.blockedPickupBallOn ?? null);
+  /** The kickers fell on their own blocked punt or field goal and kept
+   *  playing - ran, threw or kicked it. It is still their down (stat manual),
+   *  so the block ends at the pickup and the next play is the same down. */
+  const [blockedKickContinued, setBlockedKickContinued] = useState(edit?.blockedKickContinued ?? false);
 
   // Formations
   const [offFormation, setOffFormation] = useState<string | null>(edit?.offFormation ?? null);
@@ -1683,6 +1691,10 @@ export default function PlayEntryModal({
     if (byKicking === blockedRecoveredByKicking) return;
     setBlockedRecoveredByKicking(byKicking);
     setTagged(prev => prev.filter(t => t.role !== "recoverer"));
+    // Each only means something for one side: a pickup splits the other
+    // team's return, and only the kickers can keep their own down going.
+    setBlockedPickupBallOn(null);
+    setBlockedKickContinued(false);
   };
 
   /** Which side ended up with the ball. The recoverer and the man who stops
@@ -1978,9 +1990,13 @@ export default function PlayEntryModal({
       offensiveFormation: offFormation,
       defensiveFormation: defFormation,
       hashMark,
-      description: isKickoffOutOfBounds ? `${desc} · PEN: ${KICKOFF_OUT_OF_BOUNDS} · ${outOfBoundsSummary}` : desc,
+      description: isKickoffOutOfBounds ? `${desc} · PEN: ${KICKOFF_OUT_OF_BOUNDS} · ${outOfBoundsSummary}`
+        : blockedContinues ? `${desc} · kickers kept the ball alive, down continues`
+        : showsBlockedPickup && blockedPickupBallOn != null ? `${desc} · picked up at ${formatFieldSpot(blockedPickupBallOn, gameState.possession)}`
+        : desc,
       nextSituation: isKickoffOutOfBounds ? { ...outOfBoundsNext, source: "penalty_enforced" }
-        : storedNextSituation && goalChoiceRequired ? { ...storedNextSituation, goalToGo: nextGoalToGo } : storedNextSituation,
+        : storedNextSituation && goalChoiceRequired ? { ...storedNextSituation, goalToGo: nextGoalToGo }
+        : storedNextSituation ?? blockedContinuation,
       spotOverrideOffered: !isKickoffOutOfBounds && spotOverrideOffered,
       playData: {
         team_tackle_confirmed: allTagged.some(tag => tag.isTeam && tag.teamCreditConfirmed && ["tackler", "sacker"].includes(tag.role)),
@@ -2029,8 +2045,14 @@ export default function PlayEntryModal({
             ? { onside_recovered_by_kicker: onsideRecoveredByKicker }
             : {}),
         } : {}),
+        // All three always written on a blocked kick, so an edit that takes
+        // one away clears it (an edit merges over the stored play_data).
         ...(playType.id === "blocked_kick"
-          ? { blocked_recovered_by_kicking: blockedRecoveredByKicking }
+          ? {
+              blocked_recovered_by_kicking: blockedRecoveredByKicking,
+              blocked_pickup_ball_on: showsBlockedPickup ? blockedPickupBallOn : null,
+              blocked_kick_continued: blockedContinues,
+            }
           : {}),
       },
     });
@@ -2264,6 +2286,37 @@ export default function PlayEntryModal({
     }
     return scoringPenaltyRuling || !enforcedNextSituation ? null : carryGoalToGo(enforcedNextSituation, gameState, enforcement?.newSeries === true);
   })();
+
+  /* ── Blocked kicks: the pickup spot and the kickers keeping the down ───── */
+  /** A blocked punt the other side came up with: the screen asks where it was
+   *  picked up, to split the return between the blocker and the runner. */
+  const showsBlockedPickup = playType.id === "blocked_kick" && blockedKickType === "punt" && !blockedRecoveredByKicking;
+  /** A scrimmage kick the kickers fell on behind the line can be run, thrown
+   *  or kicked again; a try or a kickoff cannot. */
+  const canContinueBlockedKick = playType.id === "blocked_kick" && blockedRecoveredByKicking
+    && (blockedKickType === "punt" || blockedKickType === "field_goal") && !isTD;
+  const blockedContinues = canContinueBlockedKick && blockedKickContinued;
+  /** The whole return on a blocked punt, line of scrimmage back to where it
+   *  ended (the goal line on a touchdown), and the blocker's share of it. */
+  const blockedReturnTotal = isTD ? gameState.ballOn : Math.max(0, gameState.ballOn - resultBallOn);
+  const blockedBlockerShare = blockedPickupBallOn == null ? null
+    : Math.min(blockedReturnTotal, Math.max(0, gameState.ballOn - blockedPickupBallOn));
+  /** Same down, same line to gain, from where the kickers picked it up. The
+     snap that follows is theirs to record as a run, pass or punt. Stated as
+     the operator's spot so it outranks the engine, which turns every blocked
+     kick over. */
+  const blockedContinuation = blockedContinues ? (() => {
+    const lineToGain = gameState.goalToGo ? 100 : Math.min(100, gameState.ballOn + gameState.distance);
+    const spot = Math.max(1, Math.min(99, resultBallOn));
+    return {
+      possession: gameState.possession,
+      down: gameState.down,
+      distance: Math.max(1, lineToGain - spot),
+      ballOn: spot,
+      goalToGo: lineToGain >= 100,
+      source: "manual_override" as const,
+    };
+  })() : null;
 
   const projectedNextSituation = storedNextSituation ?? advanceSituationAfterPlay({
     type: playType.id,
@@ -3768,6 +3821,33 @@ export default function PlayEntryModal({
             </div>
           )}
 
+          {/* The kickers fell on their own block. Behind the line it is still
+              their down, so they can pick it up and run, throw or even kick
+              it. Answered here, before the spot, because it decides what the
+              spot means: where the play ended, or where they picked it up. */}
+          {canContinueBlockedKick && (
+            <div>
+              <label className="label block mb-1.5">Then the kickers</label>
+              <div className="grid grid-cols-2 gap-2">
+                {([[false, "Were downed"], [true, "Kept playing"]] as const).map(([keeps, label]) => (
+                  <button key={label} onClick={() => setBlockedKickContinued(keeps)}
+                    className={`py-2.5 rounded-xl text-sm font-black border-2 transition-all duration-200 cursor-pointer ${
+                      blockedKickContinued === keeps
+                        ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                        : "border-surface-border bg-surface-bg text-slate-500"
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {blockedKickContinued
+                  ? <>Set where they picked it up. Next, record the run, pass or kick as its own play: same down, from that spot.</>
+                  : <>Fell on it or tackled with it. Kept playing means they ran, threw or kicked it after picking it up.</>}
+              </p>
+            </div>
+          )}
+
           {needsYards && (
             <div>
               {isInterception ? (
@@ -3861,7 +3941,7 @@ export default function PlayEntryModal({
                 </div>
               ) : (
                 <>
-                  <label className="label block mb-2">{canHaveFumble && hasFumble ? "Ball carrier fumbled at" : "Ball Spotted At"}</label>
+                  <label className="label block mb-2">{canHaveFumble && hasFumble ? "Ball carrier fumbled at" : blockedContinues ? "Kickers picked it up at" : "Ball Spotted At"}</label>
                   {canHaveFumble && hasFumble && <p className="text-sm text-orange-300 mb-3">Count only the carrier's gain before losing the ball here. On the next step, set where the loose ball was recovered and where the return ended.</p>}
 
                   {/* Tap the field to drop the ball where you saw it. The
@@ -4010,6 +4090,62 @@ export default function PlayEntryModal({
               )}
             </div>
           )}
+
+          {/* Where the other side picked up the blocked punt. The stat manual
+              gives the roll back (line of scrimmage to here) to the man who
+              blocked it and the run after to the man who picked it up, so
+              this one spot splits the return between them. Optional: when
+              one player did both, the play's end spot already says it all. */}
+          {needsYards && showsBlockedPickup && (() => {
+            const tagLabel = (role: string, fallback: string) => {
+              const t = tagged.find(x => x.role === role);
+              return t ? (t.jersey_number != null ? `#${t.jersey_number}` : t.name) : fallback;
+            };
+            const blockerLabel = tagLabel("blocker", "Blocker");
+            const runnerLabel = tagLabel("recoverer", "Runner");
+            return (
+              <div>
+                <label className="label block mb-2">Picked up at</label>
+                {blockedPickupBallOn == null ? (
+                  <>
+                    <button
+                      onClick={() => setBlockedPickupBallOn(isTD ? gameState.ballOn : resultBallOn)}
+                      className="w-full py-2.5 rounded-xl text-sm font-black border-2 border-dashed border-surface-border bg-surface-bg text-slate-500 cursor-pointer">
+                      + Where it was picked up
+                    </button>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Splits the return: the roll back goes to the blocker, the run after to whoever picked it up.
+                      Skip it when one player did both.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <YardReel
+                      value={blockedPickupBallOn}
+                      onChange={setBlockedPickupBallOn}
+                      offenseDirection={offenseDirection}
+                      accentColor={defenseAccent}
+                      formatSpot={(ballOn) => formatFieldSpot(ballOn, gameState.possession)}
+                    />
+                    <div className="mt-2 rounded-xl border border-surface-border bg-black/20 px-3 py-2 text-xs space-y-1" aria-live="polite">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-slate-400">Rolled back · {blockerLabel}</span>
+                        <span className="font-black text-slate-200 tabular-nums">{blockedBlockerShare ?? 0} yds</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-slate-400">{isTD ? "Run in" : "Run after"} · {runnerLabel}</span>
+                        <span className="font-black text-slate-200 tabular-nums">{blockedReturnTotal - (blockedBlockerShare ?? 0)} yds</span>
+                      </div>
+                    </div>
+                    <button onClick={() => setBlockedPickupBallOn(null)}
+                      className="mt-1 text-[11px] font-bold text-slate-500 underline cursor-pointer">
+                      One player did both · clear
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {needsResult && (
             <div>
@@ -4470,6 +4606,23 @@ export default function PlayEntryModal({
                         </div>
                       );
                     })()}
+                    {showsBlockedPickup && blockedPickupBallOn != null && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Picked Up At</span>
+                        <span className="font-bold">
+                          {formatFieldSpot(blockedPickupBallOn, gameState.possession)}
+                          <span className="text-slate-500 font-normal"> · {blockedBlockerShare ?? 0} back + {blockedReturnTotal - (blockedBlockerShare ?? 0)} run</span>
+                        </span>
+                      </div>
+                    )}
+                    {blockedContinues && blockedContinuation && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Next</span>
+                        <span className="font-bold text-emerald-400">
+                          Same down · {ordinalDown(blockedContinuation.down)} & {blockedContinuation.goalToGo ? "Goal" : blockedContinuation.distance}
+                        </span>
+                      </div>
+                    )}
                   </>
                 )}
               </>
@@ -4770,6 +4923,18 @@ export default function PlayEntryModal({
           sub: shown?.isFirstDown ? "1st down" : undefined };
       }
       outcome.push(row);
+      if (showsBlockedPickup && blockedPickupBallOn != null) {
+        const text = formatFieldSpot(blockedPickupBallOn, gameState.possession);
+        const back = blockedBlockerShare ?? 0;
+        outcome.push({ id: "blocked_pickup", label: "Picked up", value: text, text,
+          sub: `${back} rolled back · ${blockedReturnTotal - back} run after`, onOpen: open, active });
+      }
+      if (blockedContinues && blockedContinuation) {
+        const text = "Kickers kept playing";
+        outcome.push({ id: "blocked_continued", label: "Then", value: text, text,
+          sub: `Same down next: ${ordinalDown(blockedContinuation.down)} & ${blockedContinuation.goalToGo ? "Goal" : blockedContinuation.distance}`,
+          onOpen: open, active });
+      }
     }
     if (steps.includes("kick_location")) {
       const outcomeLabel = KICK_OUTCOMES.find(o => o.value === kickOutcome)?.label ?? "";

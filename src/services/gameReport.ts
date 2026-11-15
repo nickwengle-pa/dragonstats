@@ -771,7 +771,9 @@ export function buildGameReport(input: BuildReportInput): GameReport {
         fr: { no: scoop.no, yds: scoop.yds, long: scoop.long, td: summary.defense[id]?.fumbleRecoveryTouchdowns ?? 0 },
       };
     })
-    .filter(r => r.ko.no > 0 || r.punt.no > 0 || r.int.no > 0 || r.fr.no > 0 || r.ko.fum > 0 || r.punt.fum > 0)
+    // A blocker can carry punt return yards without a return of his own (the
+    // roll back on a blocked punt somebody else picked up; statsService.ts).
+    .filter(r => r.ko.no > 0 || r.punt.no > 0 || r.punt.yds !== 0 || r.int.no > 0 || r.fr.no > 0 || r.ko.fum > 0 || r.punt.fum > 0)
     .sort((a, b) =>
       (b.ko.yds + b.punt.yds + b.int.yds + b.fr.yds) - (a.ko.yds + a.punt.yds + a.int.yds + a.fr.yds));
   const returnsTotal: ReturnRow = returns.reduce((t, r) => ({

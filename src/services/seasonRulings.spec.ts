@@ -151,6 +151,41 @@ describe("blocked punts", () => {
     })]);
     expect(s.line("Punt returns: Number-Yards-TD").them).toBe("1-11-1");
   });
+
+  /* Nick's example: blocked, rolls back 20, picked up and run 10 more. The
+     roll back is the blocker's, the run the runner's, and the team has one
+     return of 30. */
+  it("splits the return at the pickup spot between the blocker and the runner", () => {
+    const s = stats([play("blocked_kick", {
+      possession: "them", down: 4, yard_line: 40, yards_gained: -30,
+      theirs: ["punter"], ours: [[TACKLER, "blocker"], [BACK, "recoverer"]],
+      data: { blocked_kick_type: "punt", blocked_recovered_by_kicking: false, blocked_pickup_ball_on: 20 },
+    })]);
+    expect(s.summary.returns[TACKLER]).toMatchObject({ puntReturns: 0, puntReturnYards: 20 });
+    expect(s.summary.returns[BACK]).toMatchObject({ puntReturns: 1, puntReturnYards: 10 });
+    expect(s.line("Punt returns: Number-Yards-TD").us).toBe("1-30-0");
+    expect(s.line("Net Average Per Punt").them).toBe("-30.0");
+  });
+
+  it("gives the runner the touchdown and the blocker only the roll back", () => {
+    const s = stats([play("blocked_kick", {
+      possession: "them", down: 4, yard_line: 40, yards_gained: 60, is_touchdown: true,
+      theirs: ["punter"], ours: [[TACKLER, "blocker"], [BACK, "recoverer"]],
+      data: { blocked_kick_type: "punt", blocked_recovered_by_kicking: false, blocked_pickup_ball_on: 25 },
+    })]);
+    expect(s.summary.returns[TACKLER]).toMatchObject({ puntReturns: 0, puntReturnYards: 15, puntReturnTouchdowns: 0 });
+    expect(s.summary.returns[BACK]).toMatchObject({ puntReturns: 1, puntReturnYards: 25, puntReturnTouchdowns: 1 });
+    expect(s.line("Punt returns: Number-Yards-TD").us).toBe("1-40-1");
+  });
+
+  it("keeps the whole return on one line when the blocker picked it up himself", () => {
+    const s = stats([play("blocked_kick", {
+      possession: "them", down: 4, yard_line: 40, yards_gained: -30,
+      theirs: ["punter"], ours: [[TACKLER, "blocker"], [TACKLER, "recoverer"]],
+      data: { blocked_kick_type: "punt", blocked_recovered_by_kicking: false, blocked_pickup_ball_on: 20 },
+    })]);
+    expect(s.summary.returns[TACKLER]).toMatchObject({ puntReturns: 1, puntReturnYards: 30 });
+  });
 });
 
 describe("punts inside the 20", () => {

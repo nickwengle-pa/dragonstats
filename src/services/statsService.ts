@@ -27,6 +27,7 @@ import {
   type TeamId,
   type TeamStats,
   type DefensiveStats,
+  type ReturnStats,
   type Play as EnginePlay,
 } from "football-stats-engine";
 import { inPeriod, type StatPeriod } from "./statPeriod";
@@ -513,35 +514,57 @@ function supplementPuntsInside20(
  * Credit the return on a blocked punt as a punt return, as the stat manuals
  * score it. See blockedPuntReturn.ts for what is and is not known about it.
  *
- * It goes to the player who ended up with the ball, or the blocker when
- * nobody is named as recovering it. A block the kicking team fell on has no
- * returner on the other side to give it to and is left alone here; its yards
- * still come off the punting team's net in the report.
+ * The run goes to the player who ended up with the ball, or the blocker when
+ * nobody is named as recovering it. When the entry screen recorded where the
+ * ball was picked up, the roll back to that spot is the blocker's instead
+ * (Nick's example: blocked, rolls back 20, picked up and run 10 more - 20 for
+ * the blocker, 10 for the runner). The play is one return for the team, so it
+ * is counted once, on the runner's line; the blocker's line carries his yards
+ * without a second return, or the team total would read two.
+ *
+ * A block the kicking team fell on has no returner on the other side to give
+ * it to and is left alone here; its yards still come off the punting team's
+ * net in the report.
  */
 function supplementBlockedPuntReturns(
   summary: GameSummary,
   plays: PlayWithPlayers[],
   names: Map<string, string>,
 ): void {
+  const line = (id: string) => summary.returns[id] ?? (summary.returns[id] = {
+    playerId: id, playerName: names.get(id) ?? id,
+    kickReturns: 0, kickReturnYards: 0, kickReturnAverage: 0,
+    kickReturnLong: 0, kickReturnTouchdowns: 0, kickReturnFumbles: 0,
+    puntReturns: 0, puntReturnYards: 0, puntReturnAverage: 0,
+    puntReturnLong: 0, puntReturnTouchdowns: 0, puntReturnFumbles: 0,
+    puntReturnFairCatches: 0,
+  });
+  const average = (stat: ReturnStats) => {
+    stat.puntReturnAverage = stat.puntReturns ? stat.puntReturnYards / stat.puntReturns : 0;
+  };
   for (const play of plays) {
     const ret = blockedPuntReturn(play);
     if (!ret || nullifiedStats(play)) continue;
     if (play.play_data?.blocked_recovered_by_kicking === true) continue;
-    const id = firstPlayerByRole(play, "recoverer") ?? firstPlayerByRole(play, "returner") ?? firstPlayerByRole(play, "blocker");
+    const blocker = firstPlayerByRole(play, "blocker");
+    const id = firstPlayerByRole(play, "recoverer") ?? firstPlayerByRole(play, "returner") ?? blocker;
     if (!id) continue;
-    const stat = summary.returns[id] ?? (summary.returns[id] = {
-      playerId: id, playerName: names.get(id) ?? id,
-      kickReturns: 0, kickReturnYards: 0, kickReturnAverage: 0,
-      kickReturnLong: 0, kickReturnTouchdowns: 0, kickReturnFumbles: 0,
-      puntReturns: 0, puntReturnYards: 0, puntReturnAverage: 0,
-      puntReturnLong: 0, puntReturnTouchdowns: 0, puntReturnFumbles: 0,
-      puntReturnFairCatches: 0,
-    });
+    // The blocker's share, when the pickup was recorded and he is not also
+    // the man who ran it.
+    const blockerShare = ret.blockerYards != null && blocker && blocker !== id ? ret.blockerYards : 0;
+    if (blockerShare > 0 && blocker) {
+      const b = line(blocker);
+      b.puntReturnYards += blockerShare;
+      b.puntReturnLong = Math.max(b.puntReturnLong, blockerShare);
+      average(b);
+    }
+    const runnerYards = ret.yards - blockerShare;
+    const stat = line(id);
     stat.puntReturns += 1;
-    stat.puntReturnYards += ret.yards;
-    stat.puntReturnLong = Math.max(stat.puntReturnLong, ret.yards);
+    stat.puntReturnYards += runnerYards;
+    stat.puntReturnLong = Math.max(stat.puntReturnLong, runnerYards);
     if (ret.touchdown) stat.puntReturnTouchdowns += 1;
-    stat.puntReturnAverage = stat.puntReturnYards / stat.puntReturns;
+    average(stat);
   }
 }
 
