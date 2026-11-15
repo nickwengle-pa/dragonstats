@@ -280,7 +280,10 @@ function ordinalDown(down: number): string {
   return `${down}th`;
 }
 
-function teamTag(name: string): string {
+/* The team's own abbreviation when it has one, as the scorebug uses: the
+   initials alone turned "Dragons" into DRA under a scorebug reading DRG. */
+function teamTag(name: string, abbreviation?: string | null): string {
+  if (abbreviation?.trim()) return abbreviation.trim().toUpperCase();
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "TEAM";
   if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
@@ -847,7 +850,7 @@ export default function PlayEntryModal({
      the landing point with zero return yards; they differ in who's credited
      and how the play reads. Touchback is the exception — the receiving team
      starts at their own 20 regardless of where it came down. */
-  const [kickOutcome, setKickOutcome] = useState<KickOutcome>(edit?.kickOutcome ?? "returned");
+  const [kickOutcome, setKickOutcome] = useState<KickOutcome>(edit?.kickOutcome ?? (playType.id === "fair_catch" ? "fair_catch" : "returned"));
   const [outOfBoundsChoice, setOutOfBoundsChoice] = useState<KickoffOutOfBoundsChoice>(() => {
     const stored = (editing ?? initialDraft)?.playData?.kickoff_out_of_bounds_choice;
     return isKickoffOutOfBoundsChoice(stored) ? stored : "take_35";
@@ -999,7 +1002,15 @@ export default function PlayEntryModal({
   const kickerRole = (playType.id === "kickoff" || playType.id === "onside_kick")
     ? "kicker"
     : "punter";
-  const [selectedKickedToYard, setKickedToYard] = useState(edit?.kickedToYard ?? 5);
+  const [selectedKickedToYard, setKickedToYardState] = useState(edit?.kickedToYard ?? 5);
+  /* Whether anybody has said where the kick came down. A new kick used to
+     start on the receivers' 5 wherever it was kicked from, so a punt from
+     our 35 saved untouched as a 60-yard punt and padded the average. The
+     spot is now asked for: tap the field, drag the ruler, or type it. A
+     touchback needs no spot, and an edit or a draft already has one. */
+  const [landingSet, setLandingSet] = useState(edit != null);
+  const setKickedToYard = (value: number) => { setLandingSet(true); setKickedToYardState(value); };
+  const landingMissing = isKickPlay && !landingSet && !isTouchback;
   const kickedToYard = isTouchback ? 0 : selectedKickedToYard;
   // On a kick out of bounds the landing spot is where it went out, which two
   // of the receiving team's choices are measured from.
@@ -1086,8 +1097,8 @@ export default function PlayEntryModal({
      default: their punter records as TEAM unless the operator asks for the
      step, which the kick location screen offers in one tap. */
   const [showOppKicker, setShowOppKicker] = useState(false);
-  const progTag = teamTag(progName);
-  const oppTag = teamTag(oppName);
+  const progTag = teamTag(progName, progAbbr);
+  const oppTag = teamTag(oppName, oppAbbr);
   const perspectiveSideLabel = (side: "our" | "opp") => side === "our" ? progName : oppName;
   const perspectiveSideTag = (side: "our" | "opp") => side === "our" ? progTag : oppTag;
   const fieldTeamLabel = (side: FieldTeam) => side === "program" ? progName : oppName;
@@ -1448,6 +1459,7 @@ export default function PlayEntryModal({
   });
 
   const stepReady = (step: Step): boolean => {
+    if ((step === "kick_location" || step === "review") && landingMissing) return false;
     if (step === "review" && goalChoiceRequired && nextGoalToGo === undefined) return false;
     // A PAT kick is good or it isn't, and that answer is the whole play. Left
     // blank it recorded a try that neither scored nor missed, so the result is
@@ -2820,6 +2832,290 @@ export default function PlayEntryModal({
       onSelect={player => setTagged(prev => [...prev.filter(t => t.role !== role), ...(player ? [{ ...player, role }] : [])])} />;
   };
 
+  /* Blocked: a punt that never got away isn't one of the kick outcomes at
+     all - it's a different play - and it has to BE a blocked_kick before it
+     is written, so next_situation_source lands on "pending_review" instead
+     of the engine computing a spot and possession off a kick that never
+     happened. Shared by the one-screen kick and the kick location step. */
+  function switchToBlockedKick() {
+    const blocked = PLAY_TYPES.find(pt => pt.id === "blocked_kick");
+    if (!blocked) return;
+    // fair_catch is a punt that was fair caught, so a block on it is a
+    // blocked punt — not a blocked kickoff.
+    setBlockedKickType(["punt", "fair_catch"].includes(playType.id) ? "punt" : "kickoff");
+    setPlayTypeOverride(blocked);
+    // A blocked kick has no returner, but the sticky one from the last kick
+    // is already tagged and would be saved and credited as a 0-yard return.
+    setTagged(prev => prev.filter(t => t.role !== "returner"));
+    setCarriedRoles(prev => { const next = new Set(prev); next.delete("returner"); return next; });
+    // Roles change to kicker/blocker/recoverer, so restart. The kicker or
+    // punter already tagged keeps his tag.
+    setCurrentRoleIdx(0);
+    setStepIdx(0);
+    if (summaryMode) openPane("players");
+  }
+
+  /* ── One-screen kick ──────────────────────────────────────────────────
+     A punt, kickoff or fair catch entered live, on the same screen shape as
+     a run or a pass: the people on the left, the spots on the right, the
+     play read back in a sentence beside a Save that never scrolls away. It
+     used to be a six-step popup over the field - punter, location, returner,
+     return, tacklers, review - with its own player grids. Anything with a
+     second question in it (a muff or fumble recovery, a flag) still goes to
+     the step-by-step screens, which is what the Save button says it will do.
+     Onside kicks keep the steps outright for their recovered-by question. */
+  const oneScreenKick = !isEditing && inlineSimple && !useDetailedEntry
+    && ["punt", "kickoff", "fair_catch"].includes(playType.id);
+  /* Which spot a tap on the big field sets. The landing first; once it is
+     down, the return - the order the play happened in. Either heading can
+     be tapped to take the field back. */
+  const [kickFieldTarget, setKickFieldTarget] = useState<"landing" | "return">("landing");
+  const kickFieldIsReturn = kickFieldTarget === "return" && hasReturnSpot && !isLooseKick && !isTD;
+  const appliedKickRequest = useRef<number | null>(fieldSpotRequest?.id ?? null);
+  useEffect(() => {
+    if (!oneScreenKick) return;
+    const request = fieldSpotRequest;
+    if (!request || appliedKickRequest.current === request.id) return;
+    appliedKickRequest.current = request.id;
+    const spot = Math.max(1, Math.min(99, request.ballOn));
+    if (kickFieldIsReturn) { setIsTD(false); setReturnSpotFromBallOn(spot); setReturnToRaw(""); setReturnYardsRaw(""); return; }
+    if (isTouchback) setKickOutcome(playType.id === "fair_catch" ? "fair_catch" : "returned");
+    setKickedToYardFromBallOn(spot);
+    if (hasReturnSpot || isTouchback) setKickFieldTarget("return");
+  }, [fieldSpotRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* The ball on the big field shows the spot being set. Before the landing is
+     known it sits on the line of scrimmage, which also keeps the field
+     tappable - the game screen only takes a tap while there is a spot. */
+  const kickPreview = !oneScreenKick ? null
+    : kickFieldIsReturn ? returnSpotBallOn
+      : landingMissing || isTouchback ? gameState.ballOn : kickLandingBallOn;
+  useEffect(() => {
+    if (oneScreenKick) onFieldPreview?.(kickPreview);
+  }, [oneScreenKick, kickPreview, onFieldPreview]);
+  useEffect(() => () => { if (oneScreenKick) onFieldPreview?.(null); }, [oneScreenKick, onFieldPreview]);
+  const [reviewClockOpen, setReviewClockOpen] = useState(false);
+  const [kickSaving, setKickSaving] = useState(false);
+  const [kickSaveError, setKickSaveError] = useState("");
+
+  if (oneScreenKick) {
+    const isKickoff = playType.id === "kickoff";
+    const ourPlayers: TaggedPlayer[] = roster.map(p => ({
+      id: p.player_id, player_id: p.player_id, jersey_number: p.jersey_number,
+      name: `${p.player.first_name} ${p.player.last_name}`, role: "",
+    }));
+    const theirPlayers: TaggedPlayer[] = localOppPlayers.map(p => opponentTag(p));
+    const kickingPlayers = isTheirBall ? theirPlayers : ourPlayers;
+    const receivingPlayers = isTheirBall ? ourPlayers : theirPlayers;
+    const kickingName = isTheirBall ? oppName : progName;
+    const receivingName = isTheirBall ? progName : oppName;
+    const kickerWord = kickerRole === "punter" ? "Punter" : "Kicker";
+    const needsReturner = kickOutcome === "returned" || kickOutcome === "fair_catch";
+    const showTacklers = trackTacklers && wasReturned && !isTD;
+    const tagFor = (role: string) => tagged.filter(t => t.role === role && t.player_id !== OPP_TEAM_PLAYER.id);
+    const pick = (role: string, player: TaggedPlayer | null, ours: boolean) => {
+      setCarriedRoles(prev => { const next = new Set(prev); next.delete(role); return next; });
+      /* Film later: ours goes in as the unconfirmed TEAM tag, the gap a film
+         review fills, exactly as on a run. Theirs simply clears - an unnamed
+         opponent records as their TEAM. */
+      const tag = player ? { ...player, role } : ours ? makeTeamTag(role) : null;
+      setTagged(prev => [...prev.filter(t => t.role !== role), ...(tag ? [tag] : [])]);
+    };
+    const kickerTag = tagFor(kickerRole);
+    const returnerTag = tagFor("returner");
+    /* Same rule as a run: our own player has to be named, or sent to film
+       later, before Save. Theirs fall to TEAM, as every opponent role does. */
+    const missingKicker = !isTheirBall && kickerTag.length === 0;
+    const missingReturner = isTheirBall && needsReturner && returnerTag.length === 0;
+    const ready = !landingMissing && !missingKicker && !missingReturner;
+    const requiredMessage = landingMissing
+      ? `Set where the ${isKickoff ? "kick" : "punt"} came down: tap the field, drag the ruler or type it.`
+      : missingKicker ? `Choose the ${kickerWord.toLowerCase()} or identify on film later.`
+        : `Choose the returner or identify on film later.`;
+    const goesToSteps = isLooseKick || !!penalty || showPenalties;
+    const short = (t: TaggedPlayer) => t.isTeam || t.player_id === OPP_TEAM_PLAYER.id
+      ? (t.teamCreditConfirmed ? "TEAM" : "film later")
+      : (() => {
+        const last = (t.name ?? "").trim().split(/\s+/).slice(-1)[0]?.replace(/^#/, "") ?? "";
+        return `#${t.jersey_number ?? "?"}${!last || last === String(t.jersey_number) ? "" : ` ${last}`}`;
+      })();
+    const retYds = (() => {
+      const isReceiverSide = returnToTeam === receivingFieldSide;
+      const receiverYard = isReceiverSide ? returnToYardLine : 100 - returnToYardLine;
+      return receiverYard - kickedToYard;
+    })();
+    const sentence = (() => {
+      const parts: string[] = [];
+      const kicker = kickerTag[0];
+      parts.push(`${kicker ? `${short(kicker)} ` : ""}${isKickoff ? "kickoff" : "punt"}${landingMissing ? "" : isTouchback ? ", touchback" : ` ${kickDistance} yds to ${landingLabel}`}`);
+      const returner = returnerTag[0];
+      if (kickOutcome === "fair_catch") parts.push(`fair catch${returner ? ` by ${short(returner)}` : ""}`);
+      else if (kickOutcome === "downed") parts.push("downed");
+      else if (kickOutcome === "out_of_bounds") parts.push("out of bounds");
+      else if (isLooseKick) parts.push(isMuffed ? "muffed" : "fumbled on the return");
+      else if (wasReturned && !landingMissing) parts.push(isTD
+        ? `returned for a touchdown${returner ? ` by ${short(returner)}` : ""}`
+        : `returned${returner ? ` by ${short(returner)}` : ""} to ${fieldTeamTag(returnToTeam)} ${returnToYardLine} (${retYds > 0 ? "+" : ""}${retYds})`);
+      if (showTacklers && shownTacklers.length) parts.push(`tackled by ${shownTacklers.map(short).join(", ")}`);
+      const text = parts.join(" · ");
+      return text.charAt(0).toUpperCase() + text.slice(1);
+    })();
+    const save = async () => {
+      if (goesToSteps) {
+        setUseDetailedEntry(true);
+        setSkipWarning(null);
+        if (isLooseKick) {
+          const at = steps.indexOf("kick_return_yards");
+          setStepIdx(at >= 0 ? at : 0);
+        } else {
+          const at = steps.indexOf("penalty");
+          setShowPenalties(true);
+          setStepIdx(at >= 0 ? at : Math.max(0, steps.length - 1));
+        }
+        return;
+      }
+      setKickSaving(true); setKickSaveError("");
+      try { await handleSubmit(); } catch { setKickSaveError("Could not save. Try again."); } finally { setKickSaving(false); }
+    };
+    const kb = "min-h-11 px-3 py-2 rounded-lg border text-sm font-bold active:bg-surface-hover";
+    const kIdle = "border-surface-border bg-surface-bg text-slate-200";
+    const kSel = "border-dragon-primary bg-dragon-primary/20 text-white";
+    const outcomes = kickOutcomes.filter(o => playType.id !== "fair_catch" || o.value !== "touchback");
+    return (
+      <div className={`live-inline-entry${goalChoiceRequired ? " goal-choice-entry" : ""}`}>
+        <div role="region" aria-labelledby="kick-title" style={{ "--fast-accent": offenseAccent } as React.CSSProperties} className="card !p-0 fast-entry kick-entry">
+          <header className="fast-header">
+            <div>
+              <h2 id="kick-title">{playType.label} <span>· {kickingName}</span></h2>
+              <p>{isKickoff ? "Kickoff" : `${ordinalDown(gameState.down)} & ${gameState.goalToGo ? "Goal" : gameState.distance}`} · From {kickStartLabel}</p>
+            </div>
+            <button aria-label="Change play" onClick={onClose} className={`${kb} ${kIdle}`}>Change play</button>
+          </header>
+          <div className="fast-body">
+            <div className="fast-columns">
+              <section className="fast-personnel" aria-label="Kick participants">
+                <div className="offense-selection" role="group" aria-label={`${kickingName} kicking team`}>
+                  <PlayerPicker label={isTheirBall ? `${kickerWord} (optional)` : kickerWord} team={kickingName}
+                    players={kickingPlayers} usage={playerUsage} role={kickerRole} accentColor={offenseAccent}
+                    onAddJersey={isTheirBall ? jersey => opponentTag(addOpponentJersey(jersey)) : undefined}
+                    onSelectTeam={!isTheirBall ? () => pick(kickerRole, { ...makeTeamTag(kickerRole), teamCreditConfirmed: true }, true) : undefined}
+                    selected={kickerTag} onSelect={player => pick(kickerRole, player, !isTheirBall)} />
+                  {carriedRoles.has(kickerRole) && kickerTag.length > 0 && <p className="kick-carried">Same {kickerWord.toLowerCase()} as the last {isKickoff ? "kickoff" : "punt"}. Tap to change.</p>}
+                </div>
+                {needsReturner && <div className="defense-selection kick-receiving" style={{ "--defense-accent": defenseAccent } as React.CSSProperties}>
+                  <PlayerPicker label={kickOutcome === "fair_catch" ? "Fair catch by" : "Returner"} team={receivingName}
+                    players={receivingPlayers} usage={playerUsage} role="returner" accentColor={defenseAccent}
+                    onAddJersey={!isTheirBall ? jersey => opponentTag(addOpponentJersey(jersey)) : undefined}
+                    selected={returnerTag} onSelect={player => pick("returner", player, isTheirBall)} />
+                  {carriedRoles.has("returner") && returnerTag.length > 0 && <p className="kick-carried">Same returner as the last kick. Tap to change.</p>}
+                </div>}
+                {showTacklers && <div className="fast-tacklers defense-selection" style={{ "--defense-accent": offenseAccent } as React.CSSProperties}>
+                  <PlayerPicker label="Tacklers" team={kickingName} players={kickingPlayers} selected={shownTacklers} multiple accentColor={offenseAccent}
+                    onSelectTeam={tacklersAreOurs ? toggleTeamTackler : undefined}
+                    onAddJersey={isTheirBall ? jersey => opponentTag(addOpponentJersey(jersey)) : undefined}
+                    onSelect={player => {
+                      setNoTackle(false);
+                      if (!player) {
+                        setTacklers([{ ...(tacklersAreOurs ? makeTeamTag(defensiveCreditRole) : {
+                          id: OPP_TEAM_PLAYER.id, player_id: OPP_TEAM_PLAYER.id, jersey_number: null,
+                          name: "TEAM", role: defensiveCreditRole, isOpponent: true,
+                        }), credit: 1 }]);
+                        return;
+                      }
+                      if ((player.isTeam && !player.teamCreditConfirmed) || player.player_id === OPP_TEAM_PLAYER.id) { setTacklers([]); return; }
+                      setTacklers(prev => toggleFastTackler(prev, { ...player, role: defensiveCreditRole }));
+                    }} />
+                  <div className="fast-tackle-options">
+                    <span>{shownTacklers.length > 1 ? "Shared tackle credit" : "Select up to 3 tacklers"}</span>
+                    <button type="button" aria-pressed={noTackle} onClick={() => { setNoTackle(!noTackle); setTacklers([]); }} className={`${kb} ${noTackle ? kSel : kIdle}`}>No tackle</button>
+                  </div>
+                  {shownTacklers.length > 0 && <div className="fast-tags">{shownTacklers.map(t => <button key={t.player_id} type="button" aria-label={`Remove ${short(t)}`}
+                    onClick={() => setTacklers(prev => { const next = prev.filter(x => x.player_id !== t.player_id); return next.length === 1 ? next.map(x => ({ ...x, credit: 1 })) : next; })}>
+                    {short(t)} · {t.credit === .5 ? "assist" : "solo"} ×
+                  </button>)}</div>}
+                </div>}
+              </section>
+              <section className="fast-position" aria-label="Kick spots">
+                <button type="button" className="kick-spot-heading" data-active={!kickFieldIsReturn || undefined} onClick={() => setKickFieldTarget("landing")}>
+                  <h3>{isKickoff ? "Kick" : "Punt"} came down</h3>
+                  <strong aria-live="polite" className={landingMissing ? "kick-not-set" : undefined}>{landingMissing ? "Not set" : isTouchback ? "Touchback" : `${landingLabel} · ${kickDistance} yds`}</strong>
+                </button>
+                {!isTouchback && <>
+                  <p className="fast-hint">{!kickFieldIsReturn ? "Tap the field above, drag the ruler, or type the yard line or distance." : "Tap here to set this spot from the field again."}</p>
+                  <div className={landingMissing ? "kick-reel-unset" : undefined}><YardReel value={landingMissing ? gameState.ballOn : kickLandingBallOn} onChange={value => { setKickedToYardFromBallOn(value); }}
+                    offenseDirection={offenseDirection} accentColor="#a78bfa"
+                    formatSpot={ballOn => formatFieldSpot(ballOn, gameState.possession)} /></div>
+                  <div className="fast-number-fields">
+                    <label>Caught at (their yd line)<input aria-label="Caught at yard line" inputMode="numeric" className="input" placeholder="e.g. 12" value={kickedToRaw}
+                      onFocus={e => e.target.select()} onChange={e => {
+                        const raw = e.target.value.replace(/\D/g, "").slice(0, 2);
+                        setKickedToRaw(raw); setKickDistanceRaw("");
+                        const n = parseInt(raw, 10);
+                        if (!isNaN(n)) setKickedToYard(Math.max(0, Math.min(50, n)));
+                      }} /></label>
+                    <label>Or {isKickoff ? "kick" : "punt"} distance<input aria-label="Kick distance" inputMode="numeric" className="input" placeholder="e.g. 38" value={kickDistanceRaw}
+                      onFocus={e => e.target.select()} onChange={e => {
+                        const raw = e.target.value.replace(/\D/g, "").slice(0, 3);
+                        setKickDistanceRaw(raw); setKickedToRaw("");
+                        const n = parseInt(raw, 10);
+                        if (!isNaN(n)) setKickedToYardFromDistance(Math.max(0, Math.min(100, n)));
+                      }} /></label>
+                  </div>
+                </>}
+                <div className="kick-outcomes" role="group" aria-label="What happened to it">
+                  {outcomes.map(o => <button key={o.value} type="button" aria-pressed={kickOutcome === o.value}
+                    onClick={() => { setKickOutcome(o.value); if (o.value !== "returned") setIsTD(false); }} className={`${kb} ${kickOutcome === o.value ? kSel : kIdle}`}>{o.label}</button>)}
+                  <button type="button" onClick={switchToBlockedKick} className={`${kb} kick-blocked`}>Blocked</button>
+                </div>
+                {isKickoffOutOfBounds && <div className="mt-2 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+                  <div className="text-xs font-bold text-amber-300">Penalty: Kickoff Out of Bounds</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {KICKOFF_OUT_OF_BOUNDS_CHOICES.map(choice => <button key={choice} type="button"
+                      aria-pressed={outOfBoundsChoice === choice} onClick={() => setOutOfBoundsChoice(choice)}
+                      className={`min-h-11 rounded-lg border px-2 text-xs font-bold ${outOfBoundsChoice === choice ? "border-amber-300 bg-amber-500/20 text-white" : "border-slate-600 text-slate-300"}`}>
+                      {KICKOFF_OUT_OF_BOUNDS_LABELS[choice]}
+                    </button>)}
+                  </div>
+                  <p className="text-xs text-slate-300">{outOfBoundsSummary}. Went out at {landingLabel}.</p>
+                </div>}
+                {isLooseKick && <p className="fast-hint kick-next-note">Save opens the recovery: which team fell on it, who, and where.</p>}
+                {wasReturned && <>
+                  <button type="button" className="kick-spot-heading" data-active={kickFieldIsReturn || undefined} onClick={() => setKickFieldTarget("return")} disabled={isTD}>
+                    <h3>Return ended</h3>
+                    <strong aria-live="polite">{isTD ? "Touchdown" : landingMissing ? "—" : `${fieldTeamTag(returnToTeam)} ${returnToYardLine} · ${retYds > 0 ? "+" : ""}${retYds} yds`}</strong>
+                  </button>
+                  {!isTD && <YardReel value={returnSpotBallOn} onChange={ballOn => { setKickFieldTarget("return"); setReturnSpotFromBallOn(ballOn); setReturnToRaw(""); setReturnYardsRaw(""); }}
+                    offenseDirection={offenseDirection} advancing="returner" accentColor={defenseAccent}
+                    formatSpot={ballOn => formatFieldSpot(ballOn, gameState.possession)} />}
+                  <div className="fast-number-fields">
+                    {!isTD && <label>Return yards<input aria-label="Return yards" inputMode="numeric" className="input" placeholder="0" value={returnYardsRaw}
+                      onFocus={e => e.target.select()} onChange={e => {
+                        const raw = e.target.value.replace(/[^\d-]/g, "").slice(0, 3);
+                        setReturnYardsRaw(raw); setReturnToRaw("");
+                        const n = parseInt(raw, 10);
+                        if (!isNaN(n)) setReturnSpotFromYards(Math.max(-99, Math.min(100, n)));
+                      }} /></label>}
+                    <button type="button" aria-pressed={isTD} onClick={() => setIsTD(v => !v)} className={`${kb} ${isTD ? kSel : kIdle} kick-return-td`}>Return TD</button>
+                  </div>
+                </>}
+              </section>
+            </div>
+          </div>
+          <footer className="fast-footer safe-bottom">
+            {goalChoiceRequired && <GoalToGoChoice value={nextGoalToGo} onChange={setNextGoalToGo} />}
+            <div className="fast-review" aria-live="polite"><strong>{sentence}</strong><span className={!ready ? "fast-required" : undefined}>{ready ? (goesToSteps ? "Save opens the rest of the play." : "Ready to save.") : requiredMessage}</span></div>
+            {penalty && <p className="text-sm text-amber-300">Flag: {penalty} · review before saving</p>}
+            {kickSaveError && <p role="alert" className="text-sm text-red-400">{kickSaveError}</p>}
+            <div className="fast-actions">
+              <button onClick={() => { setShowPenalties(true); setUseDetailedEntry(true); const at = steps.indexOf("penalty"); setStepIdx(at >= 0 ? at : Math.max(0, steps.length - 1)); }} className={`${kb} ${kIdle}`}><Flag size={15} />Penalty</button>
+              <button onClick={() => { setUseDetailedEntry(true); setStepIdx(0); }} className={`${kb} ${kIdle}`}>Full details</button>
+              <button disabled={!ready || kickSaving} onClick={() => { void save(); }} className="btn-primary fast-save disabled:opacity-40">{kickSaving ? "Saving…" : goesToSteps ? "Next: details" : "Save Play"}</button>
+            </div>
+          </footer>
+        </div>
+      </div>
+    );
+  }
+
   if (!isEditing && playType.id === "kneel") {
     const players: TaggedPlayer[] = isTheirBall
       ? localOppPlayers.map(p => opponentTag(p, "rusher"))
@@ -3283,9 +3579,11 @@ export default function PlayEntryModal({
                 />
               </div>
             </div>
-            <div className="text-xs text-slate-500 mt-2">
-              {(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{kickDistance} yards</span>
-              {" "}({kickStartLabel} → {landingLabel})
+            <div className="text-xs text-slate-500 mt-2" aria-live="polite">
+              {landingMissing
+                ? <span className="font-bold text-amber-300">Where did it come down? Tap the field, drag the ruler or type it. Touchback needs no spot.</span>
+                : <>{(playType.id === "kickoff" || playType.id === "onside_kick") ? "Kick" : "Punt"} distance: <span className="font-bold text-slate-300">{kickDistance} yards</span>
+              {" "}({kickStartLabel} → {landingLabel})</>}
             </div>
           </div>
 
@@ -3333,26 +3631,7 @@ export default function PlayEntryModal({
                 "pending_review" instead of the engine computing a spot and
                 possession off a kick that never happened. */}
             <button
-              onClick={() => {
-                const blocked = PLAY_TYPES.find(pt => pt.id === "blocked_kick");
-                if (!blocked) return;
-                // fair_catch is a punt that was fair caught, so a block on
-                // it is a blocked punt — not a blocked kickoff.
-                setBlockedKickType(
-                  ["punt", "fair_catch"].includes(playType.id) ? "punt" : "kickoff",
-                );
-                setPlayTypeOverride(blocked);
-                // A blocked kick has no returner, but the sticky one from
-                // the last kick is already tagged and would be saved and
-                // credited as a 0-yard return.
-                setTagged(prev => prev.filter(t => t.role !== "returner"));
-                setCarriedRoles(prev => { const next = new Set(prev); next.delete("returner"); return next; });
-                // Roles change to kicker/blocker/recoverer, so restart. The
-                // kicker or punter already tagged keeps his tag.
-                setCurrentRoleIdx(0);
-                setStepIdx(0);
-                if (summaryMode) openPane("players");
-              }}
+              onClick={switchToBlockedKick}
               className="mt-2 w-full py-2.5 rounded-xl text-sm font-black border-2 border-dashed border-red-500/50 bg-red-500/10 text-red-400"
             >
               Blocked
@@ -4514,19 +4793,6 @@ export default function PlayEntryModal({
             <div className="mt-1">{outOfBoundsSummary}</div>
           </div>}
 
-          {/* Scoreboard time at the snap. Pre-filled from the running
-              clock, so entering a play live costs nothing; correcting one
-              charted from film no longer means leaving the play. */}
-          <div className="card p-3">
-            <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1.5">
-              Clock at snap
-            </div>
-            <ClockInput
-              seconds={clockSecs}
-              onChange={setClockSecs}
-              maxSeconds={gameConfig.quarter_length_secs}
-            />
-          </div>
           <div className="card p-3 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-slate-500">Type</span>
@@ -4807,6 +5073,30 @@ export default function PlayEntryModal({
               </div>
             )}
           </div>
+          {/* Scoreboard time at the snap. Pre-filled from the running clock,
+              so live it is right without a touch - and it sat ABOVE the
+              play as a full keypad, which pushed the lines being reviewed
+              (punter, distance, returner) below the fold. It is one line
+              under the play now, opening the keypad only when tapped. */}
+          {reviewClockOpen ? (
+            <div className="card p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">Clock at snap</span>
+                <button type="button" onClick={() => setReviewClockOpen(false)} className="min-h-9 px-2 text-xs font-bold text-slate-300">Done</button>
+              </div>
+              <ClockInput
+                seconds={clockSecs}
+                onChange={setClockSecs}
+                maxSeconds={gameConfig.quarter_length_secs}
+              />
+            </div>
+          ) : (
+            <button type="button" onClick={() => setReviewClockOpen(true)}
+              className="flex min-h-11 w-full items-center justify-between rounded-xl border border-surface-border bg-surface-bg px-3 py-2 text-sm">
+              <span className="text-slate-400">Clock at snap</span>
+              <span className="font-bold tabular-nums">{formatClockValue(clockSecs)} <span className="ml-1 text-xs font-semibold text-slate-400">Change</span></span>
+            </button>
+          )}
         </div>
       )}
     </>

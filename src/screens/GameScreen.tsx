@@ -2896,7 +2896,7 @@ export default function GameScreen() {
         />
 
         <div className="live-field-toolbar">
-          <span aria-live="polite">{selectedPlayType ? draftFieldSpot != null ? "Tap field to set the play’s ending spot" : "Set the spot in play details" : insertContext ? "Inserting a play · starting spot locked" : "Tap field to set the starting yard line"}</span>
+          <span aria-live="polite">{selectedPlayType ? draftFieldSpot != null ? ["punt", "kickoff", "fair_catch"].includes(selectedPlayType.id) ? "Tap field to set the lit spot below" : "Tap field to set the play’s ending spot" : "Set the spot in play details" : insertContext ? "Inserting a play · starting spot locked" : "Tap field to set the starting yard line"}</span>
           <button
             type="button"
             onClick={toggleFieldView}

@@ -70,7 +70,7 @@ describe("adjusting a penalty's result spot", () => {
     const { result, submit } = await flagOffsides({ down: 2, distance: 8, ballOn: 45 });
     expect(result.textContent).toMatch(/Enforced to\s*50/);
     await click(button(/Adjust/, result));
-    await click(button("THE", result));
+    await click(button("TH", result));
     const box = screen.getByLabelText("Ball on yard line") as HTMLInputElement;
     fireEvent.focus(box);
     fireEvent.change(box, { target: { value: "4" } });

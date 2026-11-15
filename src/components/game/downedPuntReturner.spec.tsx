@@ -45,6 +45,9 @@ async function recordTheirPunt(outcome: string): Promise<PlaySubmitData | null> 
   const pick = screen.getAllByRole("button").find(b => b.textContent?.trim() === outcome);
   expect(pick, `no ${outcome} button`).toBeTruthy();
   await act(async () => { fireEvent.click(pick!); });
+  // A new kick has no landing spot until one is given.
+  const caught = screen.queryByPlaceholderText("e.g. 5");
+  if (caught) await act(async () => { fireEvent.change(caught, { target: { value: "20" } }); });
   for (let i = 0; i < 20 && !out; i++) {
     const record = screen.queryByRole("button", { name: /Record Play/ });
     if (record) { await act(async () => { fireEvent.click(record); }); break; }

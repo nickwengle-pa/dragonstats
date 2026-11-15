@@ -112,7 +112,7 @@ export default function FlowPreview() {
       <div className={`live-entry-column flex-1 min-w-0 lg:block ${pane === "play" ? "" : "hidden"}`} data-pane={pane}>
         {playType ? <PlayEntryModal inlineSimple key={playType.id} playType={playType} gameState={situation} roster={roster} opponentPlayers={opponents}
           playerUsage={countPlayerUsage(plays.map(play => play.data))}
-          fieldSpotRequest={spotRequest} onFieldPreview={setDraftSpot} progName="Dragons" oppName="Visitors" progColor="#164e63" oppColor="#854d0e" lastPlayerByRole={remembered} trackFormations={formations} trackTacklers
+          fieldSpotRequest={spotRequest} onFieldPreview={setDraftSpot} progName="Dragons" oppName="Visitors" progAbbr="DRG" oppAbbr="VIS" progColor="#164e63" oppColor="#854d0e" lastPlayerByRole={remembered} trackFormations={formations} trackTacklers
           offenseDirection={right?"right":"left"} ourEndZoneSide={flipped?"right":"left"} onSubmit={record} onClose={()=>setPlayType(null)} /> : <div className="card p-3"><QuickActions possession={situation.possession} progName="Dragons" oppName="Visitors" down={situation.down} distance={situation.distance} goalToGo={situation.goalToGo} ballOn={situation.ballOn} kickoffDue={kickoffDue} suggestedPhase={kickoffDue||situation.down===4?"special":"run"} spotLabel={spot(situation.ballOn)} onSelect={selectPlay} /></div>}
       </div>
       <section className={`live-log-column space-y-2 lg:block ${pane === "plays" ? "" : "hidden"}`} data-pane={pane}>
