@@ -112,6 +112,10 @@ import {
   LIVE_STATE_PERSIST_DELAY_MS, toTeamTag, formatTeamYardLabel, readFieldFlip, writeFieldFlip, getFieldSideForSpot, toBallOnFromFieldSide, parseClockText, timeoutHalfForQuarter, maxTimeoutsForQuarter, getTimeoutTeam, getStoredStartClock, getStoredEndClock, shouldPromptForClockCapture, getClockCaptureReason, serializeEngineSnapshot, applyScoreDelta,
   type LiveSituationSnapshot, type ScoreSnapshot, type PendingClockCapture, type FieldSide, type TimeoutTeam,
 } from "./gameScreenRules";
+import {
+  buildPlayInsert, buildPlayerCredits, buildSubmittedPlay, needsSituationReview, playsWithSubmitted, submittedTurnover,
+  type LiveScoreboard,
+} from "@/services/playSubmission";
 
 /* ═══════════════════════════════════════════════
    GAME SCREEN — Main Wrapper
@@ -1520,77 +1524,16 @@ export default function GameScreen() {
     setShowPatGate(false);
     const before: LiveSituationSnapshot = { possession, down, distance, ballOn };
     const scoreBefore: ScoreSnapshot = { us: ourScore, them: theirScore };
-    // Interceptions always change possession; fumbles only when not recovered
-    // by the offense (the modal sends an explicit flag).
-    const isTurnover = data.turnover ?? ["int", "fumble"].includes(data.playType.id);
-    /* The modal can correct the snap time, so the play is stamped with what
-       it returned rather than with whatever the running clock reads by the
-       time Record Play is tapped. */
-    const playClock = data.clock ?? clock;
+    const live: LiveScoreboard = { quarter, clock, possession, down, distance, ballOn };
+    const isTurnover = submittedTurnover(data);
     /* Recording into the middle of the game rather than onto the end. The
        play is built against the situation AT that point, and everything after
        it re-chains, so the rest of the game is recomputed from a list that
        now runs in the order it was played. */
     const insertAt = insertContext;
-    /* Recorded from wherever the scoreboard says the ball is. If that is not
-       where the previous play left it, somebody moved it by hand - flag it,
-       or the next replay puts the ball back. */
-    const previewPlay: PlayRecord = withHandSetStart({
-      id: "pending",
-      sequence: insertAt ? insertAt.index + 2 : plays.length + 1,
-      quarter: insertAt ? insertAt.quarter : quarter,
-      clock: playClock,
-      type: data.playType.id,
-      yards: data.yards,
-      result: data.result,
-      penalty: data.penalty,
-      penaltyCategory: data.penaltyCategory,
-      penaltyEnforcement: data.penaltyEnforcement,
-      flagYards: data.flagYards,
-      isTouchdown: data.isTouchdown,
-      firstDown: data.isFirstDown,
-      turnover: isTurnover,
-      isTouchback: data.isTouchback,
-      blockedKickType: data.blockedKickType,
-      fumbleReturnYards: data.fumbleReturnYards ?? null,
-      fumbleRecoveredAt: data.fumbleRecoveredAt ?? null,
-      tagged: data.tagged,
-      ballOn: insertAt ? insertAt.ballOn : ballOn,
-      down: insertAt ? insertAt.down : down,
-      distance: insertAt ? insertAt.distance : distance,
-      description: data.description,
-      possession: insertAt ? insertAt.possession : possession,
-      // Onside recovered by the kicking team: keep possession (the situation
-      // engine reads nextPossession to decide flip vs. keep).
-      nextPossession: data.playType.id === "onside_kick" && data.onsideRecoveredByKicker
-        ? possession
-        // A flag on a kick or a turnover changes who has the ball, and the
-        // modal has already worked out which team and complemented ballOn into
-        // their frame. Without this the spot was stored against the team that
-        // just lost possession.
-        : data.nextSituation?.possession,
-      // Penalty spot the recorder set by hand — wins over computed enforcement.
-      nextDown: data.nextSituation?.down,
-      nextDistance: data.nextSituation?.distance,
-      nextBallOn: data.nextSituation?.ballOn,
-      offensiveFormation: data.offensiveFormation,
-      defensiveFormation: data.defensiveFormation,
-      hashMark: data.hashMark,
-      playData: {
-        season_id: season.id,
-        recorded_start_clock: fmtClock(playClock),
-        recorded_start_clock_seconds: playClock,
-        ...(data.playData ?? {}),
-        /* "manual_override" means the recorder stated what the officials did;
-           "penalty_enforced" means the app worked it out from the foul spot.
-           Both outrank the replay, but only one of them is a human claim, and
-           conflating them would misreport how the spot was arrived at. */
-        next_situation_source: data.nextSituation
-          ? data.nextSituation.source
-          // A turnover returned for a score has no spot to confirm: the try comes next.
-          : data.penalty || (data.playType.id === "blocked_kick" && !data.isTouchdown) || (isTurnover && !data.isTouchdown) ? "pending_review" : "auto",
-      },
-    }, insertAt ? plays[insertAt.index] : plays[plays.length - 1], pregame, gc);
+    const previewPlay = buildSubmittedPlay(data, {
+      seasonId: season.id, plays, live, insertAt, pregame, config: gc,
+    });
     const liveReplay = liveSessionConfig ? replayLiveGame([...plays, previewPlay], liveSessionConfig) : null;
     const resolution = liveReplay?.playResults[liveReplay.playResults.length - 1];
     const storedPreview = buildStoredPlayData(
@@ -1604,43 +1547,12 @@ export default function GameScreen() {
         engineSnapshot: resolution.engineSnapshot,
       } : undefined,
     );
-    const playInsert: PlayInsert = {
-      game_id: gameId,
-      quarter,
-      clock: fmtClock(playClock),
-      possession,
-      down,
-      distance,
-      yard_line: ballOn,
-      play_type: data.playType.id,
-      play_data: storedPreview.playData,
-      yards_gained: data.yards,
-      is_touchdown: data.isTouchdown,
-      is_turnover: isTurnover,
-      is_penalty: !!data.penalty,
-      primary_player_id: data.tagged.find(isRosterTag)?.player_id ?? null,
-      description: data.description,
-      end_yard_line: storedPreview.after.ballOn,
-      play_start_time: clock,
-      play_end_time: null,
-      // Extended fields — only include if non-null to avoid missing-column errors
-      ...(data.offensiveFormation ? { offensive_formation: data.offensiveFormation } : {}),
-      ...(data.defensiveFormation ? { defensive_formation: data.defensiveFormation } : {}),
-      ...(data.hashMark ? { hash_mark: data.hashMark } : {}),
-    };
-
-    const playerInserts = data.tagged.filter(isRosterTag).map(t => ({
-      player_id: t.player_id,
-      role: t.role,
-      credit: t.credit ?? null,
-    }));
+    const playInsert = buildPlayInsert(data, gameId, live, storedPreview.playData, storedPreview.after.ballOn);
+    const playerInserts = buildPlayerCredits(data.tagged);
 
     /* A finished game: check the play against the official final before
        anything is written. Cancel leaves the entry open and the game as it was. */
-    const prospective = insertAt
-      ? [...plays.slice(0, insertAt.index + 1), previewPlay, ...plays.slice(insertAt.index + 1)]
-      : [...plays, previewPlay];
-    if (!(await finalGuard.guard(prospective))) { keepEntryOpen = true; return; }
+    if (!(await finalGuard.guard(playsWithSubmitted(plays, previewPlay, insertAt)))) { keepEntryOpen = true; return; }
 
     const savedPlay = await insertPlay(playInsert, playerInserts, { optimistic: true });
     if (!savedPlay) { console.error("insertPlay returned null — check Supabase logs"); isSubmitting.current = false; setSelectedPlayType(null); return; }
@@ -1697,12 +1609,10 @@ export default function GameScreen() {
     }
 
     // ── Game state advance ──
-    // Penalties, blocked kicks, and turnovers (INT / lost fumble) pop the
-    // "Adjust Next Situation" review so the spot/possession can be confirmed;
-    // everything else auto-advances. TDs skip the review — the next situation
-    // is the mechanical PAT spot, and the PAT gate needs to fire.
+    // A flag, a blocked kick or a turnover pops the "Adjust Next Situation"
+    // review; everything else auto-advances (see needsSituationReview).
     const nextSituation = resolution?.afterSituation ?? storedPreview.after;
-    if (!data.nextSituation && (data.penalty || data.playType.id === "blocked_kick" || isTurnover) && !data.isTouchdown) {
+    if (needsSituationReview(data, isTurnover)) {
       queueSituationAdjustment(savedPlay.id, localPlay, before);
     } else {
       applySituation(nextSituation);
