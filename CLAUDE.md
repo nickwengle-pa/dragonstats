@@ -103,6 +103,14 @@ Push to `main` auto-deploys to GitHub Pages. Don't push unless asked.
   Three were found in one session (the penalty picker, the tackler step, a
   situation adjuster). If a feature seems like it should already exist, grep
   for it before building it.
+- **On Supabase, `REVOKE ... FROM PUBLIC` does not take a function away from
+  `anon`.** The platform grants EXECUTE on every new public function to `anon`
+  by name, so a new function needs `REVOKE EXECUTE ... FROM PUBLIC, anon`, and
+  a new policy needs `TO authenticated`. A policy with no TO clause applies to
+  anon too and calls its helper functions on the signed-out keep-warm read,
+  which then fails with 42501 instead of coming back empty. 27 functions and
+  47 policies had drifted that way before `advisor_cleanup`;
+  `supabase/tests/advisor_cleanup.sql` checks both.
 
 ## Conventions
 
