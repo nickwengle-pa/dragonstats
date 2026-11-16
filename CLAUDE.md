@@ -12,9 +12,15 @@ matter most; optimize for those over elegance.
 ## Verify loop
 
 ```
-npx tsc -b        # then
-npm run build     # PWA/service worker regenerates here, so run it
+npm test          # then
+npm run build     # tsc -b, then the PWA/service worker regenerates, so run it
 ```
+
+The deploy runs `npx tsc -b` and `npm test` before it ships anything, so a red
+test blocks the release. `npm test` is 15 script-style suites run as
+`node file.test.ts` (Node 24, as CI uses) followed by `vitest run`. Vitest
+picks up `src/**/*.spec.ts(x)` on its own; a new `*.test.ts` runs only once it
+is added by hand to the `test` script in `package.json`.
 
 Dev server: `preview_start` with `dragonstats` (the entry lives in the
 user-level `D:\APPS\.claude\launch.json`, not this repo's), app at
@@ -29,6 +35,13 @@ mail lands in Mailpit on :54324). Production remains unreachable and untestable
 from here. Reset the sandbox with `npx supabase db reset`.
 
 Push to `main` auto-deploys to GitHub Pages. Don't push unless asked.
+
+**A deploy does not touch the database.** `supabase/migrations/` is the schema,
+but nothing applies a migration to production: each one is run there by hand
+(SQL editor or the Supabase connection), and production's migration history
+only lists the ones applied through the connection, so it cannot tell you what
+is live. Check the live catalog instead. `supabase/tests/*.sql` run with psql
+against the local stack and roll everything back.
 
 ## Architecture notes that aren't obvious
 
@@ -67,9 +80,9 @@ Push to `main` auto-deploys to GitHub Pages. Don't push unless asked.
   network, and deletes the intent only once the server has the row. The old
   shape — cache, try, enqueue if that failed — left a window on every snap
   where the play existed only on the device with no record it was owed to the
-  server. Any new write path must write ahead the same way.
-  (`updatePlayFull`/`deletePlay` still use the old order; that is known and
-  queued.)
+  server. Any new write path must write ahead the same way. Edits
+  (`updatePlayFull`), deletes (`deletePlay`), the re-chain write-back and the
+  games row all do now.
 - **A play and its credits are one server-side transaction.**
   `save_play_with_players` (RPC) upserts the play and replaces `play_players`
   together. Passing no players means "leave the credits alone" — a
@@ -114,8 +127,9 @@ Push to `main` auto-deploys to GitHub Pages. Don't push unless asked.
 
 ## Conventions
 
-- Roles resolve to a roster via `roleUsesOpponentRoster()` — one helper, three
-  call sites. The tricky cases are `returner` (opposite of possession, unless
+- Roles resolve to a roster via `roleUsesOpponentRoster()` — one helper in
+  `PlayEntryModal.tsx` that every roster choice goes through; don't decide it
+  inline. The tricky cases are `returner` (opposite of possession, unless
   the kicking team recovers an onside kick) and turnovers, where possession
   flips mid-play so the offense that gave it away makes the tackle.
 - Amber in the play-entry modal means "not a confirmed pick" — a carried-over
