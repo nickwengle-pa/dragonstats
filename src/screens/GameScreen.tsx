@@ -116,6 +116,10 @@ import {
   buildPlayInsert, buildPlayerCredits, buildSubmittedPlay, needsSituationReview, playsWithSubmitted, submittedTurnover,
   type LiveScoreboard,
 } from "@/services/playSubmission";
+import {
+  liveSessionConfigFor, pendingGamePatches, placeholderSessionConfig, resumeSituation, rosterLookups, withPendingPatches,
+} from "./gameLoad";
+import { useGameSync } from "./useGameSync";
 
 /* ═══════════════════════════════════════════════
    GAME SCREEN — Main Wrapper
@@ -141,23 +145,10 @@ export default function GameScreen() {
   const gc = useMemo(() => resolveGameConfig(baseGc, game?.rules_config as Record<string, unknown> | null), [baseGc, game]);
   const pregame = useMemo(() => getPregameConfig(game), [game]);
   const persistedLiveStateKey = useRef<string | null>(null);
-  const liveSessionConfig = useMemo<LiveSessionConfig | null>(() => {
-    if (!gameId || !program || !game?.opponent?.id) return null;
-
-    return {
-      gameId,
-      programTeamId: program.id,
-      programName: program.name,
-      programAbbreviation: toTeamTag(program.name, program.abbreviation),
-      opponentTeamId: game.opponent.id,
-      opponentName: game.opponent.name ?? "Opponent",
-      opponentAbbreviation: toTeamTag(game.opponent.name ?? "Opponent", game.opponent.abbreviation),
-      isHome: Boolean(game.is_home),
-      gameConfig: gc,
-      rulesConfig: game.rules_config as Record<string, unknown> | null,
-      pregame,
-    };
-  }, [game, gameId, gc, pregame, program]);
+  const liveSessionConfig = useMemo<LiveSessionConfig | null>(
+    () => (gameId ? liveSessionConfigFor(gameId, program, game, gc, pregame) : null),
+    [game, gameId, gc, pregame, program],
+  );
 
   const loadData = useCallback(async () => {
     if (!season || !gameId) return;
@@ -189,18 +180,9 @@ export default function GameScreen() {
       ? await readSeasonRoster<RosterPlayer>(gameSeasonId)
       : contextRosterRead;
 
-    // A locally finalized game can still be waiting for the server to sync.
-    /* Not a patch the server refused on role grounds, though: laying an
-       assistant's refused "live" score patch over a game the head coach has
-       since made final would reopen it on this device, and every play then
-       recorded could never sync. */
-    const pendingGameUpdates = (await getUnsyncedForGame(gameId))
-      .filter((item) => item.op === "game")
-      .filter((item) => !(item.status === "failed" && item.lastError === ROLE_REFUSAL_MESSAGE))
-      .sort((a, b) => a.createdAt - b.createdAt);
-    const gameData = gameRead.value && pendingGameUpdates.reduce(
-      (value, item) => ({ ...value, ...item.payload?.patch }), gameRead.value,
-    );
+    // A locally finalized game can still be waiting for the server to sync (see pendingGamePatches).
+    const pendingGameUpdates = pendingGamePatches(await getUnsyncedForGame(gameId));
+    const gameData = withPendingPatches(gameRead.value, pendingGameUpdates);
     if (gameData && pendingGameUpdates.length) await setMeta(cacheKeys.game(gameId), gameData);
     const gameConfig = resolveGameConfig(baseGc, gameData?.rules_config as Record<string, unknown> | null);
     const pregameConfig = getPregameConfig(gameData);
@@ -208,24 +190,8 @@ export default function GameScreen() {
     setGame(gameData);
     setRoster(rosterRead.value ?? []);
 
-    /* A play still sitting in the sync queue is read back from the local
-       cache, where its play_players rows were written without the joined
-       `player` record — that join is the server's, and the server has not
-       seen the play yet. Without a fallback every tag on an unsynced play
-       renders as "?", which reads exactly like the app lost who made it. */
-    const rosterNames = new Map<string, string>();
-    /* Jersey numbers live on season_rosters, not on the play_players join, so
-       a tag rebuilt from the database has always come back numberless. Every
-       consumer then had to re-attach them or print without them - and one of
-       them printed "#null" instead. Attach once, here. */
-    const rosterJerseys = new Map<string, number | null>();
-    for (const entry of (rosterRead.value ?? []) as any[]) {
-      const player = entry?.player;
-      if (entry?.player_id && player) {
-        rosterNames.set(entry.player_id, `${player.first_name} ${player.last_name}`);
-        rosterJerseys.set(entry.player_id, entry.jersey_number ?? null);
-      }
-    }
+    // Names and numbers for tags, including plays still in the sync queue (see rosterLookups).
+    const { names: rosterNames, jerseys: rosterJerseys } = rosterLookups((rosterRead.value ?? []) as unknown[]);
 
     // Load opponent players
     if (gameData?.opponent_id) {
@@ -257,148 +223,27 @@ export default function GameScreen() {
     const rebuilt = rebuildPlaySituations(markHandSetStarts(localPlays, pregameConfig, gameConfig), pregameConfig, gameConfig);
     setPlays(rebuilt.plays);
 
-    const sessionConfig = program && gameData?.opponent?.id
-      ? {
-          gameId,
-          programTeamId: program.id,
-          programName: program.name,
-          programAbbreviation: toTeamTag(program.name, program.abbreviation),
-          opponentTeamId: gameData.opponent.id,
-          opponentName: gameData.opponent.name ?? "Opponent",
-          opponentAbbreviation: toTeamTag(gameData.opponent.name ?? "Opponent", gameData.opponent.abbreviation),
-          isHome: Boolean(gameData.is_home),
-          gameConfig,
-          rulesConfig: gameData?.rules_config as Record<string, unknown> | null,
-          pregame: pregameConfig,
-        } satisfies LiveSessionConfig
-      : null;
+    const sessionConfig = liveSessionConfigFor(gameId, program, gameData, gameConfig, pregameConfig);
     const replay = sessionConfig ? replayLiveGame(rebuilt.plays, sessionConfig) : null;
-    const derivedState = replay?.currentState ?? createInitialGameState({
-      gameId,
-      programTeamId: program?.id ?? "program",
-      programName: program?.name ?? "Team",
-      programAbbreviation: toTeamTag(program?.name ?? "Team", program?.abbreviation),
-      opponentTeamId: gameData?.opponent?.id ?? "opponent",
-      opponentName: gameData?.opponent?.name ?? "Opponent",
-      opponentAbbreviation: toTeamTag(gameData?.opponent?.name ?? "Opponent", gameData?.opponent?.abbreviation),
-      isHome: Boolean(gameData?.is_home),
-      gameConfig,
-      rulesConfig: gameData?.rules_config as Record<string, unknown> | null,
-      pregame: pregameConfig,
-    });
+    const derivedState = replay?.currentState
+      ?? createInitialGameState(placeholderSessionConfig(gameId, program, gameData, gameConfig, pregameConfig));
 
-    const useStoredLiveState = hasManagedLiveState(gameData?.rules_config as Record<string, unknown> | null);
-    const resumedQuarter = useStoredLiveState
-      ? Number(gameData?.current_quarter ?? derivedState.quarter)
-      : derivedState.quarter;
-    const resumedClock = useStoredLiveState
-      ? parseClockText(gameData?.current_clock, derivedState.clock)
-      : derivedState.clock;
-    const resumedPossession = useStoredLiveState && (gameData?.current_possession === "us" || gameData?.current_possession === "them")
-      ? gameData.current_possession
-      : derivedState.possession;
-    const resumedDown = useStoredLiveState && typeof gameData?.current_down === "number"
-      ? gameData.current_down
-      : derivedState.down;
-    const resumedDistance = useStoredLiveState && typeof gameData?.current_distance === "number"
-      ? gameData.current_distance
-      : derivedState.distance;
-    const resumedBallOn = useStoredLiveState && typeof gameData?.current_yard_line === "number"
-      ? gameData.current_yard_line
-      : derivedState.ballOn;
-
-    setQuarter(resumedQuarter);
-    setClock(resumedClock);
-    setPossession(resumedPossession);
+    const resumed = resumeSituation(gameData, derivedState);
+    setQuarter(resumed.quarter);
+    setClock(resumed.clock);
+    setPossession(resumed.possession);
     setOurScore(derivedState.ourScore);
     setTheirScore(derivedState.theirScore);
-    setDown(resumedDown);
-    setDistance(resumedDistance);
-    setBallOn(resumedBallOn);
-    setGoalToGo(useStoredLiveState && typeof gameData?.rules_config?.current_goal_to_go === "boolean"
-      ? gameData.rules_config.current_goal_to_go : derivedState.goalToGo);
-
-    persistedLiveStateKey.current = useStoredLiveState
-      ? [resumedQuarter, resumedClock, resumedPossession, resumedDown, resumedDistance, resumedBallOn].join("|")
-      : null;
+    setDown(resumed.down);
+    setDistance(resumed.distance);
+    setBallOn(resumed.ballOn);
+    setGoalToGo(resumed.goalToGo);
+    persistedLiveStateKey.current = resumed.persistedKey;
 
     setLoading(false);
   }, [season, gameId, baseGc, program]);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  useEffect(() => {
-    const reload = (event: Event) => {
-      const changedGame = (event as CustomEvent<{ gameId: string }>).detail.gameId;
-      if (!changedGame || changedGame === gameId) void loadData();
-    };
-    window.addEventListener("app:sync-discarded", reload);
-    return () => window.removeEventListener("app:sync-discarded", reload);
-  }, [gameId, loadData]);
-
-  /* ── Offline sync: one push on entry for this game. The online/visible
-     triggers and the retry timer live at the app root now, so the queue keeps
-     draining after the operator leaves this screen — marking a game final and
-     walking away used to strand it until they wandered back in. */
-  useEffect(() => {
-    if (gameId && navigator.onLine) {
-      void drainQueue(gameId);
-    }
-  }, [gameId]);
-
-  /* ── Track which plays are still pending in the queue (for per-row icons). */
-  const [pendingPlayIds, setPendingPlayIds] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    if (!gameId) return;
-    let cancelled = false;
-    const refresh = async () => {
-      try {
-        // Unsynced, not merely drainable: a play the drain gave up on is
-        // still only on this device and must keep its marker.
-        const queue = await getUnsyncedForGame(gameId);
-        if (cancelled) return;
-        setPendingPlayIds(new Set(queue.map((i) => i.playId)));
-      } catch { /* ignore */ }
-    };
-    void refresh();
-    const unsub = subscribeSyncStatus(() => { void refresh(); });
-    return () => { cancelled = true; unsub(); };
-  }, [gameId]);
-
-  /* ── Realtime sync — listen for plays changes from other devices ──
-     Requires the `plays` table to be in the supabase_realtime publication:
-       ALTER PUBLICATION supabase_realtime ADD TABLE plays;
-     If realtime isn't enabled, the subscription quietly does nothing and
-     local-only entry still works. */
-  useEffect(() => {
-    if (!gameId) return;
-    let refetchTimer: ReturnType<typeof setTimeout> | null = null;
-    const channel = supabase.channel(`game-plays:${gameId}`)
-      .on(
-        "postgres_changes" as any,
-        { event: "*", schema: "public", table: "plays", filter: `game_id=eq.${gameId}` },
-        (payload: { eventType?: string; new?: { id?: string }; old?: { id?: string } }) => {
-          // Skip echoes of this device's own writes — refetching on our own
-          // INSERT reloads live state from the (lagging) games row right after
-          // every play, desyncing the situation panel mid-drive.
-          const eventType = payload?.eventType;
-          const newId = payload?.new?.id;
-          const oldId = payload?.old?.id;
-          if (eventType === "INSERT" && newId && knownPlayIds.current.has(newId)) return;
-          if (eventType === "DELETE" && oldId && !knownPlayIds.current.has(oldId)) return;
-          // Coalesce bursts (e.g. an UPDATE followed by linked INSERTs) into
-          // one refetch — and skip while we're mid-submit on this device.
-          if (isSubmitting.current) return;
-          if (refetchTimer) clearTimeout(refetchTimer);
-          refetchTimer = setTimeout(() => { loadData(); }, 250);
-        },
-      )
-      .subscribe();
-    return () => {
-      if (refetchTimer) clearTimeout(refetchTimer);
-      supabase.removeChannel(channel);
-    };
-  }, [gameId, loadData]);
 
   /* ── Game state ── */
   const initialSituation = useMemo(() => createInitialSituation(pregame, gc), [pregame, gc]);
@@ -453,6 +298,9 @@ export default function GameScreen() {
   });
 
   const isSubmitting = useRef(false);
+
+  /* ── Sync: the queue, the pending-play markers and other devices' changes ── */
+  const { pendingPlayIds } = useGameSync({ gameId, reload: loadData, knownPlayIds, isSubmitting });
 
   /* ── Modal state ── */
   const [selectedPlayType, setSelectedPlayType] = useState<PlayTypeDef | null>(null);

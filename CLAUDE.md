@@ -127,10 +127,10 @@ against the local stack and roll everything back.
 
 ## Conventions
 
-- Roles resolve to a roster via `roleUsesOpponentRoster()` — one helper that
-  every roster choice goes through (grep for it; it is moving out of
-  `PlayEntryModal.tsx`); don't decide it inline. The tricky cases are `returner` (opposite of possession, unless
-  the kicking team recovers an onside kick) and turnovers, where possession
+- Roles resolve to a roster via `roleUsesOpponentRoster()` in
+  `components/game/playEntryRules.ts` — one helper that every roster choice
+  goes through; don't decide it inline. The tricky cases are `returner`
+  (opposite of possession, unless the kicking team recovers an onside kick) and turnovers, where possession
   flips mid-play so the offense that gave it away makes the tackle.
 - Amber in the play-entry modal means "not a confirmed pick" — a carried-over
   player or an unrostered jersey. Keep that consistent.
