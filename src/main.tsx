@@ -17,6 +17,9 @@ const PregamePreview = import.meta.env.DEV
 const HomePreview = import.meta.env.DEV
   ? lazy(() => import("./screens/HomePreview")) : null;
 
+const EntryConcepts = import.meta.env.DEV
+  ? lazy(() => import("./concepts/EntryConcepts")) : null;
+
 const ScreensPreview = import.meta.env.DEV
   ? lazy(() => import("./screens/ScreensPreview")) : null;
 
@@ -36,6 +39,8 @@ createRoot(document.getElementById("root")!).render(
           ? <Suspense fallback={<p>Loading pregame…</p>}><PregamePreview /></Suspense>
           : HomePreview && window.location.pathname === "/home-preview"
           ? <Suspense fallback={<p>Loading home…</p>}><HomePreview /></Suspense>
+          : EntryConcepts && window.location.pathname === "/entry-concepts"
+          ? <Suspense fallback={<p>Loading entry concepts…</p>}><EntryConcepts /></Suspense>
           : ScreensPreview && window.location.pathname === "/screens-preview"
           ? <Suspense fallback={<p>Loading screen…</p>}><ScreensPreview /></Suspense>
           : <App />}
